@@ -1,5 +1,4 @@
-from flask import Flask, Response, request
-from werkzeug.utils import secure_filename
+from flask import Flask
 from flask_socketio import SocketIO
 from threading import Thread
 from loguru import logger
@@ -9,9 +8,6 @@ import os
 import websocket
 import time
 import sys
-import requests
-import hashlib
-import uuid
 import netifaces
 
 debug = False
@@ -34,11 +30,6 @@ app = Flask(__name__,
 socketio = SocketIO(app)
 websockets = {}
 printers = {}
-
-UPLOAD_FOLDER = '/tmp'
-ALLOWED_EXTENSIONS = {'ctb', 'goo', 'prz'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-uploadProgress = 0
 
 
 @socketio.on('connect')
@@ -177,9 +168,11 @@ def connect_printers(printers):
                                     on_open=lambda _: ws_connected_handler(
                                         printer['name']),
                                     on_close=lambda _, s, m: logger.info(
-                                        "Connection to '{n}' closed: {m} ({s})".format(n=printer['name'], m=m, s=s)),
+                                        "Connection to '{n}' closed: {m} ({s})"
+                                        .format(n=printer['name'], m=m, s=s)),
                                     on_error=lambda _, e: logger.info(
-                                        "Connection to '{n}' error: {e}".format(n=printer['name'], e=e))
+                                        "Connection to '{n}' error: {e}"
+                                        .format(n=printer['name'], e=e))
                                     )
         websockets[id] = ws
         Thread(target=lambda: ws.run_forever(reconnect=1), daemon=True).start()
