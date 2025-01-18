@@ -109,13 +109,15 @@ def send_printer_cmd(id, cmd, data={}):
 
 def get_broadcast_ip():
     interfaces = netifaces.interfaces()
+    if_addresses = {}
     for iface in interfaces:
         if iface != 'lo':
-            addrs = netifaces.ifaddresses(iface)
-            AF_INET = addrs[netifaces.AF_INET][0]
-            broadcast = AF_INET['broadcast']
-            return broadcast
+            if_address = netifaces.ifaddresses(iface)
+            if_addresses.update(if_address)
         pass
+    af_inet = if_addresses[netifaces.AF_INET][0]
+    broadcast = af_inet['broadcast']
+    return broadcast
 
 
 def discover_printers():
@@ -128,7 +130,7 @@ def discover_printers():
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     sock.settimeout(discovery_timeout)
     sock.bind(('', 54781))
-    sock.sendto(msg, ("10.0.0.212", 3000))
+    sock.sendto(msg, (broadcast, 3000))
     socketOpen = True
     printers = None
     while (socketOpen):
