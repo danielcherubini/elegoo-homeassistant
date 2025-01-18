@@ -187,7 +187,7 @@ def ws_connected_handler(name):
 
 def ws_msg_handler(ws, msg):
     data = json.loads(msg)
-    logger.debug("printer >> \n{m}", m=json.dumps(data, indent=4))
+    logger.info("printer >> \n{m}", m=json.dumps(data, indent=4))
     if data['Topic'].startswith("sdcp/response/"):
         socketio.emit('printer_response', data)
     elif data['Topic'].startswith("sdcp/status/"):
