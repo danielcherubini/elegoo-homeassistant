@@ -27,7 +27,7 @@ if os.environ.get("PORT") is not None:
 discovery_timeout = 1
 app = Flask(__name__, static_url_path="", static_folder="web")
 socketio = SocketIO(app)
-websockets = {}
+printer_websockets = {}
 printers = {}
 
 
@@ -102,31 +102,29 @@ def send_printer_cmd(id, cmd, data={}):
         "Topic": "sdcp/request/" + id,
     }
     logger.debug("printer << \n{p}", p=json.dumps(payload, indent=4))
-    if id in websockets:
-        websockets[id].send(json.dumps(payload))
+    if id in printer_websockets:
+        printer_websockets[id].send(json.dumps(payload))
 
 
-def get_broadcast_ip():
-    interfaces = netifaces.interfaces()
-    addresses = []
-    for iface in interfaces:
-        if iface != "lo":
-            if_addresses = netifaces.ifaddresses(iface)
-            addresses.append(if_addresses)
-        pass
-    for address in addresses:
-        af_inets = address[netifaces.AF_INET]
-        for af_inet in af_inets:
-            broadcast = af_inet["broadcast"]
-            if broadcast:
-                return broadcast
+# def get_broadcast_ip():
+#     interfaces = netifaces.interfaces()
+#     addresses = []
+#     for iface in interfaces:
+#         if iface != "lo":
+#             if_addresses = netifaces.ifaddresses(iface)
+#             addresses.append(if_addresses)
+#         pass
+#     for address in addresses:
+#         af_inets = address[netifaces.AF_INET]
+#         for af_inet in af_inets:
+#             broadcast = af_inet["broadcast"]
+#             if broadcast:
+#                 return broadcast
 
 
-def discover_printers():
-    logger.info("Starting printer discovery.")
+def discover_printers(broadcast="255.255.255.255"):
+    logger.info("Starting printer discovery. " + broadcast)
     msg = b"M99999"
-    broadcast = get_broadcast_ip()
-    logger.debug("Broadcast: " + broadcast)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
                          socket.IPPROTO_UDP)  # UDP
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -180,7 +178,7 @@ def connect_printers(printers):
                 "Connection to '{n}' error: {e}".format(n=printer["name"], e=e)
             ),
         )
-        websockets[id] = ws
+        printer_websockets[id] = ws
         Thread(target=lambda: ws.run_forever(reconnect=1), daemon=True).start()
 
     return True
@@ -216,17 +214,30 @@ def status_handler(msg):
     status = printer_status.status
     print_info = status.print_info
     layers_remaining = print_info.total_layer - print_info.current_layer
-    logger.info(
-        f"""
-        Temp: {status.temp_of_uvled.__round__(2)}
-        Layers Left: {layers_remaining}
-        Time left: {printer_status.get_time_remaining_str()}
-        """
-    )
+
+    printer_data = {
+        "uv_temperature": status.temp_of_uvled,
+        "time_total": print_info.total_ticks,
+        "time_printing": print_info.current_ticks,
+        "time_remaining": printer_status.calculate_time_remaining(),
+        "filename": print_info.filename,
+        "current_layer": print_info.current_layer,
+        "total_layers": print_info.total_layer,
+        "remaining_layers": layers_remaining,
+    }
+
+    logger.info("printer_data >>> \n{m}", m=json.dumps(printer_data, indent=2))
+
+
+async def update_entities(hass, entities, printer_data):
+    if printer_data:
+        for entity in entities:
+            entity.update_data(printer_data)
+            await entity.async_update_ha_state()
 
 
 def main():
-    printers = discover_printers()
+    printers = discover_printers("10.0.0.212")
     if printers:
         connected = connect_printers(printers)
         if connected:
