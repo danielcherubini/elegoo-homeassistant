@@ -11,6 +11,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup(hass: HomeAssistant, config: dict):
     """Set up the Elegoo Home Assistant Add-on."""
+    printer_ip = config["printer_ip"]
     _LOGGER = logging.getLogger(__name__)
     _LOGGER.info("Elegoo Home Assistant Add-on is starting")
 

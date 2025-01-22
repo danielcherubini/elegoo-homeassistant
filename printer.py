@@ -70,7 +70,8 @@ def sio_handle_action_delete(data):
 @socketio.on("action_print")
 def sio_handle_action_print(data):
     logger.debug("client.action_print >> " + json.dumps(data))
-    send_printer_cmd(data["id"], 128, {"Filename": data["data"], "StartLayer": 0})
+    send_printer_cmd(data["id"], 128, {
+                     "Filename": data["data"], "StartLayer": 0})
 
 
 def get_printer_status(id):
@@ -126,7 +127,8 @@ def discover_printers():
     msg = b"M99999"
     broadcast = get_broadcast_ip()
     logger.debug("Broadcast: " + broadcast)
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)  # UDP
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
+                         socket.IPPROTO_UDP)  # UDP
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     sock.settimeout(discovery_timeout)
     sock.bind(("", 54781))
@@ -155,7 +157,8 @@ def save_discovered_printer(data):
     printer["protocol"] = j["Data"]["ProtocolVersion"]
     printer["firmware"] = j["Data"]["FirmwareVersion"]
     printers[j["Data"]["MainboardID"]] = printer
-    logger.info("Discovered: {n} ({i})".format(n=printer["name"], i=printer["ip"]))
+    logger.info("Discovered: {n} ({i})".format(
+        n=printer["name"], i=printer["ip"]))
     return printers
 
 
@@ -209,8 +212,8 @@ def ws_msg_handler(ws, msg):
 
 
 def status_handler(msg):
-    printer_status: models.status.Status = models.status.PrinterStatus.from_json(msg)
-    status: models.status.Status = printer_status.status
+    printer_status = models.status.PrinterStatus.from_json(msg)
+    status = printer_status.status
     print_info = status.print_info
     layers_remaining = print_info.total_layer - print_info.current_layer
     logger.info(
@@ -241,5 +244,9 @@ if __name__ == "__main__":
     main()
 
     socketio.run(
-        app, host="0.0.0.0", port=port, debug=debug, use_reloader=debug, log_output=True
+        app, host="0.0.0.0",
+        port=port,
+        debug=debug,
+        use_reloader=debug,
+        log_output=True
     )

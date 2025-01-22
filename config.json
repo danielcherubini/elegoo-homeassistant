@@ -1,0 +1,19 @@
+{
+  "name": "Elegoo Home Assistant",
+  "version": "0.1.0",
+  "description": "Integrate your Elegoo 3D printer with Home Assistant.",
+  "arch": ["armhf", "armv7", "aarch64", "amd64", "i386"],
+  "init": true,
+  "hassio_api": true,
+  "python_script": true,
+  "config_flow": true,  
+  "logging": {
+    "level": "debug" 
+  },
+  "options": {
+    "printer_ip": "" 
+  },
+  "schema": {
+    "printer_ip": "str"
+  }
+}
