@@ -14,7 +14,7 @@ class Status:
         self.current_status = current_status
         self.print_screen = print_screen
         self.release_film = release_film
-        self.temp_of_uvled = temp_of_uvled
+        self.temp_of_uvled: float = temp_of_uvled
         self.time_lapse_status = time_lapse_status
         self.print_info: PrintInfo = PrintInfo(
             print_info["Status"],

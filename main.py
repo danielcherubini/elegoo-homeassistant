@@ -194,8 +194,7 @@ def ws_msg_handler(ws, msg):
     if data["Topic"].startswith("sdcp/response/"):
         socketio.emit("printer_response", data)
     elif data["Topic"].startswith("sdcp/status/"):
-        status = models.status.PrinterStatus.from_json(msg)
-        status_handler(status)
+        status_handler(msg)
         socketio.emit("printer_status", data)
     elif data["Topic"].startswith("sdcp/attributes/"):
         socketio.emit("printer_attributes", data)
@@ -209,13 +208,14 @@ def ws_msg_handler(ws, msg):
         logger.warning("--- UNKNOWN MESSAGE ---")
 
 
-def status_handler(printer_status: models.status.PrinterStatus):
+def status_handler(msg):
+    printer_status: models.status.Status = models.status.PrinterStatus.from_json(msg)
     status: models.status.Status = printer_status.status
     print_info = status.print_info
     layers_remaining = print_info.total_layer - print_info.current_layer
     logger.info(
         f"""
-        Temp: {status.temp_of_uvled}
+        Temp: {status.temp_of_uvled.__round__(2)}
         Layers Left: {layers_remaining}
         Time left: {printer_status.get_time_remaining_str()}
         """
