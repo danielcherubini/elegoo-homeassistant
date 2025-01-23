@@ -1,0 +1,17 @@
+{
+  "domain": "elegoo",
+  "version": "0.1.0",
+  "name": "Elegoo",
+  "config_flow": true,
+  "codeowners": [
+    "@danielcherubini"
+  ],
+  "dependencies": [],
+  "documentation": "https://github.com/danielcherubini/elegoo-homeassistant",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "requirements": [
+    "websocket-client==1.8.0",
+    "loguru==0.7.2"
+  ]
+}

@@ -1,4 +1,5 @@
 import json
+from homeassistant.helpers.entity import Entity
 
 
 class Status:
@@ -129,3 +130,41 @@ class PrinterStatus:
             time_str = "Less than a minute"
 
         return time_str
+
+
+class PrinterSensor(Entity):
+    """Representation of an Elegoo printer sensor."""
+
+    def __init__(self, hass, entity_id, unit, data_key, icon):
+        """Initialize the sensor."""
+        self.hass = hass
+        # The 'sensor.' prefix is important
+        self._entity_id = f"sensor.{entity_id}"
+        self._unit_of_measurement = unit
+        self._data_key = data_key
+        self._icon = icon
+        self._state = None
+
+    @property
+    def entity_id(self):
+        """Return the entity ID."""
+        return self._entity_id
+
+    @property
+    def state(self):
+        """Return the state of the sensor."""
+        return self._state
+
+    @property
+    def unit_of_measurement(self):
+        """Return the unit of measurement."""
+        return self._unit_of_measurement
+
+    @property
+    def icon(self):
+        """Return the icon."""
+        return self._icon
+
+    def update_data(self, printer_data):
+        """Update the sensor data."""
+        self._state = printer_data.get(self._data_key)
