@@ -7,7 +7,9 @@ import websocket
 import time
 import sys
 import models.status
+import asyncio
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import Entity
 debug = False
 log_level = "INFO"
 if os.environ.get("DEBUG"):
@@ -22,6 +24,44 @@ if os.environ.get("PORT") is not None:
     port = os.environ.get("PORT")
 
 discovery_timeout = 1
+
+
+class PrinterSensor(Entity):
+    """Representation of an Elegoo printer sensor."""
+
+    def __init__(self, hass, entity_id, unit, data_key, icon):
+        """Initialize the sensor."""
+        self.hass = hass
+        # The 'sensor.' prefix is important
+        self._entity_id = f"sensor.{entity_id}"
+        self._unit_of_measurement = unit
+        self._data_key = data_key
+        self._icon = icon
+        self._state = None
+
+    @property
+    def entity_id(self):
+        """Return the entity ID."""
+        return self._entity_id
+
+    @property
+    def state(self):
+        """Return the state of the sensor."""
+        return self._state
+
+    @property
+    def unit_of_measurement(self):
+        """Return the unit of measurement."""
+        return self._unit_of_measurement
+
+    @property
+    def icon(self):
+        """Return the icon."""
+        return self._icon
+
+    def update_data(self, printer_data):
+        """Update the sensor data."""
+        self._state = printer_data.get(self._data_key)
 
 
 class ElegooPrinter:
@@ -165,16 +205,36 @@ class ElegooPrinter:
 
         logger.info("printer_data >>> \n{m}",
                     m=json.dumps(printer_data, indent=2))
+        asyncio.run(self._update_entities(self.entitites, printer_data))
 
-    async def _update_entities(self, printer_data):
+    async def _update_entities(self, entities, printer_data):
         if printer_data:
-            for entity in self.entities:
+            for entity in entities:
                 entity.update_data(printer_data)
                 await entity.async_update_ha_state()
 
 
 def main():
-    elegoo_printer = ElegooPrinter(None, "10.0.0.212", {})
+    hass = None
+    entities = [
+        PrinterSensor(hass, "elegoo_printer_uvled_temperature",
+                      "°C", "uv_temperature", "mdi:led-variant-on"),
+        PrinterSensor(hass, "elegoo_printer_time_total",
+                      "milliseconds", "time_total", "mdi:timer-clock-outline"),
+        PrinterSensor(hass, "elegoo_printer_time_printing",
+                      "milliseconds", "time_printing", "mdi:timer-sand"),
+        PrinterSensor(hass, "elegoo_printer_time_remaining",
+                      "milliseconds", "time_remaining", "mdi:timer-outline"),
+        PrinterSensor(hass, "elegoo_printer_filename",
+                      None, "filename", "mdi:file"),
+        PrinterSensor(hass, "elegoo_printer_current_layer",
+                      None, "current_layer", "mdi:layers"),
+        PrinterSensor(hass, "elegoo_printer_total_layers", None,
+                      "total_layers", "mdi:layers-triple"),
+        PrinterSensor(hass, "elegoo_printer_remaining_layers",
+                      None, "remaining_layers", "mdi:layers-minus"),
+    ]
+    elegoo_printer = ElegooPrinter(hass, "10.0.0.212", entities)
     printer = elegoo_printer.discover_printer()
     if printer:
         connected = elegoo_printer.connect_printer()
