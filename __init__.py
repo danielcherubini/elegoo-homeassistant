@@ -16,22 +16,6 @@ async def async_setup(hass: HomeAssistant, config: dict):
     _LOGGER = logging.getLogger(__name__)
     _LOGGER.info("Elegoo Home Assistant Add-on is starting")
 
-    # # --- Replace with your actual Elegoo printer integration logic ---
-    #
-    # def get_printer_data():
-    #     """Fetch data from your Elegoo printer."""
-    #     # Replace this with your actual data retrieval logic
-    #     return {
-    #         "uv_temperature": 35.5,
-    #         "time_total": 21600000,  # in milliseconds (6 hours)
-    #         "time_printing": 3600000,  # in milliseconds (1 hour)
-    #         "time_remaining": 18000000,  # in milliseconds (5 hours)
-    #         "filename": "my_resin_model.stl",
-    #         "current_layer": 45,
-    #         "total_layers": 200,
-    #         "remaining_layers": 155,
-    #     }
-
     # Create entities with updated entity IDs
     entities = [
         PrinterSensor(hass, "elegoo_printer_uvled_temperature",

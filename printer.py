@@ -121,25 +121,30 @@ class ElegooPrinter:
 
     def _ws_msg_handler(self, ws, msg):
         data = json.loads(msg)
-        if data["Topic"].startswith("sdcp/response/"):
-            # Printer Response Handler
-            logger.debug("response >> \n{m}", m=json.dumps(data, indent=5))
-        elif data["Topic"].startswith("sdcp/status/"):
-            # Status Handler
-            self._status_handler(msg)
-        elif data["Topic"].startswith("sdcp/attributes/"):
-            # Attribute handler
-            logger.debug("attributes >> \n{m}", m=json.dumps(data, indent=5))
-        elif data["Topic"].startswith("sdcp/error/"):
-            # Error Handler
-            logger.error("error >> \n{m}", m=json.dumps(data, indent=5))
-        elif data["Topic"].startswith("sdcp/notice/"):
-            # Notice Handler
-            logger.debug("notice >> \n{m}", m=json.dumps(data, indent=5))
-        else:
-            logger.warning("--- UNKNOWN MESSAGE ---")
-            logger.warning(data)
-            logger.warning("--- UNKNOWN MESSAGE ---")
+        topic = data["Topic"]
+
+        # Extract the second part of the topic (e.g., "response")
+        match topic.split('/')[1]:
+            case "response":
+                # Printer Response Handler
+                logger.debug("response >> \n{m}", m=json.dumps(data, indent=5))
+            case "status":
+                # Status Handler
+                self._status_handler(msg)
+            case "attributes":
+                # Attribute handler
+                logger.debug("attributes >> \n{m}",
+                             m=json.dumps(data, indent=5))
+            case "notice":
+                # Notice Handler
+                logger.debug("notice >> \n{m}", m=json.dumps(data, indent=5))
+            case "error":
+                # Error Handler
+                logger.error("error >> \n{m}", m=json.dumps(data, indent=5))
+            case _:  # Default case
+                logger.warning("--- UNKNOWN MESSAGE ---")
+                logger.warning(data)
+                logger.warning("--- UNKNOWN MESSAGE ---")
 
     def _status_handler(self, msg):
         printer_status = models.status.PrinterStatus.from_json(msg)
