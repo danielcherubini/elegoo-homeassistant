@@ -165,6 +165,10 @@ class PrinterSensor(Entity):
         """Return the icon."""
         return self._icon
 
+    @property
+    def should_poll(self):
+        return False
+
     def update_data(self, printer_data):
         """Update the sensor data."""
         self._state = printer_data.get(self._data_key)

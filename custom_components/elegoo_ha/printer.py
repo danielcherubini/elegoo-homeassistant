@@ -7,7 +7,6 @@ import websocket
 import time
 import sys
 from .models import PrinterStatus
-import asyncio
 from homeassistant.core import HomeAssistant
 
 debug = False
@@ -163,13 +162,13 @@ class ElegooPrinter:
         }
 
         logger.debug("printer_data >>> \n{m}", m=json.dumps(printer_data, indent=2))
-        asyncio.run(self._update_entities(self.entitites, printer_data))
+        self._update_entities(self.entitites, printer_data)
 
-    async def _update_entities(self, entities, printer_data):
+    def _update_entities(self, entities, printer_data):
         if printer_data:
             for entity in entities:
                 entity.update_data(printer_data)
-                await entity.async_update_ha_state()
+                entity.schedule_update_ha_state()
 
 
 # def main():
