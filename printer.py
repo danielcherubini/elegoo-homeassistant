@@ -1,5 +1,3 @@
-from flask import Flask
-from flask_socketio import SocketIO
 from threading import Thread
 from loguru import logger
 import socket
@@ -8,9 +6,8 @@ import os
 import websocket
 import time
 import sys
-import netifaces
 import models.status
-
+from homeassistant.core import HomeAssistant
 debug = False
 log_level = "INFO"
 if os.environ.get("DEBUG"):
@@ -25,239 +22,165 @@ if os.environ.get("PORT") is not None:
     port = os.environ.get("PORT")
 
 discovery_timeout = 1
-app = Flask(__name__, static_url_path="", static_folder="web")
-socketio = SocketIO(app)
-printer_websockets = {}
-printers = {}
 
 
-@socketio.on("connect")
-def sio_handle_connect(auth):
-    logger.info("Client connected")
-    socketio.emit("printers", printers)
+class ElegooPrinter:
+    def __init__(self, hass: HomeAssistant, ip_address, entities):
+        self.hass = hass
+        self.ip_address = ip_address
+        self.entitites = entities
+        self.printer_websocket = {}
+        self.printer = {}
 
+    def get_printer_status(self):
+        self._send_printer_cmd(0)
 
-@socketio.on("disconnect")
-def sio_handle_disconnect():
-    logger.info("Client disconnected")
+    def get_printer_attributes(self):
+        self._send_printer_cmd(1)
 
+    def _send_printer_cmd(self, cmd, data={}):
+        ts = int(time.time())
+        payload = {
+            "Id": self.printer["connection"],
+            "Data": {
+                "Cmd": cmd,
+                "Data": data,
+                "RequestID": os.urandom(8).hex(),
+                "MainboardID": self.printer["id"],
+                "TimeStamp": ts,
+                "From": 0,
+            },
+            "Topic": "sdcp/request/" + self.printer['id'],
+        }
+        logger.debug("printer << \n{p}", p=json.dumps(payload, indent=4))
+        self.printer_websocket.send(json.dumps(payload))
 
-@socketio.on("printers")
-def sio_handle_printers(data):
-    logger.debug("client.printers >> " + data)
-    main()
+    def discover_printer(self):
+        logger.info("Starting printer discovery. " + self.ip_address)
+        msg = b"M99999"
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
+                             socket.IPPROTO_UDP)  # UDP
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.settimeout(discovery_timeout)
+        sock.bind(("", 54781))
+        sock.sendto(msg, (self.ip_address, 3000))
+        socketOpen = True
+        printer = None
+        while socketOpen:
+            try:
+                data = sock.recv(8192)
+                printer = self._save_discovered_printer(data)
+            except TimeoutError:
+                sock.close()
+                break
+        logger.info("Discovery done.")
+        self.printer = printer
+        return printer
 
+    def _save_discovered_printer(self, data):
+        j = json.loads(data.decode("utf-8"))
+        printer = {}
+        printer["connection"] = j["Id"]
+        printer["name"] = j["Data"]["Name"]
+        printer["model"] = j["Data"]["MachineName"]
+        printer["brand"] = j["Data"]["BrandName"]
+        printer["ip"] = j["Data"]["MainboardIP"]
+        printer["protocol"] = j["Data"]["ProtocolVersion"]
+        printer["firmware"] = j["Data"]["FirmwareVersion"]
+        printer["id"] = j["Data"]["MainboardID"]
+        logger.info("Discovered: {n} ({i})".format(
+            n=printer["name"], i=printer["ip"]))
+        return printer
 
-@socketio.on("printer_info")
-def sio_handle_printer_status(data):
-    logger.debug("client.printer_info >> " + data["id"])
-    get_printer_status(data["id"])
-    get_printer_attributes(data["id"])
-
-
-@socketio.on("printer_files")
-def sio_handle_printer_files(data):
-    logger.debug("client.printer_files >> " + json.dumps(data))
-    get_printer_files(data["id"], data["url"])
-
-
-@socketio.on("action_delete")
-def sio_handle_action_delete(data):
-    logger.debug("client.action_delete >> " + json.dumps(data))
-    send_printer_cmd(data["id"], 259, {"FileList": [data["data"]]})
-
-
-@socketio.on("action_print")
-def sio_handle_action_print(data):
-    logger.debug("client.action_print >> " + json.dumps(data))
-    send_printer_cmd(data["id"], 128, {
-                     "Filename": data["data"], "StartLayer": 0})
-
-
-def get_printer_status(id):
-    send_printer_cmd(id, 0)
-
-
-def get_printer_attributes(id):
-    send_printer_cmd(id, 1)
-
-
-def get_printer_files(id, url):
-    send_printer_cmd(id, 258, {"Url": url})
-
-
-def send_printer_cmd(id, cmd, data={}):
-    printer = printers[id]
-    ts = int(time.time())
-    payload = {
-        "Id": printer["connection"],
-        "Data": {
-            "Cmd": cmd,
-            "Data": data,
-            "RequestID": os.urandom(8).hex(),
-            "MainboardID": id,
-            "TimeStamp": ts,
-            "From": 0,
-        },
-        "Topic": "sdcp/request/" + id,
-    }
-    logger.debug("printer << \n{p}", p=json.dumps(payload, indent=4))
-    if id in printer_websockets:
-        printer_websockets[id].send(json.dumps(payload))
-
-
-# def get_broadcast_ip():
-#     interfaces = netifaces.interfaces()
-#     addresses = []
-#     for iface in interfaces:
-#         if iface != "lo":
-#             if_addresses = netifaces.ifaddresses(iface)
-#             addresses.append(if_addresses)
-#         pass
-#     for address in addresses:
-#         af_inets = address[netifaces.AF_INET]
-#         for af_inet in af_inets:
-#             broadcast = af_inet["broadcast"]
-#             if broadcast:
-#                 return broadcast
-
-
-def discover_printers(broadcast="255.255.255.255"):
-    logger.info("Starting printer discovery. " + broadcast)
-    msg = b"M99999"
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM,
-                         socket.IPPROTO_UDP)  # UDP
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    sock.settimeout(discovery_timeout)
-    sock.bind(("", 54781))
-    sock.sendto(msg, (broadcast, 3000))
-    socketOpen = True
-    printers = None
-    while socketOpen:
-        try:
-            data = sock.recv(8192)
-            printers = save_discovered_printer(data)
-        except TimeoutError:
-            sock.close()
-            break
-    logger.info("Discovery done.")
-    return printers
-
-
-def save_discovered_printer(data):
-    j = json.loads(data.decode("utf-8"))
-    printer = {}
-    printer["connection"] = j["Id"]
-    printer["name"] = j["Data"]["Name"]
-    printer["model"] = j["Data"]["MachineName"]
-    printer["brand"] = j["Data"]["BrandName"]
-    printer["ip"] = j["Data"]["MainboardIP"]
-    printer["protocol"] = j["Data"]["ProtocolVersion"]
-    printer["firmware"] = j["Data"]["FirmwareVersion"]
-    printers[j["Data"]["MainboardID"]] = printer
-    logger.info("Discovered: {n} ({i})".format(
-        n=printer["name"], i=printer["ip"]))
-    return printers
-
-
-def connect_printers(printers):
-    for id, printer in printers.items():
-        url = "ws://{ip}:3030/websocket".format(ip=printer["ip"])
-        logger.info("Connecting to: {n}".format(n=printer["name"]))
+    def connect_printer(self):
+        url = "ws://{ip}:3030/websocket".format(ip=self.printer["ip"])
+        logger.info("Connecting to: {n}".format(n=self.printer["name"]))
         websocket.setdefaulttimeout(1)
         ws = websocket.WebSocketApp(
             url,
-            on_message=ws_msg_handler,
-            on_open=lambda _: ws_connected_handler(printer["name"]),
+            on_message=self._ws_msg_handler,
+            on_open=lambda _: self._ws_connected_handler(self.printer["name"]),
             on_close=lambda _, s, m: logger.info(
                 "Connection to '{n}' closed: {m} ({s})".format(
-                    n=printer["name"], m=m, s=s
+                    n=self.printer["name"], m=m, s=s
                 )
             ),
             on_error=lambda _, e: logger.info(
-                "Connection to '{n}' error: {e}".format(n=printer["name"], e=e)
+                "Connection to '{n}' error: {e}".format(
+                    n=self.printer["name"], e=e)
             ),
         )
-        printer_websockets[id] = ws
-        Thread(target=lambda: ws.run_forever(reconnect=1), daemon=True).start()
+        self.printer_websocket = ws
+        Thread(target=lambda: ws.run_forever(
+            reconnect=1), daemon=True).start()
 
-    return True
+        return True
 
+    def _ws_connected_handler(self, name):
+        logger.info("Connected to: {n}".format(n=name))
 
-def ws_connected_handler(name):
-    logger.info("Connected to: {n}".format(n=name))
-    socketio.emit("printers", printers)
+    def _ws_msg_handler(self, ws, msg):
+        data = json.loads(msg)
+        if data["Topic"].startswith("sdcp/response/"):
+            # Printer Response Handler
+            logger.debug("response >> \n{m}", m=json.dumps(data, indent=5))
+        elif data["Topic"].startswith("sdcp/status/"):
+            # Status Handler
+            self._status_handler(msg)
+        elif data["Topic"].startswith("sdcp/attributes/"):
+            # Attribute handler
+            logger.debug("attributes >> \n{m}", m=json.dumps(data, indent=5))
+        elif data["Topic"].startswith("sdcp/error/"):
+            # Error Handler
+            logger.error("error >> \n{m}", m=json.dumps(data, indent=5))
+        elif data["Topic"].startswith("sdcp/notice/"):
+            # Notice Handler
+            logger.debug("notice >> \n{m}", m=json.dumps(data, indent=5))
+        else:
+            logger.warning("--- UNKNOWN MESSAGE ---")
+            logger.warning(data)
+            logger.warning("--- UNKNOWN MESSAGE ---")
 
+    def _status_handler(self, msg):
+        printer_status = models.status.PrinterStatus.from_json(msg)
+        status = printer_status.status
+        print_info = status.print_info
+        layers_remaining = print_info.total_layer - print_info.current_layer
 
-def ws_msg_handler(ws, msg):
-    data = json.loads(msg)
-    # logger.info("printer >> \n{m}", m=json.dumps(data, indent=5))
-    if data["Topic"].startswith("sdcp/response/"):
-        socketio.emit("printer_response", data)
-    elif data["Topic"].startswith("sdcp/status/"):
-        status_handler(msg)
-        socketio.emit("printer_status", data)
-    elif data["Topic"].startswith("sdcp/attributes/"):
-        socketio.emit("printer_attributes", data)
-    elif data["Topic"].startswith("sdcp/error/"):
-        socketio.emit("printer_error", data)
-    elif data["Topic"].startswith("sdcp/notice/"):
-        socketio.emit("printer_notice", data)
-    else:
-        logger.warning("--- UNKNOWN MESSAGE ---")
-        logger.warning(data)
-        logger.warning("--- UNKNOWN MESSAGE ---")
+        printer_data = {
+            "uv_temperature": status.temp_of_uvled,
+            "time_total": print_info.total_ticks,
+            "time_printing": print_info.current_ticks,
+            "time_remaining": printer_status.calculate_time_remaining(),
+            "filename": print_info.filename,
+            "current_layer": print_info.current_layer,
+            "total_layers": print_info.total_layer,
+            "remaining_layers": layers_remaining,
+        }
 
+        logger.info("printer_data >>> \n{m}",
+                    m=json.dumps(printer_data, indent=2))
 
-def status_handler(msg):
-    printer_status = models.status.PrinterStatus.from_json(msg)
-    status = printer_status.status
-    print_info = status.print_info
-    layers_remaining = print_info.total_layer - print_info.current_layer
-
-    printer_data = {
-        "uv_temperature": status.temp_of_uvled,
-        "time_total": print_info.total_ticks,
-        "time_printing": print_info.current_ticks,
-        "time_remaining": printer_status.calculate_time_remaining(),
-        "filename": print_info.filename,
-        "current_layer": print_info.current_layer,
-        "total_layers": print_info.total_layer,
-        "remaining_layers": layers_remaining,
-    }
-
-    logger.info("printer_data >>> \n{m}", m=json.dumps(printer_data, indent=2))
-
-
-async def update_entities(hass, entities, printer_data):
-    if printer_data:
-        for entity in entities:
-            entity.update_data(printer_data)
-            await entity.async_update_ha_state()
+    async def _update_entities(self, printer_data):
+        if printer_data:
+            for entity in self.entities:
+                entity.update_data(printer_data)
+                await entity.async_update_ha_state()
 
 
 def main():
-    printers = discover_printers("10.0.0.212")
-    if printers:
-        connected = connect_printers(printers)
+    elegoo_printer = ElegooPrinter(None, "10.0.0.212", {})
+    printer = elegoo_printer.discover_printer()
+    if printer:
+        connected = elegoo_printer.connect_printer()
         if connected:
             time.sleep(2)
-            for printer in printers:
-                while True:
-                    get_printer_status(printer)
-                    time.sleep(2)
-        socketio.emit("printers", printers)
+            while True:
+                elegoo_printer.get_printer_status()
+                time.sleep(2)
     else:
         logger.error("No printers discovered.")
 
 
 if __name__ == "__main__":
     main()
-
-    socketio.run(
-        app, host="0.0.0.0",
-        port=port,
-        debug=debug,
-        use_reloader=debug,
-        log_output=True
-    )
