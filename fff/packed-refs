@@ -1,5 +1,0 @@
-# pack-refs with: peeled fully-peeled sorted 
-997a106b71c1f6c5366d45ad5ef664e0f0a15ab7 refs/remotes/origin/dependabot/github_actions/actions/setup-python-5.4.0
-219026be5dd77e654eb964a4aa6aac81f0097fe5 refs/remotes/origin/dependabot/pip/loguru-0.7.3
-537002c7a6247843e6b2cb3f3581bad20db54523 refs/remotes/origin/dependabot/pip/ruff-0.9.3
-1408c111f949ae8606c5f66fe0e4bd40cc6ca010 refs/remotes/origin/main
