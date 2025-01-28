@@ -4,4 +4,4 @@ pip>=21.3.1
 ruff==0.9.1
 websocket-client==1.8.0 
 websockets
-loguru==0.7.2
+loguru==0.7.3
