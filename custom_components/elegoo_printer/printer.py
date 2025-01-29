@@ -15,11 +15,11 @@ if os.environ.get("PORT") is not None:
 
 
 class ElegooPrinterClient:
-    def __init__(self, ip_address: str, entities: list) -> None:
+    def __init__(self, ip_address: str) -> None:
         self.ip_address = ip_address
-        self.entitites = entities
         self.printer_websocket = {}
         self.printer = {}
+        self.printer_status: PrinterStatus
 
     async def poll_printer_status(self):
         time.sleep(2)
@@ -27,14 +27,9 @@ class ElegooPrinterClient:
             self.get_printer_status()
             time.sleep(2)
 
-    def get_entities(self):
-        return self.entitites
-
-    def get_printer_status_json(self):
-        return self.printer
-
-    def get_printer_status(self):
+    def get_printer_status(self) -> PrinterStatus:
         self._send_printer_cmd(0)
+        return self.printer_status
 
     def get_printer_attributes(self):
         self._send_printer_cmd(1)
@@ -151,6 +146,7 @@ class ElegooPrinterClient:
 
     def _status_handler(self, msg):
         printer_status = PrinterStatus.from_json(msg)
+        self.printer_status = printer_status
         status = printer_status.status
         print_info = status.print_info
         layers_remaining = print_info.total_layer - print_info.current_layer
@@ -166,8 +162,5 @@ class ElegooPrinterClient:
             "remaining_layers": layers_remaining,
         }
         print(f"printer_data >>> \n{json.dumps(printer_data, indent=2)}")
-        if printer_data:
-            for entity in self.entitites:
-                entity.update_data(printer_data)
 
 
