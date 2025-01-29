@@ -19,7 +19,7 @@ class ElegooPrinterClient:
         self.ip_address = ip_address
         self.printer_websocket = {}
         self.printer = {}
-        self.printer_status: PrinterStatus
+        self.printer_status: PrinterStatus = PrinterStatus()
 
     async def poll_printer_status(self):
         time.sleep(2)

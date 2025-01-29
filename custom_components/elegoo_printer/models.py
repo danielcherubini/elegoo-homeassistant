@@ -51,7 +51,7 @@ class PrintInfo:
 
 
 class PrinterStatus:
-    def __init__(self, status, mainboard_id, time_stamp, topic):
+    def __init__(self, status={}, mainboard_id="", time_stamp="", topic=""):
         self.status: Status = status
         self.mainboard_id = mainboard_id
         self.time_stamp = time_stamp
