@@ -27,6 +27,12 @@ class ElegooPrinterClient:
             self.get_printer_status()
             time.sleep(2)
 
+    def get_entities(self):
+        return self.entitites
+
+    def get_printer_status_json(self):
+        return self.printer
+
     def get_printer_status(self):
         self._send_printer_cmd(0)
 
@@ -164,5 +170,4 @@ class ElegooPrinterClient:
             for entity in self.entitites:
                 entity.update_data(printer_data)
 
-    def get_entities(self):
-        return self.entitites
+
