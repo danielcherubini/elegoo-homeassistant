@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+DEBUG=true python3 -m custom_components.elegoo_printer.debug
