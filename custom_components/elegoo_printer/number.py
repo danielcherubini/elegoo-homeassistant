@@ -1,14 +1,11 @@
-"""Binary sensor platform for elegoo_printer."""
+"""Sensor platform for elegoo_printer."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from homeassistant.components.binary_sensor import (
-    BinarySensorDeviceClass,
-    BinarySensorEntity,
-    BinarySensorEntityDescription,
-)
+from homeassistant.components.number import NumberEntity, NumberEntityDescription
 
 from .entity import ElegooPrinterEntity
 
@@ -20,10 +17,10 @@ if TYPE_CHECKING:
     from .data import ElegooPrinterConfigEntry
 
 ENTITY_DESCRIPTIONS = (
-    BinarySensorEntityDescription(
+    NumberEntity(
         key="elegoo_printer",
-        name="Elegoo Printer Binary Sensor",
-        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        name="Elegoo UV Temp",
+        icon="mdi:thermometer",
     ),
 )
 
@@ -33,9 +30,9 @@ async def async_setup_entry(
     entry: ElegooPrinterConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the binary_sensor platform."""
+    """Set up the sensor platform."""
     async_add_entities(
-        ElegooPrinterBinarySensor(
+        ElegooPrinterNumber(
             coordinator=entry.runtime_data.coordinator,
             entity_description=entity_description,
         )
@@ -43,19 +40,19 @@ async def async_setup_entry(
     )
 
 
-class ElegooPrinterBinarySensor(ElegooPrinterEntity, BinarySensorEntity):
-    """elegoo_printer binary_sensor class."""
+class ElegooPrinterNumber(ElegooPrinterEntity, NumberEntity):
+    """elegoo_printer Sensor class."""
 
     def __init__(
         self,
         coordinator: ElegooDataUpdateCoordinator,
-        entity_description: BinarySensorEntityDescription,
+        entity_description: NumberEntityDescription,
     ) -> None:
-        """Initialize the binary_sensor class."""
+        """Initialize the sensor class."""
         super().__init__(coordinator)
         self.entity_description = entity_description
 
     @property
-    def is_on(self) -> bool:
-        """Return true if the binary_sensor is on."""
-        return self.coordinator.data.get("title", "") == "foo"
+    def native_value(self) -> str | None:
+        """Return the native value of the sensor."""
+        return self.coordinator.data

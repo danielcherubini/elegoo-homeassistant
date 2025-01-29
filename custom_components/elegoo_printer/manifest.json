@@ -2,11 +2,11 @@
   "domain": "elegoo_printer",
   "name": "Elegoo Printer",
   "codeowners": [
-    "@ludeeus"
+    "@danielcherubini"
   ],
   "config_flow": true,
-  "documentation": "https://github.com/ludeeus/elegoo_printer",
+  "documentation": "https://github.com/danielcherubini/elegoo_printer",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/ludeeus/elegoo_printer/issues",
+  "issue_tracker": "https://github.com/danielcherubini/elegoo_printer/issues",
   "version": "0.1.0"
 }

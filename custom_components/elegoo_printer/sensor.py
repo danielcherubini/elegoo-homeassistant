@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
+from homeassistant.const import UnitOfTemperature
 
 from .entity import ElegooPrinterEntity
 
@@ -19,7 +25,7 @@ ENTITY_DESCRIPTIONS = (
     SensorEntityDescription(
         key="elegoo_printer",
         name="Elegoo UV Temp",
-        icon="mdi:format-quote-close",
+        icon="mdi:thermometer",
     ),
 )
 
@@ -42,6 +48,10 @@ async def async_setup_entry(
 class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
     """elegoo_printer Sensor class."""
 
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
     def __init__(
         self,
         coordinator: ElegooDataUpdateCoordinator,
@@ -54,4 +64,4 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
     @property
     def native_value(self) -> str | None:
         """Return the native value of the sensor."""
-        return self.coordinator.data.get("body")
+        return self.coordinator.data

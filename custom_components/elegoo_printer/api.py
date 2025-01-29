@@ -8,6 +8,8 @@ from typing import Any
 import aiohttp
 import async_timeout
 
+from custom_components.elegoo_printer.printer import ElegooPrinterClient
+
 
 class ElegooPrinterApiClientError(Exception):
     """Exception to indicate a general API error."""
@@ -41,18 +43,18 @@ class ElegooPrinterApiClient:
     def __init__(
         self,
         ip_address: str,
+        elegoo_printer: ElegooPrinterClient,
         session: aiohttp.ClientSession,
     ) -> None:
         """Sample API Client."""
         self._ip_address = ip_address
+        self._elegoo_printer = elegoo_printer
         self._session = session
 
     async def async_get_data(self) -> Any:
         """Get data from the API."""
-        return await self._api_wrapper(
-            method="get",
-            url="https://jsonplaceholder.typicode.com/posts/1",
-        )
+        status = self._elegoo_printer.get_printer_status()
+        return status.status.temp_of_uvled
 
     async def async_set_title(self, value: str) -> Any:
         """Get data from the API."""

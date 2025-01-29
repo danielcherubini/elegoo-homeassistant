@@ -7,6 +7,7 @@ https://github.com/ludeeus/elegoo_printer
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -18,16 +19,14 @@ from .api import ElegooPrinterApiClient
 from .const import DOMAIN, LOGGER
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
+from .printer import ElegooPrinterClient
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from .data import ElegooPrinterConfigEntry
 
-PLATFORMS: list[Platform] = [
-    Platform.SENSOR,
-    Platform.BINARY_SENSOR
-]
+PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 
 # https://developers.home-assistant.io/docs/config_entries_index/#setting-up-an-entry
@@ -40,16 +39,30 @@ async def async_setup_entry(
         hass=hass,
         logger=LOGGER,
         name=DOMAIN,
-        update_interval=timedelta(hours=1),
+        update_interval=timedelta(seconds=2),
     )
-    entry.runtime_data = ElegooPrinterData(
-        client=ElegooPrinterApiClient(
-            ip_address=entry.data[CONF_IP_ADDRESS],
-            session=async_get_clientsession(hass),
-        ),
-        integration=async_get_loaded_integration(hass, entry.domain),
-        coordinator=coordinator,
-    )
+
+    elegoo_printer = ElegooPrinterClient(entry.data[CONF_IP_ADDRESS])
+    printer = elegoo_printer.discover_printer()
+    if printer:
+        connected = elegoo_printer.connect_printer()
+        if connected:
+            print("Polling Started")
+            await asyncio.sleep(2)
+            elegoo_printer.get_printer_status()
+            await asyncio.sleep(2)
+        entry.runtime_data = ElegooPrinterData(
+            client=ElegooPrinterApiClient(
+                ip_address=entry.data[CONF_IP_ADDRESS],
+                elegoo_printer=elegoo_printer,
+                session=async_get_clientsession(hass),
+            ),
+            integration=async_get_loaded_integration(hass, entry.domain),
+            coordinator=coordinator,
+        )
+    else:
+        print("No printers discovered.")
+        return False
 
     # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
     await coordinator.async_config_entry_first_refresh()

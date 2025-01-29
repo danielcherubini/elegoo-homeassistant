@@ -10,12 +10,12 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from slugify import slugify
 
 from .api import (
-    ElegooPrinterApiClient,
     ElegooPrinterApiClientAuthenticationError,
     ElegooPrinterApiClientCommunicationError,
     ElegooPrinterApiClientError,
 )
 from .const import DOMAIN, LOGGER
+from .printer import ElegooPrinterClient
 
 
 class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
@@ -75,8 +75,14 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _test_credentials(self, ip_address: str) -> None:
         """Validate credentials."""
-        client = ElegooPrinterApiClient(
-            ip_address=ip_address,
-            session=async_create_clientsession(self.hass),
-        )
-        await client.async_get_data()
+        elegoo_printer = ElegooPrinterClient(ip_address)
+        printer = elegoo_printer.discover_printer()
+        if printer:
+            return True
+        return None
+        # client = ElegooPrinterApiClient(
+        #     ip_address=ip_address,
+        #     elegoo_printer=elegoo_printer,
+        #     session=async_create_clientsession(self.hass),
+        # )
+        # await client.async_get_data()
