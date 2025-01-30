@@ -47,7 +47,7 @@ class ElegooPrinterClient:
                 "TimeStamp": ts,
                 "From": 0,
             },
-            "Topic": "sdcp/request/" + self.printer.id,
+            "Topic": f"sdcp/request/{self.printer.id}",
         }
         LOGGER.debug(f"printer << \n{json.dumps(payload, indent=4)}")
         self.printer_websocket.send(json.dumps(payload))
