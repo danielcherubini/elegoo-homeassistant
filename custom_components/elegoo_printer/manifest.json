@@ -1,12 +1,11 @@
 {
   "domain": "elegoo_printer",
   "name": "Elegoo Printer",
-  "codeowners": [
-    "@danielcherubini"
-  ],
+  "codeowners": ["@danielcherubini"],
   "config_flow": true,
-  "documentation": "https://github.com/danielcherubini/elegoo_printer",
+  "documentation": "https://github.com/danielcherubini/elegoo-homeassistant",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/danielcherubini/elegoo_printer/issues",
+  "issue_tracker": "https://github.com/danielcherubini/elegoo-homeassistant/issues",
   "version": "0.1.0"
 }
+
