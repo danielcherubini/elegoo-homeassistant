@@ -5,4 +5,4 @@ ruff==0.9.1
 black
 websocket-client==1.8.0 
 websockets
-loguru==0.7.2
+loguru==0.7.3
