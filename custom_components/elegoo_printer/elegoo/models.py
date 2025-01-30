@@ -1,6 +1,28 @@
 import json
 
 
+class Printer:
+    def __init__(self, j=None):  # j is now optional, default is None
+        if j is None:
+            self.connection = None
+            self.name = None
+            self.model = None
+            self.brand = None
+            self.ip = None
+            self.protocol = None
+            self.firmware = None
+            self.id = None
+        else:
+            self.connection = j.get("Id")  # Use .get() to avoid KeyError
+            self.name = j.get("Data", {}).get("Name")  # Nested get()
+            self.model = j.get("Data", {}).get("MachineName")
+            self.brand = j.get("Data", {}).get("BrandName")
+            self.ip = j.get("Data", {}).get("MainboardIP")
+            self.protocol = j.get("Data", {}).get("ProtocolVersion")
+            self.firmware = j.get("Data", {}).get("FirmwareVersion")
+            self.id = j.get("Data", {}).get("MainboardID")
+
+
 class Status:
     def __init__(
         self,
@@ -133,5 +155,4 @@ class PrinterStatus:
         return time_str
 
     def get_layers_remaining(self) -> int:
-         return self.status.print_info.total_layer - self.status.print_info.current_layer
-
+        return self.status.print_info.total_layer - self.status.print_info.current_layer

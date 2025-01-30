@@ -19,7 +19,7 @@ from .api import ElegooPrinterApiClient
 from .const import DOMAIN, LOGGER
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
-from .printer import ElegooPrinterClient
+from .elegoo.printer import ElegooPrinterClient
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -47,7 +47,7 @@ async def async_setup_entry(
     if printer:
         connected = elegoo_printer.connect_printer()
         if connected:
-            print("Polling Started")
+            LOGGER.info("Polling Started")
             await asyncio.sleep(2)
             elegoo_printer.get_printer_status()
             await asyncio.sleep(2)
@@ -61,7 +61,7 @@ async def async_setup_entry(
             coordinator=coordinator,
         )
     else:
-        print("No printers discovered.")
+        LOGGER.info("No printers discovered.")
         return False
 
     # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities

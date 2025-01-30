@@ -8,7 +8,7 @@ from typing import Any
 import aiohttp
 import async_timeout
 
-from custom_components.elegoo_printer.printer import ElegooPrinterClient
+from .elegoo.printer import ElegooPrinterClient
 
 
 class ElegooPrinterApiClientError(Exception):
@@ -54,7 +54,7 @@ class ElegooPrinterApiClient:
     async def async_get_data(self) -> Any:
         """Get data from the API."""
         status = self._elegoo_printer.get_printer_status()
-        return status.status.temp_of_uvled
+        return status.status
 
     async def async_set_title(self, value: str) -> Any:
         """Get data from the API."""
