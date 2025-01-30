@@ -6,12 +6,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import (
-    SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
+)
+from homeassistant.components.sensor.const import (
+    SensorDeviceClass,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfTemperature
+from homeassistant.const import UnitOfTemperature, UnitOfTime
 
 from .entity import ElegooPrinterEntity
 
@@ -56,11 +58,29 @@ ENTITY_DESCRIPTIONS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         key="total_ticks",
         name="Elegoo Total Ticks",
         icon="mdi:thermometer",
-        device_class=SensorDeviceClass.TEMPERATURE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda self: self.coordinator.data.total_ticks,
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=UnitOfTime.MILLISECONDS,
+        value_fn=lambda self: self.coordinator.data.print_info.total_ticks,
     ),
+    ElegooPrinterSensorEntityDescription(
+        key="current_ticks",
+        name="Elegoo Current Ticks",
+        icon="mdi:thermometer",
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=UnitOfTime.MILLISECONDS,
+        value_fn=lambda self: self.coordinator.data.print_info.current_ticks,
+    ),
+    # ElegooPrinterSensorEntityDescription(
+    #     key="ticks_remaining",
+    #     name="Elegoo Remaining Ticks",
+    #     icon="mdi:thermometer",
+    #     device_class=SensorDeviceClass.DURATION,
+    #     state_class=SensorStateClass.TOTAL,
+    #     native_unit_of_measurement=UnitOfTime.MILLISECONDS,
+    #     value_fn=lambda self: self.coordinator.data.calculate_time_remaining(),
+    # ),
 )
 
 
@@ -87,11 +107,12 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
     def __init__(
         self,
         coordinator: ElegooDataUpdateCoordinator,
-        entity_description: SensorEntityDescription,
+        entity_description: ElegooPrinterSensorEntityDescription,
     ) -> None:
         """Initialize the sensor class."""
         super().__init__(coordinator)
         self.entity_description = entity_description
+        self._attr_unique_id = self.entity_description.key
 
     @property
     def native_value(self) -> str | None:

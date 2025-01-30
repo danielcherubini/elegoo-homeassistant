@@ -30,7 +30,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         _errors = {}
         if user_input is not None:
             try:
-                await self._test_credentials(
+                id = await self._test_credentials(
                     ip_address=user_input[CONF_IP_ADDRESS],
                 )
             except ElegooPrinterApiClientAuthenticationError as exception:
@@ -47,7 +47,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     ## Do NOT use this in production code
                     ## The unique_id should never be something that can change
                     ## https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
-                    unique_id=slugify(user_input[CONF_IP_ADDRESS])
+                    unique_id=id
                 )
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
@@ -72,16 +72,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors=_errors,
         )
 
-    async def _test_credentials(self, ip_address: str) -> None:
+    async def _test_credentials(self, ip_address: str) -> str:
         """Validate credentials."""
         elegoo_printer = ElegooPrinterClient(ip_address)
         printer = elegoo_printer.discover_printer()
         if printer:
-            return True
+            return printer.id
         return None
-        # client = ElegooPrinterApiClient(
-        #     ip_address=ip_address,
-        #     elegoo_printer=elegoo_printer,
-        #     session=async_create_clientsession(self.hass),
-        # )
-        # await client.async_get_data()
