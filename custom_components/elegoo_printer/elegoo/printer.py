@@ -1,3 +1,5 @@
+"""Elegoo Printer."""  # noqa: INP001
+
 import json
 import os
 import socket
@@ -6,7 +8,7 @@ from threading import Thread
 
 import websocket
 
-from ..const import LOGGER
+from .const import LOGGER
 from .models import Printer, PrinterStatus
 
 discovery_timeout = 1
@@ -17,24 +19,27 @@ if os.environ.get("PORT") is not None:
 
 class ElegooPrinterClient:
     """
-    ElegooPrinterClient is the main client to be used to connect to an elegoo printer
+    ElegooPrinterClient is the main client to be used to connect to an elegoo printer.
+
     Uses the SDCP Protocol https://github.com/cbd-tech/SDCP-Smart-Device-Control-Protocol-V3.0.0
     """
 
-    def __init__(self, ip_address: str) -> None:
+    def __init__(self, ip_address: str) -> None:  # noqa: D107
         self.ip_address: str = ip_address
         self.printer_websocket: websocket.WebSocketApp
         self.printer: Printer = Printer()
         self.printer_status: PrinterStatus = PrinterStatus()
 
     def get_printer_status(self) -> PrinterStatus:
+        """Gets the printer status."""  # noqa: D401
         self._send_printer_cmd(0)
         return self.printer_status
 
-    def get_printer_attributes(self):
+    def get_printer_attributes(self) -> None:
+        """Gets the printer attributes."""  # noqa: D401
         self._send_printer_cmd(1)
 
-    def _send_printer_cmd(self, cmd: int, data: dict[str, str] = {}):
+    def _send_printer_cmd(self, cmd: int, data: dict = {}) -> None:  # noqa: B006
         ts = int(time.time())
         payload = {
             "Id": self.printer.connection,
@@ -51,7 +56,8 @@ class ElegooPrinterClient:
         LOGGER.debug(f"printer << \n{json.dumps(payload, indent=4)}")
         self.printer_websocket.send(json.dumps(payload))
 
-    def discover_printer(self):
+    def discover_printer(self) -> Printer:
+        """Discovers printer and returns it."""
         LOGGER.debug(f"Starting printer discovery. {self.ip_address}")
         msg = b"M99999"
         sock = socket.socket(
@@ -80,7 +86,7 @@ class ElegooPrinterClient:
         LOGGER.debug(f"Discovered: {printer.name} ({printer.ip})")
         return printer
 
-    def connect_printer(self):
+    def connect_printer(self) -> bool:  # noqa: D102
         url = f"ws://{self.printer.ip}:3030/websocket"
         LOGGER.debug(f"Connecting to: {self.printer.name}")
         websocket.setdefaulttimeout(1)
@@ -100,13 +106,13 @@ class ElegooPrinterClient:
 
         return True
 
-    def _ws_connected_handler(self, name: str):
+    def _ws_connected_handler(self, name: str) -> None:
         LOGGER.debug(f"Connected to: {name}")
 
-    def _ws_msg_handler(self, ws, msg):
+    def _ws_msg_handler(self, ws, msg: str) -> None:  # noqa: ANN001, ARG002
         self._parse_response(msg)
 
-    def _parse_response(self, response):
+    def _parse_response(self, response: str) -> None:
         data = json.loads(response)
         topic = data["Topic"]
         # Extract the second part of the topic (e.g., "response")
@@ -131,7 +137,7 @@ class ElegooPrinterClient:
                 LOGGER.debug(data)
                 LOGGER.debug("--- UNKNOWN MESSAGE ---")
 
-    def _status_handler(self, msg):
+    def _status_handler(self, msg: str) -> None:
         printer_status = PrinterStatus.from_json(msg)
         self.printer_status = printer_status
         status = printer_status.status
@@ -142,7 +148,7 @@ class ElegooPrinterClient:
             "uv_temperature": status.temp_of_uvled,
             "time_total": print_info.total_ticks,
             "time_printing": print_info.current_ticks,
-            "time_remaining": printer_status.calculate_time_remaining(),
+            "time_remaining": print_info.remaining_ticks,
             "filename": print_info.filename,
             "current_layer": print_info.current_layer,
             "total_layers": print_info.total_layer,

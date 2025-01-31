@@ -1,4 +1,8 @@
+"""Models for the Elegoo printer."""  # noqa: INP001
+
 import json
+
+from .const import LOGGER
 
 
 class Printer:
@@ -37,7 +41,7 @@ class Printer:
 
     """
 
-    def __init__(self, json_string: str | None = None):
+    def __init__(self, json_string: str | None = None) -> None:
         """
         Initialize a new Printer object from a JSON string.
 
@@ -60,8 +64,8 @@ class Printer:
                 j: dict = json.loads(json_string)  # Decode the JSON string
             except json.JSONDecodeError as e:
                 # Handle the error appropriately (e.g., log it, raise an exception)
-                print(f"Error decoding JSON: {e}")
-                return  # Or handle the error in a way that makes sense for your application
+                LOGGER.error(f"Error decoding JSON: {e}")  # noqa: TRY400
+                return
 
             self.connection = j.get("Id")
 
@@ -76,7 +80,9 @@ class Printer:
 
 
 class PrintInfo:
-    def __init__(
+    """Represent a printer info object."""
+
+    def __init__(  # noqa: D107, PLR0913
         self,
         status: int,
         current_layer: int,
@@ -86,12 +92,14 @@ class PrintInfo:
         error_number: int,
         filename: str,
         task_id: str,
-    ):
+    ) -> None:
         self.status: int = status
         self.current_layer: int = current_layer
         self.total_layer: int = total_layer
+        self.remaining_layers: int = total_layer - current_layer
         self.current_ticks: int = current_ticks
         self.total_ticks: int = total_ticks
+        self.remaining_ticks: int = total_ticks - current_ticks
         self.error_number: int = error_number
         self.filename: str = filename
         self.task_id: str = task_id
@@ -100,7 +108,7 @@ class PrintInfo:
 class Status:
     """Represent a printer status object."""
 
-    def __init__(
+    def __init__(  # noqa: D107, PLR0913
         self,
         current_status: str,
         print_screen: str,
@@ -108,14 +116,7 @@ class Status:
         temp_of_uvled: float,
         time_lapse_status: str,
         print_info: dict,
-    ):
-        """
-        Initalize a new Status object.
-
-        Returns:
-            Status object
-
-        """
+    ) -> None:
         self.current_status: str = current_status
         self.print_screen: str = print_screen
         self.release_film: str = release_film
@@ -134,13 +135,15 @@ class Status:
 
 
 class PrinterStatus:
-    def __init__(
+    """Represent a printerstatus object."""
+
+    def __init__(  # noqa: D107
         self,
         status: Status | None = None,
         mainboard_id: str = "",
         time_stamp: str = "",
         topic: str = "",
-    ):
+    ) -> None:
         if status is not None:
             self.status: Status = status
         self.mainboard_id: str = mainboard_id
@@ -148,7 +151,7 @@ class PrinterStatus:
         self.topic: str = topic
 
     @classmethod
-    def from_json(cls, json_str: str):
+    def from_json(cls, json_str: str):  # noqa: ANN206
         """
         Creates a PrinterStatus object from a JSON string.
 
@@ -158,7 +161,7 @@ class PrinterStatus:
         Returns:
             A PrinterStatus object.
 
-        """
+        """  # noqa: D401
         data = json.loads(json_str)
 
         # Create Status object
@@ -175,30 +178,17 @@ class PrinterStatus:
         # Create PrinterStatus object
         return cls(status, data["MainboardID"], data["TimeStamp"], data["Topic"])
 
-    def calculate_time_remaining(self) -> int | None:
-        """
-        Calculates the estimated time remaining in ticks.
-
-        Returns:
-            int: The estimated time remaining in ticks.
-
-        """  # noqa: D401
-        if self.status and self.status.print_info:
-            return (
-                self.status.print_info.total_ticks
-                - self.status.print_info.current_ticks
-            )
-        return None
-
     def get_time_remaining_str(self) -> str:
         """
-        Gets the estimated time remaining in a human-readable format (e.g., "2 hours 30 minutes").
+        Gets the estimated time remaining in a human-readable format
+        (e.g., "2 hours 30 minutes").
 
         Returns:
-            str: The estimated time remaining in a human-readable format (or "N/A" if unavailable).
+            str: The estimated time remaining in a human-readable format
+            (or "N/A" if unavailable).
 
-        """  # noqa: D401
-        remaining_ms = self.calculate_time_remaining()
+        """  # noqa: D205, D401
+        remaining_ms = self.status.print_info.remaining_ticks
 
         if remaining_ms is None:
             return "N/A"
@@ -221,13 +211,3 @@ class PrinterStatus:
             time_str = "Less than a minute"
 
         return time_str
-
-    def get_layers_remaining(self) -> int:
-        """
-        Gets the layers remaining.
-
-        Returns:
-            int: The layers remaining
-
-        """  # noqa: D401
-        return self.status.print_info.total_layer - self.status.print_info.current_layer

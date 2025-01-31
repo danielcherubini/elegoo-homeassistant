@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import socket
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 import async_timeout
 
-from .elegoo.printer import ElegooPrinterClient
+if TYPE_CHECKING:
+    from .elegoo.printer import ElegooPrinterClient
 
 
 class ElegooPrinterApiClientError(Exception):
