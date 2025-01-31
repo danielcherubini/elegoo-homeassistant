@@ -3,7 +3,7 @@
 from enum import Enum
 
 
-class SdcpMachineStatus(Enum):
+class ElegooMachineStatus(Enum):
     """
     Represents the different status states of an SDCP machine.
 
@@ -23,7 +23,7 @@ class SdcpMachineStatus(Enum):
     DEVICES_TESTING = 4
 
 
-class SdcpPrintStatus(Enum):
+class ElegooPrintStatus(Enum):
     """
     Represents the different status states of a print job.
 
@@ -55,7 +55,7 @@ class SdcpPrintStatus(Enum):
     FILE_CHECKING = 10
 
 
-class SdcpPrintError(Enum):
+class ElegooPrintError(Enum):
     """
     Represents the different error states that can occur during printing.
 
@@ -75,26 +75,3 @@ class SdcpPrintError(Enum):
     INVALID_RESOLUTION = 3
     UNKNOWN_FORMAT = 4
     UNKNOWN_MODEL = 5
-
-
-# Handling different errors in a function
-def handle_print_error(error: SdcpPrintError):
-    if error == SdcpPrintError.NONE:
-        print("No error occurred.")
-    elif error == SdcpPrintError.CHECK:
-        print("File corruption detected. Please check the file.")
-    elif error == SdcpPrintError.FILEIO:
-        print("Error reading the print file. Check file permissions.")
-    elif error == SdcpPrintError.INVALID_RESOLUTION:
-        print("Resolution mismatch. Use a compatible resolution.")
-    elif error == SdcpPrintError.UNKNOWN_FORMAT:
-        print("Unsupported file format. Use a supported format.")
-    elif error == SdcpPrintError.UNKNOWN_MODEL:
-        print("Incorrect machine model. Use the correct print file.")
-    else:  # For handling unexpected errors
-        print(f"An unexpected error occurred: {error.name}")
-
-
-handle_print_error(SdcpPrintError.CHECK)
-handle_print_error(SdcpPrintError.NONE)
-handle_print_error(SdcpPrintError.UNKNOWN_FORMAT)
