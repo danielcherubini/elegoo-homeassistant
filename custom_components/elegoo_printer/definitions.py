@@ -41,8 +41,8 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
     ElegooPrinterSensorEntityDescription(
         key="total_ticks",
-        name="Elegoo Total Ticks",
-        icon="mdi:thermometer",
+        name="Elegoo Total Print Time",
+        icon="mdi:progress-clock",
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
@@ -50,8 +50,8 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
     ElegooPrinterSensorEntityDescription(
         key="current_ticks",
-        name="Elegoo Current Ticks",
-        icon="mdi:thermometer",
+        name="Elegoo Current Print Time",
+        icon="mdi:progress-clock",
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
@@ -59,8 +59,8 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
     ElegooPrinterSensorEntityDescription(
         key="ticks_remaining",
-        name="Elegoo Remaining Ticks",
-        icon="mdi:thermometer",
+        name="Elegoo Remaining Print Time",
+        icon="mdi:timer-sand",
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
