@@ -1,4 +1,4 @@
-"""Models for the Elegoo printer."""
+"""Models for the Elegoo printer."""  # noqa: INP001
 
 import json
 
@@ -65,7 +65,7 @@ class Printer:
                 j: dict = json.loads(json_string)  # Decode the JSON string
             except json.JSONDecodeError as e:
                 # Handle the error appropriately (e.g., log it, raise an exception)
-                LOGGER.error(f"Error decoding JSON: {e}")
+                LOGGER.error(f"Error decoding JSON: {e}")  # noqa: TRY400
                 return
 
             self.connection = j.get("Id")

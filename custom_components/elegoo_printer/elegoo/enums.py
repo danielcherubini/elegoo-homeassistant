@@ -1,4 +1,4 @@
-"""Elegoo Printer enums."""
+"""Elegoo Printer enums."""  # noqa: INP001
 
 from enum import Enum
 
@@ -67,7 +67,7 @@ class ElegooPrintError(Enum):
         UNKNOWN_FORMAT: The printer does not recognize the format of the print file.
         UNKNOWN_MODEL: The print file is intended for a different machine model.
 
-    """
+    """  # noqa: E501
 
     NONE = 0
     CHECK = 1
