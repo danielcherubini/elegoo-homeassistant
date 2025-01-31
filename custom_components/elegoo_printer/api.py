@@ -47,9 +47,9 @@ class ElegooPrinterApiClient:
         session: aiohttp.ClientSession,
     ) -> None:
         """Sample API Client."""
-        self._ip_address = ip_address
-        self._elegoo_printer = elegoo_printer
-        self._session = session
+        self._ip_address: str = ip_address
+        self._elegoo_printer: ElegooPrinterClient = elegoo_printer
+        self._session: aiohttp.ClientSession = session
 
     async def async_get_data(self) -> Any:
         """Get data from the API."""

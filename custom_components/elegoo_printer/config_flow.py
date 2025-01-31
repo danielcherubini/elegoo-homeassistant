@@ -6,7 +6,6 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.helpers import selector
-from slugify import slugify
 
 from .api import (
     ElegooPrinterApiClientAuthenticationError,

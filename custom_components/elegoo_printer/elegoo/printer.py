@@ -27,12 +27,6 @@ class ElegooPrinterClient:
         self.printer: Printer = Printer()
         self.printer_status: PrinterStatus = PrinterStatus()
 
-    async def poll_printer_status(self):
-        time.sleep(2)
-        while True:
-            self.get_printer_status()
-            time.sleep(2)
-
     def get_printer_status(self) -> PrinterStatus:
         self._send_printer_cmd(0)
         return self.printer_status
@@ -40,7 +34,7 @@ class ElegooPrinterClient:
     def get_printer_attributes(self):
         self._send_printer_cmd(1)
 
-    def _send_printer_cmd(self, cmd, data={}):
+    def _send_printer_cmd(self, cmd: int, data: dict[str, str] = {}):
         ts = int(time.time())
         payload = {
             "Id": self.printer.connection,
@@ -66,7 +60,7 @@ class ElegooPrinterClient:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.settimeout(discovery_timeout)
         sock.bind(("", 54781))
-        sock.sendto(msg, (self.ip_address, 3000))
+        _ = sock.sendto(msg, (self.ip_address, 3000))
         socket_open = True
         printer = Printer()
         while socket_open:
@@ -80,10 +74,10 @@ class ElegooPrinterClient:
         self.printer = printer
         return printer
 
-    def _save_discovered_printer(self, data) -> Printer:
+    def _save_discovered_printer(self, data: bytes) -> Printer:
         j = json.loads(data.decode("utf-8"))
         printer = Printer(j)
-        LOGGER.debug(f"Discovered: {printer.name} ({printer.ip})")  # noqa: G004
+        LOGGER.debug(f"Discovered: {printer.name} ({printer.ip})")
         return printer
 
     def connect_printer(self):
@@ -115,24 +109,23 @@ class ElegooPrinterClient:
     def _parse_response(self, response):
         data = json.loads(response)
         topic = data["Topic"]
-        m = json.dumps(data, indent=5)
         # Extract the second part of the topic (e.g., "response")
         match topic.split("/")[1]:
             case "response":
                 # Printer Response Handler
-                LOGGER.debug("response >> \n" + m)
+                LOGGER.debug(f"response >> \n{json.dumps(data, indent=5)}")
             case "status":
                 # Status Handler
                 self._status_handler(response)
             case "attributes":
                 # Attribute handler
-                LOGGER.debug("attributes >> \n" + m)
+                LOGGER.debug(f"attributes >> \n{json.dumps(data, indent=5)}")
             case "notice":
                 # Notice Handler
-                LOGGER.debug("notice >> \n" + m)
+                LOGGER.debug(f"notice >> \n{json.dumps(data, indent=5)}")
             case "error":
                 # Error Handler
-                LOGGER.debug("error >> \n" + m)
+                LOGGER.debug(f"error >> \n{json.dumps(data, indent=5)}")
             case _:  # Default case
                 LOGGER.debug("--- UNKNOWN MESSAGE ---")
                 LOGGER.debug(data)

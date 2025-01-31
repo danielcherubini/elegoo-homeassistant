@@ -3,21 +3,22 @@ import json
 
 class Printer:
     """
-      Represent a printer with various attributes.
+    Represent a printer with various attributes.
 
     Attributes:
-          connection (str): The connection ID of the printer.
-          name (str): The name of the printer.
-          model (str): The model name of the printer.
-          brand (str): The brand of the printer.
-          ip (str): The IP address of the printer.
-          protocol (str): The protocol version used by the printer.
-          firmware (str): The firmware version of the printer.
-          id (str): The unique ID of the printer's mainboard.
+        connection (str): The connection ID of the printer.
+        name (str): The name of the printer.
+        model (str): The model name of the printer.
+        brand (str): The brand of the printer.
+        ip (str): The IP address of the printer.
+        protocol (str): The protocol version used by the printer.
+        firmware (str): The firmware version of the printer.
+        id (str): The unique ID of the printer's mainboard.
 
-      Example usage:
+    Example usage:
 
-      >>> printer_data = {
+    >>> printer_json = '''
+    ... {
     ...     "Id": "12345",
     ...     "Data": {
     ...         "Name": "My Printer",
@@ -29,24 +30,25 @@ class Printer:
     ...         "MainboardID": "ABCDEF"
     ...     }
     ... }
-      >>> my_printer = Printer(printer_data)
-      >>> print(my_printer.name)
-      My Printer
+    ... '''
+    >>> my_printer = Printer(printer_json)
+    >>> print(my_printer.name)
+    My Printer
 
     """
 
-    def __init__(self, j: dict[str, str | dict[str, str | int]] | None = None) -> None:
+    def __init__(self, json_string: str | None = None):
         """
-        Initialize a new Printer object.
+        Initialize a new Printer object from a JSON string.
 
         Args:
-            j (dict, optional): A dictionary containing printer data.
-                               Defaults to None, creating a "nulled" printer.
+            json_string (str, optional): A JSON string containing printer data.
+                                         Defaults to None, creating a "nulled" printer.
 
         """
-        if j is None:
+        if json_string is None:
             self.connection: str | None = None
-            self.name: str | None = None
+            self.name: str = ""
             self.model: str | None = None
             self.brand: str | None = None
             self.ip: str | None = None
@@ -54,9 +56,16 @@ class Printer:
             self.firmware: str | None = None
             self.id: str | None = None
         else:
+            try:
+                j: dict = json.loads(json_string)  # Decode the JSON string
+            except json.JSONDecodeError as e:
+                # Handle the error appropriately (e.g., log it, raise an exception)
+                print(f"Error decoding JSON: {e}")
+                return  # Or handle the error in a way that makes sense for your application
+
             self.connection = j.get("Id")
 
-            data: dict[str, str | int] = j.get("Data", {})
+            data = j.get("Data", {})
             self.name = data.get("Name")
             self.model = data.get("MachineName")
             self.brand = data.get("BrandName")
@@ -64,6 +73,28 @@ class Printer:
             self.protocol = data.get("ProtocolVersion")
             self.firmware = data.get("FirmwareVersion")
             self.id = data.get("MainboardID")
+
+
+class PrintInfo:
+    def __init__(
+        self,
+        status: int,
+        current_layer: int,
+        total_layer: int,
+        current_ticks: int,
+        total_ticks: int,
+        error_number: int,
+        filename: str,
+        task_id: str,
+    ):
+        self.status: int = status
+        self.current_layer: int = current_layer
+        self.total_layer: int = total_layer
+        self.current_ticks: int = current_ticks
+        self.total_ticks: int = total_ticks
+        self.error_number: int = error_number
+        self.filename: str = filename
+        self.task_id: str = task_id
 
 
 class Status:
@@ -76,7 +107,7 @@ class Status:
         release_film: str,
         temp_of_uvled: float,
         time_lapse_status: str,
-        print_info: PrintInfo,
+        print_info: dict,
     ):
         """
         Initalize a new Status object.
@@ -102,32 +133,10 @@ class Status:
         )
 
 
-class PrintInfo:
-    def __init__(
-        self,
-        status: Status,
-        current_layer: int,
-        total_layer: int,
-        current_ticks: int,
-        total_ticks: int,
-        error_number: int,
-        filename: str,
-        task_id: str,
-    ):
-        self.status: Status = status
-        self.current_layer: int = current_layer
-        self.total_layer: int = total_layer
-        self.current_ticks: int = current_ticks
-        self.total_ticks: int = total_ticks
-        self.error_number: int = error_number
-        self.filename: str = filename
-        self.task_id: str = task_id
-
-
 class PrinterStatus:
     def __init__(
         self,
-        status=None,  # noqa: ANN001
+        status: Status | None = None,
         mainboard_id: str = "",
         time_stamp: str = "",
         topic: str = "",
@@ -139,7 +148,7 @@ class PrinterStatus:
         self.topic: str = topic
 
     @classmethod
-    def from_json(cls, json_str):
+    def from_json(cls, json_str: str):
         """
         Creates a PrinterStatus object from a JSON string.
 
