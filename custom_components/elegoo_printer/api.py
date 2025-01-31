@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import socket
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 import async_timeout
 
-from .elegoo.printer import ElegooPrinterClient
+if TYPE_CHECKING:
+    from .elegoo.printer import ElegooPrinterClient
 
 
 class ElegooPrinterApiClientError(Exception):
@@ -47,9 +48,9 @@ class ElegooPrinterApiClient:
         session: aiohttp.ClientSession,
     ) -> None:
         """Sample API Client."""
-        self._ip_address = ip_address
-        self._elegoo_printer = elegoo_printer
-        self._session = session
+        self._ip_address: str = ip_address
+        self._elegoo_printer: ElegooPrinterClient = elegoo_printer
+        self._session: aiohttp.ClientSession = session
 
     async def async_get_data(self) -> Any:
         """Get data from the API."""
