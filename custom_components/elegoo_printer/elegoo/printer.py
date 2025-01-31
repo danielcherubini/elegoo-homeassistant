@@ -16,8 +16,13 @@ if os.environ.get("PORT") is not None:
 
 
 class ElegooPrinterClient:
+    """
+    ElegooPrinterClient is the main client to be used to connect to an elegoo printer
+    Uses the SDCP Protocol https://github.com/cbd-tech/SDCP-Smart-Device-Control-Protocol-V3.0.0
+    """
+
     def __init__(self, ip_address: str) -> None:
-        self.ip_address = ip_address
+        self.ip_address: str = ip_address
         self.printer_websocket: websocket.WebSocketApp
         self.printer: Printer = Printer()
         self.printer_status: PrinterStatus = PrinterStatus()

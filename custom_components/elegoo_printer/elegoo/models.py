@@ -2,42 +2,94 @@ import json
 
 
 class Printer:
-    def __init__(self, j=None):  # j is now optional, default is None
+    """
+      Represent a printer with various attributes.
+
+    Attributes:
+          connection (str): The connection ID of the printer.
+          name (str): The name of the printer.
+          model (str): The model name of the printer.
+          brand (str): The brand of the printer.
+          ip (str): The IP address of the printer.
+          protocol (str): The protocol version used by the printer.
+          firmware (str): The firmware version of the printer.
+          id (str): The unique ID of the printer's mainboard.
+
+      Example usage:
+
+      >>> printer_data = {
+    ...     "Id": "12345",
+    ...     "Data": {
+    ...         "Name": "My Printer",
+    ...         "MachineName": "Model XYZ",
+    ...         "BrandName": "Acme",
+    ...         "MainboardIP": "192.168.1.100",
+    ...         "ProtocolVersion": "2.0",
+    ...         "FirmwareVersion": "1.5",
+    ...         "MainboardID": "ABCDEF"
+    ...     }
+    ... }
+      >>> my_printer = Printer(printer_data)
+      >>> print(my_printer.name)
+      My Printer
+
+    """
+
+    def __init__(self, j: dict[str, str | dict[str, str | int]] | None = None) -> None:
+        """
+        Initialize a new Printer object.
+
+        Args:
+            j (dict, optional): A dictionary containing printer data.
+                               Defaults to None, creating a "nulled" printer.
+
+        """
         if j is None:
-            self.connection = None
-            self.name = None
-            self.model = None
-            self.brand = None
-            self.ip = None
-            self.protocol = None
-            self.firmware = None
-            self.id = None
+            self.connection: str | None = None
+            self.name: str | None = None
+            self.model: str | None = None
+            self.brand: str | None = None
+            self.ip: str | None = None
+            self.protocol: str | None = None
+            self.firmware: str | None = None
+            self.id: str | None = None
         else:
-            self.connection = j.get("Id")  # Use .get() to avoid KeyError
-            self.name = j.get("Data", {}).get("Name")  # Nested get()
-            self.model = j.get("Data", {}).get("MachineName")
-            self.brand = j.get("Data", {}).get("BrandName")
-            self.ip = j.get("Data", {}).get("MainboardIP")
-            self.protocol = j.get("Data", {}).get("ProtocolVersion")
-            self.firmware = j.get("Data", {}).get("FirmwareVersion")
-            self.id = j.get("Data", {}).get("MainboardID")
+            self.connection = j.get("Id")
+
+            data: dict[str, str | int] = j.get("Data", {})
+            self.name = data.get("Name")
+            self.model = data.get("MachineName")
+            self.brand = data.get("BrandName")
+            self.ip = data.get("MainboardIP")
+            self.protocol = data.get("ProtocolVersion")
+            self.firmware = data.get("FirmwareVersion")
+            self.id = data.get("MainboardID")
 
 
 class Status:
+    """Represent a printer status object."""
+
     def __init__(
         self,
-        current_status,
-        print_screen,
-        release_film,
-        temp_of_uvled,
-        time_lapse_status,
-        print_info,
+        current_status: str,
+        print_screen: str,
+        release_film: str,
+        temp_of_uvled: float,
+        time_lapse_status: str,
+        print_info: PrintInfo,
     ):
-        self.current_status = current_status
-        self.print_screen = print_screen
-        self.release_film = release_film
+        """
+        Initalize a new Status object.
+
+        Returns:
+            Status object
+
+        """
+        self.current_status: str = current_status
+        self.print_screen: str = print_screen
+        self.release_film: str = release_film
         self.temp_of_uvled: float = temp_of_uvled
-        self.time_lapse_status = time_lapse_status
+        self.time_lapse_status: str = time_lapse_status
         self.print_info: PrintInfo = PrintInfo(
             print_info["Status"],
             print_info["CurrentLayer"],
@@ -53,31 +105,38 @@ class Status:
 class PrintInfo:
     def __init__(
         self,
-        status,
-        current_layer,
-        total_layer,
-        current_ticks,
-        total_ticks,
-        error_number,
-        filename,
-        task_id,
+        status: Status,
+        current_layer: int,
+        total_layer: int,
+        current_ticks: int,
+        total_ticks: int,
+        error_number: int,
+        filename: str,
+        task_id: str,
     ):
-        self.status = status
-        self.current_layer = current_layer
-        self.total_layer = total_layer
-        self.current_ticks = current_ticks
-        self.total_ticks = total_ticks
-        self.error_number = error_number
-        self.filename = filename
-        self.task_id = task_id
+        self.status: Status = status
+        self.current_layer: int = current_layer
+        self.total_layer: int = total_layer
+        self.current_ticks: int = current_ticks
+        self.total_ticks: int = total_ticks
+        self.error_number: int = error_number
+        self.filename: str = filename
+        self.task_id: str = task_id
 
 
 class PrinterStatus:
-    def __init__(self, status={}, mainboard_id="", time_stamp="", topic=""):
-        self.status: Status = status
-        self.mainboard_id = mainboard_id
-        self.time_stamp = time_stamp
-        self.topic = topic
+    def __init__(
+        self,
+        status=None,  # noqa: ANN001
+        mainboard_id: str = "",
+        time_stamp: str = "",
+        topic: str = "",
+    ):
+        if status is not None:
+            self.status: Status = status
+        self.mainboard_id: str = mainboard_id
+        self.time_stamp: str = time_stamp
+        self.topic: str = topic
 
     @classmethod
     def from_json(cls, json_str):
@@ -107,14 +166,14 @@ class PrinterStatus:
         # Create PrinterStatus object
         return cls(status, data["MainboardID"], data["TimeStamp"], data["Topic"])
 
-    def calculate_time_remaining(self):
+    def calculate_time_remaining(self) -> int | None:
         """
         Calculates the estimated time remaining in ticks.
 
         Returns:
             int: The estimated time remaining in ticks.
 
-        """
+        """  # noqa: D401
         if self.status and self.status.print_info:
             return (
                 self.status.print_info.total_ticks
@@ -129,7 +188,7 @@ class PrinterStatus:
         Returns:
             str: The estimated time remaining in a human-readable format (or "N/A" if unavailable).
 
-        """
+        """  # noqa: D401
         remaining_ms = self.calculate_time_remaining()
 
         if remaining_ms is None:
@@ -155,4 +214,11 @@ class PrinterStatus:
         return time_str
 
     def get_layers_remaining(self) -> int:
+        """
+        Gets the layers remaining.
+
+        Returns:
+            int: The layers remaining
+
+        """  # noqa: D401
         return self.status.print_info.total_layer - self.status.print_info.current_layer
