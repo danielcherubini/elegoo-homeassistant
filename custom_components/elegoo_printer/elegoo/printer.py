@@ -82,7 +82,7 @@ class ElegooPrinterClient:
 
     def _save_discovered_printer(self, data: bytes) -> Printer:
         j = json.loads(data.decode("utf-8"))
-        printer = Printer(j)
+        printer = Printer(data.decode("utf-8"))
         LOGGER.debug(f"Discovered: {printer.name} ({printer.ip})")
         return printer
 

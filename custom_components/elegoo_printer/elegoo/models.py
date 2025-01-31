@@ -3,7 +3,6 @@
 import json
 
 from .const import LOGGER
-from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus
 
 
 class Printer:
@@ -94,14 +93,14 @@ class PrintInfo:
         filename: str,
         task_id: str,
     ) -> None:
-        self.status: ElegooPrintStatus = ElegooPrintStatus(status)
+        self.status: int = status
         self.current_layer: int = current_layer
         self.total_layer: int = total_layer
         self.remaining_layers: int = total_layer - current_layer
         self.current_ticks: int = current_ticks
         self.total_ticks: int = total_ticks
         self.remaining_ticks: int = total_ticks - current_ticks
-        self.error_number: ElegooPrintError = ElegooPrintError(error_number)
+        self.error_number: int = error_number
         self.filename: str = filename
         self.task_id: str = task_id
 
@@ -118,7 +117,7 @@ class Status:
         time_lapse_status: str,
         print_info: dict,
     ) -> None:
-        self.current_status: ElegooMachineStatus = ElegooMachineStatus(current_status)
+        self.current_status: int = current_status
         self.print_screen: str = print_screen
         self.release_film: str = release_film
         self.temp_of_uvled: float = temp_of_uvled

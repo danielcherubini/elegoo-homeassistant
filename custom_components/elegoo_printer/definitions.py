@@ -64,6 +64,6 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
-        value_fn=lambda self: self.coordinator.data.calculate_time_remaining(),
+        value_fn=lambda self: self.coordinator.data.print_info.remaining_ticks,
     ),
 )
