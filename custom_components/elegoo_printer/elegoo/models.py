@@ -3,6 +3,7 @@
 import json
 
 from .const import LOGGER
+from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus
 
 
 class Printer:
@@ -32,8 +33,7 @@ class Printer:
     ...         "ProtocolVersion": "2.0",
     ...         "FirmwareVersion": "1.5",
     ...         "MainboardID": "ABCDEF"
-    ...     }
-    ... }
+    ...     }    ... }
     ... '''
     >>> my_printer = Printer(printer_json)
     >>> print(my_printer.name)
@@ -177,37 +177,3 @@ class PrinterStatus:
 
         # Create PrinterStatus object
         return cls(status, data["MainboardID"], data["TimeStamp"], data["Topic"])
-
-    def get_time_remaining_str(self) -> str:
-        """
-        Gets the estimated time remaining in a human-readable format
-        (e.g., "2 hours 30 minutes").
-
-        Returns:
-            str: The estimated time remaining in a human-readable format
-            (or "N/A" if unavailable).
-
-        """  # noqa: D205, D401
-        remaining_ms = self.status.print_info.remaining_ticks
-
-        if remaining_ms is None:
-            return "N/A"
-
-        seconds = remaining_ms / 1000
-        minutes, seconds = divmod(seconds, 60)
-        hours, minutes = divmod(minutes, 60)
-
-        time_str = ""
-        if hours > 0:
-            time_str += f"{int(hours)} hour{'s' if hours > 1 else ''}"
-        if minutes > 0:
-            if time_str:
-                time_str += " "
-            time_str += f"{int(minutes)} minute{'s' if minutes > 1 else ''}"
-        if seconds > 0 and (not hours and not minutes):
-            time_str += f"{int(seconds)} second{'s' if seconds > 1 else ''}"
-
-        if not time_str:
-            time_str = "Less than a minute"
-
-        return time_str

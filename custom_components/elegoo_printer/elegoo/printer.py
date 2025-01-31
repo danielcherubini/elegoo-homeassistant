@@ -53,12 +53,12 @@ class ElegooPrinterClient:
             },
             "Topic": f"sdcp/request/{self.printer.id}",
         }
-        LOGGER.debug(f"printer << \n{json.dumps(payload, indent=4)}")
+        # LOGGER.debug(f"printer << \n{json.dumps(payload, indent=4)}")
         self.printer_websocket.send(json.dumps(payload))
 
     def discover_printer(self) -> Printer:
         """Discovers printer and returns it."""
-        LOGGER.debug(f"Starting printer discovery. {self.ip_address}")
+        LOGGER.info(f"Starting printer discovery. {self.ip_address}")
         msg = b"M99999"
         sock = socket.socket(
             socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
@@ -81,14 +81,13 @@ class ElegooPrinterClient:
         return printer
 
     def _save_discovered_printer(self, data: bytes) -> Printer:
-        j = json.loads(data.decode("utf-8"))
         printer = Printer(data.decode("utf-8"))
-        LOGGER.debug(f"Discovered: {printer.name} ({printer.ip})")
+        LOGGER.info(f"Discovered: {printer.name} ({printer.ip})")
         return printer
 
     def connect_printer(self) -> bool:  # noqa: D102
         url = f"ws://{self.printer.ip}:3030/websocket"
-        LOGGER.debug(f"Connecting to: {self.printer.name}")
+        LOGGER.info(f"Connecting to: {self.printer.name}")
         websocket.setdefaulttimeout(1)
         ws = websocket.WebSocketApp(
             url,
@@ -107,7 +106,7 @@ class ElegooPrinterClient:
         return True
 
     def _ws_connected_handler(self, name: str) -> None:
-        LOGGER.debug(f"Connected to: {name}")
+        LOGGER.info(f"Connected to: {name}")
 
     def _ws_msg_handler(self, ws, msg: str) -> None:  # noqa: ANN001, ARG002
         self._parse_response(msg)
@@ -119,7 +118,7 @@ class ElegooPrinterClient:
         match topic.split("/")[1]:
             case "response":
                 # Printer Response Handler
-                LOGGER.debug(f"response >> \n{json.dumps(data, indent=5)}")
+                self._response_handler(response)
             case "status":
                 # Status Handler
                 self._status_handler(response)
@@ -137,21 +136,22 @@ class ElegooPrinterClient:
                 LOGGER.debug(data)
                 LOGGER.debug("--- UNKNOWN MESSAGE ---")
 
+    def _response_handler(self, msg: str) -> None:
+        return None
+
     def _status_handler(self, msg: str) -> None:
         printer_status = PrinterStatus.from_json(msg)
         self.printer_status = printer_status
-        status = printer_status.status
-        print_info = status.print_info
-        layers_remaining = print_info.total_layer - print_info.current_layer
+        # status = printer_status.status
 
-        printer_data = {
-            "uv_temperature": status.temp_of_uvled,
-            "time_total": print_info.total_ticks,
-            "time_printing": print_info.current_ticks,
-            "time_remaining": print_info.remaining_ticks,
-            "filename": print_info.filename,
-            "current_layer": print_info.current_layer,
-            "total_layers": print_info.total_layer,
-            "remaining_layers": layers_remaining,
-        }
-        LOGGER.debug(f"printer_data >>> \n{json.dumps(printer_data, indent=2)}")
+        # printer_data = {
+        #     "uv_temperature": status.temp_of_uvled,
+        #     "time_total": print_info.total_ticks,
+        #     "time_printing": print_info.current_ticks,
+        #     "time_remaining": print_info.remaining_ticks,
+        #     "filename": print_info.filename,
+        #     "current_layer": print_info.current_layer,
+        #     "total_layers": print_info.total_layer,
+        #     "remaining_layers": layers_remaining,
+        # }
+        # LOGGER.debug(f"printer_data >>> \n{json.dumps(printer_data, indent=2)}")
