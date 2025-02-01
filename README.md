@@ -12,7 +12,9 @@ This add-on provides integration with Elegoo 3D printers in Home Assistant.
 
 ## Installation
 
-to be written
+Currently this is in testing.
+
+You can add this to your HA install by adding the custom repository in HACS. But beware this might not behave well. I have it in mine, but if you run into any issues, please open an issue here.
 
 ## Configuration
 
