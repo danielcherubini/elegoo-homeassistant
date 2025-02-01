@@ -68,7 +68,7 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
     ElegooPrinterSensorEntityDescription(
         key="total_layers",
-        name="Elegoo Remaining Layers",
+        name="Elegoo Total Layers",
         icon="mdi:eye",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda self: self.coordinator.data.print_info.total_layers,
@@ -101,5 +101,12 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:file",
         value_fn=lambda self: self.coordinator.data.print_info.filename,
         available_fn=lambda self: self.coordinator.data.print_info.filename != "",
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="print_status",
+        name="Elegoo Print Status",
+        icon="mdi:file",
+        value_fn=lambda self: self.coordinator.data.current_status.name,
+        available_fn=lambda self: self.coordinator.data.current_status is not None,
     ),
 )

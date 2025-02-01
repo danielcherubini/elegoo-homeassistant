@@ -148,16 +148,4 @@ class ElegooPrinterClient:
         printer_status = PrinterStatus.from_json(msg)
         self.printer_status = printer_status
         if debug:
-            status = printer_status.status
-            print_info = status.print_info
-            printer_data = {
-                "uv_temperature": status.temp_of_uvled,
-                "time_total": print_info.total_ticks,
-                "time_printing": print_info.current_ticks,
-                "time_remaining": print_info.remaining_ticks,
-                "filename": print_info.filename,
-                "current_layer": print_info.current_layer,
-                "total_layers": print_info.total_layers,
-                "remaining_layers": print_info.remaining_layers,
-            }
-            LOGGER.debug(f"printer_data >>> \n{json.dumps(printer_data, indent=2)}")
+            LOGGER.debug(f"status >> \n{json.dumps(json.loads(msg), indent=5)}")

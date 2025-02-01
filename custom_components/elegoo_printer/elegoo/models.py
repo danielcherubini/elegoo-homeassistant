@@ -2,6 +2,11 @@
 
 import json
 
+from custom_components.elegoo_printer.elegoo.enums import (
+    ElegooMachineStatus,
+    ElegooPrintStatus,
+)
+
 from .const import LOGGER
 
 
@@ -92,7 +97,7 @@ class PrintInfo:
         filename: str,
         task_id: str,
     ) -> None:
-        self.status: int = status
+        self.status: ElegooPrintStatus | None = ElegooPrintStatus.from_int(status)
         self.current_layer: int = current_layer
         self.total_layers: int = total_layer
         self.remaining_layers: int = total_layer - current_layer
@@ -112,14 +117,16 @@ class Status:
 
     def __init__(  # noqa: D107, PLR0913
         self,
-        current_status: int,
+        current_status: list[int],
         print_screen: str,
         release_film: str,
         temp_of_uvled: float,
         time_lapse_status: str,
         print_info: dict,
     ) -> None:
-        self.current_status: int = current_status
+        self.current_status: ElegooMachineStatus | None = ElegooMachineStatus.from_int(
+            current_status[0]
+        )
         self.print_screen: str = print_screen
         self.release_film: str = release_film
         self.temp_of_uvled: float = round(temp_of_uvled, 2)

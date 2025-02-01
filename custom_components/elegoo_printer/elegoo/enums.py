@@ -23,6 +23,24 @@ class ElegooMachineStatus(Enum):
     EXPOSURE_TESTING = 3
     DEVICES_TESTING = 4
 
+    @classmethod
+    def from_int(cls, status_int: int) -> Optional["ElegooMachineStatus"] | None:
+        """
+        Converts an integer to an ElegooMachineStatus enum member.
+
+        Args:
+            status_int: The integer representing the print status.
+
+        Returns:
+            The corresponding ElegooMachineStatus enum member, or None if the
+            integer is not a valid status value.
+
+        """  # noqa: D401
+        try:
+            return cls(status_int)  # Use cls() to create enum members
+        except ValueError:
+            return None
+
 
 class ElegooPrintStatus(Enum):
     """
