@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.helpers import selector
-
-from custom_components.elegoo_printer.elegoo.models import Printer
 
 from .api import (
     ElegooPrinterApiClientAuthenticationError,
@@ -16,6 +16,9 @@ from .api import (
 )
 from .const import DOMAIN, LOGGER
 from .elegoo.printer import ElegooPrinterClient
+
+if TYPE_CHECKING:
+    from custom_components.elegoo_printer.elegoo.models import Printer
 
 
 class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
