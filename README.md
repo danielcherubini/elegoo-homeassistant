@@ -18,7 +18,8 @@ You can add this to your HA install by adding the custom repository in HACS. But
 
 ## Configuration
 
-to be written
+Right now you need to manually set your printer IP in during setup of the plugin, it will ask you for it.
+I will eventually write it so that it will automatically find the printer
 
 ## Huge thanks
 
