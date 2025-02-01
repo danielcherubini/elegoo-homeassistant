@@ -19,3 +19,7 @@ You can add this to your HA install by adding the custom repository in HACS. But
 ## Configuration
 
 to be written
+
+## Huge thanks
+
+Thanks to @jangrewe for https://github.com/jangrewe/ChitUI
