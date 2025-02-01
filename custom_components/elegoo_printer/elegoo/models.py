@@ -107,7 +107,11 @@ class PrintInfo:
         )
         self.current_ticks: int = current_ticks
         self.total_ticks: int = total_ticks
-        self.remaining_ticks: int = total_ticks - current_ticks
+        remaining_ticks = total_ticks - current_ticks
+        if remaining_ticks < 0:
+            self.remaining_ticks: int = 0
+        else:
+            self.remaining_ticks: int = total_ticks - current_ticks
         self.error_number: ElegooPrintError | None = ElegooPrintError.from_int(
             error_number
         )
