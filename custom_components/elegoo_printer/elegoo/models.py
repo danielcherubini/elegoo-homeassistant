@@ -60,7 +60,7 @@ class Printer:
             self.name: str = ""
             self.model: str | None = None
             self.brand: str | None = None
-            self.ip: str | None = None
+            self.ip_address: str | None = None
             self.protocol: str | None = None
             self.firmware: str | None = None
             self.id: str | None = None
@@ -78,7 +78,7 @@ class Printer:
             self.name = data.get("Name")
             self.model = data.get("MachineName")
             self.brand = data.get("BrandName")
-            self.ip = data.get("MainboardIP")
+            self.ip_address = data.get("MainboardIP")
             self.protocol = data.get("ProtocolVersion")
             self.firmware = data.get("FirmwareVersion")
             self.id = data.get("MainboardID")

@@ -87,11 +87,11 @@ class ElegooPrinterClient:
 
     def _save_discovered_printer(self, data: bytes) -> Printer:
         printer = Printer(data.decode("utf-8"))
-        LOGGER.info(f"Discovered: {printer.name} ({printer.ip})")
+        LOGGER.info(f"Discovered: {printer.name} ({printer.ip_address})")
         return printer
 
     def connect_printer(self) -> bool:  # noqa: D102
-        url = f"ws://{self.printer.ip}:3030/websocket"
+        url = f"ws://{self.printer.ip_address}:3030/websocket"
         LOGGER.info(f"Connecting to: {self.printer.name}")
         websocket.setdefaulttimeout(1)
         ws = websocket.WebSocketApp(

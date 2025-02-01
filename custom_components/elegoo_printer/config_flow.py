@@ -7,6 +7,8 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.helpers import selector
 
+from custom_components.elegoo_printer.elegoo.models import Printer
+
 from .api import (
     ElegooPrinterApiClientAuthenticationError,
     ElegooPrinterApiClientCommunicationError,
@@ -29,7 +31,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         _errors = {}
         if user_input is not None:
             try:
-                unique_id = await self._test_credentials(
+                printer = await self._test_credentials(
                     ip_address=user_input[CONF_IP_ADDRESS],
                 )
             except ElegooPrinterApiClientAuthenticationError as exception:
@@ -42,16 +44,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.exception(exception)
                 _errors["base"] = "unknown"
             else:
-                await self.async_set_unique_id(
-                    ## Do NOT use this in production code
-                    ## The unique_id should never be something that can change
-                    ## https://developers.home-assistant.io/docs/config_entries_config_flow_handler#unique-ids
-                    unique_id=unique_id
-                )
+                await self.async_set_unique_id(unique_id=printer.id)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=user_input[CONF_IP_ADDRESS],
-                    data=user_input,
+                    title=printer.name,
+                    description=printer.name,
+                    data=printer.__dict__,
                 )
 
         return self.async_show_form(
@@ -71,10 +69,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors=_errors,
         )
 
-    async def _test_credentials(self, ip_address: str) -> str:
+    async def _test_credentials(self, ip_address: str) -> Printer:
         """Validate credentials."""
         elegoo_printer = ElegooPrinterClient(ip_address)
         printer = elegoo_printer.discover_printer()
         if printer:
-            return printer.id
-        return None
+            return printer
+        raise ElegooPrinterApiClientAuthenticationError(printer)
