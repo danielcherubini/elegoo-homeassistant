@@ -1,6 +1,7 @@
 """Elegoo Printer enums."""  # noqa: INP001
 
 from enum import Enum
+from typing import Optional
 
 
 class ElegooMachineStatus(Enum):
@@ -53,6 +54,24 @@ class ElegooPrintStatus(Enum):
     STOPPED = 8
     COMPLETE = 9
     FILE_CHECKING = 10
+
+    @classmethod
+    def from_int(cls, status_int: int) -> Optional["ElegooPrintStatus"] | None:
+        """
+        Converts an integer to an ElegooPrintStatus enum member.
+
+        Args:
+            status_int: The integer representing the print status.
+
+        Returns:
+            The corresponding ElegooPrintStatus enum member, or None if the
+            integer is not a valid status value.
+
+        """  # noqa: D401
+        try:
+            return cls(status_int)  # Use cls() to create enum members
+        except ValueError:
+            return None
 
 
 class ElegooPrintError(Enum):

@@ -6,7 +6,7 @@ from datetime import datetime
 
 from homeassistant.components.sensor import SensorEntityDescription
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
-from homeassistant.const import UnitOfTemperature, UnitOfTime
+from homeassistant.const import PERCENTAGE, UnitOfTemperature, UnitOfTime
 from homeassistant.helpers.typing import StateType
 
 
@@ -32,7 +32,7 @@ class ElegooPrinterSensorEntityDescription(
 PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="temp_of_uvled",
-        name="Elegoo UV Temp",
+        name="Elegoo UV LED Temp",
         icon="mdi:thermometer",
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -42,9 +42,9 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="total_ticks",
         name="Elegoo Total Print Time",
-        icon="mdi:progress-clock",
+        icon="mdi:timer-sand-complete",
         device_class=SensorDeviceClass.DURATION,
-        state_class=SensorStateClass.TOTAL,
+        state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
         value_fn=lambda self: self.coordinator.data.print_info.total_ticks,
     ),
@@ -53,7 +53,7 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Elegoo Current Print Time",
         icon="mdi:progress-clock",
         device_class=SensorDeviceClass.DURATION,
-        state_class=SensorStateClass.TOTAL,
+        state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
         value_fn=lambda self: self.coordinator.data.print_info.current_ticks,
     ),
@@ -62,8 +62,44 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Elegoo Remaining Print Time",
         icon="mdi:timer-sand",
         device_class=SensorDeviceClass.DURATION,
-        state_class=SensorStateClass.TOTAL,
+        state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
         value_fn=lambda self: self.coordinator.data.print_info.remaining_ticks,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="total_layers",
+        name="Elegoo Remaining Layers",
+        icon="mdi:eye",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda self: self.coordinator.data.print_info.total_layers,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="current_layer",
+        name="Elegoo Current Layer",
+        icon="mdi:eye",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda self: self.coordinator.data.print_info.current_layer,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="remaining_layers",
+        name="Elegoo Remaining Layers",
+        icon="mdi:eye",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda self: self.coordinator.data.print_info.remaining_layers,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="percent_complete",
+        name="Elegoo Percent Complete",
+        icon="mdi:percent",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda self: self.coordinator.data.print_info.percent_complete,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="filename",
+        name="Elegoo File Name",
+        icon="mdi:file",
+        value_fn=lambda self: self.coordinator.data.print_info.filename,
+        available_fn=lambda self: self.coordinator.data.print_info.filename != "",
     ),
 )

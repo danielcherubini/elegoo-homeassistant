@@ -3,7 +3,6 @@
 import json
 
 from .const import LOGGER
-from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus
 
 
 class Printer:
@@ -95,8 +94,11 @@ class PrintInfo:
     ) -> None:
         self.status: int = status
         self.current_layer: int = current_layer
-        self.total_layer: int = total_layer
+        self.total_layers: int = total_layer
         self.remaining_layers: int = total_layer - current_layer
+        self.percent_complete: float = round(
+            (self.current_layer / self.total_layers) * 100, 2
+        )
         self.current_ticks: int = current_ticks
         self.total_ticks: int = total_ticks
         self.remaining_ticks: int = total_ticks - current_ticks
@@ -110,7 +112,7 @@ class Status:
 
     def __init__(  # noqa: D107, PLR0913
         self,
-        current_status: str,
+        current_status: int,
         print_screen: str,
         release_film: str,
         temp_of_uvled: float,
@@ -120,7 +122,7 @@ class Status:
         self.current_status: int = current_status
         self.print_screen: str = print_screen
         self.release_film: str = release_film
-        self.temp_of_uvled: float = temp_of_uvled
+        self.temp_of_uvled: float = round(temp_of_uvled, 2)
         self.time_lapse_status: str = time_lapse_status
         self.print_info: PrintInfo = PrintInfo(
             print_info["Status"],

@@ -13,8 +13,12 @@ from .models import Printer, PrinterStatus
 
 discovery_timeout = 1
 port = 54780
+debug = False
 if os.environ.get("PORT") is not None:
     port = os.environ.get("PORT")
+
+if os.environ.get("DEBUG") is not None:
+    debug = True
 
 
 class ElegooPrinterClient:
@@ -53,7 +57,8 @@ class ElegooPrinterClient:
             },
             "Topic": f"sdcp/request/{self.printer.id}",
         }
-        # LOGGER.debug(f"printer << \n{json.dumps(payload, indent=4)}")
+        if debug:
+            LOGGER.debug(f"printer << \n{json.dumps(payload, indent=4)}")
         self.printer_websocket.send(json.dumps(payload))
 
     def discover_printer(self) -> Printer:
@@ -136,22 +141,23 @@ class ElegooPrinterClient:
                 LOGGER.debug(data)
                 LOGGER.debug("--- UNKNOWN MESSAGE ---")
 
-    def _response_handler(self, msg: str) -> None:
+    def _response_handler(self, msg: str) -> None:  # noqa: ARG002
         return None
 
     def _status_handler(self, msg: str) -> None:
         printer_status = PrinterStatus.from_json(msg)
         self.printer_status = printer_status
-        # status = printer_status.status
-
-        # printer_data = {
-        #     "uv_temperature": status.temp_of_uvled,
-        #     "time_total": print_info.total_ticks,
-        #     "time_printing": print_info.current_ticks,
-        #     "time_remaining": print_info.remaining_ticks,
-        #     "filename": print_info.filename,
-        #     "current_layer": print_info.current_layer,
-        #     "total_layers": print_info.total_layer,
-        #     "remaining_layers": layers_remaining,
-        # }
-        # LOGGER.debug(f"printer_data >>> \n{json.dumps(printer_data, indent=2)}")
+        if debug:
+            status = printer_status.status
+            print_info = status.print_info
+            printer_data = {
+                "uv_temperature": status.temp_of_uvled,
+                "time_total": print_info.total_ticks,
+                "time_printing": print_info.current_ticks,
+                "time_remaining": print_info.remaining_ticks,
+                "filename": print_info.filename,
+                "current_layer": print_info.current_layer,
+                "total_layers": print_info.total_layers,
+                "remaining_layers": print_info.remaining_layers,
+            }
+            LOGGER.debug(f"printer_data >>> \n{json.dumps(printer_data, indent=2)}")
