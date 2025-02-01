@@ -112,3 +112,21 @@ class ElegooPrintError(Enum):
     INVALID_RESOLUTION = 3
     UNKNOWN_FORMAT = 4
     UNKNOWN_MODEL = 5
+
+    @classmethod
+    def from_int(cls, status_int: int) -> Optional["ElegooPrintError"] | None:
+        """
+        Converts an integer to an ElegooPrintError enum member.
+
+        Args:
+            status_int: The integer representing the print status.
+
+        Returns:
+            The corresponding ElegooPrintError enum member, or None if the
+            integer is not a valid status value.
+
+        """  # noqa: D401
+        try:
+            return cls(status_int)  # Use cls() to create enum members
+        except ValueError:
+            return None

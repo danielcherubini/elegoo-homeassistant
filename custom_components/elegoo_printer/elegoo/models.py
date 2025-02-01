@@ -4,6 +4,7 @@ import json
 
 from custom_components.elegoo_printer.elegoo.enums import (
     ElegooMachineStatus,
+    ElegooPrintError,
     ElegooPrintStatus,
 )
 
@@ -107,7 +108,9 @@ class PrintInfo:
         self.current_ticks: int = current_ticks
         self.total_ticks: int = total_ticks
         self.remaining_ticks: int = total_ticks - current_ticks
-        self.error_number: int = error_number
+        self.error_number: ElegooPrintError | None = ElegooPrintError.from_int(
+            error_number
+        )
         self.filename: str = filename
         self.task_id: str = task_id
 
