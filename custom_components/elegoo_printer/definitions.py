@@ -32,7 +32,7 @@ class ElegooPrinterSensorEntityDescription(
 PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="temp_of_uvled",
-        name="Elegoo UV LED Temp",
+        name="UV LED Temp",
         icon="mdi:thermometer",
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -41,7 +41,7 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
     ElegooPrinterSensorEntityDescription(
         key="total_ticks",
-        name="Elegoo Total Print Time",
+        name="Total Print Time",
         icon="mdi:timer-sand-complete",
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
@@ -50,7 +50,7 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
     ElegooPrinterSensorEntityDescription(
         key="current_ticks",
-        name="Elegoo Current Print Time",
+        name="Current Print Time",
         icon="mdi:progress-clock",
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
@@ -59,7 +59,7 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
     ElegooPrinterSensorEntityDescription(
         key="ticks_remaining",
-        name="Elegoo Remaining Print Time",
+        name="Remaining Print Time",
         icon="mdi:timer-sand",
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
@@ -68,28 +68,28 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
     ElegooPrinterSensorEntityDescription(
         key="total_layers",
-        name="Elegoo Total Layers",
+        name="Total Layers",
         icon="mdi:eye",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda self: self.coordinator.data.print_info.total_layers,
     ),
     ElegooPrinterSensorEntityDescription(
         key="current_layer",
-        name="Elegoo Current Layer",
+        name="Current Layer",
         icon="mdi:eye",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda self: self.coordinator.data.print_info.current_layer,
     ),
     ElegooPrinterSensorEntityDescription(
         key="remaining_layers",
-        name="Elegoo Remaining Layers",
+        name="Remaining Layers",
         icon="mdi:eye",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda self: self.coordinator.data.print_info.remaining_layers,
     ),
     ElegooPrinterSensorEntityDescription(
         key="percent_complete",
-        name="Elegoo Percent Complete",
+        name="Percent Complete",
         icon="mdi:percent",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -97,21 +97,21 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
     ElegooPrinterSensorEntityDescription(
         key="filename",
-        name="Elegoo File Name",
+        name="File Name",
         icon="mdi:file",
         value_fn=lambda self: self.coordinator.data.print_info.filename,
         available_fn=lambda self: self.coordinator.data.print_info.filename != "",
     ),
     ElegooPrinterSensorEntityDescription(
         key="print_status",
-        name="Elegoo Print Status",
+        name="Print Status",
         icon="mdi:file",
         value_fn=lambda self: self.coordinator.data.current_status.name,
         available_fn=lambda self: self.coordinator.data.current_status is not None,
     ),
     ElegooPrinterSensorEntityDescription(
         key="print_error",
-        name="Elegoo Print Error",
+        name="Print Error",
         icon="mdi:file",
         value_fn=lambda self: self.coordinator.data.print_info.error_number.name,
         available_fn=lambda self: self.coordinator.data.print_info.error_number
