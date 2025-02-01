@@ -120,4 +120,10 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         available_fn=lambda self: self.coordinator.data.print_info.error_number
         is not None,
     ),
+    ElegooPrinterSensorEntityDescription(
+        key="release_film",
+        name="Release Film",
+        icon="mdi:film",
+        value_fn=lambda self: self.coordinator.data.print_info.release_film,
+    ),
 )
