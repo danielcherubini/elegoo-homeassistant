@@ -145,7 +145,7 @@ class ElegooPrinterClient:
         return None
 
     def _status_handler(self, msg: str) -> None:
-        printer_status = PrinterStatus.from_json(msg)
-        self.printer_status = printer_status
         if debug:
             LOGGER.debug(f"status >> \n{json.dumps(json.loads(msg), indent=5)}")
+        printer_status = PrinterStatus.from_json(msg)
+        self.printer_status = printer_status

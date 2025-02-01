@@ -102,9 +102,12 @@ class PrintInfo:
         self.current_layer: int = current_layer
         self.total_layers: int = total_layer
         self.remaining_layers: int = total_layer - current_layer
-        self.percent_complete: float = round(
-            (self.current_layer / self.total_layers) * 100, 2
-        )
+        if self.remaining_layers != 0:
+            self.percent_complete: float = round(
+                (self.current_layer / self.total_layers) * 100, 2
+            )
+        else:
+            self.percent_complete: float = 0.0
         self.current_ticks: int = current_ticks
         self.total_ticks: int = total_ticks
         remaining_ticks = total_ticks - current_ticks
