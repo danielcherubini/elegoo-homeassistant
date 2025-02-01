@@ -124,6 +124,7 @@ PRINTER_SENSORS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         key="release_film",
         name="Release Film",
         icon="mdi:film",
+        state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda self: self.coordinator.data.release_film,
     ),
 )
