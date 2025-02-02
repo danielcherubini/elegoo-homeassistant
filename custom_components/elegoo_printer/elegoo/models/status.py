@@ -50,11 +50,11 @@ class PrintInfo:
             0, self.total_ticks - self.current_ticks
         )  # Calculate remaining ticks
         if self.remaining_layers != 0:
-            self.percent_complete: float = round(
-                (self.current_layer / self.total_layers) * 100, 2
+            self.percent_complete: int = (
+                int(self.current_layer / self.total_layers) * 100
             )  # Calculate percent complete
         else:
-            self.percent_complete: float = 0.0
+            self.percent_complete: int = 0
         self.filename: str = data.get("Filename", "")
         error_number_int: int = data.get("ErrorNumber", 0)
         self.error_number: ElegooPrintError | None = ElegooPrintError.from_int(
