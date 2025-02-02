@@ -8,8 +8,10 @@ from threading import Thread
 
 import websocket
 
-from .const import LOGGER
-from .models import Printer, PrinterStatus
+from .const import LOGGER, logger
+from .models.attributes import PrinterAttributes
+from .models.printer import Printer, PrinterData
+from .models.status import PrinterStatus
 
 discovery_timeout = 1
 port = 54780
@@ -17,7 +19,7 @@ debug = False
 if os.environ.get("PORT") is not None:
     port = os.environ.get("PORT")
 
-if os.environ.get("DEBUG") is not None:
+if os.environ.get("DEBUG") == "true":
     debug = True
 
 
@@ -32,16 +34,21 @@ class ElegooPrinterClient:
         self.ip_address: str = ip_address
         self.printer_websocket: websocket.WebSocketApp
         self.printer: Printer = Printer()
-        self.printer_status: PrinterStatus = PrinterStatus()
+        self.printer_data = PrinterData()
 
-    def get_printer_status(self) -> PrinterStatus:
+    def get_printer_status(self) -> PrinterData:
         """Gets the printer status."""  # noqa: D401
         self._send_printer_cmd(0)
-        return self.printer_status
+        return self.printer_data
 
-    def get_printer_attributes(self) -> None:
+    def get_printer_attributes(self) -> PrinterData:
         """Gets the printer attributes."""  # noqa: D401
         self._send_printer_cmd(1)
+        return self.printer_data
+
+    def set_printer_video_stream(self, toggle: bool) -> None:  # noqa: FBT001
+        """Toggles the printer video stream."""
+        self._send_printer_cmd(386, {"Enable": int(toggle)})
 
     def _send_printer_cmd(self, cmd: int, data: dict = {}) -> None:  # noqa: B006
         ts = int(time.time())
@@ -58,7 +65,7 @@ class ElegooPrinterClient:
             "Topic": f"sdcp/request/{self.printer.id}",
         }
         if debug:
-            LOGGER.debug(f"printer << \n{json.dumps(payload, indent=4)}")
+            logger.debug(f"printer << \n{json.dumps(payload, indent=4)}")
         self.printer_websocket.send(json.dumps(payload))
 
     def discover_printer(self) -> Printer:
@@ -129,7 +136,7 @@ class ElegooPrinterClient:
                 self._status_handler(response)
             case "attributes":
                 # Attribute handler
-                LOGGER.debug(f"attributes >> \n{json.dumps(data, indent=5)}")
+                self._attributes_handler(response)
             case "notice":
                 # Notice Handler
                 LOGGER.debug(f"notice >> \n{json.dumps(data, indent=5)}")
@@ -141,11 +148,18 @@ class ElegooPrinterClient:
                 LOGGER.debug(data)
                 LOGGER.debug("--- UNKNOWN MESSAGE ---")
 
-    def _response_handler(self, msg: str) -> None:  # noqa: ARG002
-        return None
+    def _response_handler(self, msg: str) -> None:
+        if debug:
+            logger.debug(f"response >> \n{json.dumps(json.loads(msg), indent=5)}")
 
     def _status_handler(self, msg: str) -> None:
         if debug:
-            LOGGER.debug(f"status >> \n{json.dumps(json.loads(msg), indent=5)}")
+            logger.debug(f"status >> \n{json.dumps(json.loads(msg), indent=5)}")
         printer_status = PrinterStatus.from_json(msg)
-        self.printer_status = printer_status
+        self.printer_data.status = printer_status
+
+    def _attributes_handler(self, msg: str) -> None:
+        if debug:
+            logger.debug(f"attributes >> \n{json.dumps(json.loads(msg), indent=5)}")
+        printer_attributes = PrinterAttributes.from_json(msg)
+        self.printer_data.attributes = printer_attributes

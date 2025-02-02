@@ -15,10 +15,10 @@ from .api import (
     ElegooPrinterApiClientError,
 )
 from .const import DOMAIN, LOGGER
-from .elegoo.printer import ElegooPrinterClient
+from .elegoo.elegoo_printer import ElegooPrinterClient
 
 if TYPE_CHECKING:
-    from custom_components.elegoo_printer.elegoo.models import Printer
+    from custom_components.elegoo_printer.elegoo.models.printer import Printer
 
 
 class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):

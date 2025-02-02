@@ -19,7 +19,7 @@ from .api import ElegooPrinterApiClient
 from .const import DOMAIN, LOGGER
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
-from .elegoo.printer import ElegooPrinterClient
+from .elegoo.elegoo_printer import ElegooPrinterClient
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -48,6 +48,8 @@ async def async_setup_entry(
         connected = elegoo_printer.connect_printer()
         if connected:
             LOGGER.info("Polling Started")
+            await asyncio.sleep(2)
+            elegoo_printer.get_printer_attributes()
             await asyncio.sleep(2)
             elegoo_printer.get_printer_status()
             await asyncio.sleep(2)
