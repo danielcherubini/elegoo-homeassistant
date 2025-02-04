@@ -8,10 +8,7 @@ from loguru import logger
 
 LOGGER: Logger = getLogger(__package__)
 
-debug = False
-log_level = "INFO"
-if os.environ.get("DEBUG") == "true":
-    debug = True
-    log_level = "DEBUG"
+DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
+LOG_LEVEL = "INFO"
 logger.remove()
-logger.add(sys.stdout, colorize=debug, level=log_level)
+logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)

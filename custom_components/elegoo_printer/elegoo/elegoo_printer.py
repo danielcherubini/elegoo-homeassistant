@@ -9,14 +9,13 @@ from typing import Any
 
 import websocket
 
-from .const import LOGGER, logger
+from .const import DEBUG, LOGGER, logger
 from .models.attributes import PrinterAttributes
 from .models.printer import Printer, PrinterData
 from .models.status import PrinterStatus
 
 DISCOVERY_TIMEOUT = 1
 DEFAULT_PORT = 54780
-DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 
 
 class ElegooPrinterClient:
