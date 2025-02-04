@@ -21,7 +21,7 @@ class ElegooPrinterSensorEntityDescriptionMixin:
 class ElegooPrinterSensorEntityDescription(
     SensorEntityDescription, ElegooPrinterSensorEntityDescriptionMixin
 ):
-    """Sensor entity description for Bambu Lab."""
+    """Sensor entity description for Elegoo Printers."""
 
     available_fn: Callable[..., bool] = lambda _: True
     exists_fn: Callable[..., bool] = lambda _: True
