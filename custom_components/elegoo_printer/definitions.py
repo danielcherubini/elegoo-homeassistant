@@ -37,6 +37,29 @@ PRINTER_ATTRIBUTES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda self: self.coordinator.data.attributes.release_film_max,
     ),
+    ElegooPrinterSensorEntityDescription(
+        key="temp_of_uvled_max",
+        name="UV LED Temp Max",
+        icon="mdi:thermometer",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda self: self.coordinator.data.attributes.release_film_max,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="video_stream_connected",
+        name="Video Stream Connected",
+        icon="mdi:camera",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda self: self.coordinator.data.attributes.num_video_stream_connected,  # noqa: E501
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="video_stream_max",
+        name="Video Stream Max",
+        icon="mdi:camera",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda self: self.coordinator.data.attributes.max_video_stream_allowed,
+    ),
 )
 
 PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
