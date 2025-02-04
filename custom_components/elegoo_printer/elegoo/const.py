@@ -1,4 +1,4 @@
-"""Constants for elegoo_printer."""  # noqa: INP001
+"""Constants for elegoo_printer."""
 
 import os
 import sys

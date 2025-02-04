@@ -1,4 +1,4 @@
-"""Elegoo Printer enums."""  # noqa: INP001
+"""Elegoo Printer enums."""
 
 from enum import Enum
 from typing import Optional

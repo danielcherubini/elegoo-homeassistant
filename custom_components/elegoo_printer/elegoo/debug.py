@@ -1,4 +1,4 @@
-"""Debug file for testing elegoo printer."""  # noqa: INP001
+"""Debug file for testing elegoo printer."""
 
 import time
 

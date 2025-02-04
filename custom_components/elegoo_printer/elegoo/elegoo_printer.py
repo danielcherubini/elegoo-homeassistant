@@ -139,7 +139,9 @@ class ElegooPrinterClient:
             self.get_printer_status()
 
         def on_close(
-            ws, close_status_code: str, close_msg: str  # noqa: ANN001, ARG001
+            ws,  # noqa: ANN001, ARG001
+            close_status_code: str,
+            close_msg: str,
         ) -> None:
             LOGGER.debug(
                 f"Connection to {self.printer.name} closed: {close_msg} ({close_status_code})"  # noqa: E501
