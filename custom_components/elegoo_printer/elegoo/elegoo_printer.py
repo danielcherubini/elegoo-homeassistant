@@ -114,7 +114,7 @@ class ElegooPrinterClient:
         )
         self.printer_websocket = ws
         Thread(target=lambda: ws.run_forever(reconnect=1), daemon=True).start()
-
+        time.sleep(2)
         return True
 
     def _ws_connected_handler(self, name: str) -> None:
