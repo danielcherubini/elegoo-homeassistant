@@ -79,17 +79,21 @@ class Printer:
 
 
 class PrinterData:
-    """Creates a new ElegooPrinterData object."""
+    """Data object for printer information."""
 
-    def __init__(  # noqa: D107
+    def __init__(
         self,
         status: PrinterStatus | None = None,
         attributes: PrinterAttributes | None = None,
         printer: Printer | None = None,
     ) -> None:
-        if status is not None:
-            self.status: PrinterStatus = status
-        if attributes is not None:
-            self.attributes: PrinterAttributes = attributes
-        if printer is not None:
-            self.printer: Printer = printer
+        """
+        Initialize a new PrinterData object with optional data.
+
+        If any of the data arguments (status, attributes, printer)
+        are not provided, the corresponding attribute is initialized
+        with a blank/default instance of the respective model class.
+        """
+        self.status: PrinterStatus = status or PrinterStatus()
+        self.attributes: PrinterAttributes = attributes or PrinterAttributes()
+        self.printer: Printer = printer or Printer()

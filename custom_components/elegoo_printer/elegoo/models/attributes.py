@@ -123,7 +123,7 @@ class PrinterAttributes:
         self.support_file_types: list[str] = attributes.get("SupportFileType")
         self.devices_status: dict[str, int] = attributes.get("DevicesStatus", {})
         self.release_film_max: int = attributes.get("ReleaseFilmMax", 0)
-        self.temp_of_uvled_max: int = attributes.get("TempOfUVLEDMax", 0)
+        self.temp_of_uvled_max: float = attributes.get("TempOfUVLEDMax", 0)
         self.camera_status: int = attributes.get("CameraStatus", 0)
         self.remaining_memory: int = attributes.get("RemainingMemory", 0)
         self.tlp_no_cap_pos: float = attributes.get("TLPNoCapPos", 0.0)
@@ -150,7 +150,7 @@ class PrinterAttributes:
         try:
             data: dict[str, Any] = json.loads(json_string)
         except json.JSONDecodeError:
-            data: dict[
-                str, Any
-            ] = {}  # Return an empty object or handle the error as needed
+            data: dict[str, Any] = (
+                {}
+            )  # Return an empty object or handle the error as needed
         return cls(data)

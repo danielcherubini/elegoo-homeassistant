@@ -47,7 +47,7 @@ async def async_setup_entry(
         LOGGER.info("No printers discovered.")
         return False
 
-    connected = elegoo_printer.connect_printer()
+    connected = await elegoo_printer.connect_printer()
     if connected:
         LOGGER.info("Polling Started")
         entry.runtime_data = ElegooPrinterData(
@@ -60,13 +60,16 @@ async def async_setup_entry(
             coordinator=coordinator,
         )
 
-    # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
-    await coordinator.async_config_entry_first_refresh()
+        # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
+        await coordinator.async_config_entry_first_refresh()
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
-    return True
+        return True
+
+    LOGGER.error("Failed to connect to printer.")
+    return False
 
 
 async def async_unload_entry(

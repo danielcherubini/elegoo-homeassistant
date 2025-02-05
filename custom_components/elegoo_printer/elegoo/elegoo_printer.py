@@ -1,5 +1,6 @@
 """Elegoo Printer."""
 
+import asyncio
 import json
 import os
 import socket
@@ -113,7 +114,7 @@ class ElegooPrinterClient:
 
         return None
 
-    def connect_printer(self) -> bool:
+    async def connect_printer(self) -> bool:
         """
         Connect to the Elegoo printer.
 
@@ -134,8 +135,6 @@ class ElegooPrinterClient:
 
         def ws_connected_handler(name: str) -> None:
             LOGGER.info(f"Connected to: {name}")
-            self.get_printer_attributes()
-            self.get_printer_status()
 
         def on_close(
             ws,  # noqa: ANN001, ARG001
@@ -167,9 +166,9 @@ class ElegooPrinterClient:
         timeout = 5
         while time.monotonic() - start_time < timeout:
             if ws.sock and ws.sock.connected:
+                await asyncio.sleep(2)
                 LOGGER.info(f"Connected to {self.printer.name}")
                 return True
-            time.sleep(0.1)
 
         LOGGER.warning(f"Failed to connect to {self.printer.name} within timeout")
         self.printer_websocket = None

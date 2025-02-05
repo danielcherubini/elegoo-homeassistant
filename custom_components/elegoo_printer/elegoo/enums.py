@@ -41,6 +41,28 @@ class ElegooMachineStatus(Enum):
         except ValueError:
             return None
 
+    @classmethod
+    def from_list(cls, status_list: list[int]) -> Optional["ElegooMachineStatus"]:
+        """
+        Convert a list of integers to an ElegooMachineStatus enum member.
+
+        Args:
+            status_list: A list of integers representing print statuses.
+                         It is expected to contain only one element.
+
+        Returns:
+            The corresponding ElegooMachineStatus enum member, or None if:
+            - The list is empty.
+            - The list contains more than one element.
+            - The integer in the list is not a valid status value.
+
+        """
+        if not status_list or len(status_list) != 1:
+            return None  # Return None if the list is empty or has more than one element
+
+        status_int = status_list[0]
+        return cls.from_int(status_int)
+
 
 class ElegooPrintStatus(Enum):
     """

@@ -68,7 +68,7 @@ class PrinterStatus:
     Represents the status of a 3D printer.
 
     Attributes:
-        current_status (List[int]): Current Machine Status.
+        current_status (ElegooMachineStatus): Current Machine Status.
         previous_status (int): Previous Machine Status.
         print_screen (int): Total Exposure Screen Usage Time(s).
         release_film (int): Total Release Film Usage Count.
@@ -89,10 +89,10 @@ class PrinterStatus:
                                              Defaults to an empty dictionary.
 
         """  # noqa: E501
-        status = data.get("Status", {})
-        current_status_int = status.get("CurrentStatus")[0]
-        self.current_status: ElegooMachineStatus = ElegooMachineStatus(
-            current_status_int
+        status = data.get("Status", {"CurrentStatus": {}})
+        current_status_list = status.get("CurrentStatus", [])
+        self.current_status: ElegooMachineStatus = ElegooMachineStatus.from_list(
+            current_status_list
         )
         self.previous_status: int = status.get("PreviousStatus", 0)
         self.print_screen: int = status.get("PrintScreen", 0)
