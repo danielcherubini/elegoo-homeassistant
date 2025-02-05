@@ -49,9 +49,9 @@ class PrintInfo:
         self.remaining_ticks: int = max(
             0, self.total_ticks - self.current_ticks
         )  # Calculate remaining ticks
-        if self.remaining_layers != 0:
-            self.percent_complete: int = (
-                int(self.current_layer / self.total_layers) * 100
+        if self.remaining_layers > 0:
+            self.percent_complete: int = int(
+                (self.current_layer / self.total_layers) * 100
             )  # Calculate percent complete
         else:
             self.percent_complete: int = 0
