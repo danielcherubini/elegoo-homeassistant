@@ -6,7 +6,11 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import SensorEntity
 
-from .definitions import PRINTER_SENSORS, ElegooPrinterSensorEntityDescription
+from .definitions import (
+    PRINTER_ATTRIBUTES,
+    PRINTER_STATUS,
+    ElegooPrinterSensorEntityDescription,
+)
 from .entity import ElegooPrinterEntity
 
 if TYPE_CHECKING:
@@ -26,14 +30,25 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the sensor platform."""
-    for entity_description in PRINTER_SENSORS:
+    for entity_description in PRINTER_STATUS:
         async_add_entities(
             [
                 ElegooPrinterSensor(
                     coordinator=entry.runtime_data.coordinator,
                     entity_description=entity_description,
                 )
-            ]
+            ],
+            update_before_add=True,
+        )
+    for entity_description in PRINTER_ATTRIBUTES:
+        async_add_entities(
+            [
+                ElegooPrinterSensor(
+                    coordinator=entry.runtime_data.coordinator,
+                    entity_description=entity_description,
+                )
+            ],
+            update_before_add=True,
         )
 
 

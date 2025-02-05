@@ -9,7 +9,8 @@ import aiohttp
 import async_timeout
 
 if TYPE_CHECKING:
-    from .elegoo.printer import ElegooPrinterClient
+    from .elegoo.elegoo_printer import ElegooPrinterClient
+    from .elegoo.models.printer import PrinterData
 
 
 class ElegooPrinterApiClientError(Exception):
@@ -52,10 +53,10 @@ class ElegooPrinterApiClient:
         self._elegoo_printer: ElegooPrinterClient = elegoo_printer
         self._session: aiohttp.ClientSession = session
 
-    async def async_get_data(self) -> Any:
+    async def async_get_data(self) -> PrinterData:
         """Get data from the API."""
-        status = self._elegoo_printer.get_printer_status()
-        return status.status
+        self._elegoo_printer.get_printer_attributes()
+        return self._elegoo_printer.get_printer_status()
 
     async def async_set_title(self, value: str) -> Any:
         """Get data from the API."""
