@@ -150,7 +150,7 @@ class PrinterAttributes:
         try:
             data: dict[str, Any] = json.loads(json_string)
         except json.JSONDecodeError:
-            data: dict[str, Any] = (
-                {}
-            )  # Return an empty object or handle the error as needed
+            data: dict[
+                str, Any
+            ] = {}  # Return an empty object or handle the error as needed
         return cls(data)
