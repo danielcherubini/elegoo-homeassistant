@@ -44,7 +44,8 @@ PRINTER_ATTRIBUTES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda self: self.coordinator.data.attributes.release_film_max,
+        value_fn=lambda self: self.coordinator.data.attributes.temp_of_uvled_max,
+        exists_fn=lambda self: self.coordinator.data.attributes.temp_of_uvled_max > 0,
     ),
     ElegooPrinterSensorEntityDescription(
         key="video_stream_connected",
