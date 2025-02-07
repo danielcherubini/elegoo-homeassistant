@@ -7,53 +7,31 @@ This Home Assistant integration allows you to monitor the status and attributes 
 
 This integration currently exposes the following sensors for your Elegoo Printer:
 
-### Printer Attributes Sensors
+### Printer Attribute Sensors
 
-These sensors provide information about the printer's capabilities and settings.
+These sensors tell you about the printer's capabilities and limits.  Think of them as the printer's specifications.
 
-- **Release Film Max:** Indicates the maximum lifespan or usage limit of the release film.
-  - Icon: `mdi:film`
-- **UV LED Temp Max:** Maximum allowed temperature of the UV LED module.
-  - Icon: `mdi:thermometer`
-  - Unit: °C (Celsius)
-- **Video Stream Connected:** Indicates the number of video streams currently connected to the printer.
-  - Icon: `mdi:camera`
-- **Video Stream Max:** Maximum number of video streams allowed to connect to the printer simultaneously.
-  - Icon: `mdi:camera`
+*   **Maximum Release Film Usage:**  Shows the maximum lifespan or usage limit for the release film.
+*   **Maximum UV LED Temperature:**  The highest temperature the UV LED is allowed to reach. (Unit: °C)
+*   **Connected Video Streams:** How many video streams are currently connected to the printer.
+*   **Maximum Video Streams:** The maximum number of video streams you can connect at the same time.
 
 ### Printer Status Sensors
 
-These sensors provide real-time information about the printer's current operational status and print job.
+These sensors give you live updates on the printer's current operation and the progress of your print job.
 
-- **UV LED Temp:** Current temperature of the UV LED module.
-  - Icon: `mdi:thermometer`
-  - Unit: °C (Celsius)
-- **Total Print Time:** The total accumulated print time of the printer.
-  - Icon: `mdi:timer-sand-complete`
-  - Unit: Milliseconds (displayed in Hours for convenience)
-- **Current Print Time:** The elapsed time of the current print job.
-  - Icon: `mdi:progress-clock`
-  - Unit: Milliseconds (displayed in Hours for convenience)
-- **Remaining Print Time:** Estimated time remaining for the current print job.
-  - Icon: `mdi:timer-sand`
-  - Unit: Milliseconds (displayed in Hours for convenience)
-- **Total Layers:** The total number of layers in the current print job.
-  - Icon: `mdi:eye`
-- **Current Layer:** The current layer being printed.
-  - Icon: `mdi:eye`
-- **Remaining Layers:** The number of layers remaining to be printed.
-  - Icon: `mdi:eye`
-- **Percent Complete:** The percentage of the current print job that is complete.
-  - Icon: `mdi:percent`
-  - Unit: % (Percentage)
-- **File Name:** The name of the file currently being printed.
-  - Icon: `mdi:file`
-- **Print Status:** The current status of the printer (e.g., "Printing", "Idle", "Error").
-  - Icon: `mdi:file`
-- **Print Error:** If a print error occurs, this sensor will display the error type.
-  - Icon: `mdi:file`
-- **Release Film:** Current status or reading related to the release film.
-  - Icon: `mdi:film`
+*   **UV LED Temperature:** The current temperature of the UV LED. (Unit: °C)
+*   **Total Print Time:**  The total amount of time this printer has been printing, ever. (Unit: Milliseconds, displayed in Hours)
+*   **Current Print Time:** How long the current print job has been running. (Unit: Milliseconds, displayed in Hours)
+*   **Remaining Print Time:**  The estimated time left for the current print job to finish. (Unit: Milliseconds, displayed in Hours)
+*   **Total Layers:** The total number of layers in the print job.
+*   **Current Layer:**  Which layer is being printed right now.
+*   **Remaining Layers:** How many layers are left to print.
+*   **Print Completion Percentage:**  How much of the print job is finished. (Unit: %)
+*   **File Name:** The name of the file you're printing.
+*   **Print Status:**  What the printer is currently doing (e.g., "Printing," "Idle," "Error").
+*   **Print Error:**  If there's a problem, this will show the type of error.
+*   **Release Film Status:**  The current status of the release film.
 
 ## Installation
 
