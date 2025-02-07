@@ -11,7 +11,6 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from homeassistant.const import CONF_IP_ADDRESS, Platform
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_loaded_integration
 
 from .api import ElegooPrinterApiClient
@@ -25,7 +24,7 @@ if TYPE_CHECKING:
 
     from .data import ElegooPrinterConfigEntry
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.CAMERA]
 
 
 # https://developers.home-assistant.io/docs/config_entries_index/#setting-up-an-entry
@@ -54,7 +53,6 @@ async def async_setup_entry(
             client=ElegooPrinterApiClient(
                 ip_address=entry.data[CONF_IP_ADDRESS],
                 elegoo_printer=elegoo_printer,
-                session=async_get_clientsession(hass),
             ),
             integration=async_get_loaded_integration(hass, entry.domain),
             coordinator=coordinator,
