@@ -1,6 +1,6 @@
 # Elegoo Printer Integration for Home Assistant
 
-[![HACS Default](about:sanitized)](https://hacs.xyz/docs/default_repository)
+[![HACS Default](about:sanitized)](https://hacs.xyz)
 
 This Home Assistant integration allows you to monitor the status and attributes of your Elegoo 3D printer, bringing valuable information directly into your smart home dashboard. Currently, this integration focuses on exposing sensor data, providing insights into your printer's operation and status. More features and controls may be added in future updates.
 
