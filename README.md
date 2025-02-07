@@ -99,7 +99,7 @@ Stay tuned for updates and feel free to contribute with feature requests and bug
 
 ## Support and Contributions
 
-For any issues or feature requests, please [open an issue]([YOUR_GITHUB_ISSUES_LINK_HERE]) on the GitHub repository. Contributions are welcome!
+For any issues or feature requests, please [open an issue]([https://github.com/danielcherubini/elegoo-homeassistant/issues]) on the GitHub repository. Contributions are welcome!
 
 ## License
 
