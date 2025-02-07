@@ -45,7 +45,7 @@ This integration is installed manually through the Home Assistant Community Stor
     - Navigate to **HACS** \> **Integrations**.
     - Click the **three dots** in the top right corner and select **"Custom repositories"**.
     - In the "Add custom repository" dialog:
-      - **Repository URL:** `[YOUR_REPOSITORY_URL_HERE]` _(Replace `[YOUR_REPOSITORY_URL_HERE]` with the actual repository URL once it is available.)_
+      - **Repository URL:** `https://github.com/danielcherubini/elegoo-homeassistant`
       - **Category:** Select **"Integration"**.
     - Click **"ADD"**.
 
