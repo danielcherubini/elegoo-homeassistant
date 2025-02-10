@@ -11,14 +11,12 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from homeassistant.const import CONF_IP_ADDRESS, Platform
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_loaded_integration
 
 from .api import ElegooPrinterApiClient
 from .const import DOMAIN, LOGGER
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
-from .elegoo.elegoo_printer import ElegooPrinterClient
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -41,35 +39,26 @@ async def async_setup_entry(
         update_interval=timedelta(seconds=2),
     )
 
-    elegoo_printer = ElegooPrinterClient(entry.data[CONF_IP_ADDRESS])
-    printer = elegoo_printer.discover_printer()
-    if printer is None:
-        LOGGER.info("No printers discovered.")
+    client = await ElegooPrinterApiClient.async_create(
+        ip_address=entry.data[CONF_IP_ADDRESS], logger=LOGGER
+    )
+
+    if client is None:
         return False
 
-    connected = await elegoo_printer.connect_printer()
-    if connected:
-        LOGGER.info("Polling Started")
-        entry.runtime_data = ElegooPrinterData(
-            client=ElegooPrinterApiClient(
-                ip_address=entry.data[CONF_IP_ADDRESS],
-                elegoo_printer=elegoo_printer,
-                session=async_get_clientsession(hass),
-            ),
-            integration=async_get_loaded_integration(hass, entry.domain),
-            coordinator=coordinator,
-        )
+    entry.runtime_data = ElegooPrinterData(
+        client=client,
+        integration=async_get_loaded_integration(hass, entry.domain),
+        coordinator=coordinator,
+    )
 
-        # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
-        await coordinator.async_config_entry_first_refresh()
+    # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
+    await coordinator.async_config_entry_first_refresh()
 
-        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-        entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
-        return True
-
-    LOGGER.error("Failed to connect to printer.")
-    return False
+    return True
 
 
 async def async_unload_entry(

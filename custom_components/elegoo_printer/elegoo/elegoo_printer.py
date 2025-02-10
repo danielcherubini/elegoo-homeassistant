@@ -19,6 +19,14 @@ DISCOVERY_TIMEOUT = 1
 DEFAULT_PORT = 54780
 
 
+class ElegooPrinterClientWebsocketError(Exception):
+    """Exception to indicate a general API error."""
+
+
+class ElegooPrinterClientWebsocketConnectionError(Exception):
+    """Exception to indicate a Websocket Connection error."""
+
+
 class ElegooPrinterClient:
     """
     Client for interacting with an Elegoo printer.
@@ -35,12 +43,20 @@ class ElegooPrinterClient:
 
     def get_printer_status(self) -> PrinterData:
         """Retreves the printer status."""
-        self._send_printer_cmd(0)
+        try:
+            self._send_printer_cmd(0)
+        except (ElegooPrinterClientWebsocketError, OSError) as e:
+            LOGGER.error(f"Error sending printer command in process_printer_job: {e}")
+            raise
         return self.printer_data
 
     def get_printer_attributes(self) -> PrinterData:
         """Retreves the printer attributes."""
-        self._send_printer_cmd(1)
+        try:
+            self._send_printer_cmd(1)
+        except (ElegooPrinterClientWebsocketError, OSError) as e:
+            LOGGER.error(f"Error sending printer command in process_printer_job: {e}")
+            raise
         return self.printer_data
 
     def set_printer_video_stream(self, *, toggle: bool) -> None:
@@ -66,9 +82,24 @@ class ElegooPrinterClient:
         if DEBUG:
             logger.debug(f"printer << \n{json.dumps(payload, indent=4)}")
         if self.printer_websocket:
-            self.printer_websocket.send(json.dumps(payload))
+            try:
+                self.printer_websocket.send(json.dumps(payload))
+            except (
+                websocket.WebSocketConnectionClosedException,
+                websocket.WebSocketException,
+            ) as e:
+                LOGGER.error(f"WebSocket connection closed error: {e}")
+                raise ElegooPrinterClientWebsocketError from e
+            except (
+                OSError
+            ) as e:  # Catch potential OS errors like Broken Pipe, Connection Refused
+                LOGGER.error(f"Operating System error during send: {e}")
+                raise  # Re-raise OS errors
         else:
             LOGGER.warning("Attempted to send command but websocket is not connected.")
+            raise ElegooPrinterClientWebsocketConnectionError from Exception(
+                "Not connected"
+            )
 
     def discover_printer(self) -> Printer | None:
         """Discover the Elegoo printer on the network."""
