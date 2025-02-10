@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import (
+    ElegooPrinterApiClientCommunicationError,
     ElegooPrinterApiClientError,
 )
 
@@ -25,5 +26,5 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             await self.config_entry.runtime_data.client.async_get_attributes()
             return await self.config_entry.runtime_data.client.async_get_status()
-        except ElegooPrinterApiClientError as exception:
+        except (ElegooPrinterApiClientCommunicationError, ElegooPrinterApiClientError) as exception:
             raise UpdateFailed(exception) from exception
