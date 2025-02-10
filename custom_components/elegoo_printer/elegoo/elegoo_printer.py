@@ -35,12 +35,37 @@ class ElegooPrinterClient:
 
     def get_printer_status(self) -> PrinterData:
         """Retreves the printer status."""
-        self._send_printer_cmd(0)
+        try:
+            self._send_printer_cmd(0)
+        except (websocket.WebSocketConnectionClosedException, websocket.WebSocketException, OSError) as e:
+            LOGGER.error(f"Error sending printer command in process_printer_job: {e}")
+            # Handle the error appropriately in this context:
+            # e.g., Retry, inform user, mark job as failed, etc.
+            LOGGER.warning("Attempting to retry sending command...")
+            try_again = self._send_printer_cmd(0)
+            if try_again:
+                LOGGER.info("Retry successful.")
+            else:
+                LOGGER.error("Retry failed. Job may be incomplete.")
+                # ... further error handling if retry also fails ...
         return self.printer_data
+
 
     def get_printer_attributes(self) -> PrinterData:
         """Retreves the printer attributes."""
-        self._send_printer_cmd(1)
+        try:
+            self._send_printer_cmd(1)
+        except (websocket.WebSocketConnectionClosedException, websocket.WebSocketException, OSError) as e:
+            LOGGER.error(f"Error sending printer command in process_printer_job: {e}")
+            # Handle the error appropriately in this context:
+            # e.g., Retry, inform user, mark job as failed, etc.
+            LOGGER.warning("Attempting to retry sending command...")
+            try_again = self._send_printer_cmd(0)
+            if try_again:
+                LOGGER.info("Retry successful.")
+            else:
+                LOGGER.error("Retry failed. Job may be incomplete.")
+                # ... further error handling if retry also fails ...
         return self.printer_data
 
     def set_printer_video_stream(self, *, toggle: bool) -> None:
@@ -66,7 +91,17 @@ class ElegooPrinterClient:
         if DEBUG:
             logger.debug(f"printer << \n{json.dumps(payload, indent=4)}")
         if self.printer_websocket:
-            self.printer_websocket.send(json.dumps(payload))
+            try:
+                self.printer_websocket.send(json.dumps(payload))
+            except websocket.WebSocketConnectionClosedException as e:
+                LOGGER.error(f"WebSocket connection closed error: {e}")
+                raise  # Re-raise to be handled by the caller
+            except websocket.WebSocketException as e: # Catching other websocket related errors
+                LOGGER.error(f"WebSocket send error: {e}")
+                raise # Re-raise other websocket exceptions
+            except OSError as e: # Catch potential OS errors like Broken Pipe, Connection Refused
+                LOGGER.error(f"Operating System error during send: {e}")
+                raise # Re-raise OS errors
         else:
             LOGGER.warning("Attempted to send command but websocket is not connected.")
 
