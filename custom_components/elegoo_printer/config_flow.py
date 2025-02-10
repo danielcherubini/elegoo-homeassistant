@@ -20,6 +20,10 @@ if TYPE_CHECKING:
     from custom_components.elegoo_printer.elegoo.models.printer import Printer
 
 
+class ElegooPrinterClientGeneralError(Exception):
+    """Exception For Elegoo Printer."""
+
+
 class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Elegoo."""
 
@@ -42,7 +46,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             except ElegooPrinterClientWebsocketError as exception:
                 LOGGER.exception(exception)
                 _errors["base"] = "websocket"
-            except OSError as exception:
+            except (OSError, Exception) as exception:
                 LOGGER.exception(exception)
                 _errors["base"] = "unknown"
             else:
@@ -77,4 +81,4 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         printer = elegoo_printer.discover_printer()
         if printer:
             return printer
-        raise ElegooPrinterApiClientAuthenticationError(printer)
+        raise ElegooPrinterClientGeneralError from Exception("No Printer")
