@@ -19,6 +19,14 @@ DISCOVERY_TIMEOUT = 1
 DEFAULT_PORT = 54780
 
 
+class ElegooPrinterClientWebsocketError(Exception):
+    """Exception to indicate a general API error."""
+
+
+class ElegooPrinterClientWebsocketConnectionError(Exception):
+    """Exception to indicate a Websocket Connection error."""
+
+
 class ElegooPrinterClient:
     """
     Client for interacting with an Elegoo printer.
@@ -37,35 +45,18 @@ class ElegooPrinterClient:
         """Retreves the printer status."""
         try:
             self._send_printer_cmd(0)
-        except (websocket.WebSocketConnectionClosedException, websocket.WebSocketException, OSError) as e:
+        except (ElegooPrinterClientWebsocketError, OSError) as e:
             LOGGER.error(f"Error sending printer command in process_printer_job: {e}")
-            # Handle the error appropriately in this context:
-            # e.g., Retry, inform user, mark job as failed, etc.
-            LOGGER.warning("Attempting to retry sending command...")
-            try_again = self._send_printer_cmd(0)
-            if try_again:
-                LOGGER.info("Retry successful.")
-            else:
-                LOGGER.error("Retry failed. Job may be incomplete.")
-                # ... further error handling if retry also fails ...
+            raise
         return self.printer_data
-
 
     def get_printer_attributes(self) -> PrinterData:
         """Retreves the printer attributes."""
         try:
             self._send_printer_cmd(1)
-        except (websocket.WebSocketConnectionClosedException, websocket.WebSocketException, OSError) as e:
+        except (ElegooPrinterClientWebsocketError, OSError) as e:
             LOGGER.error(f"Error sending printer command in process_printer_job: {e}")
-            # Handle the error appropriately in this context:
-            # e.g., Retry, inform user, mark job as failed, etc.
-            LOGGER.warning("Attempting to retry sending command...")
-            try_again = self._send_printer_cmd(0)
-            if try_again:
-                LOGGER.info("Retry successful.")
-            else:
-                LOGGER.error("Retry failed. Job may be incomplete.")
-                # ... further error handling if retry also fails ...
+            raise
         return self.printer_data
 
     def set_printer_video_stream(self, *, toggle: bool) -> None:
@@ -93,17 +84,22 @@ class ElegooPrinterClient:
         if self.printer_websocket:
             try:
                 self.printer_websocket.send(json.dumps(payload))
-            except websocket.WebSocketConnectionClosedException as e:
+            except (
+                websocket.WebSocketConnectionClosedException,
+                websocket.WebSocketException,
+            ) as e:
                 LOGGER.error(f"WebSocket connection closed error: {e}")
-                raise  # Re-raise to be handled by the caller
-            except websocket.WebSocketException as e: # Catching other websocket related errors
-                LOGGER.error(f"WebSocket send error: {e}")
-                raise # Re-raise other websocket exceptions
-            except OSError as e: # Catch potential OS errors like Broken Pipe, Connection Refused
+                raise ElegooPrinterClientWebsocketError from e
+            except (
+                OSError
+            ) as e:  # Catch potential OS errors like Broken Pipe, Connection Refused
                 LOGGER.error(f"Operating System error during send: {e}")
-                raise # Re-raise OS errors
+                raise  # Re-raise OS errors
         else:
             LOGGER.warning("Attempted to send command but websocket is not connected.")
+            raise ElegooPrinterClientWebsocketConnectionError from Exception(
+                "Not connected"
+            )
 
     def discover_printer(self) -> Printer | None:
         """Discover the Elegoo printer on the network."""

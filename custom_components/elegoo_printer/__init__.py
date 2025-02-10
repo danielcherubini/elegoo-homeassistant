@@ -12,13 +12,11 @@ from typing import TYPE_CHECKING
 
 from homeassistant.const import CONF_IP_ADDRESS, Platform
 from homeassistant.loader import async_get_loaded_integration
-from loguru import logger
 
 from .api import ElegooPrinterApiClient
 from .const import DOMAIN, LOGGER
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
-from .elegoo.elegoo_printer import ElegooPrinterClient
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -41,11 +39,15 @@ async def async_setup_entry(
         update_interval=timedelta(seconds=2),
     )
 
+    client = await ElegooPrinterApiClient.async_create(
+        ip_address=entry.data[CONF_IP_ADDRESS], logger=LOGGER
+    )
+
+    if client is None:
+        return False
+
     entry.runtime_data = ElegooPrinterData(
-        client=ElegooPrinterApiClient(
-            ip_address=entry.data[CONF_IP_ADDRESS],
-            logger=LOGGER
-        ),
+        client=client,
         integration=async_get_loaded_integration(hass, entry.domain),
         coordinator=coordinator,
     )

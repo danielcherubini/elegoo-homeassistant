@@ -23,7 +23,7 @@ class ElegooPrinterSensorEntityDescription(
 ):
     """Sensor entity description for Elegoo Printers."""
 
-    available_fn: Callable[..., bool] = lambda _: True
+    available_fn: Callable[..., bool] = lambda self: self.coordinator.data
     exists_fn: Callable[..., bool] = lambda _: True
     extra_attributes: Callable[..., dict] = lambda _: {}
     icon_fn: Callable[..., str] = lambda _: None
@@ -46,8 +46,8 @@ PRINTER_ATTRIBUTES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         value_fn=lambda self: self.coordinator.data.attributes.temp_of_uvled_max,
         exists_fn=lambda self: self.coordinator.data.attributes.temp_of_uvled_max > 0,
-        available_fn=lambda self: self.coordinator.data.attributes.temp_of_uvled_max
-        > 0,
+        available_fn=lambda self: self.coordinator.data
+        and self.coordinator.data.attributes.temp_of_uvled_max > 0,
         entity_registry_enabled_default=False,
     ),
     ElegooPrinterSensorEntityDescription(

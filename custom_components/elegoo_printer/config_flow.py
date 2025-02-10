@@ -9,13 +9,12 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.helpers import selector
 
-from .api import (
-    ElegooPrinterApiClientAuthenticationError,
-    ElegooPrinterApiClientCommunicationError,
-    ElegooPrinterApiClientError,
-)
 from .const import DOMAIN, LOGGER
-from .elegoo.elegoo_printer import ElegooPrinterClient
+from .elegoo.elegoo_printer import (
+    ElegooPrinterClient,
+    ElegooPrinterClientWebsocketConnectionError,
+    ElegooPrinterClientWebsocketError,
+)
 
 if TYPE_CHECKING:
     from custom_components.elegoo_printer.elegoo.models.printer import Printer
@@ -37,13 +36,13 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 printer = await self._test_credentials(
                     ip_address=user_input[CONF_IP_ADDRESS],
                 )
-            except ElegooPrinterApiClientAuthenticationError as exception:
-                LOGGER.warning(exception)
-                _errors["base"] = "auth"
-            except ElegooPrinterApiClientCommunicationError as exception:
+            except ElegooPrinterClientWebsocketConnectionError as exception:
                 LOGGER.error(exception)
                 _errors["base"] = "connection"
-            except ElegooPrinterApiClientError as exception:
+            except ElegooPrinterClientWebsocketError as exception:
+                LOGGER.exception(exception)
+                _errors["base"] = "websocket"
+            except OSError as exception:
                 LOGGER.exception(exception)
                 _errors["base"] = "unknown"
             else:

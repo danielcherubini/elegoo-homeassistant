@@ -2,69 +2,70 @@
 
 from __future__ import annotations
 
-from logging import Logger
 from typing import TYPE_CHECKING
 
-import websocket
+from .elegoo.elegoo_printer import (
+    ElegooPrinterClient,
+    ElegooPrinterClientWebsocketConnectionError,
+    ElegooPrinterClientWebsocketError,
+)
 
 if TYPE_CHECKING:
-    from .elegoo.elegoo_printer import ElegooPrinterClient
+    from logging import Logger
+
     from .elegoo.models.printer import PrinterData
-
-
-class ElegooPrinterApiClientError(Exception):
-    """Exception to indicate a general API error."""
-
-
-class ElegooPrinterApiClientCommunicationError(
-    ElegooPrinterApiClientError,
-):
-    """Exception to indicate a communication error."""
-
-
-class ElegooPrinterApiClientAuthenticationError(
-    ElegooPrinterApiClientError,
-):
-    """Exception to indicate an authentication error."""
 
 
 class ElegooPrinterApiClient:
     """Sample API Client."""
 
-    def __init__(
-        self,
-        ip_address: str,
-        logger: Logger
-    ) -> None:
+    _ip_address: str
+    _elegoo_printer: ElegooPrinterClient
+    _logger: Logger
+
+    def __init__(self, ip_address: str, logger: Logger) -> None:
+        """Initialize."""
+        self._ip_address = ip_address
+        self._logger = logger
+
+    @classmethod
+    async def async_create(
+        cls, ip_address: str, logger: Logger
+    ) -> ElegooPrinterApiClient | None:
         """Sample API Client."""
-        self._ip_address: str = ip_address
+        self = ElegooPrinterApiClient(ip_address, logger)
 
         elegoo_printer = ElegooPrinterClient(ip_address)
         printer = elegoo_printer.discover_printer()
         if printer is None:
-            return
-        connected = elegoo_printer.connect_printer()
+            return None
+        connected = await elegoo_printer.connect_printer()
         if connected:
             logger.info("Polling Started")
-            self._elegoo_printer: ElegooPrinterClient = elegoo_printer
+            self._elegoo_printer = elegoo_printer
+        return self
 
     async def async_get_status(self) -> PrinterData:
         """Get data from the API."""
         try:
             return self._elegoo_printer.get_printer_status()
-        except (websocket.WebSocketConnectionClosedException, websocket.WebSocketException) as e:
-            # Probably best to do reconnection mechanic here.
-            raise ElegooPrinterApiClientCommunicationError(e)
-        except OSError as e:
-            raise ElegooPrinterApiClientError(e)
-
+        except ElegooPrinterClientWebsocketConnectionError:
+            # Retry
+            connected = await self.retry()
+            if connected is False:
+                raise ElegooPrinterClientWebsocketError from Exception(
+                    "Failed to recononect"
+                )
+            return self._elegoo_printer.get_printer_status()
+        except ElegooPrinterClientWebsocketError:
+            raise
+        except OSError:
+            raise
 
     async def async_get_attributes(self) -> PrinterData:
         """Get data from the API."""
-        try:
-            return self._elegoo_printer.get_printer_attributes()
-        except (websocket.WebSocketConnectionClosedException, websocket.WebSocketException) as e:
-            raise ElegooPrinterApiClientCommunicationError(e)
-        except OSError as e:
-            raise ElegooPrinterApiClientError(e)
+        return self._elegoo_printer.get_printer_attributes()
 
+    async def retry(self) -> bool:
+        """Retry connecting to the printer and getting data."""
+        return await self._elegoo_printer.connect_printer()
