@@ -1,0 +1,79 @@
+name: Release Elegoo Printer Integration
+
+on:
+  push:
+    branches:
+      - main # Or your main branch name
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get version from manifest.json
+        id: get_version
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const manifest = JSON.parse(fs.readFileSync('./custom_components/elegoo_printer/manifest.json', 'utf8'));
+            const version = manifest.version;
+            core.setOutput('version', version);
+
+      - name: Create Git tag
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const version = core.getInput('version');
+            const tag = `v${version}`; // Prefix with 'v' if needed
+            try {
+              await github.rest.git.createTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: tag,
+                message: `Release ${tag}`, // Tag message
+                object: context.sha, // SHA of the commit
+                type: 'commit'
+              });
+              console.log(`Created tag ${tag}`);
+            } catch (error) {
+              if (error.message.includes('already exists')) {
+                console.log(`Tag ${tag} already exists. Skipping tag creation.`);
+              } else {
+                throw error;
+              }
+            }
+
+
+      - name: Generate release notes
+        id: generate_release_notes
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const version = core.getInput('version');
+            const tag = `v${version}`;
+            // You can customize the release notes generation here.
+            // Example:  A simple release notes generator:
+            let releaseNotes = `## Release ${tag}\n\n`;
+            releaseNotes += `Changes in this release:\n`;
+            releaseNotes += `- Updated to version ${version}\n`; // Add more details as needed.
+            // Or use a more sophisticated approach if you have commit messages related to the version change.
+            core.setOutput('release_notes', releaseNotes);
+
+      - name: Create GitHub release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          release_name: Release v${{ steps.get_version.outputs.version }}
+          body: ${{ steps.generate_release_notes.outputs.release_notes }}
+          draft: false # Set to true for a draft release
