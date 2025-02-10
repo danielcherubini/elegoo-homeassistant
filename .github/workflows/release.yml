@@ -32,7 +32,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const version = core.getInput('version');
-            const tag = `v${version}`; // Prefix with 'v' if needed
+            const tag = `${version}`;
             try {
               await github.rest.git.createTag({
                 owner: context.repo.owner,
@@ -76,4 +76,4 @@ jobs:
           tag_name: v${{ steps.get_version.outputs.version }}
           release_name: Release v${{ steps.get_version.outputs.version }}
           body: ${{ steps.generate_release_notes.outputs.release_notes }}
-          draft: false # Set to true for a draft release
+          draft: true
