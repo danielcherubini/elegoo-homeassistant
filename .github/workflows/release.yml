@@ -3,7 +3,7 @@ name: Release Elegoo Printer Integration
 on:
   push:
     branches:
-      - main # Or your main branch name
+      - main
 
 jobs:
   release:
@@ -11,6 +11,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    if: github.event_name == 'push' && contains(github.event.head_commit.modified, 'custom_components/elegoo_printer/manifest.json') # Condition to check for manifest.json changes
 
     steps:
       - name: Checkout code
@@ -32,14 +33,14 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const version = core.getInput('version');
-            const tag = `v${version}`; // Prefix with 'v' if needed
+            const tag = `v${version}`;
             try {
               await github.rest.git.createTag({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 tag: tag,
-                message: `Release ${tag}`, // Tag message
-                object: context.sha, // SHA of the commit
+                message: `Release ${tag}`,
+                object: context.sha,
                 type: 'commit'
               });
               console.log(`Created tag ${tag}`);
@@ -51,7 +52,6 @@ jobs:
               }
             }
 
-
       - name: Generate release notes
         id: generate_release_notes
         uses: actions/github-script@v7
@@ -60,12 +60,9 @@ jobs:
           script: |
             const version = core.getInput('version');
             const tag = `v${version}`;
-            // You can customize the release notes generation here.
-            // Example:  A simple release notes generator:
             let releaseNotes = `## Release ${tag}\n\n`;
             releaseNotes += `Changes in this release:\n`;
-            releaseNotes += `- Updated to version ${version}\n`; // Add more details as needed.
-            // Or use a more sophisticated approach if you have commit messages related to the version change.
+            releaseNotes += `- Updated to version ${version}\n`;
             core.setOutput('release_notes', releaseNotes);
 
       - name: Create GitHub release
@@ -76,4 +73,4 @@ jobs:
           tag_name: v${{ steps.get_version.outputs.version }}
           release_name: Release v${{ steps.get_version.outputs.version }}
           body: ${{ steps.generate_release_notes.outputs.release_notes }}
-          draft: false # Set to true for a draft release
+          draft: false
