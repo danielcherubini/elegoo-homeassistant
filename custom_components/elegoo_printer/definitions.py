@@ -140,7 +140,7 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="File Name",
         icon="mdi:file",
         value_fn=lambda self: self.coordinator.data.status.print_info.filename,
-        available_fn=lambda self: self.coordinator.data.status.print_info.filename
+        available_fn=lambda self: self.coordinator.data.status and self.coordinator.data.status.print_info.filename
         != "",
     ),
     ElegooPrinterSensorEntityDescription(
