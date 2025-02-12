@@ -7,10 +7,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import (
-    ElegooPrinterApiClientAuthenticationError,
-    ElegooPrinterApiClientError,
-)
+from .api import ElegooPrinterApiClientAuthenticationError, ElegooPrinterApiClientError
 
 if TYPE_CHECKING:
     from .data import ElegooPrinterConfigEntry
