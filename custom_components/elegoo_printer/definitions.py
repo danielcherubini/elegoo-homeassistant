@@ -26,7 +26,7 @@ class ElegooPrinterSensorEntityDescription(
     available_fn: Callable[..., bool] = lambda self: self.coordinator.data
     exists_fn: Callable[..., bool] = lambda _: True
     extra_attributes: Callable[..., dict] = lambda _: {}
-    icon_fn: Callable[..., str] = lambda _: None
+    icon_fn: Callable[..., str] = lambda _: "mdi:eye"
 
 
 PRINTER_ATTRIBUTES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
@@ -165,5 +165,27 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:film",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda self: self.coordinator.data.status.release_film,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="temp_of_box",
+        name="Box Temp",
+        icon="mdi:thermometer",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        exists_fn=lambda self: self.coordinator.data.status.temp_of_box > 0,
+        available_fn=lambda self: self.coordinator.data.status.temp_of_box > 0,
+        value_fn=lambda self: self.coordinator.data.status.temp_of_box,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="temp_target_box",
+        name="Box Target Temp",
+        icon="mdi:thermometer",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        exists_fn=lambda self: self.coordinator.data.status.temp_target_box > 0,
+        available_fn=lambda self: self.coordinator.data.status.temp_target_box > 0,
+        value_fn=lambda self: self.coordinator.data.status.temp_target_box,
     ),
 )
