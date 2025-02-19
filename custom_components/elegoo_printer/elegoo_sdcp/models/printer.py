@@ -2,6 +2,10 @@
 
 import json
 
+from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
+    PrintHistoryDetail,
+)
+
 from .attributes import PrinterAttributes
 from .status import PrinterStatus
 
@@ -86,6 +90,7 @@ class PrinterData:
         status: PrinterStatus | None = None,
         attributes: PrinterAttributes | None = None,
         printer: Printer | None = None,
+        print_history: list[PrintHistoryDetail] | None = None,
     ) -> None:
         """
         Initialize a new PrinterData object with optional data.
@@ -97,3 +102,4 @@ class PrinterData:
         self.status: PrinterStatus = status or PrinterStatus()
         self.attributes: PrinterAttributes = attributes or PrinterAttributes()
         self.printer: Printer = printer or Printer()
+        self.print_history: list[PrintHistoryDetail] = print_history or []

@@ -10,6 +10,10 @@ from typing import Any
 
 import websocket
 
+from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
+    PrintHistoryDetail,
+)
+
 from .const import DEBUG
 from .models.attributes import PrinterAttributes
 from .models.printer import Printer, PrinterData
@@ -67,6 +71,32 @@ class ElegooPrinterClient:
     def set_printer_video_stream(self, *, toggle: bool) -> None:
         """Toggles the printer video stream."""
         self._send_printer_cmd(386, {"Enable": int(toggle)})
+
+    def get_printer_historical_tasks(self) -> None:
+        """Retreves historical tasks from printer."""
+        self._send_printer_cmd(320)
+
+    def get_printer_task_detail(self, id_list: list[str]) -> None:
+        """Retreves historical tasks from printer."""
+        self._send_printer_cmd(321, data={"Id": id_list})
+
+    async def get_printer_current_task(self) -> list[PrintHistoryDetail]:
+        """Retreves current task."""
+        if self.printer_data.status.print_info.task_id:
+            self.get_printer_task_detail([self.printer_data.status.print_info.task_id])
+
+            await asyncio.sleep(2)
+            return self.printer_data.print_history
+
+        return []
+
+    async def get_current_print_thumbnail(self) -> str | None:
+        """Retreves current print Thumbnail."""
+        print_history = await self.get_printer_current_task()
+        if print_history:
+            return print_history[0].Thumbnail
+
+        return None
 
     def _send_printer_cmd(self, cmd: int, data: dict[str, Any] | None = None) -> None:
         """Send a command to the printer."""
@@ -245,6 +275,11 @@ class ElegooPrinterClient:
     def _response_handler(self, data: dict[str, Any]) -> None:  # Pass parsed data
         if DEBUG:
             self.logger.debug(f"response >> \n{json.dumps(data, indent=5)}")
+        try:
+            data_data = data.get("Data", {}).get("Data", {})
+            self._print_history_handler(data_data)
+        except json.JSONDecodeError:
+            self.logger.exception("Invalid JSON")
 
     def _status_handler(self, data: dict[str, Any]) -> None:  # Pass parsed data
         if DEBUG:
@@ -261,3 +296,11 @@ class ElegooPrinterClient:
             json.dumps(data)
         )  # Pass json string to from_json
         self.printer_data.attributes = printer_attributes
+
+    def _print_history_handler(self, data_data: dict[str, Any]) -> None:
+        history_data_list = data_data.get("HistoryDetailList")
+        if history_data_list:
+            print_history_detail_list: list[PrintHistoryDetail] = [
+                PrintHistoryDetail(history_data) for history_data in history_data_list
+            ]
+            self.printer_data.print_history = print_history_detail_list

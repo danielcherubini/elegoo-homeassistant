@@ -13,6 +13,11 @@ from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
 )
 
 if TYPE_CHECKING:
+    from custom_components.elegoo_printer.elegoo_sdcp.models.attributes import (
+        PrinterAttributes,
+    )
+    from custom_components.elegoo_printer.elegoo_sdcp.models.status import PrinterStatus
+
     from .data import ElegooPrinterConfigEntry
 
 
@@ -45,3 +50,19 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         ) as exception:
             self.update_interval = timedelta(minutes=5)
             raise UpdateFailed from exception
+
+    async def async_get_current_print_thumbnail(self) -> str | None:
+        """Retreve current print thumbnail."""
+        return (
+            await self.config_entry.runtime_data.client.async_get_current_print_thumbnail()  # noqa: E501
+        )
+
+    async def async_get_status(self) -> PrinterStatus:
+        """Retrive current printer status."""
+        status = await self.config_entry.runtime_data.client.async_get_status()
+        return status.status
+
+    async def async_get_attributes(self) -> PrinterAttributes:
+        """Retreve current attributes."""
+        attributes = await self.config_entry.runtime_data.client.async_get_attributes()
+        return attributes.attributes
