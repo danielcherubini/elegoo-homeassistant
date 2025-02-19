@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
     from .data import ElegooPrinterConfigEntry
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.IMAGE]
 
 
 # https://developers.home-assistant.io/docs/config_entries_index/#setting-up-an-entry

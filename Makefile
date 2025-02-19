@@ -4,7 +4,7 @@ SHELL := /bin/bash
 
 all: run
 
-run:
+start:
 	./scripts/start
 
 debug:
@@ -25,7 +25,7 @@ venv:
 	pip install -r $(PYTHON_DEPS)
 
 # Run with virtual environment
-run-venv: venv
+start-venv: venv
 	source venv/bin/activate
 	./scripts/start
 
