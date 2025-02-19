@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from custom_components.elegoo_printer.elegoo.elegoo_printer import (
+from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
     ElegooPrinterClientWebsocketConnectionError,
     ElegooPrinterClientWebsocketError,
 )

@@ -10,7 +10,7 @@ from typing import Any
 
 import websocket
 
-from .const import DEBUG, LOGGER, logger
+from .const import DEBUG
 from .models.attributes import PrinterAttributes
 from .models.printer import Printer, PrinterData
 from .models.status import PrinterStatus
@@ -34,19 +34,22 @@ class ElegooPrinterClient:
     Uses the SDCP Protocol (https://github.com/cbd-tech/SDCP-Smart-Device-Control-Protocol-V3.0.0).
     """
 
-    def __init__(self, ip_address: str) -> None:
+    def __init__(self, ip_address: str, logger: Any) -> None:
         """Initialize the ElegooPrinterClient."""
         self.ip_address: str = ip_address
         self.printer_websocket: websocket.WebSocketApp | None = None
         self.printer: Printer = Printer()
         self.printer_data = PrinterData()
+        self.logger = logger
 
     def get_printer_status(self) -> PrinterData:
         """Retreves the printer status."""
         try:
             self._send_printer_cmd(0)
-        except (ElegooPrinterClientWebsocketError, OSError) as e:
-            LOGGER.error(f"Error sending printer command in process_printer_job: {e}")
+        except (ElegooPrinterClientWebsocketError, OSError):
+            self.logger.exception(
+                "Error sending printer command in process_printer_job"
+            )
             raise
         return self.printer_data
 
@@ -54,8 +57,10 @@ class ElegooPrinterClient:
         """Retreves the printer attributes."""
         try:
             self._send_printer_cmd(1)
-        except (ElegooPrinterClientWebsocketError, OSError) as e:
-            LOGGER.error(f"Error sending printer command in process_printer_job: {e}")
+        except (ElegooPrinterClientWebsocketError, OSError):
+            self.logger.exception(
+                "Error sending printer command in process_printer_job"
+            )
             raise
         return self.printer_data
 
@@ -80,7 +85,7 @@ class ElegooPrinterClient:
             "Topic": f"sdcp/request/{self.printer.id}",
         }
         if DEBUG:
-            logger.debug(f"printer << \n{json.dumps(payload, indent=4)}")
+            self.logger.debug(f"printer << \n{json.dumps(payload, indent=4)}")
         if self.printer_websocket:
             try:
                 self.printer_websocket.send(json.dumps(payload))
@@ -88,22 +93,24 @@ class ElegooPrinterClient:
                 websocket.WebSocketConnectionClosedException,
                 websocket.WebSocketException,
             ) as e:
-                LOGGER.error(f"WebSocket connection closed error: {e}")
+                self.logger.exception("WebSocket connection closed error")
                 raise ElegooPrinterClientWebsocketError from e
             except (
                 OSError
-            ) as e:  # Catch potential OS errors like Broken Pipe, Connection Refused
-                LOGGER.error(f"Operating System error during send: {e}")
+            ):  # Catch potential OS errors like Broken Pipe, Connection Refused
+                self.logger.exception("Operating System error during send")
                 raise  # Re-raise OS errors
         else:
-            LOGGER.warning("Attempted to send command but websocket is not connected.")
+            self.logger.warning(
+                "Attempted to send command but websocket is not connected."
+            )
             raise ElegooPrinterClientWebsocketConnectionError from Exception(
                 "Not connected"
             )
 
     def discover_printer(self) -> Printer | None:
         """Discover the Elegoo printer on the network."""
-        LOGGER.info(f"Starting printer discovery at {self.ip_address}")
+        self.logger.info(f"Starting printer discovery at {self.ip_address}")
         msg = b"M99999"
         with socket.socket(
             socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
@@ -115,13 +122,13 @@ class ElegooPrinterClient:
                 _ = sock.sendto(msg, (self.ip_address, 3000))
                 data = sock.recv(8192)
             except TimeoutError:
-                LOGGER.warning("Printer discovery timed out.")
-            except OSError as e:
-                LOGGER.error(f"Socket error during discovery: {e}")
+                self.logger.warning("Printer discovery timed out.")
+            except OSError:
+                self.logger.exception("Socket error during discovery")
             else:
                 printer = self._save_discovered_printer(data)
                 if printer:
-                    LOGGER.debug("Discovery done.")
+                    self.logger.debug("Discovery done.")
                     self.printer = printer
                     return printer
 
@@ -131,16 +138,16 @@ class ElegooPrinterClient:
         try:
             printer_info = data.decode("utf-8")
         except UnicodeDecodeError:
-            LOGGER.error(
+            self.logger.exception(
                 "Error decoding printer discovery data. Data may be malformed."
             )
         else:
             try:
                 printer = Printer(printer_info)
-            except (ValueError, TypeError) as e:
-                LOGGER.error(f"Error creating Printer object: {e}")
+            except (ValueError, TypeError):
+                self.logger.exception("Error creating Printer object")
             else:
-                LOGGER.info(f"Discovered: {printer.name} ({printer.ip_address})")
+                self.logger.info(f"Discovered: {printer.name} ({printer.ip_address})")
                 return printer
 
         return None
@@ -157,7 +164,7 @@ class ElegooPrinterClient:
 
         """
         url = f"ws://{self.printer.ip_address}:3030/websocket"
-        LOGGER.info(f"Connecting to: {self.printer.name}")
+        self.logger.info(f"Connecting to: {self.printer.name}")
 
         websocket.setdefaulttimeout(1)
 
@@ -165,20 +172,20 @@ class ElegooPrinterClient:
             self._parse_response(msg)
 
         def ws_connected_handler(name: str) -> None:
-            LOGGER.info(f"Connected to: {name}")
+            self.logger.info(f"Connected to: {name}")
 
         def on_close(
             ws,  # noqa: ANN001, ARG001
             close_status_code: str,
             close_msg: str,
         ) -> None:
-            LOGGER.debug(
+            self.logger.debug(
                 f"Connection to {self.printer.name} closed: {close_msg} ({close_status_code})"  # noqa: E501
             )
             self.printer_websocket = None
 
         def on_error(ws, error) -> None:  # noqa: ANN001, ARG001
-            LOGGER.error(f"Connection to {self.printer.name} error: {error}")
+            self.logger.error(f"Connection to {self.printer.name} error: {error}")
             self.printer_websocket = None
 
         ws = websocket.WebSocketApp(
@@ -198,10 +205,10 @@ class ElegooPrinterClient:
         while time.monotonic() - start_time < timeout:
             if ws.sock and ws.sock.connected:
                 await asyncio.sleep(2)
-                LOGGER.info(f"Connected to {self.printer.name}")
+                self.logger.info(f"Connected to {self.printer.name}")
                 return True
 
-        LOGGER.warning(f"Failed to connect to {self.printer.name} within timeout")
+        self.logger.warning(f"Failed to connect to {self.printer.name} within timeout")
         self.printer_websocket = None
         return False
 
@@ -218,32 +225,30 @@ class ElegooPrinterClient:
                     case "attributes":
                         self._attributes_handler(data)
                     case "notice":
-                        LOGGER.debug(f"notice >> \n{json.dumps(data, indent=5)}")
+                        self.logger.debug(f"notice >> \n{json.dumps(data, indent=5)}")
                     case "error":
-                        LOGGER.debug(f"error >> \n{json.dumps(data, indent=5)}")
+                        self.logger.debug(f"error >> \n{json.dumps(data, indent=5)}")
                     case _:
-                        LOGGER.debug("--- UNKNOWN MESSAGE ---")
-                        LOGGER.debug(data)
-                        LOGGER.debug("--- UNKNOWN MESSAGE ---")
+                        self.logger.debug("--- UNKNOWN MESSAGE ---")
+                        self.logger.debug(data)
+                        self.logger.debug("--- UNKNOWN MESSAGE ---")
             else:
-                LOGGER.warning(
+                self.logger.warning(
                     "Received message without 'Topic'"
                 )  # Log if Topic is missing
-                LOGGER.debug(
+                self.logger.debug(
                     f"Message content: {response}"
                 )  # Log the whole message for debugging
         except json.JSONDecodeError:
-            LOGGER.error(
-                f"Invalid JSON received: {response}"
-            )  # Log the error and message
+            self.logger.exception("Invalid JSON received")
 
     def _response_handler(self, data: dict[str, Any]) -> None:  # Pass parsed data
         if DEBUG:
-            logger.debug(f"response >> \n{json.dumps(data, indent=5)}")
+            self.logger.debug(f"response >> \n{json.dumps(data, indent=5)}")
 
     def _status_handler(self, data: dict[str, Any]) -> None:  # Pass parsed data
         if DEBUG:
-            logger.debug(f"status >> \n{json.dumps(data, indent=5)}")
+            self.logger.debug(f"status >> \n{json.dumps(data, indent=5)}")
         printer_status = PrinterStatus.from_json(
             json.dumps(data)
         )  # Pass json string to from_json
@@ -251,7 +256,7 @@ class ElegooPrinterClient:
 
     def _attributes_handler(self, data: dict[str, Any]) -> None:  # Pass parsed data
         if DEBUG:
-            logger.debug(f"attributes >> \n{json.dumps(data, indent=5)}")
+            self.logger.debug(f"attributes >> \n{json.dumps(data, indent=5)}")
         printer_attributes = PrinterAttributes.from_json(
             json.dumps(data)
         )  # Pass json string to from_json
