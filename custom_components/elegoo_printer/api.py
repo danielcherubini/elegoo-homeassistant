@@ -35,7 +35,7 @@ class ElegooPrinterApiClient:
         """Sample API Client."""
         self = ElegooPrinterApiClient(ip_address, logger)
 
-        elegoo_printer = ElegooPrinterClient(ip_address)
+        elegoo_printer = ElegooPrinterClient(ip_address, logger)
         printer = elegoo_printer.discover_printer()
         if printer is None:
             return None

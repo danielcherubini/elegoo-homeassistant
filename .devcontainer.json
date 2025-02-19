@@ -4,7 +4,7 @@
   "postCreateCommand": "scripts/setup",
   "forwardPorts": [8123],
   "remoteEnv": {
-    "DEBUG": "true"
+    "DEBUG": "false"
   },
   "portsAttributes": {
     "8123": {
