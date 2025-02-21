@@ -3,11 +3,7 @@
 import json
 from typing import Any
 
-from custom_components.elegoo_printer.elegoo_sdcp.enums import (
-    ElegooMachineStatus,
-    ElegooPrintError,
-    ElegooPrintStatus,
-)
+from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus
 
 
 class PrintInfo:

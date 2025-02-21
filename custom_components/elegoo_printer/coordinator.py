@@ -13,6 +13,7 @@ from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
 )
 
 if TYPE_CHECKING:
+
     from .data import ElegooPrinterConfigEntry
 
 

@@ -5,8 +5,10 @@ import sys
 
 from loguru import logger
 
-from .const import DEBUG
-from .elegoo_printer import ElegooPrinterClient
+from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG
+from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
+    ElegooPrinterClient,
+)
 
 LOG_LEVEL = "DEBUG"
 logger.remove()
@@ -20,12 +22,15 @@ async def main() -> None:  # noqa: D103
         connected = await elegoo_printer.connect_printer()
         if connected:
             logger.debug("Polling Started")
-            elegoo_printer.set_printer_video_stream(toggle=True)
+            await asyncio.sleep(2)
+            elegoo_printer.set_printer_video_stream(toggle=False)
+            # logger.debug(elegoo_printer.get_current_print_thumbnail())
             while True:
-                await asyncio.sleep(2)
-                elegoo_printer.get_printer_status()
+                await asyncio.sleep(0)
+                # elegoo_printer.get_printer_status()
+                # elegoo_printer.get_printer_attributes()
     else:
-        print("No printers discovered.")  # noqa: T201
+        logger.exception("No printers discovered.")
 
 
 if __name__ == "__main__":

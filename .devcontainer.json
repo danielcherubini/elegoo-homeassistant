@@ -1,7 +1,7 @@
 {
   "name": "danielcherubini/elegoo_printer",
   "image": "mcr.microsoft.com/devcontainers/python:3.13",
-  "postCreateCommand": "scripts/setup",
+  "postCreateCommand": "make setup",
   "forwardPorts": [8123],
   "remoteEnv": {
     "DEBUG": "false"

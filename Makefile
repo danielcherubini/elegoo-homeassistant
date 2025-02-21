@@ -4,14 +4,21 @@ SHELL := /bin/bash
 
 all: run
 
-run:
+start:
 	./scripts/start
 
 debug:
-	./scripts/debug
+	DEBUG=true python3 -m debug
 
 devcontainer:
-	./scripts/devcontainer.sh
+	devcontainer exec --workspace-folder . ./scripts/develop
+
+setup:
+	python3 -m pip install -r requirements.txt
+
+format:
+	ruff format .
+	ruff check . --fix
 
 # Example of adding dependencies and cleaning:
 
