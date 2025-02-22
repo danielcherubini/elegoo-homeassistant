@@ -87,7 +87,8 @@ class ElegooPrinterClient:
 
         # Wait for response with timeout
         start_time = time.monotonic()
-        while time.monotonic() - start_time < 5:  # 5 second timeout
+        timeout = 5
+        while time.monotonic() - start_time < timeout:  # 5 second timeout
             if self.printer_data.print_history:
                 return self.printer_data.print_history
             await asyncio.sleep(0.1)
