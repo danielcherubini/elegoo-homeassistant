@@ -2,11 +2,12 @@
 
 import asyncio
 import sys
+import os
 
 from loguru import logger
 
-from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG
-from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
+from custom_components.elegoo_printer.elegoo_sdcp/const import DEBUG
+from custom_components.elegoo_printer/elegoo_sdcp/elegoo_printer import (
     ElegooPrinterClient,
 )
 
