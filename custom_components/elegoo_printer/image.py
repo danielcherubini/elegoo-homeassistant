@@ -51,8 +51,8 @@ class CoverImage(ImageEntity, ElegooPrinterEntity):
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
         """Initialize the image entity."""
-        super().__init__(hass=hass)
-        super(ElegooPrinterEntity, self).__init__(coordinator=coordinator)
+        ImageEntity.__init__(self, hass=hass)
+        ElegooPrinterEntity.__init__(self, coordinator=coordinator)
         self.coordinator = coordinator
         self._attr_content_type = "image/bmp"
         self._image_filename = None
