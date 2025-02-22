@@ -32,7 +32,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the Everything but the Kitchen Sink config entry."""
+    """Set up the Elegoo Printer image platform from config entry."""
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
 
     if COVER_IMAGE_SENSOR.exists_fn(coordinator):
