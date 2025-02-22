@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .PHONY: all run debug devcontainer
 
-all: run
+all: setup
 
 start:
 	./scripts/start
