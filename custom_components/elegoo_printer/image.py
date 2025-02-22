@@ -59,5 +59,9 @@ class CoverImage(ImageEntity, ElegooPrinterEntity):
         self._attr_unique_id = self.entity_description.key
 
     @property
-    def image(self) -> bytes | None:
+    async def async_image(self) -> bytes | None:
         """Return bytes of an image."""
+        image_url = await self.coordinator.async_get_current_print_thumbnail()
+        if image_url:
+            return await self.coordinator.async_get_image(image_url)
+        return None

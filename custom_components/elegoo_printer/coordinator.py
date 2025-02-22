@@ -66,3 +66,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         """Retreve current attributes."""
         attributes = await self.config_entry.runtime_data.client.async_get_attributes()
         return attributes.attributes
+
+    async def async_get_image(self, image_path: str) -> bytes | None:
+        """Retrieve image from printer."""
+        return await self.config_entry.runtime_data.client.async_get_image(image_path)
