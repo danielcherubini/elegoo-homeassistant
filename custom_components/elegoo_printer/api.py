@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .elegoo_sdcp.elegoo_printer import (
+from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
     ElegooPrinterClient,
     ElegooPrinterClientWebsocketConnectionError,
     ElegooPrinterClientWebsocketError,
@@ -13,7 +13,7 @@ from .elegoo_sdcp.elegoo_printer import (
 if TYPE_CHECKING:
     from logging import Logger
 
-    from .elegoo_sdcp.models.printer import PrinterData
+    from custom_components.elegoo_printer.elegoo_sdcp.models.printer import PrinterData
 
 
 class ElegooPrinterApiClient:

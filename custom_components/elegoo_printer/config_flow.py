@@ -9,12 +9,13 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.helpers import selector
 
-from .const import DOMAIN, LOGGER
-from .elegoo_sdcp.elegoo_printer import (
+from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
     ElegooPrinterClient,
     ElegooPrinterClientWebsocketConnectionError,
     ElegooPrinterClientWebsocketError,
 )
+
+from .const import DOMAIN, LOGGER
 
 if TYPE_CHECKING:
     from .elegoo_sdcp.models.printer import Printer

@@ -16,6 +16,7 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail im
 
 from .const import DEBUG
 from .models.attributes import PrinterAttributes
+from .models.print_history_detail import PrintHistoryDetail
 from .models.printer import Printer, PrinterData
 from .models.status import PrinterStatus
 
