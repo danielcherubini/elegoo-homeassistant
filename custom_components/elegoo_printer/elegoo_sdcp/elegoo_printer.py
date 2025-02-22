@@ -10,10 +10,6 @@ from typing import Any
 
 import websocket
 
-from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
-    PrintHistoryDetail,
-)
-
 from .const import DEBUG
 from .models.attributes import PrinterAttributes
 from .models.print_history_detail import PrintHistoryDetail
@@ -86,16 +82,16 @@ class ElegooPrinterClient:
         task_id = self.printer_data.status.print_info.task_id
         if not task_id:
             return []
-        
+
         self.get_printer_task_detail([task_id])
-        
+
         # Wait for response with timeout
         start_time = time.monotonic()
         while time.monotonic() - start_time < 5:  # 5 second timeout
             if self.printer_data.print_history:
                 return self.printer_data.print_history
             await asyncio.sleep(0.1)
-        
+
         self.logger.warning("Timeout waiting for print history")
         return []
 
