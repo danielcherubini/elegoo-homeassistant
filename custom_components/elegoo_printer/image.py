@@ -58,7 +58,7 @@ class CoverImage(ImageEntity, ElegooPrinterEntity):
         self._image_filename = None
         self.entity_description = description
         self._attr_unique_id = self.entity_description.key
-        self._attr_image_url = "http://10.0.0.212:3030/media/mmcblk0p1/history_image/6c4336e6-eecb-11ef-ae89-40f4c926a324.bmp"
+        self._attr_image_url = f"http://{self.coordinator.client._ip_address}:3030/media/mmcblk0p1/history_image/"
 
     # @property
     # def image(self) -> bytes | None:
