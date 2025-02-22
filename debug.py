@@ -15,22 +15,26 @@ logger.remove()
 logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)
 
 
-async def main() -> None:  # noqa: D103
-    elegoo_printer = ElegooPrinterClient("10.0.0.212", logger)
-    printer = elegoo_printer.discover_printer()
-    if printer:
-        connected = await elegoo_printer.connect_printer()
-        if connected:
-            logger.debug("Polling Started")
-            await asyncio.sleep(2)
-            elegoo_printer.set_printer_video_stream(toggle=False)
-            # logger.debug(elegoo_printer.get_current_print_thumbnail())
-            while True:
-                await asyncio.sleep(0)
-                # elegoo_printer.get_printer_status()
-                # elegoo_printer.get_printer_attributes()
-    else:
-        logger.exception("No printers discovered.")
+async def main() -> None:
+    """Declare Main function for debugging purposes."""
+    stop_event = asyncio.Event()
+    try:
+        elegoo_printer = ElegooPrinterClient("10.0.0.212", logger)
+        printer = elegoo_printer.discover_printer()
+        if printer:
+            connected = await elegoo_printer.connect_printer()
+            if connected:
+                logger.debug("Polling Started")
+                await asyncio.sleep(2)
+                elegoo_printer.set_printer_video_stream(toggle=False)
+                elegoo_printer.get_printer_status()
+                elegoo_printer.get_printer_attributes()
+                while not stop_event.is_set():  # noqa: ASYNC110
+                    await asyncio.sleep(2)
+        else:
+            logger.exception("No printers discovered.")
+    except asyncio.CancelledError:
+        stop_event.set()
 
 
 if __name__ == "__main__":
