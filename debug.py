@@ -31,8 +31,8 @@ async def main() -> None:
                 elegoo_printer.set_printer_video_stream(toggle=False)
                 elegoo_printer.get_printer_status()
                 elegoo_printer.get_printer_attributes()
-                while not stop_event.is_set():  # noqa: ASYNC110
-                    await asyncio.sleep(2)
+                while not stop_event.is_set():
+                    await stop_event.wait()
         else:
             logger.exception("No printers discovered.")
     except asyncio.CancelledError:

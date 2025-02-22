@@ -57,14 +57,7 @@ class CoverImage(ImageEntity, ElegooPrinterEntity):
         self._image_filename = None
         self.entity_description = description
         self._attr_unique_id = self.entity_description.key
-        self._attr_image_url = f"http://{self.coordinator.data.attributes.ip_address}:3030/media/mmcblk0p1/history_image/"
 
-    # @property
-    # def image(self) -> bytes | None:
-    #     """Return bytes of an image."""
-    #     self._attr_content_type = "image/bmp"
-
-    # @property
-    # def image_last_updated(self) -> datetime | None:
-    #     """The time when the image was last updated."""
-    #     return self.coordinator.get_model().cover_image.get_last_update_time()
+    @property
+    def image(self) -> bytes | None:
+        """Return bytes of an image."""
