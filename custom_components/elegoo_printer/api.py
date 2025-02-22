@@ -68,7 +68,18 @@ class ElegooPrinterApiClient:
 
     async def async_get_current_print_thumbnail(self) -> str | None:
         """Get current print thumbnail."""
-        return await self._elegoo_printer.get_current_print_thumbnail()
+        try:
+            return await self._elegoo_printer.get_current_print_thumbnail()
+        except ElegooPrinterClientWebsocketConnectionError:
+            # Retry
+            connected = await self.retry()
+            if connected is False:
+                raise ElegooPrinterClientWebsocketError from Exception(
+                    "Failed to reconnect"
+                )
+            return await self._elegoo_printer.get_current_print_thumbnail()
+        except (ElegooPrinterClientWebsocketError, OSError):
+            raise
 
     async def retry(self) -> bool:
         """Retry connecting to the printer and getting data."""
