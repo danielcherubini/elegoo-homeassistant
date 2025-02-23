@@ -116,7 +116,7 @@ class ElegooPrinterApiClient:
 
     async def async_get_image(self, image_url: str) -> bytes | None:
         """Get the image from the printer and return it as bytes."""
-        print("image url: " + image_url)
+        self._logger.debug("Fetching image from URL: %s", image_url)
         response = await self._api_wrapper(method="get", url=image_url)
         return await response.content.read()
 
