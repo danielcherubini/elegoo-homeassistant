@@ -79,12 +79,21 @@ class ElegooPrinterClient:
 
     async def get_printer_current_task(self) -> list[PrintHistoryDetail]:
         """Retreves current task."""
-        if self.printer_data.status.print_info.task_id:
-            self.get_printer_task_detail([self.printer_data.status.print_info.task_id])
+        task_id = self.printer_data.status.print_info.task_id
+        if not task_id:
+            return []
 
-            await asyncio.sleep(2)
-            return self.printer_data.print_history
+        self.get_printer_task_detail([task_id])
 
+        # Wait for response with timeout
+        start_time = time.monotonic()
+        timeout = 5
+        while time.monotonic() - start_time < timeout:  # 5 second timeout
+            if self.printer_data.print_history:
+                return self.printer_data.print_history
+            await asyncio.sleep(0.1)
+
+        self.logger.warning("Timeout waiting for print history")
         return []
 
     async def get_current_print_thumbnail(self) -> str | None:
