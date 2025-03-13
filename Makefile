@@ -25,7 +25,7 @@ check:
 ruff: format check
 
 # Clean up any other build artifacts (add your own)
-clean: clean-venv
+clean:
 	# Add other clean commands here, e.g., removing __pycache__ directories
 	find . -name "*.pyc" -delete  # Remove .pyc files
 	find . -name "__pycache__" -type d -exec rm -r {} \; # Remove __pycache__ directories
