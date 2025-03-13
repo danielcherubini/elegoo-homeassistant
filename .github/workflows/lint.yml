@@ -12,15 +12,22 @@ jobs:
     runs-on: "ubuntu-latest"
     steps:
         - name: "Checkout the repository"
-          uses: "actions/checkout@v4.2.2"
+          uses: "actions/checkout@v4"
+
+        - name: Install uv
+          uses: astral-sh/setup-uv@v5 
+          with:
+            enable-cache: true
+            cache-dependency-glob: "uv.lock"
+
         - name: "Set up Python"
           uses: actions/setup-python@v5.4.0
           with:
-            python-version: "3.12"
-            cache: "pip"
+            python-version-file: ".python-version"
+
         - name: "Install requirements"
-          run: python3 -m pip install -r requirements.txt
+          run: uv sync --all-extras --dev 
         - name: "Lint"
-          run: python3 -m ruff check .
+          run: uv run ruff check .
         - name: "Format"
-          run: python3 -m ruff format . --check
+          run: uv run ruff format . --check

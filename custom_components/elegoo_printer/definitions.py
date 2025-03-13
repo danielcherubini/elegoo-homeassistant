@@ -23,10 +23,10 @@ class ElegooPrinterSensorEntityDescription(
 ):
     """Sensor entity description for Elegoo Printers."""
 
-    available_fn: Callable[..., bool] = lambda _: True
+    available_fn: Callable[..., bool] = lambda self: self.coordinator.data
     exists_fn: Callable[..., bool] = lambda _: True
     extra_attributes: Callable[..., dict] = lambda _: {}
-    icon_fn: Callable[..., str] = lambda _: None
+    icon_fn: Callable[..., str] = lambda _: "mdi:eye"
 
 
 PRINTER_ATTRIBUTES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
@@ -46,8 +46,8 @@ PRINTER_ATTRIBUTES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         value_fn=lambda self: self.coordinator.data.attributes.temp_of_uvled_max,
         exists_fn=lambda self: self.coordinator.data.attributes.temp_of_uvled_max > 0,
-        available_fn=lambda self: self.coordinator.data.attributes.temp_of_uvled_max
-        > 0,
+        available_fn=lambda self: self.coordinator.data
+        and self.coordinator.data.attributes.temp_of_uvled_max > 0,
         entity_registry_enabled_default=False,
     ),
     ElegooPrinterSensorEntityDescription(
@@ -140,8 +140,8 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="File Name",
         icon="mdi:file",
         value_fn=lambda self: self.coordinator.data.status.print_info.filename,
-        available_fn=lambda self: self.coordinator.data.status.print_info.filename
-        != "",
+        available_fn=lambda self: self.coordinator.data.status
+        and self.coordinator.data.status.print_info.filename != "",
     ),
     ElegooPrinterSensorEntityDescription(
         key="print_status",
@@ -165,5 +165,27 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:film",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda self: self.coordinator.data.status.release_film,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="temp_of_box",
+        name="Box Temp",
+        icon="mdi:thermometer",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        exists_fn=lambda self: self.coordinator.data.status.temp_of_box > 0,
+        available_fn=lambda self: self.coordinator.data.status.temp_of_box > 0,
+        value_fn=lambda self: self.coordinator.data.status.temp_of_box,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="temp_target_box",
+        name="Box Target Temp",
+        icon="mdi:thermometer",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        exists_fn=lambda self: self.coordinator.data.status.temp_target_box > 0,
+        available_fn=lambda self: self.coordinator.data.status.temp_target_box > 0,
+        value_fn=lambda self: self.coordinator.data.status.temp_target_box,
     ),
 )
