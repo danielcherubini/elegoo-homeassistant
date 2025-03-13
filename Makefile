@@ -4,6 +4,9 @@ SHELL := /bin/bash
 
 all: setup
 
+setup:
+	uv sync --all-extras --dev
+
 start:
 	./scripts/start
 
@@ -13,13 +16,13 @@ debug:
 devcontainer:
 	devcontainer exec --workspace-folder . ./scripts/develop
 
-setup:
-	uv sync
-
 format:
 	uv run ruff format .
+
+check:
 	uv run ruff check . --fix
 
+ruff: format check
 
 # Clean up any other build artifacts (add your own)
 clean: clean-venv
