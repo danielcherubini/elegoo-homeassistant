@@ -4,6 +4,9 @@ SHELL := /bin/bash
 
 all: setup
 
+setup:
+	uv sync --all-extras --dev
+
 start:
 	./scripts/start
 
@@ -13,43 +16,16 @@ debug:
 devcontainer:
 	devcontainer exec --workspace-folder . ./scripts/develop
 
-setup:
-	python3 -m pip install -r requirements.txt
-
 format:
-	ruff format .
-	ruff check . --fix
+	uv run ruff format .
 
-# Example of adding dependencies and cleaning:
+check:
+	uv run ruff check . --fix
 
-# Define your Python dependencies (adjust as needed)
-PYTHON_DEPS = requirements.txt
-
-# Create a virtual environment (optional but recommended)
-venv:
-	python3 -m venv venv
-	source venv/bin/activate
-	pip install -r $(PYTHON_DEPS)
-
-# Run with virtual environment
-run-venv: venv
-	source venv/bin/activate
-	./scripts/start
-
-debug-venv: venv
-	source venv/bin/activate
-	./scripts/debug
-
-devcontainer-venv: venv
-	source venv/bin/activate
-	./scripts/devcontainer.sh
-
-# Clean up the virtual environment
-clean-venv:
-	rm -rf venv
+ruff: format check
 
 # Clean up any other build artifacts (add your own)
-clean: clean-venv
+clean:
 	# Add other clean commands here, e.g., removing __pycache__ directories
 	find . -name "*.pyc" -delete  # Remove .pyc files
 	find . -name "__pycache__" -type d -exec rm -r {} \; # Remove __pycache__ directories
