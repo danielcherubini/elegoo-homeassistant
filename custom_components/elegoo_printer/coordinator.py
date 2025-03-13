@@ -11,6 +11,7 @@ from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
     ElegooPrinterClientWebsocketConnectionError,
     ElegooPrinterClientWebsocketError,
 )
+from custom_components.elegoo_printer.elegoo_sdcp.models.printer import PrinterData
 
 if TYPE_CHECKING:
     from .data import ElegooPrinterConfigEntry
@@ -21,6 +22,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching data from the API."""
 
     config_entry: ElegooPrinterConfigEntry
+    data: PrinterData
 
     async def _async_update_data(self) -> Any:
         """Update data via library."""

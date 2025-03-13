@@ -148,27 +148,32 @@ class ElegooCamera(ElegooPrinterEntity, Camera):
         mainboard_ip: str = self.coordinator.data.attributes.mainboard_ip
         mainboard_ip = "10.0.0.212"
         rtsp_url: str = f"rtsp://{mainboard_ip}:554/video"
-
         ffmpeg_command: list[str] = [
             self._ffmpeg_manager.binary,
-            "-analyzeduration",
-            "20000000",  # NOW BEFORE -i
-            "-probesize",
-            "20000000",  # NOW BEFORE -i
+            "-hide_banner",
+            "-v",
+            "error",
+            "-allowed_media_types",
+            "video",
+            "-fflags",
+            "nobuffer",
+            "-flags",
+            "low_delay",
+            "-timeout",
+            "5000000",
+            "-user_agent",
+            "homeassistant/elegoo_printer",
             "-rtsp_transport",
-            "udp",  # Or "tcp" if your camera requires it
+            "udp",
             "-i",
             rtsp_url,
-            "-an",  # Disable audio
             "-c:v",
-            "mjpeg",  # Output as MJPEG
-            "-q:v",
-            "2",
-            "-f",
-            "image2pipe",  # Output as a continuous stream of JPEGs
-            "-vf",
-            "scale=854:480",
-            "-",  # Output to stdout
+            "copy",
+            "-an",
+            "-user_agent",
+            "ffmpeg/go2rtc",
+            "scale=960:540",
+            "-",
         ]
 
         _LOGGER.debug("Starting FFmpeg with command: %s", " ".join(ffmpeg_command))

@@ -5,7 +5,8 @@ SHELL := /bin/bash
 all: setup
 
 setup:
-	uv sync --all-extras --dev
+	uv venv
+	uv pip install -r pyproject.toml
 
 start:
 	./scripts/start
