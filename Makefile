@@ -6,16 +6,21 @@ all: setup
 
 setup:
 	uv venv
+	source .venv/bin/activate
 	uv pip install -r pyproject.toml
 
 start:
-	./scripts/start
+	source .venv/bin/activate && ./scripts/start
 
 debug:
 	DEBUG=true python3 -m debug
 
+devcontainer-build:
+	devcontainer up --workspace-folder .
+	devcontainer exec --workspace-folder . make 
+
 devcontainer:
-	devcontainer exec --workspace-folder . ./scripts/develop
+	devcontainer exec --workspace-folder . make start
 
 format:
 	uv run ruff format .
