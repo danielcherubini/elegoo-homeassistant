@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import socket
 import subprocess
+import urllib.parse
 from typing import TYPE_CHECKING
 
 from homeassistant.components.camera import Camera, CameraEntityFeature
@@ -71,11 +74,13 @@ class ElegooCamera(ElegooPrinterEntity, Camera):
         """Initialize the camera."""
         super().__init__(coordinator)
         self.entity_description = entity_description
+        self._data = coordinator.data
         self._name = "camera"
         self._unique_id: str = self.entity_description.key
         self.hass: HomeAssistant = hass
-        self._rtsp_url = "rtsp://10.0.0.212:554/video"
+        self._rtsp_url = f"rtsp://{self._data.printer.ip_address}:554/video"
         self._process = None
+        self._cseq = 1  # RTSP sequence counter
 
     @property
     def name(self):
@@ -98,6 +103,18 @@ class ElegooCamera(ElegooPrinterEntity, Camera):
 
     async def async_added_to_hass(self):
         """Start the ffmpeg process when entity is added."""
+        await self.start_stream()
+
+    async def async_will_remove_from_hass(self):
+        """Clean up resources when entity is removed."""
+        await self.close_stream()
+
+    async def start_stream(self):
+        """Start the RTSP stream via ffmpeg."""
+        if self._process and self._process.poll() is None:
+            _LOGGER.debug("Stream already running")
+            return
+
         command = [
             "ffmpeg",
             "-hide_banner",
@@ -129,10 +146,82 @@ class ElegooCamera(ElegooPrinterEntity, Camera):
         except Exception as ex:
             _LOGGER.error(f"Error starting ffmpeg: {ex}")
 
-    async def async_will_remove_from_hass(self):
-        """Stop the ffmpeg process when entity is removed."""
+    async def close_stream(self):
+        """Properly close the RTSP stream and terminate ffmpeg process."""
+        if self._process is None:
+            return
+
+        _LOGGER.debug("Closing RTSP stream to printer")
+
+        # Send RTSP TEARDOWN request to the printer
+        await self.send_rtsp_teardown()
+
+        # Terminate the ffmpeg process
         if self._process and self._process.poll() is None:
-            _LOGGER.debug("Stopping ffmpeg process.")
-            self._process.terminate()
-            await self.hass.async_add_executor_job(self._process.wait)
-            _LOGGER.debug("ffmpeg process stopped.")
+            _LOGGER.debug("Terminating ffmpeg process")
+            try:
+                self._process.terminate()
+                # Give it a moment to terminate gracefully
+                await asyncio.sleep(1)
+                if self._process.poll() is None:
+                    # If still running, force kill
+                    self._process.kill()
+            except Exception as ex:
+                _LOGGER.error(f"Error terminating ffmpeg process: {ex}")
+
+        self._process = None
+        _LOGGER.debug("Stream closed successfully")
+
+    async def send_rtsp_teardown(self):
+        """Send an RTSP TEARDOWN request using a simple socket implementation."""
+        try:
+            # Parse the RTSP URL
+            parsed_url = urllib.parse.urlparse(self._rtsp_url)
+            host = parsed_url.hostname
+            port = parsed_url.port or 554  # Default RTSP port is 554
+
+            _LOGGER.debug(
+                f"Sending RTSP TEARDOWN to {host}:{port} for URL {self._rtsp_url}"
+            )
+
+            # Create TEARDOWN request
+            teardown_request = (
+                f"TEARDOWN {self._rtsp_url} RTSP/1.0\r\n"
+                f"CSeq: {self._cseq}\r\n"
+                f"User-Agent: HomeAssistant/Elegoo-Printer\r\n"
+                "\r\n"
+            )
+
+            # Send the TEARDOWN request
+            def send_teardown():
+                # Create socket
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)  # 5 second timeout
+
+                try:
+                    # Connect to the server
+                    sock.connect((host, port))
+
+                    # Send TEARDOWN request
+                    sock.sendall(teardown_request.encode())
+
+                    # Wait for response (optional, we don't really need to process it)
+                    response = sock.recv(1024).decode()
+                    return response
+                except Exception as ex:
+                    _LOGGER.warning(f"Socket error during TEARDOWN: {ex}")
+                    return None
+                finally:
+                    sock.close()
+
+            # Execute the socket operations in the executor to avoid blocking
+            response = await self.hass.async_add_executor_job(send_teardown)
+
+            self._cseq += 1  # Increment sequence number for future requests
+
+            # Log response (optional)
+            if response:
+                _LOGGER.debug(f"RTSP TEARDOWN response: {response}")
+
+        except Exception as ex:
+            _LOGGER.error(f"Error sending RTSP TEARDOWN: {ex}")
