@@ -5,9 +5,7 @@ SHELL := /bin/bash
 all: setup
 
 setup:
-	uv venv
-	source .venv/bin/activate
-	uv pip install -r pyproject.toml
+	uv venv && source .venv/bin/activate && uv pip install -r pyproject.toml
 
 start:
 	source .venv/bin/activate && ./scripts/start
