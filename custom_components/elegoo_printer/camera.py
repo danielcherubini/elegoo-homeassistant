@@ -102,8 +102,7 @@ class ElegooCamera(ElegooPrinterEntity, Camera):
 
     async def async_added_to_hass(self):
         """Start the ffmpeg process when entity is added."""
-        # await self.start_stream()
-        await self.close_stream()
+        await self.start_stream()
 
     async def async_will_remove_from_hass(self):
         """Clean up resources when entity is removed."""
