@@ -5,6 +5,7 @@ import json
 import os
 import socket
 import time
+import urllib.parse
 from threading import Thread
 from typing import Any
 
@@ -178,6 +179,61 @@ class ElegooPrinterClient:
                 return printer
 
         return None
+
+    async def send_rtsp_teardown(self):
+        """Send an RTSP TEARDOWN request using a simple socket implementation."""
+        _cseq = 1
+        _rtsp_url = f"rtsp://{self.printer.ip_address}:554/video"
+
+        try:
+            # Parse the RTSP URL
+            parsed_url = urllib.parse.urlparse(_rtsp_url)
+            host = parsed_url.hostname
+            port = parsed_url.port or 554  # Default RTSP port is 554
+
+            self.logger.debug(
+                f"Sending RTSP TEARDOWN to {host}:{port} for URL {_rtsp_url}"
+            )
+
+            # Create TEARDOWN request
+            teardown_request = (
+                f"TEARDOWN {_rtsp_url} RTSP/1.0\r\n"
+                f"CSeq: {_cseq}\r\n"
+                f"User-Agent: HomeAssistant/Elegoo-Printer\r\n"
+                "\r\n"
+            )
+
+            # Send the TEARDOWN request
+            def send_teardown():
+                # Create socket
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(10)  # 5 second timeout
+
+                try:
+                    # Connect to the server
+                    sock.connect((host, port))
+
+                    # Send TEARDOWN request
+                    sock.sendall(teardown_request.encode())
+
+                    # Wait for response (optional, we don't really need to process it)
+                    response = sock.recv(1024).decode()
+                    return response
+                except Exception as ex:
+                    self.logger.warning(f"Socket error during TEARDOWN: {ex}")
+                    return None
+                finally:
+                    sock.close()
+
+            # Execute the socket operations in the executor to avoid blocking
+            response = send_teardown()
+
+            # Log response (optional)
+            if response:
+                self.logger.debug(f"RTSP TEARDOWN response: {response}")
+
+        except Exception as ex:
+            self.logger.error(f"Error sending RTSP TEARDOWN: {ex}")
 
     async def connect_printer(self) -> bool:
         """

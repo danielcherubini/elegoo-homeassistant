@@ -69,3 +69,7 @@ class ElegooPrinterApiClient:
     async def retry(self) -> bool:
         """Retry connecting to the printer and getting data."""
         return await self._elegoo_printer.connect_printer()
+
+    async def teardown_rtsp_stream(self):
+        """Send Teardown request to RTSP Camera"""
+        return await self._elegoo_printer.send_rtsp_teardown()
