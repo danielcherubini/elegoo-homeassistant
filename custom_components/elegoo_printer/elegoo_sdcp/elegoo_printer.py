@@ -207,7 +207,7 @@ class ElegooPrinterClient:
             def send_teardown():
                 # Create socket
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(10)  # 5 second timeout
+                sock.settimeout(10)
 
                 try:
                     # Connect to the server
