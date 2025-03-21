@@ -28,9 +28,10 @@ async def main() -> None:
             if connected:
                 logger.debug("Polling Started")
                 await asyncio.sleep(2)
-                elegoo_printer.set_printer_video_stream(toggle=False)
-                elegoo_printer.get_printer_status()
-                elegoo_printer.get_printer_attributes()
+                await elegoo_printer.send_rtsp_teardown()
+                # elegoo_printer.set_printer_video_stream(toggle=False)
+                # elegoo_printer.get_printer_status()
+                # elegoo_printer.get_printer_attributes()
                 while not stop_event.is_set():  # noqa: ASYNC110
                     await asyncio.sleep(2)
         else:
