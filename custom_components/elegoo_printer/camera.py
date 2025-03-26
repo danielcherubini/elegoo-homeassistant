@@ -183,6 +183,7 @@ class ElegooCamera(ElegooPrinterEntity, Camera):
             "-c:v",
             "copy",  # Copy video stream without re-encoding
             "-an",  # No audio
+            "-f", "null", "-",  # Output to null device to keep ffmpeg running
             # Outputting somewhere? Usually HA stream component handles this.
             # If manual ffmpeg is truly needed, an output target (like pipe:)
             # might be required depending on how async_camera_image is implemented.
