@@ -6,6 +6,8 @@ import logging
 import subprocess
 from typing import TYPE_CHECKING
 
+from homeassistant.components import ffmpeg
+
 # Home Assistant Core Components
 from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.const import Platform
@@ -146,8 +148,8 @@ class ElegooCamera(ElegooPrinterEntity, Camera):
         # Implement if snapshot functionality is desired, potentially using ffmpeg
         # or another method to grab a frame from the stream or a separate endpoint.
         _LOGGER.debug("Snapshot requested for %s", self.entity_id)
-        # return await ffmpeg.async_get_image(self.hass, self._rtsp_url)
-        return None  # Placeholder
+        return await ffmpeg.async_get_image(self.hass, self._rtsp_url)
+        # return None  # Placeholder
 
     async def start_ffmpeg_process(self) -> None:
         """Start the ffmpeg process to connect to the RTSP stream."""
@@ -183,7 +185,9 @@ class ElegooCamera(ElegooPrinterEntity, Camera):
             "-c:v",
             "copy",  # Copy video stream without re-encoding
             "-an",  # No audio
-            "-f", "null", "-",  # Output to null device to keep ffmpeg running
+            "-f",
+            "null",
+            "-",  # Output to null device to keep ffmpeg running
             # Outputting somewhere? Usually HA stream component handles this.
             # If manual ffmpeg is truly needed, an output target (like pipe:)
             # might be required depending on how async_camera_image is implemented.
