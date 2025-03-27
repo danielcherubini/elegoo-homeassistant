@@ -39,7 +39,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 printer = await self._test_credentials(
-                    ip_address=user_input[CONF_IP_ADDRESS],
+                    ip_address=user_input[CONF_IP_ADDRESS]
                 )
             except ElegooPrinterClientWebsocketConnectionError as exception:
                 LOGGER.error(exception)
@@ -78,7 +78,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _test_credentials(self, ip_address: str) -> Printer:
         """Validate credentials."""
-        elegoo_printer = ElegooPrinterClient(ip_address)
+        elegoo_printer = ElegooPrinterClient(ip_address, logger=LOGGER)
         printer = elegoo_printer.discover_printer()
         if printer:
             return printer
