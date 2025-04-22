@@ -18,6 +18,7 @@ class PrintInfo:
         current_ticks (int): Current Print Time (ms).
         total_ticks (int): Estimated Total Print Time(ms).
         remaining_ticks (int): Remaining Print Time(ms).
+
         filename (str): Print File Name.
         error_number (ElegooPrintError): Error Number (refer to documentation).
         task_id (str): Current Task ID.
@@ -40,17 +41,25 @@ class PrintInfo:
         self.remaining_layers: int = (
             self.total_layers - self.current_layer
         )  # Calculate remaining layers
-        self.current_ticks: int = data.get("CurrentTicks", 0)
-        self.total_ticks: int = data.get("TotalTicks", 0)
+        self.current_ticks: int = int(data.get("CurrentTicks", 0))
+        self.total_ticks: int = int(data.get("TotalTicks", 0))
         self.remaining_ticks: int = max(
             0, self.total_ticks - self.current_ticks
         )  # Calculate remaining ticks
-        if self.remaining_layers > 0:
-            self.percent_complete: int = int(
-                (self.current_layer / self.total_layers) * 100
-            )  # Calculate percent complete
+        self.progress: int | None = data.get("Progress")
+        if self.progress is not None:
+            # If 'Progress' exists, use its value (converted to int)
+            self.percent_complete: int = int(self.progress)
         else:
-            self.percent_complete: int = 0
+            # If 'Progress' doesn't exist or is None, calculate based on layers
+            if self.total_layers > 0:
+                # Calculate progress percentage based on layers
+                self.percent_complete: int = int(
+                    (self.current_layer / self.total_layers) * 100
+                )
+            else:
+                # Handle the case where total layers is 0
+                self.percent_complete: int = 0
         self.filename: str = data.get("Filename", "")
         error_number_int: int = data.get("ErrorNumber", 0)
         self.error_number: ElegooPrintError | None = ElegooPrintError.from_int(
