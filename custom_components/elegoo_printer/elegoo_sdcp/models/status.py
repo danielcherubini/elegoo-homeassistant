@@ -47,6 +47,7 @@ class PrintInfo:
         self.remaining_ticks: int = max(
             0, self.total_ticks - self.current_ticks
         )  # Calculate remaining ticks
+        # Get progress directly from data if available
         self.progress: int | None = data.get("Progress")
         if self.progress is not None:
             # If 'Progress' exists, use its value (converted to int)
