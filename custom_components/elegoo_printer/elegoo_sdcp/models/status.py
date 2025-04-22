@@ -18,7 +18,8 @@ class PrintInfo:
         current_ticks (int): Current Print Time (ms).
         total_ticks (int): Estimated Total Print Time(ms).
         remaining_ticks (int): Remaining Print Time(ms).
-
+        progress (int): Print Progress (%).
+        percent_complete (int): Percentage Complete.
         filename (str): Print File Name.
         error_number (ElegooPrintError): Error Number (refer to documentation).
         task_id (str): Current Task ID.
