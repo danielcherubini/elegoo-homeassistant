@@ -1,6 +1,6 @@
 [project]
 name = "elegoo-homeassistant"
-version = "0.6.0"
+version = "0.7.0"
 requires-python = ">=3.13"
 description = "Home Assistant Addon for Elegoo Printers"
 dependencies = [
