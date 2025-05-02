@@ -83,7 +83,7 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
-        suggested_unit_of_measurement=UnitOfTime.HOURS,
+        suggested_unit_of_measurement=UnitOfTime.MINUTES,
         value_fn=lambda self: self.coordinator.data.status.print_info.total_ticks,
     ),
     ElegooPrinterSensorEntityDescription(
@@ -93,7 +93,7 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
-        suggested_unit_of_measurement=UnitOfTime.HOURS,
+        suggested_unit_of_measurement=UnitOfTime.MINUTES,
         value_fn=lambda self: self.coordinator.data.status.print_info.current_ticks,
     ),
     ElegooPrinterSensorEntityDescription(
@@ -103,7 +103,7 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
-        suggested_unit_of_measurement=UnitOfTime.HOURS,
+        suggested_unit_of_measurement=UnitOfTime.MINUTES,
         value_fn=lambda self: self.coordinator.data.status.print_info.remaining_ticks,
     ),
     ElegooPrinterSensorEntityDescription(
@@ -147,7 +147,7 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         key="print_status",
         name="Print Status",
         icon="mdi:file",
-        value_fn=lambda self: self.coordinator.data.status.current_status.name,
+        value_fn=lambda self: self.coordinator.data.status.current_status.name.lower(),
         available_fn=lambda self: self.coordinator.data.status.current_status
         is not None,
     ),
@@ -155,7 +155,7 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         key="print_error",
         name="Print Error",
         icon="mdi:file",
-        value_fn=lambda self: self.coordinator.data.status.print_info.error_number.name,
+        value_fn=lambda self: self.coordinator.data.status.print_info.error_number.name.lower(),
         available_fn=lambda self: self.coordinator.data.status.print_info.error_number
         is not None,
     ),
