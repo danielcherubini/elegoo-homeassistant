@@ -30,6 +30,6 @@ jobs:
           uses: "actions/checkout@v4"
 
         - name: "Run HACS validation"
-          uses: "hacs/action@2.0.4"
+          uses: "hacs/action@main"
           with:
             category: "integration"
