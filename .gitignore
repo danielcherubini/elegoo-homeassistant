@@ -11,7 +11,7 @@ __pycache__
 .vscode
 coverage.xml
 .ruff_cache
-
+.envrc
 
 # Home Assistant configuration
 config/*
