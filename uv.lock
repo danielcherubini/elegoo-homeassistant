@@ -568,7 +568,7 @@ wheels = [
 ]
 
 [[package]]
-name = "elegoo-homeassistant"
+name = "elegoo-printer"
 version = "0.7.0"
 source = { virtual = "." }
 dependencies = [
