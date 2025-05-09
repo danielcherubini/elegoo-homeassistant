@@ -78,7 +78,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _test_credentials(self, ip_address: str) -> Printer:
         """Validate credentials."""
-        elegoo_printer = ElegooPrinterClient(ip_address)
+        elegoo_printer = ElegooPrinterClient(ip_address, LOGGER)
         printer = elegoo_printer.discover_printer()
         if printer:
             return printer
