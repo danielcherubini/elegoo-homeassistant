@@ -4,7 +4,7 @@
             "printer": {
                 "description": "If you need help with the configuration have a look here: https://github.com/danielcherubini/elegoo_printer",
                 "data": {
-                    "ip_address": "Printer IP Address"
+                    "ip_address": "Printer IP Address",
                     "use_seconds": "Is the printer a Centauri Carbon"
                 }
             }
