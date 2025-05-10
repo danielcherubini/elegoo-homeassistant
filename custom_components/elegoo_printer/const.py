@@ -4,5 +4,6 @@ from logging import Logger, getLogger
 
 LOGGER: Logger = getLogger(__package__)
 
+USE_SECONDS = "use_seconds"
 DOMAIN = "elegoo_printer"
 ATTRIBUTION = "Data provided by https://github.com/danielcherubini/elegoo_printer"

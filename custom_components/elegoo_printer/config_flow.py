@@ -15,7 +15,7 @@ from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
     ElegooPrinterClientWebsocketError,
 )
 
-from .const import DOMAIN, LOGGER
+from .const import DOMAIN, LOGGER, USE_SECONDS
 
 if TYPE_CHECKING:
     from .elegoo_sdcp.models.printer import Printer
@@ -70,6 +70,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.TEXT,
                         ),
+                    ),
+                    vol.Required(
+                        USE_SECONDS,
+                        default=(user_input or {}).get(USE_SECONDS, False),
+                    ): selector.BooleanSelector(
+                        selector.BooleanSelectorConfig(),
                     ),
                 },
             ),
