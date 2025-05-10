@@ -37,7 +37,6 @@ async def async_setup_entry(
         async_add_entities(
             [
                 ElegooPrinterSensor(
-                    entry=entry,
                     coordinator=entry.runtime_data.coordinator,
                     entity_description=entity_description,
                 )
@@ -48,7 +47,6 @@ async def async_setup_entry(
         async_add_entities(
             [
                 ElegooPrinterSensor(
-                    entry=entry,
                     coordinator=entry.runtime_data.coordinator,
                     entity_description=entity_description,
                 )
@@ -62,7 +60,6 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
 
     def __init__(
         self,
-        entry: ElegooPrinterConfigEntry,
         coordinator: ElegooDataUpdateCoordinator,
         entity_description: ElegooPrinterSensorEntityDescription,
     ) -> None:
@@ -73,8 +70,8 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
 
         """This block fixes the issues with the Centurai Carbon"""
         if (
-            self._attr_device_class == SensorDeviceClass.DURATION
-            and entry.data[USE_SECONDS]
+            self.entity_description.device_class == SensorDeviceClass.DURATION
+            and coordinator.config_entry.data[USE_SECONDS]
         ):
             self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
 
