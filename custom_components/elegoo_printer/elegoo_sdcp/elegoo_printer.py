@@ -10,7 +10,7 @@ from typing import Any
 
 import websocket
 
-from .const import DEBUG
+from .const import DEBUG, LOGGER
 from .models.attributes import PrinterAttributes
 from .models.print_history_detail import PrintHistoryDetail
 from .models.printer import Printer, PrinterData
@@ -35,7 +35,9 @@ class ElegooPrinterClient:
     Uses the SDCP Protocol (https://github.com/cbd-tech/SDCP-Smart-Device-Control-Protocol-V3.0.0).
     """
 
-    def __init__(self, ip_address: str, use_seconds: bool, logger: Any) -> None:
+    def __init__(
+        self, ip_address: str, use_seconds: bool = False, logger: Any = LOGGER
+    ) -> None:
         """Initialize the ElegooPrinterClient."""
         self.ip_address: str = ip_address
         self.use_seconds: bool = use_seconds

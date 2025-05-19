@@ -81,6 +81,8 @@ class Printer:
             self.firmware = data.get("FirmwareVersion")
             self.id = data.get("MainboardID")
             self.use_seconds = use_seconds
+            if use_seconds:
+                self.model += "-s"
 
 
 class PrinterData:
