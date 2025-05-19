@@ -26,9 +26,7 @@ class PrintInfo:
 
     """
 
-    def __init__(
-        self, data: dict[str, Any] = {}, use_seconds: bool = False
-    ) -> None:  # noqa: B006
+    def __init__(self, data: dict[str, Any] = {}, use_seconds: bool = False) -> None:  # noqa: B006
         """
         Initialize a new PrintInfo object.
 
@@ -94,9 +92,7 @@ class PrinterStatus:
 
     """
 
-    def __init__(
-        self, data: dict[str, Any] = {}, use_seconds: bool = False
-    ) -> None:  # noqa: B006
+    def __init__(self, data: dict[str, Any] = {}, use_seconds: bool = False) -> None:  # noqa: B006
         """
         Initialize a new PrinterStatus object from a dictionary.
 

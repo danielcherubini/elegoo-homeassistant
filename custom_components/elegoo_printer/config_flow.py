@@ -125,6 +125,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Return options flow support for this handler."""
         return True
 
+
 class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
     """Options flow handler for Elegoo Printer"""
 
