@@ -285,7 +285,7 @@ class ElegooPrinterClient:
         if DEBUG:
             self.logger.debug(f"status >> \n{json.dumps(data, indent=5)}")
         printer_status = PrinterStatus.from_json(
-            json.dumps(data)
+            json.dumps(data), self.use_seconds
         )  # Pass json string to from_json
         self.printer_data.status = printer_status
 
