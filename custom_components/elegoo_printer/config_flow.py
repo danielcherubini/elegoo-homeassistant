@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
+from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
@@ -21,9 +22,9 @@ if TYPE_CHECKING:
     from .elegoo_sdcp.models.printer import Printer
 
 
-async def _test_credentials(ip_address: str) -> Printer:
+async def _test_credentials(ip_address: str, use_seconds: bool) -> Printer:
     """Validate credentials."""
-    elegoo_printer = ElegooPrinterClient(ip_address, LOGGER)
+    elegoo_printer = ElegooPrinterClient(ip_address, use_seconds, LOGGER)
     printer = elegoo_printer.discover_printer()
     if printer:
         return printer
@@ -50,6 +51,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 printer = await _test_credentials(
                     ip_address=user_input[CONF_IP_ADDRESS],
+                    use_seconds=user_input[USE_SECONDS],
                 )
             except ElegooPrinterClientWebsocketConnectionError as exception:
                 LOGGER.error(exception)
@@ -92,6 +94,22 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors=_errors,
         )
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> ElegooOptionsFlowHandler:
+        """Get the options flow for this handler."""
+        return ElegooOptionsFlowHandler()
+
+    @classmethod
+    @callback
+    def async_supports_options_flow(
+        cls, config_entry: config_entries.ConfigEntry
+    ) -> bool:
+        """Return options flow support for this handler."""
+        return True
+
 
 class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
     """Options flow handler for Elegoo Printer"""
@@ -107,6 +125,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             try:
                 printer = await _test_credentials(
                     ip_address=user_input[CONF_IP_ADDRESS],
+                    use_seconds=user_input[USE_SECONDS],
                 )
             except ElegooPrinterClientWebsocketConnectionError as exception:
                 LOGGER.error(exception)

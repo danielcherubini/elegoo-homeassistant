@@ -71,7 +71,7 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         """This block fixes the issues with the Centurai Carbon"""
         if (
             self.entity_description.device_class == SensorDeviceClass.DURATION
-            and coordinator.config_entry.data[USE_SECONDS]
+            and coordinator.config_entry.data.get(USE_SECONDS, False)
         ):
             self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
 

@@ -35,9 +35,10 @@ class ElegooPrinterClient:
     Uses the SDCP Protocol (https://github.com/cbd-tech/SDCP-Smart-Device-Control-Protocol-V3.0.0).
     """
 
-    def __init__(self, ip_address: str, logger: Any) -> None:
+    def __init__(self, ip_address: str, use_seconds: bool, logger: Any) -> None:
         """Initialize the ElegooPrinterClient."""
         self.ip_address: str = ip_address
+        self.use_seconds: bool = use_seconds
         self.printer_websocket: websocket.WebSocketApp | None = None
         self.printer: Printer = Printer()
         self.printer_data = PrinterData()
@@ -170,7 +171,7 @@ class ElegooPrinterClient:
             )
         else:
             try:
-                printer = Printer(printer_info)
+                printer = Printer(printer_info, use_seconds=self.use_seconds)
             except (ValueError, TypeError):
                 self.logger.exception("Error creating Printer object")
             else:
