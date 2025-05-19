@@ -28,6 +28,7 @@ async def _test_credentials(ip_address: str, use_seconds: bool) -> Printer:
 
     Args:
         ip_address: The IP address of the printer to discover.
+        use_seconds: Whether to use seconds instead of milliseconds for time values.
 
     Returns:
         The discovered Printer object.
@@ -129,6 +130,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
     """Options flow handler for Elegoo Printer"""
 
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
     async def async_step_init(
         self, user_input: dict | None = None
     ) -> config_entries.ConfigFlowResult:
@@ -156,8 +161,6 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 LOGGER.exception(exception)
                 _errors["base"] = "unknown"
             else:
-                # await self.async_set_unique_id(unique_id=printer.id)
-                # self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=printer.name,
                     description=printer.name,
@@ -218,8 +221,6 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 LOGGER.exception(exception)
                 _errors["base"] = "unknown"
             else:
-                # await self.async_set_unique_id(unique_id=printer.id)
-                # self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=printer.name,
                     description=printer.name,
