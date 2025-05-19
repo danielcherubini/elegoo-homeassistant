@@ -22,9 +22,20 @@ if TYPE_CHECKING:
     from .elegoo_sdcp.models.printer import Printer
 
 
-async def _test_credentials(ip_address: str, use_seconds: bool) -> Printer:
-    """Validate credentials."""
-    elegoo_printer = ElegooPrinterClient(ip_address, use_seconds, LOGGER)
+async def _test_credentials(ip_address: str) -> Printer:
+    """
+    Attempts to discover an Elegoo printer at the specified IP address.
+    
+    Args:
+        ip_address: The IP address of the printer to discover.
+    
+    Returns:
+        The discovered Printer object.
+    
+    Raises:
+        ElegooPrinterClientGeneralError: If no printer is found at the given IP address.
+    """
+    elegoo_printer = ElegooPrinterClient(ip_address, LOGGER)
     printer = elegoo_printer.discover_printer()
     if printer:
         return printer
@@ -45,7 +56,11 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """Handle a flow initialized by the user."""
+        """
+        Handles the initial step of the Elegoo printer configuration flow.
+        
+        Prompts the user for printer connection details, validates the provided IP address by attempting to discover the printer, and creates a new configuration entry if successful. Displays relevant error messages if connection or validation fails.
+        """
         _errors = {}
         if user_input is not None:
             try:
@@ -117,7 +132,11 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Handle options flow"""
+        """
+        Handles the options flow for updating Elegoo printer configuration.
+        
+        Presents a form for the user to update printer settings. Validates the provided IP address by attempting to discover the printer. On successful validation, creates a new options entry with the printer's details; otherwise, displays relevant error messages in the form.
+        """
         _errors = {}
         current_config = self.config_entry.data
 
