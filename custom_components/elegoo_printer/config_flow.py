@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -21,8 +21,25 @@ from .const import DOMAIN, LOGGER, USE_SECONDS
 if TYPE_CHECKING:
     from .elegoo_sdcp.models.printer import Printer
 
+OPTIONS_SCHEMA = vol.Schema(
+    {
+        vol.Required(
+            CONF_IP_ADDRESS,
+        ): selector.TextSelector(
+            selector.TextSelectorConfig(
+                type=selector.TextSelectorType.TEXT,
+            ),
+        ),
+        vol.Required(
+            USE_SECONDS,
+        ): selector.BooleanSelector(
+            selector.BooleanSelectorConfig(),
+        ),
+    },
+)
 
-async def _test_credentials(ip_address: str, use_seconds: bool) -> Printer:
+
+def _test_credentials(ip_address: str, use_seconds: bool) -> Printer:
     """
     Attempts to discover an Elegoo printer at the specified IP address.
 
@@ -43,6 +60,29 @@ async def _test_credentials(ip_address: str, use_seconds: bool) -> Printer:
     raise ElegooPrinterClientGeneralError from Exception("No Printer")
 
 
+async def _async_validate_input(user_input: dict[str, Any]) -> dict:
+    _errors = {}
+    try:
+        printer = _test_credentials(
+            ip_address=user_input[CONF_IP_ADDRESS],
+            use_seconds=user_input[USE_SECONDS],
+        )
+        return {"printer": printer, "errors": None}
+    except ElegooPrinterClientGeneralError as exception:  # New specific catch
+        LOGGER.error("No printer found: %s", exception)
+        _errors["base"] = "no_printer_found"  # Or "cannot_connect"
+    except ElegooPrinterClientWebsocketConnectionError as exception:
+        LOGGER.error(exception)
+        _errors["base"] = "connection"
+    except ElegooPrinterClientWebsocketError as exception:
+        LOGGER.exception(exception)
+        _errors["base"] = "websocket"
+    except (OSError, Exception) as exception:
+        LOGGER.exception(exception)
+        _errors["base"] = "unknown"
+    return {"printer": None, "errors": _errors}
+
+
 class ElegooPrinterClientGeneralError(Exception):
     """Exception For Elegoo Printer."""
 
@@ -55,7 +95,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self,
-        user_input: dict | None = None,
+        user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
         """
         Handles the initial step of the Elegoo printer configuration flow.
@@ -64,49 +104,25 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         _errors = {}
         if user_input is not None:
-            try:
-                printer = await _test_credentials(
-                    ip_address=user_input[CONF_IP_ADDRESS],
-                    use_seconds=user_input[USE_SECONDS],
-                )
-            except ElegooPrinterClientWebsocketConnectionError as exception:
-                LOGGER.error(exception)
-                _errors["base"] = "connection"
-            except ElegooPrinterClientWebsocketError as exception:
-                LOGGER.exception(exception)
-                _errors["base"] = "websocket"
-            except (OSError, Exception) as exception:
-                LOGGER.exception(exception)
-                _errors["base"] = "unknown"
-            else:
+            validation_result = await _async_validate_input(user_input)
+            _errors = validation_result["errors"]
+            printer = validation_result["printer"]
+
+            if not _errors:
                 await self.async_set_unique_id(unique_id=printer.id)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=printer.name,
                     description=printer.name,
-                    data=printer.__dict__,
+                    data={
+                        CONF_IP_ADDRESS: user_input[CONF_IP_ADDRESS],
+                        USE_SECONDS: user_input[USE_SECONDS],
+                    },
                 )
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_IP_ADDRESS,
-                        default=(user_input or {}).get(CONF_IP_ADDRESS, vol.UNDEFINED),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                        ),
-                    ),
-                    vol.Required(
-                        USE_SECONDS,
-                        default=(user_input or {}).get(USE_SECONDS, False),
-                    ): selector.BooleanSelector(
-                        selector.BooleanSelectorConfig(),
-                    ),
-                },
-            ),
+            data_schema=self.add_suggested_values_to_schema(OPTIONS_SCHEMA, user_input),
             errors=_errors,
         )
 
@@ -135,7 +151,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         self.config_entry = config_entry
 
     async def async_step_init(
-        self, user_input: dict | None = None
+        self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """
         Handles the options flow for updating Elegoo printer configuration.
@@ -143,113 +159,23 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         Presents a form for the user to update printer settings. Validates the provided IP address by attempting to discover the printer. On successful validation, creates a new options entry with the printer's details; otherwise, displays relevant error messages in the form.
         """
         _errors = {}
-        current_config = self.config_entry.data
-
+        user_input = self.config_entry.options.copy()  # Get current options
         if user_input is not None:
-            try:
-                printer = await _test_credentials(
-                    ip_address=user_input[CONF_IP_ADDRESS],
-                    use_seconds=user_input[USE_SECONDS],
-                )
-            except ElegooPrinterClientWebsocketConnectionError as exception:
-                LOGGER.error(exception)
-                _errors["base"] = "connection"
-            except ElegooPrinterClientWebsocketError as exception:
-                LOGGER.exception(exception)
-                _errors["base"] = "websocket"
-            except (OSError, Exception) as exception:
-                LOGGER.exception(exception)
-                _errors["base"] = "unknown"
-            else:
+            validation_result = await _async_validate_input(user_input)
+            _errors = validation_result["errors"]
+            printer = validation_result["printer"]
+
+            if not _errors:
                 return self.async_create_entry(
                     title=printer.name,
                     description=printer.name,
-                    data=printer.__dict__,
+                    data={
+                        CONF_IP_ADDRESS: user_input[CONF_IP_ADDRESS],
+                        USE_SECONDS: user_input[USE_SECONDS],
+                    },
                 )
         return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_IP_ADDRESS,
-                        default=(user_input or {}).get(
-                            CONF_IP_ADDRESS,
-                            current_config.get(CONF_IP_ADDRESS, vol.UNDEFINED),
-                        ),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                        ),
-                    ),
-                    vol.Required(
-                        USE_SECONDS,
-                        default=(user_input or {}).get(
-                            USE_SECONDS, current_config.get(USE_SECONDS, False)
-                        ),
-                    ): selector.BooleanSelector(
-                        selector.BooleanSelectorConfig(),
-                    ),
-                },
-            ),
-            errors=_errors,
-        )
-
-    async def async_step_user(
-        self, user_input: dict | None = None
-    ) -> config_entries.ConfigFlowResult:
-        """
-        Handles the options flow for updating Elegoo printer configuration.
-
-        Presents a form for the user to update printer settings. Validates the provided IP address by attempting to discover the printer. On successful validation, creates a new options entry with the printer's details; otherwise, displays relevant error messages in the form.
-        """
-        _errors = {}
-        current_config = self.config_entry.data
-
-        if user_input is not None:
-            try:
-                printer = await _test_credentials(
-                    ip_address=user_input[CONF_IP_ADDRESS],
-                    use_seconds=user_input[USE_SECONDS],
-                )
-            except ElegooPrinterClientWebsocketConnectionError as exception:
-                LOGGER.error(exception)
-                _errors["base"] = "connection"
-            except ElegooPrinterClientWebsocketError as exception:
-                LOGGER.exception(exception)
-                _errors["base"] = "websocket"
-            except (OSError, Exception) as exception:
-                LOGGER.exception(exception)
-                _errors["base"] = "unknown"
-            else:
-                return self.async_create_entry(
-                    title=printer.name,
-                    description=printer.name,
-                    data=printer.__dict__,
-                )
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_IP_ADDRESS,
-                        default=(user_input or {}).get(
-                            CONF_IP_ADDRESS,
-                            current_config.get(CONF_IP_ADDRESS, vol.UNDEFINED),
-                        ),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                        ),
-                    ),
-                    vol.Required(
-                        USE_SECONDS,
-                        default=(user_input or {}).get(
-                            USE_SECONDS, current_config.get(USE_SECONDS, False)
-                        ),
-                    ): selector.BooleanSelector(
-                        selector.BooleanSelectorConfig(),
-                    ),
-                },
-            ),
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(OPTIONS_SCHEMA, user_input),
             errors=_errors,
         )
