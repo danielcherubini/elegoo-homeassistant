@@ -159,7 +159,6 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         Presents a form for the user to update printer settings. Validates the provided IP address by attempting to discover the printer. On successful validation, creates a new options entry with the printer's details; otherwise, displays relevant error messages in the form.
         """
         _errors = {}
-        user_input = self.config_entry.options.copy()  # Get current options
         if user_input is not None:
             validation_result = await _async_validate_input(user_input)
             _errors = validation_result["errors"]
@@ -174,6 +173,8 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                         USE_SECONDS: user_input[USE_SECONDS],
                     },
                 )
+
+        user_input = self.config_entry.options.copy()  # Get current options
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(OPTIONS_SCHEMA, user_input),
