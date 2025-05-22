@@ -20,22 +20,24 @@ class ElegooPrinterApiClient:
     """Sample API Client."""
 
     _ip_address: str
+    _use_seconds: bool
     _elegoo_printer: ElegooPrinterClient
     _logger: Logger
 
-    def __init__(self, ip_address: str, logger: Logger) -> None:
+    def __init__(self, ip_address: str, use_seconds: bool, logger: Logger) -> None:
         """Initialize."""
         self._ip_address = ip_address
+        self._use_seconds = use_seconds
         self._logger = logger
 
     @classmethod
     async def async_create(
-        cls, ip_address: str, logger: Logger
+        cls, ip_address: str, use_seconds: bool, logger: Logger
     ) -> ElegooPrinterApiClient | None:
         """Sample API Client."""
-        self = ElegooPrinterApiClient(ip_address, logger)
+        self = ElegooPrinterApiClient(ip_address, use_seconds, logger)
 
-        elegoo_printer = ElegooPrinterClient(ip_address, logger)
+        elegoo_printer = ElegooPrinterClient(ip_address, use_seconds, logger)
         printer = elegoo_printer.discover_printer()
         if printer is None:
             return None
