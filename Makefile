@@ -11,7 +11,7 @@ start:
 	./scripts/start
 
 debug:
-	DEBUG=true python3 -m custom_components.elegoo_printer.debug
+	DEBUG=true python3 -m debug
 
 devcontainer:
 	devcontainer exec --workspace-folder . ./scripts/develop
