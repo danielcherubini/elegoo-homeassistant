@@ -5,7 +5,7 @@ SHELL := /bin/bash
 all: setup
 
 setup:
-	uv sync --all-extras --dev
+	curl -LsSf https://astral.sh/uv/install.sh | sh && uv sync --all-extras --dev
 
 start:
 	./scripts/start
