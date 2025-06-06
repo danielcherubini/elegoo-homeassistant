@@ -32,7 +32,7 @@ async def main() -> None:
                 await asyncio.sleep(2)
                 elegoo_printer.get_printer_attributes()
                 while not stop_event.is_set():  # noqa: ASYNC110
-                    elegoo_printer.get_printer_status()
+                    # elegoo_printer.get_printer_status()
                     await asyncio.sleep(2)
         else:
             logger.exception("No printers discovered.")

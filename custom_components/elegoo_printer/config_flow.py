@@ -106,18 +106,18 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             validation_result = await _async_validate_input(user_input)
             _errors = validation_result["errors"]
-            printer = validation_result["printer"]
+            printer_object: Printer = validation_result["printer"]
+
+            printer_object.ip_address = user_input[CONF_IP_ADDRESS]
+            printer_object.use_seconds = user_input[USE_SECONDS]
 
             if not _errors:
-                await self.async_set_unique_id(unique_id=printer.id)
+                await self.async_set_unique_id(unique_id=printer_object.id)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=printer.name,
-                    description=printer.name,
-                    data={
-                        CONF_IP_ADDRESS: user_input[CONF_IP_ADDRESS],
-                        USE_SECONDS: user_input[USE_SECONDS],
-                    },
+                    title=printer_object.name,
+                    description=printer_object.name,
+                    data=printer_object.to_dict(),
                 )
 
         return self.async_show_form(
@@ -140,7 +140,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         cls, config_entry: config_entries.ConfigEntry
     ) -> bool:
         """Return options flow support for this handler."""
-        return True
+        return False
 
 
 class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
@@ -162,16 +162,16 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             validation_result = await _async_validate_input(user_input)
             _errors = validation_result["errors"]
-            printer = validation_result["printer"]
+            printer_object: Printer = validation_result["printer"]
+
+            printer_object.ip_address = user_input[CONF_IP_ADDRESS]
+            printer_object.use_seconds = user_input[USE_SECONDS]
 
             if not _errors:
                 return self.async_create_entry(
-                    title=printer.name,
-                    description=printer.name,
-                    data={
-                        CONF_IP_ADDRESS: user_input[CONF_IP_ADDRESS],
-                        USE_SECONDS: user_input[USE_SECONDS],
-                    },
+                    title=printer_object.name,
+                    description=printer_object.name,
+                    data=printer_object.to_dict(),
                 )
 
         user_input = self.config_entry.options.copy()  # Get current options

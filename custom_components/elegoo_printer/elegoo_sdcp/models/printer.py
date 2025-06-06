@@ -84,6 +84,27 @@ class Printer:
             if use_seconds and self.model:
                 self.model += "-s"
 
+    def to_dict(self) -> dict:
+        """
+        Return a dictionary representation of the Printer object.
+
+        The dictionary keys directly match the attribute names of the class model.
+
+        Returns:
+            dict: A dictionary containing the printer's data.
+        """
+        return {
+            "connection": self.connection,
+            "name": self.name,
+            "model": self.model,
+            "brand": self.brand,
+            "ip_address": self.ip_address,
+            "protocol": self.protocol,
+            "firmware": self.firmware,
+            "id": self.id,
+            "use_seconds": self.use_seconds,
+        }
+
 
 class PrinterData:
     """Data object for printer information."""
