@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from custom_components.elegoo_printer.const import LOGGER
 from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
     ElegooPrinterClient,
     ElegooPrinterClientWebsocketConnectionError,
@@ -32,7 +33,7 @@ class ElegooPrinterApiClient:
 
     @classmethod
     async def async_create(
-        cls, ip_address: str, centauri_carbon: bool, logger: Logger
+        cls, ip_address: str, centauri_carbon: bool = False, logger: Logger = LOGGER
     ) -> ElegooPrinterApiClient | None:
         """Sample API Client."""
         self = ElegooPrinterApiClient(ip_address, centauri_carbon, logger)
