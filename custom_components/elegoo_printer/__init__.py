@@ -10,11 +10,11 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from homeassistant.const import CONF_IP_ADDRESS, Platform
+from homeassistant.const import Platform
 from homeassistant.loader import async_get_loaded_integration
 
 from .api import ElegooPrinterApiClient
-from .const import CONF_CENTAURI_CARBON, DOMAIN, LOGGER
+from .const import DOMAIN, LOGGER
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
 
