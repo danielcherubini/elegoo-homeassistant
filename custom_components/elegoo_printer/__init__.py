@@ -40,8 +40,7 @@ async def async_setup_entry(
     )
 
     client = await ElegooPrinterApiClient.async_create(
-        ip_address=entry.data[CONF_IP_ADDRESS],
-        centauri_carbon=entry.data[CONF_CENTAURI_CARBON],
+        config=entry.data,
         logger=LOGGER,
     )
 

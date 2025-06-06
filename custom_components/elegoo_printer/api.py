@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
-from custom_components.elegoo_printer.const import LOGGER
 from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
     ElegooPrinterClient,
     ElegooPrinterClientWebsocketConnectionError,
@@ -33,9 +33,14 @@ class ElegooPrinterApiClient:
 
     @classmethod
     async def async_create(
-        cls, ip_address: str, centauri_carbon: bool = False, logger: Logger = LOGGER
+        cls, config: MappingProxyType[str, Any], logger: Logger
     ) -> ElegooPrinterApiClient | None:
         """Sample API Client."""
+        ip_address = config.get("ip_address")
+        centauri_carbon: bool = config.get("centauri_carbon", False)
+        if ip_address is None:
+            return None
+
         self = ElegooPrinterApiClient(ip_address, centauri_carbon, logger)
 
         elegoo_printer = ElegooPrinterClient(ip_address, centauri_carbon, logger)
