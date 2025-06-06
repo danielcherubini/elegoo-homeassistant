@@ -2,7 +2,7 @@
 Custom integration to integrate elegoo_printer with Home Assistant.
 
 For more details about this integration, please refer to
-https://github.com/ludeeus/elegoo_printer
+https://github.com/danielcherubini/elegoo-homeassistant
 """
 
 from __future__ import annotations
