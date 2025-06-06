@@ -26,7 +26,9 @@ class PrintInfo:
 
     """
 
-    def __init__(self, data: dict[str, Any] = {}, use_seconds: bool = False) -> None:  # noqa: B006
+    def __init__(
+        self, data: dict[str, Any] = {}, centauri_carbon: bool = False
+    ) -> None:  # noqa: B006
         """
         Initialize a new PrintInfo object.
 
@@ -69,7 +71,7 @@ class PrintInfo:
         )  # Use from_int
         self.task_id: str = data.get("TaskId", "")
 
-        if use_seconds:
+        if centauri_carbon:
             self.current_ticks = self.current_ticks * 1000
             self.total_ticks = self.total_ticks * 1000
             self.remaining_ticks = self.remaining_ticks * 1000
@@ -92,7 +94,9 @@ class PrinterStatus:
 
     """
 
-    def __init__(self, data: dict[str, Any] = {}, use_seconds: bool = False) -> None:  # noqa: B006
+    def __init__(
+        self, data: dict[str, Any] = {}, centauri_carbon: bool = False
+    ) -> None:  # noqa: B006
         """
         Initialize a new PrinterStatus object from a dictionary.
 
@@ -115,10 +119,14 @@ class PrinterStatus:
         self.temp_target_box: float = round(status.get("TempTargetBox", 0), 2)
 
         print_info_data = status.get("PrintInfo", {})
-        self.print_info: PrintInfo = PrintInfo(print_info_data, use_seconds=use_seconds)
+        self.print_info: PrintInfo = PrintInfo(
+            print_info_data, centauri_carbon=centauri_carbon
+        )
 
     @classmethod
-    def from_json(cls, json_string: str, use_seconds: bool = False) -> "PrinterStatus":
+    def from_json(
+        cls, json_string: str, centauri_carbon: bool = False
+    ) -> "PrinterStatus":
         """
         Create a PrinterStatus object from a JSON string.
 
@@ -134,4 +142,4 @@ class PrinterStatus:
 
         except json.JSONDecodeError:
             data = {}  # Or handle the error as needed
-        return cls(data, use_seconds)
+        return cls(data, centauri_carbon)

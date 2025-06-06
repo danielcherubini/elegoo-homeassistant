@@ -36,11 +36,11 @@ class ElegooPrinterClient:
     """
 
     def __init__(
-        self, ip_address: str, use_seconds: bool = False, logger: Any = LOGGER
+        self, ip_address: str, centauri_carbon: bool = False, logger: Any = LOGGER
     ) -> None:
         """Initialize the ElegooPrinterClient."""
         self.ip_address: str = ip_address
-        self.use_seconds: bool = use_seconds
+        self.centauri_carbon: bool = centauri_carbon
         self.printer_websocket: websocket.WebSocketApp | None = None
         self.printer: Printer = Printer()
         self.printer_data = PrinterData()
@@ -173,7 +173,7 @@ class ElegooPrinterClient:
             )
         else:
             try:
-                printer = Printer(printer_info, use_seconds=self.use_seconds)
+                printer = Printer(printer_info, centauri_carbon=self.centauri_carbon)
             except (ValueError, TypeError):
                 self.logger.exception("Error creating Printer object")
             else:
@@ -285,7 +285,7 @@ class ElegooPrinterClient:
         if DEBUG:
             self.logger.debug(f"status >> \n{json.dumps(data, indent=5)}")
         printer_status = PrinterStatus.from_json(
-            json.dumps(data), self.use_seconds
+            json.dumps(data), self.centauri_carbon
         )  # Pass json string to from_json
         self.printer_data.status = printer_status
 

@@ -16,7 +16,7 @@ from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
     ElegooPrinterClientWebsocketError,
 )
 
-from .const import DOMAIN, LOGGER, USE_SECONDS
+from .const import CONF_CENTAURI_CARBON, DOMAIN, LOGGER
 
 if TYPE_CHECKING:
     from .elegoo_sdcp.models.printer import Printer
@@ -31,7 +31,7 @@ OPTIONS_SCHEMA = vol.Schema(
             ),
         ),
         vol.Required(
-            USE_SECONDS,
+            CONF_CENTAURI_CARBON,
         ): selector.BooleanSelector(
             selector.BooleanSelectorConfig(),
         ),
@@ -39,13 +39,13 @@ OPTIONS_SCHEMA = vol.Schema(
 )
 
 
-def _test_credentials(ip_address: str, use_seconds: bool) -> Printer:
+def _test_credentials(ip_address: str, centauri_carbon: bool) -> Printer:
     """
     Attempts to discover an Elegoo printer at the specified IP address.
 
     Args:
         ip_address: The IP address of the printer to discover.
-        use_seconds: Whether to use seconds instead of milliseconds for time values.
+        centauri_carbon: Whether to use seconds instead of milliseconds for time values.
 
     Returns:
         The discovered Printer object.
@@ -53,7 +53,7 @@ def _test_credentials(ip_address: str, use_seconds: bool) -> Printer:
     Raises:
         ElegooPrinterClientGeneralError: If no printer is found at the given IP address.
     """
-    elegoo_printer = ElegooPrinterClient(ip_address, use_seconds, LOGGER)
+    elegoo_printer = ElegooPrinterClient(ip_address, centauri_carbon, LOGGER)
     printer = elegoo_printer.discover_printer()
     if printer:
         return printer
@@ -65,7 +65,7 @@ async def _async_validate_input(user_input: dict[str, Any]) -> dict:
     try:
         printer = _test_credentials(
             ip_address=user_input[CONF_IP_ADDRESS],
-            use_seconds=user_input[USE_SECONDS],
+            centauri_carbon=user_input[CONF_CENTAURI_CARBON],
         )
         return {"printer": printer, "errors": None}
     except ElegooPrinterClientGeneralError as exception:  # New specific catch
@@ -109,7 +109,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             printer_object: Printer = validation_result["printer"]
 
             printer_object.ip_address = user_input[CONF_IP_ADDRESS]
-            printer_object.use_seconds = user_input[USE_SECONDS]
+            printer_object.centauri_carbon = user_input[CONF_CENTAURI_CARBON]
 
             if not _errors:
                 await self.async_set_unique_id(unique_id=printer_object.id)
@@ -165,7 +165,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             printer_object: Printer = validation_result["printer"]
 
             printer_object.ip_address = user_input[CONF_IP_ADDRESS]
-            printer_object.use_seconds = user_input[USE_SECONDS]
+            printer_object.centauri_carbon = user_input[CONF_CENTAURI_CARBON]
 
             if not _errors:
                 return self.async_create_entry(

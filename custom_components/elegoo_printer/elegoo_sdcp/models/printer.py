@@ -43,7 +43,7 @@ class Printer:
     """
 
     def __init__(
-        self, json_string: str | None = None, use_seconds: bool = False
+        self, json_string: str | None = None, centauri_carbon: bool = False
     ) -> None:
         """
         Initialize a new Printer object from a JSON string.
@@ -62,7 +62,7 @@ class Printer:
             self.protocol: str | None = None
             self.firmware: str | None = None
             self.id: str | None = None
-            self.use_seconds: bool | None = False
+            self.centauri_carbon: bool | None = False
         else:
             try:
                 j: dict = json.loads(json_string)  # Decode the JSON string
@@ -80,8 +80,8 @@ class Printer:
             self.protocol = data.get("ProtocolVersion")
             self.firmware = data.get("FirmwareVersion")
             self.id = data.get("MainboardID")
-            self.use_seconds = use_seconds
-            if use_seconds and self.model:
+            self.centauri_carbon = centauri_carbon
+            if centauri_carbon and self.model:
                 self.model += "-s"
 
     def to_dict(self) -> dict:
@@ -102,7 +102,7 @@ class Printer:
             "protocol": self.protocol,
             "firmware": self.firmware,
             "id": self.id,
-            "use_seconds": self.use_seconds,
+            "centauri_carbon": self.centauri_carbon,
         }
 
 

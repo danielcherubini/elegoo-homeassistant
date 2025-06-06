@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.const import UnitOfTime
 
-from custom_components.elegoo_printer.const import USE_SECONDS
+from custom_components.elegoo_printer.const import CONF_CENTAURI_CARBON
 
 from .definitions import (
     PRINTER_ATTRIBUTES,
@@ -80,7 +80,7 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         """This block fixes the issues with the Centurai Carbon"""
         if (
             self.entity_description.device_class == SensorDeviceClass.DURATION
-            and coordinator.config_entry.data.get(USE_SECONDS, False)
+            and coordinator.config_entry.data.get(CONF_CENTAURI_CARBON, False)
         ):
             self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
 
