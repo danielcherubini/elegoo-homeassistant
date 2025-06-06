@@ -147,7 +147,7 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         key="print_status",
         name="Print Status",
         icon="mdi:file",
-        value_fn=lambda self: self.coordinator.data.status.current_status.name.lower(),
+        value_fn=lambda self: self.coordinator.data.status.current_status.name.title(),
         available_fn=lambda self: self.coordinator.data.status.current_status
         is not None,
     ),
@@ -155,7 +155,7 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         key="print_error",
         name="Print Error",
         icon="mdi:file",
-        value_fn=lambda self: self.coordinator.data.status.print_info.error_number.name.lower(),
+        value_fn=lambda self: self.coordinator.data.status.print_info.error_number.name.title(),
         available_fn=lambda self: self.coordinator.data.status.print_info.error_number
         is not None,
     ),
