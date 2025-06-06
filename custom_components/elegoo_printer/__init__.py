@@ -14,7 +14,7 @@ from homeassistant.const import CONF_IP_ADDRESS, Platform
 from homeassistant.loader import async_get_loaded_integration
 
 from .api import ElegooPrinterApiClient
-from .const import DOMAIN, LOGGER
+from .const import CONF_CENTAURI_CARBON, DOMAIN, LOGGER
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
 
@@ -40,7 +40,9 @@ async def async_setup_entry(
     )
 
     client = await ElegooPrinterApiClient.async_create(
-        ip_address=entry.data[CONF_IP_ADDRESS], logger=LOGGER
+        ip_address=entry.data[CONF_IP_ADDRESS],
+        centauri_carbon=entry.data[CONF_CENTAURI_CARBON],
+        logger=LOGGER,
     )
 
     if client is None:

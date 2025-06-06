@@ -1,19 +1,20 @@
 {
-    "config": {
-        "step": {
-            "printer": {
-                "description": "If you need help with the configuration have a look here: https://github.com/danielcherubini/elegoo_printer",
-                "data": {
-                    "ip_address": "Printer IP Address"
-                }
-            }
-        },
-        "error": {
-            "connection": "Unable to connect to the printer.",
-            "unknown": "Unknown error occurred."
-        },
-        "abort": {
-            "already_configured": "This entry is already configured."
+  "config": {
+    "step": {
+      "printer": {
+        "description": "If you need help with the configuration have a look here: https://github.com/danielcherubini/elegoo_printer",
+        "data": {
+          "ip_address": "Printer IP Address",
+          "centauri_carbon": "Is the printer a Centauri Carbon"
         }
+      }
+    },
+    "error": {
+      "connection": "Unable to connect to the printer.",
+      "unknown": "Unknown error occurred."
+    },
+    "abort": {
+      "already_configured": "This entry is already configured."
     }
+  }
 }

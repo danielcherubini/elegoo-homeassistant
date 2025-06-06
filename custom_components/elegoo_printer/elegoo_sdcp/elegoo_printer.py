@@ -10,7 +10,7 @@ from typing import Any
 
 import websocket
 
-from .const import DEBUG
+from .const import DEBUG, LOGGER
 from .models.attributes import PrinterAttributes
 from .models.print_history_detail import PrintHistoryDetail
 from .models.printer import Printer, PrinterData
@@ -35,9 +35,12 @@ class ElegooPrinterClient:
     Uses the SDCP Protocol (https://github.com/cbd-tech/SDCP-Smart-Device-Control-Protocol-V3.0.0).
     """
 
-    def __init__(self, ip_address: str, logger: Any) -> None:
+    def __init__(
+        self, ip_address: str, centauri_carbon: bool = False, logger: Any = LOGGER
+    ) -> None:
         """Initialize the ElegooPrinterClient."""
         self.ip_address: str = ip_address
+        self.centauri_carbon: bool = centauri_carbon
         self.printer_websocket: websocket.WebSocketApp | None = None
         self.printer: Printer = Printer()
         self.printer_data = PrinterData()
@@ -170,7 +173,7 @@ class ElegooPrinterClient:
             )
         else:
             try:
-                printer = Printer(printer_info)
+                printer = Printer(printer_info, centauri_carbon=self.centauri_carbon)
             except (ValueError, TypeError):
                 self.logger.exception("Error creating Printer object")
             else:
@@ -282,7 +285,7 @@ class ElegooPrinterClient:
         if DEBUG:
             self.logger.debug(f"status >> \n{json.dumps(data, indent=5)}")
         printer_status = PrinterStatus.from_json(
-            json.dumps(data)
+            json.dumps(data), self.centauri_carbon
         )  # Pass json string to from_json
         self.printer_data.status = printer_status
 

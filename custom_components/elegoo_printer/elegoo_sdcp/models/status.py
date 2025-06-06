@@ -26,7 +26,9 @@ class PrintInfo:
 
     """
 
-    def __init__(self, data: dict[str, Any] = {}) -> None:  # noqa: B006
+    def __init__(
+        self, data: dict[str, Any] = {}, centauri_carbon: bool = False
+    ) -> None:  # noqa: B006
         """
         Initialize a new PrintInfo object.
 
@@ -69,6 +71,11 @@ class PrintInfo:
         )  # Use from_int
         self.task_id: str = data.get("TaskId", "")
 
+        if centauri_carbon:
+            self.current_ticks = self.current_ticks * 1000
+            self.total_ticks = self.total_ticks * 1000
+            self.remaining_ticks = self.remaining_ticks * 1000
+
 
 class PrinterStatus:
     """
@@ -87,7 +94,9 @@ class PrinterStatus:
 
     """
 
-    def __init__(self, data: dict[str, Any] = {}) -> None:  # noqa: B006
+    def __init__(
+        self, data: dict[str, Any] = {}, centauri_carbon: bool = False
+    ) -> None:  # noqa: B006
         """
         Initialize a new PrinterStatus object from a dictionary.
 
@@ -98,7 +107,7 @@ class PrinterStatus:
         """  # noqa: E501
         status = data.get("Status", {"CurrentStatus": {}})
         current_status_list = status.get("CurrentStatus", [])
-        self.current_status: ElegooMachineStatus = ElegooMachineStatus.from_list(
+        self.current_status: ElegooMachineStatus | None = ElegooMachineStatus.from_list(
             current_status_list
         )
         self.previous_status: int = status.get("PreviousStatus", 0)
@@ -110,10 +119,14 @@ class PrinterStatus:
         self.temp_target_box: float = round(status.get("TempTargetBox", 0), 2)
 
         print_info_data = status.get("PrintInfo", {})
-        self.print_info: PrintInfo = PrintInfo(print_info_data)
+        self.print_info: PrintInfo = PrintInfo(
+            print_info_data, centauri_carbon=centauri_carbon
+        )
 
     @classmethod
-    def from_json(cls, json_string: str) -> "PrinterStatus":
+    def from_json(
+        cls, json_string: str, centauri_carbon: bool = False
+    ) -> "PrinterStatus":
         """
         Create a PrinterStatus object from a JSON string.
 
@@ -129,4 +142,4 @@ class PrinterStatus:
 
         except json.JSONDecodeError:
             data = {}  # Or handle the error as needed
-        return cls(data)
+        return cls(data, centauri_carbon)

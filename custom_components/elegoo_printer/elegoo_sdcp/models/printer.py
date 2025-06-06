@@ -42,7 +42,9 @@ class Printer:
 
     """
 
-    def __init__(self, json_string: str | None = None) -> None:
+    def __init__(
+        self, json_string: str | None = None, centauri_carbon: bool = False
+    ) -> None:
         """
         Initialize a new Printer object from a JSON string.
 
@@ -60,6 +62,7 @@ class Printer:
             self.protocol: str | None = None
             self.firmware: str | None = None
             self.id: str | None = None
+            self.centauri_carbon: bool | None = False
         else:
             try:
                 j: dict = json.loads(json_string)  # Decode the JSON string
@@ -77,6 +80,30 @@ class Printer:
             self.protocol = data.get("ProtocolVersion")
             self.firmware = data.get("FirmwareVersion")
             self.id = data.get("MainboardID")
+            self.centauri_carbon = centauri_carbon
+            if centauri_carbon and self.model:
+                self.model += "-s"
+
+    def to_dict(self) -> dict:
+        """
+        Return a dictionary representation of the Printer object.
+
+        The dictionary keys directly match the attribute names of the class model.
+
+        Returns:
+            dict: A dictionary containing the printer's data.
+        """
+        return {
+            "connection": self.connection,
+            "name": self.name,
+            "model": self.model,
+            "brand": self.brand,
+            "ip_address": self.ip_address,
+            "protocol": self.protocol,
+            "firmware": self.firmware,
+            "id": self.id,
+            "centauri_carbon": self.centauri_carbon,
+        }
 
 
 class PrinterData:
