@@ -72,9 +72,9 @@ class PrintInfo:
         self.task_id: str = data.get("TaskId", "")
 
         if centauri_carbon:
-            self.current_ticks = self.current_ticks * 1000
-            self.total_ticks = self.total_ticks * 1000
-            self.remaining_ticks = self.remaining_ticks * 1000
+            self.current_ticks = self.current_ticks * 10
+            self.total_ticks = self.total_ticks * 10
+            self.remaining_ticks = self.remaining_ticks * 10
 
 
 class PrinterStatus:
