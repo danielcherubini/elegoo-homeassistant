@@ -22,7 +22,7 @@ async def main() -> None:
     try:
         printer_ip = os.getenv("PRINTER_IP", "10.0.0.212")
         elegoo_printer = ElegooPrinterClient(
-            ip_address=printer_ip, centauri_carbon=True, logger=logger
+            ip_address=printer_ip, centauri_carbon=False, logger=logger
         )
         printer = elegoo_printer.discover_printer()
         if printer:
@@ -32,7 +32,7 @@ async def main() -> None:
                 await asyncio.sleep(2)
                 elegoo_printer.get_printer_attributes()
                 while not stop_event.is_set():  # noqa: ASYNC110
-                    # elegoo_printer.get_printer_status()
+                    elegoo_printer.get_printer_status()
                     await asyncio.sleep(2)
         else:
             logger.exception("No printers discovered.")
