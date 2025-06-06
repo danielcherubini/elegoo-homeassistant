@@ -44,9 +44,9 @@ class PrintInfo:
         self.remaining_layers: int = (
             self.total_layers - self.current_layer
         )  # Calculate remaining layers
-        self.current_ticks: float = float(data.get("CurrentTicks", 0))
-        self.total_ticks: float = float(data.get("TotalTicks", 0))
-        self.remaining_ticks: float = max(
+        self.current_ticks: int = int(data.get("CurrentTicks", 0))
+        self.total_ticks: int = int(data.get("TotalTicks", 0))
+        self.remaining_ticks: int = max(
             0, self.total_ticks - self.current_ticks
         )  # Calculate remaining ticks
         # Get progress directly from data if available
@@ -72,9 +72,9 @@ class PrintInfo:
         self.task_id: str = data.get("TaskId", "")
 
         if centauri_carbon:
-            self.current_ticks = self.current_ticks * 10
-            self.total_ticks = self.total_ticks * 10
-            self.remaining_ticks = self.remaining_ticks * 10
+            self.current_ticks = self.current_ticks * 1
+            self.total_ticks = self.total_ticks * 1
+            self.remaining_ticks = self.remaining_ticks * 1
 
 
 class PrinterStatus:
