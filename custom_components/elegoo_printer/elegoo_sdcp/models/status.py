@@ -44,9 +44,9 @@ class PrintInfo:
         self.remaining_layers: int = (
             self.total_layers - self.current_layer
         )  # Calculate remaining layers
-        self.current_ticks: int = int(data.get("CurrentTicks", 0))
-        self.total_ticks: int = int(data.get("TotalTicks", 0))
-        self.remaining_ticks: int = max(
+        self.current_ticks: float = float(data.get("CurrentTicks", 0))
+        self.total_ticks: float = float(data.get("TotalTicks", 0))
+        self.remaining_ticks: float = max(
             0, self.total_ticks - self.current_ticks
         )  # Calculate remaining ticks
         # Get progress directly from data if available
