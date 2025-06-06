@@ -57,7 +57,9 @@ def _test_credentials(ip_address: str, centauri_carbon: bool) -> Printer:
     printer = elegoo_printer.discover_printer()
     if printer:
         return printer
-    raise ElegooPrinterClientGeneralError from Exception("No Printer")
+    raise ElegooPrinterClientGeneralError(
+        f"No printer found at IP address {ip_address}"
+    )
 
 
 async def _async_validate_input(user_input: dict[str, Any]) -> dict:
