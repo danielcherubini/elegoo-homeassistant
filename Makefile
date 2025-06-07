@@ -14,7 +14,7 @@ debug:
 	DEBUG=true python3 -m debug
 
 devcontainer:
-	devcontainer exec --workspace-folder . ./scripts/develop
+	devcontainer exec --workspace-folder . ./scripts/start
 
 format:
 	uv run ruff format .

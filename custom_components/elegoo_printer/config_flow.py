@@ -142,7 +142,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         cls, config_entry: config_entries.ConfigEntry
     ) -> bool:
         """Return options flow support for this handler."""
-        return False
+        return True
 
 
 class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
@@ -176,9 +176,10 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                     data=printer_object.to_dict(),
                 )
 
-        user_input = self.config_entry.options.copy()  # Get current options
         return self.async_show_form(
             step_id="init",
-            data_schema=self.add_suggested_values_to_schema(OPTIONS_SCHEMA, user_input),
+            data_schema=self.add_suggested_values_to_schema(
+                OPTIONS_SCHEMA, self.config_entry.options
+            ),
             errors=_errors,
         )
