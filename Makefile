@@ -8,7 +8,10 @@ setup:
 	curl -LsSf https://astral.sh/uv/install.sh | sh && uv sync --active --all-extras --dev
 
 setup-devcontainer:
-	curl -LsSf https://astral.sh/uv/install.sh | sh && uv venv .dev && uv sync --active --all-extras --dev && source ./.dev/bin/activate
+	curl -LsSf https://astral.sh/uv/install.sh | sh
+	uv venv .dev
+	uv sync --active --all-extras --dev
+	@echo "Virtual environment created at .dev/"
 
 start:
 	./scripts/start

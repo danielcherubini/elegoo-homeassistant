@@ -10,6 +10,11 @@ if [[ ! -d "${PWD}/config" ]]; then
   hass --config "${PWD}/config" --script ensure_config
 fi
 
+if [[ ! -f ".dev/bin/activate" ]]; then
+  echo "Error: Virtual environment not found at .dev/bin/activate"
+  echo "Please run 'make setup-devcontainer' first"
+  exit 1
+fi
 source .dev/bin/activate
 
 # Set the path to custom_components
