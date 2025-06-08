@@ -15,6 +15,29 @@
     },
     "abort": {
       "already_configured": "This entry is already configured."
+    },
+    "entity": {
+      "sensor": {
+        "print_status": {
+          "state": {
+            "idle": "Idle",
+            "printing": "Printing",
+            "file_transferring": "File transferring",
+            "exposure_testing": "Exposure testing",
+            "devices_testing": "Devices testing"
+          }
+        },
+        "print_error": {
+          "state": {
+            "none": "None",
+            "check": "Check",
+            "fileio": "Fileio",
+            "invalid_resolution": "Invalid resolution",
+            "unknown_format": "Unknown format",
+            "unknown_model": "Unknown model"
+          }
+        }
+      }
     }
   }
 }
