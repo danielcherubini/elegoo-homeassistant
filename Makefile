@@ -5,7 +5,10 @@ SHELL := /bin/bash
 all: setup
 
 setup:
-	curl -LsSf https://astral.sh/uv/install.sh | sh && uv sync --all-extras --dev
+	curl -LsSf https://astral.sh/uv/install.sh | sh && uv sync --active --all-extras --dev
+
+setup-devcontainer:
+	curl -LsSf https://astral.sh/uv/install.sh | sh && uv venv .dev && uv sync --active --all-extras --dev && source ./.dev/bin/activate
 
 start:
 	./scripts/start
@@ -14,7 +17,7 @@ debug:
 	DEBUG=true python3 -m debug
 
 devcontainer:
-	devcontainer exec --workspace-folder . ./scripts/start
+	devcontainer exec --workspace-folder . ./scripts/devcontainer
 
 format:
 	uv run ruff format .
