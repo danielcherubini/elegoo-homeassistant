@@ -27,6 +27,13 @@ if TYPE_CHECKING:
     from .data import ElegooPrinterConfigEntry
 
 
+def generate_unique_id(machine_name: str, id: str, key: str) -> str:
+    if not machine_name or machine_name == "":
+        return id + "_" + key
+    else:
+        return machine_name.replace(" ", "_").lower() + "_" + key
+
+
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001 Unused function argument: `hass`
     entry: ElegooPrinterConfigEntry,
@@ -75,7 +82,11 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         """
         super().__init__(coordinator)
         self.entity_description = entity_description
-        self._attr_unique_id = self.entity_description.key
+        machine_name = coordinator.config_entry.data["name"]
+        machine_id = coordinator.config_entry.data["id"]
+        key = self.entity_description.key
+        unique_id = generate_unique_id(machine_name, machine_id, key)
+        self._attr_unique_id = unique_id
 
         """This block fixes the issues with the Centurai Carbon"""
         if (
