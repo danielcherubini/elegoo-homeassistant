@@ -58,8 +58,12 @@ For any issues or feature requests, please [open an issue]([https://github.com/d
 
 To develop locally please clone the repo, then run the following
 
-- `make`
-- `source .venv/bin/activate`
+```bash
+make
+```
+```bash
+source .venv/bin/activate
+```
 
 That will set you up and activate the venv. This project uses UV
 
@@ -71,17 +75,31 @@ You can either run it through the devcontainer, which is explained below, or, in
 
 There is a debug mode. Where it runs only the api against the printer.
 
-To run it, run `make debug`
+To run it, run 
+
+```bash
+make debug
+```
 
 ## Devcontainer
 
 This has a devcontainer, so if you have vscode, it should auto-setup.. any issues, check out the development section above.
 
-Once in the devcontainer you can start it with `make start`
+Once in the devcontainer you can start it with
+
+```bash
+make start
+```
 
 ## Directly
 
-To run it directly, just run `make start` after you've initiated everything as explained in the development section.
+To run it directly, just run 
+
+```bash
+make start
+```
+
+After you've initiated everything as explained in the development section.
 
 ## Credits
 
