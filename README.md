@@ -54,6 +54,39 @@ Stay tuned for updates and feel free to contribute with feature requests and bug
 
 For any issues or feature requests, please [open an issue]([https://github.com/danielcherubini/elegoo-homeassistant/issues]) on the GitHub repository. Contributions are welcome!
 
+## Development
+
+To develop locally please clone the repo, then run the following
+
+- `make`
+- `source .venv/bin/activate`
+
+That will set you up and activate the venv. This project uses UV
+
+## Running locally
+
+You can either run it through the devcontainer, which is explained below, or, in a debug mode, or you can run it directly
+
+## Debug Mode
+
+There is a debug mode. Where it runs only the api against the printer.
+
+To run it, run `make debug`
+
+## Devcontainer
+
+This has a devcontainer, so if you have vscode, it should auto-setup.. any issues, check out the development section above.
+
+Once in the devcontainer you can start it with `make start`
+
+## Directly
+
+To run it directly, just run `make start` after you've initiated everything as explained in the development section.
+
+## Credits
+
+This integration is based on the amazing work of [SDCP](https://github.com/cbd-tech/SDCP-Smart-Device-Control-Protocol-V3.0.0) and [Elegoo](https://www.elegoo.com/).
+
 ## License
 
 This integration is released under the [MIT License](https://opensource.org/licenses/MIT).
