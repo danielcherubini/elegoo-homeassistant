@@ -191,3 +191,13 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         value_fn=lambda self: self.coordinator.data.status.temp_target_box,
     ),
 )
+
+PRINTER_IMAGES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+    ElegooPrinterSensorEntityDescription(
+        key="cover_image",
+        translation_key="cover_image",
+        value_fn=lambda _printer: _printer.get_current_print_thumbnail(),
+        available_fn=lambda _printer: _printer.get_current_print_thumbnail()
+        is not None,
+    ),
+)
