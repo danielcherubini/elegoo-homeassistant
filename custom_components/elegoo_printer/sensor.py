@@ -27,23 +27,15 @@ if TYPE_CHECKING:
     from .data import ElegooPrinterConfigEntry
 
 
-def generate_unique_id(machine_name: str, id: str, key: str) -> str:
-    if not machine_name or machine_name == "":
-        return id + "_" + key
-    else:
-        return machine_name.replace(" ", "_").lower() + "_" + key
-
-
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001 Unused function argument: `hass`
     entry: ElegooPrinterConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """
-    Asynchronously sets up Elegoo printer sensor entities for a configuration entry.
+    Asynchronously sets up Elegoo printer sensor entities for a given configuration entry.
 
-    Creates and adds sensor entities for both printer status and attribute descriptions,
-    ensuring each is updated before being added to Home Assistant.
+    Creates and adds sensor entities for each printer status and attribute description, ensuring they are updated before being added to Home Assistant.
     """
     for entity_description in PRINTER_STATUS:
         async_add_entities(
@@ -76,17 +68,15 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         entity_description: ElegooPrinterSensorEntityDescription,
     ) -> None:
         """
-        Initializes an Elegoo printer sensor entity.
+        Initialize an Elegoo printer sensor entity with the provided data coordinator and entity description.
 
-        Sets up the sensor with its configuration entry, data coordinator, and entity description. For duration sensors on Centurai Carbon printers with the seconds option enabled, sets the native unit of measurement to seconds.
+        For duration sensors on Centauri Carbon printers, sets the native unit of measurement to seconds.
         """
         super().__init__(coordinator)
         self.entity_description = entity_description
-        machine_name = coordinator.config_entry.data["name"]
-        machine_id = coordinator.config_entry.data["id"]
-        key = self.entity_description.key
-        unique_id = generate_unique_id(machine_name, machine_id, key)
-        self._attr_unique_id = unique_id
+        self._attr_unique_id = coordinator.generate_unique_id(
+            self.entity_description.key
+        )
 
         """This block fixes the issues with the Centurai Carbon"""
         if (
