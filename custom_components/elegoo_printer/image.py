@@ -11,6 +11,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 from PIL import Image
 
+from custom_components.elegoo_printer.api import ElegooPrinterApiClient
 from custom_components.elegoo_printer.definitions import (
     ElegooPrinterSensorEntityDescription,
 )
@@ -32,7 +33,11 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the Elegoo Printer image platform from config entry."""
+    """
+    Asynchronously sets up Elegoo Printer image entities for a given config entry in Home Assistant.
+
+    Adds a CoverImage entity for each predefined printer image, ensuring each is updated before being added to the platform.
+    """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
 
     for image in PRINTER_IMAGES:
@@ -42,7 +47,7 @@ async def async_setup_entry(
         )
 
 
-class CoverImage(ImageEntity, ElegooPrinterEntity):
+class CoverImage(ElegooPrinterEntity, ImageEntity):
     """Representation of an image entity."""
 
     def __init__(
@@ -51,27 +56,26 @@ class CoverImage(ImageEntity, ElegooPrinterEntity):
         coordinator: ElegooDataUpdateCoordinator,
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
-        """Initialize the image entity."""
+        """
+        Initialize a CoverImage entity for the Elegoo Printer.
+
+        Sets up the entity with the provided Home Assistant instance, data coordinator, and entity description. Assigns a unique ID, sets the content type to BMP, and records the initial image update timestamp.
+        """
+        super().__init__(coordinator)
         ImageEntity.__init__(self, hass=hass)
-        ElegooPrinterEntity.__init__(self, coordinator=coordinator)
         self.coordinator = coordinator
         self._attr_content_type = "image/bmp"
         self._image_filename = None
         self.entity_description = description
-        self._attr_unique_id = self.entity_description.key
+        unique_id = coordinator.generate_unique_id(self.entity_description.key)
+        self._attr_unique_id = unique_id
         self._attr_image_last_updated = dt_util.now()
+        self._is_available = False
 
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        if (
-            hasattr(self, "entity_description")
-            and self.entity_description.available_fn is not None
-        ):
-            _printer = self.coordinator.config_entry.runtime_data.client._elegoo_printer
-            self._attr_available = self.entity_description.available_fn(_printer)
-
-        return super().available
+        return self._is_available
 
     async def async_image(self) -> bytes | None:
         """Return bytes of an image."""
@@ -79,8 +83,11 @@ class CoverImage(ImageEntity, ElegooPrinterEntity):
             hasattr(self, "entity_description")
             and self.entity_description.value_fn is not None
         ):
-            _printer = self.coordinator.config_entry.runtime_data.client._elegoo_printer
-            image_url = await self.entity_description.value_fn(_printer)
+            _printer_client: ElegooPrinterApiClient = (
+                self.coordinator.config_entry.runtime_data.client
+            )
+            thumbnail = await _printer_client.async_get_current_thumbnail()
+            image_url = self.entity_description.value_fn(thumbnail)
             if image_url != self.image_url:
                 self._cached_image = None
                 self._attr_image_url = image_url
@@ -97,7 +104,8 @@ class CoverImage(ImageEntity, ElegooPrinterEntity):
         """
 
         response = await super()._fetch_url(url)
-        response.headers["content-type"] = "image/bmp"
+        if response:
+            response.headers["content-type"] = "image/bmp"
 
         return response
 
@@ -116,5 +124,6 @@ class CoverImage(ImageEntity, ElegooPrinterEntity):
             new_image.save(buffer, "PNG")
             image.content = buffer.getvalue()
             image.content_type = "image/png"
+            self._is_available = True
 
         return image
