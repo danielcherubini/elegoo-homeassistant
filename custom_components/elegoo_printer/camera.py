@@ -70,9 +70,12 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         self._attr_unique_id = coordinator.generate_unique_id(
             self.entity_description.key
         )
-        self.printer_client: ElegooPrinterClient = (
-            coordinator.config_entry.runtime_data.client._elegoo_printer
-        )
+        runtime_data = coordinator.config_entry.runtime_data
+        if not runtime_data or not runtime_data.client:
+            raise ValueError("Printer client not available")
+        self.printer_client: ElegooPrinterClient = runtime_data.client._elegoo_printer
+        if not self.printer_client.ip_address:
+            raise ValueError("Printer IP address not available")
         _mjpeg_url = f"http://{self.printer_client.ip_address}:3031/video"
         self.entity_description.value_fn(_mjpeg_url)
         MjpegCamera.__init__(self, mjpeg_url=_mjpeg_url, still_image_url=_mjpeg_url)
@@ -81,15 +84,11 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     def available(self) -> bool:
         """
         Indicates whether the camera entity is currently available.
-
         If an availability function is defined in the entity description, it is called with the printer client to determine the entity's availability.
         """
         if (
             hasattr(self, "entity_description")
             and self.entity_description.available_fn is not None
         ):
-            self._attr_available = self.entity_description.available_fn(
-                self.printer_client.printer_data.attributes
-            )
-
+            return self.entity_description.available_fn(self.printer_client)
         return super().available
