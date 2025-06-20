@@ -74,6 +74,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             coordinator.config_entry.runtime_data.client._elegoo_printer
         )
         _mjpeg_url = f"http://{self.printer_client.ip_address}:3031/video"
+        self.entity_description.value_fn(_mjpeg_url)
         MjpegCamera.__init__(self, mjpeg_url=_mjpeg_url, still_image_url=_mjpeg_url)
 
     @property
@@ -88,7 +89,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             and self.entity_description.available_fn is not None
         ):
             self._attr_available = self.entity_description.available_fn(
-                self.printer_client
+                self.printer_client.printer_data.attributes
             )
 
         return super().available
