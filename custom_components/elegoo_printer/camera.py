@@ -18,9 +18,9 @@ from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 def generate_unique_id(machine_name: str, id: str, key: str) -> str:
     """
     Generate a unique identifier string for a printer entity based on machine name, id, and key.
-    
+
     If the machine name is empty or None, returns a string combining id and key separated by an underscore. Otherwise, returns the machine name (spaces replaced by underscores and in lowercase) concatenated with the key.
-    
+
     Returns:
         str: The generated unique identifier.
     """
@@ -37,7 +37,7 @@ async def async_setup_entry(
 ) -> None:
     """
     Set up Elegoo Printer camera entities for a configuration entry in Home Assistant.
-    
+
     Adds camera entities based on the printer's configuration and supported features.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
@@ -62,7 +62,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     ) -> None:
         """
         Initialize an Elegoo MJPEG camera entity for Home Assistant.
-        
+
         Creates a camera entity with a unique ID and sets up the MJPEG stream URL using the printer's IP address. The entity description and printer client are stored for later use.
         """
         super().__init__(coordinator)
@@ -80,7 +80,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     def available(self) -> bool:
         """
         Indicates whether the camera entity is currently available.
-        
+
         If an availability function is defined in the entity description, it is called with the printer client to determine the entity's availability.
         """
         if (
