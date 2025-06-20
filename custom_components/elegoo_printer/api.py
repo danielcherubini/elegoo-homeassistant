@@ -75,7 +75,7 @@ class ElegooPrinterApiClient:
         return self._elegoo_printer.get_printer_attributes()
 
     async def async_get_current_thumbnail(self) -> str | None:
-        """Get data from the API."""
+        """Get the current print thumbnail from the printer."""
         return await self._elegoo_printer.get_current_print_thumbnail()
 
     async def retry(self) -> bool:
