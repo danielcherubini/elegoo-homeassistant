@@ -57,6 +57,8 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         self.printer_client: ElegooPrinterClient = (
             coordinator.config_entry.runtime_data.client._elegoo_printer
         )
+        _mjpeg_url = f"http://{self.printer_client.ip_address}:3031/video"
+        MjpegCamera.__init__(self, mjpeg_url=_mjpeg_url, still_image_url=_mjpeg_url)
 
     @property
     def available(self) -> bool:
@@ -70,7 +72,3 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             )
 
         return super().available
-
-    @property
-    def stream_source(self) -> str:
-        return f"http://{self.printer_client.ip_address}:3031/video"
