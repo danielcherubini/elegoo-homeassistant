@@ -15,21 +15,6 @@ from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 
-def generate_unique_id(machine_name: str, id: str, key: str) -> str:
-    """
-    Generate a unique identifier string for a printer entity based on machine name, id, and key.
-
-    If the machine name is empty or None, returns a string combining id and key separated by an underscore. Otherwise, returns the machine name (spaces replaced by underscores and in lowercase) concatenated with the key.
-
-    Returns:
-        str: The generated unique identifier.
-    """
-    if not machine_name or machine_name == "":
-        return id + "_" + key
-    else:
-        return machine_name.replace(" ", "_").lower() + "_" + key
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ElegooPrinterConfigEntry,
