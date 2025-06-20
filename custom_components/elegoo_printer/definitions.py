@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from homeassistant.components.sensor import SensorEntityDescription
-from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
+from homeassistant.components.sensor.const import (SensorDeviceClass,
+                                                   SensorStateClass)
 from homeassistant.const import PERCENTAGE, UnitOfTemperature, UnitOfTime
 from homeassistant.helpers.typing import StateType
 
@@ -197,6 +198,18 @@ PRINTER_IMAGES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         key="cover_image",
         translation_key="cover_image",
         value_fn=lambda _printer: _printer.get_current_print_thumbnail(),
+        available_fn=lambda _printer: _printer.get_current_print_thumbnail()
+        is not None,
+    ),
+)
+
+PRINTER_CAMERAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+    ElegooPrinterSensorEntityDescription(
+        key="centuari_carbon_camera",
+        name="Centuari Carbon Camera",
+        translation_key="centuari_carbon_camera",
+        value_fn=lambda _printer: _printer.get_current_print_thumbnail(),
+        exists_fn=lambda _centuari_carbon: _centuari_carbon,
         available_fn=lambda _printer: _printer.get_current_print_thumbnail()
         is not None,
     ),
