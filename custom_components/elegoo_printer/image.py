@@ -42,7 +42,7 @@ async def async_setup_entry(
         )
 
 
-class CoverImage(ImageEntity, ElegooPrinterEntity):
+class CoverImage(ElegooPrinterEntity, ImageEntity):
     """Representation of an image entity."""
 
     def __init__(
@@ -52,13 +52,14 @@ class CoverImage(ImageEntity, ElegooPrinterEntity):
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
         """Initialize the image entity."""
+        super().__init__(coordinator)
         ImageEntity.__init__(self, hass=hass)
-        ElegooPrinterEntity.__init__(self, coordinator=coordinator)
         self.coordinator = coordinator
         self._attr_content_type = "image/bmp"
         self._image_filename = None
         self.entity_description = description
-        self._attr_unique_id = self.entity_description.key
+        unique_id = coordinator.generate_unique_id(self.entity_description.key)
+        self._attr_unique_id = unique_id
         self._attr_image_last_updated = dt_util.now()
 
     @property

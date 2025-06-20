@@ -45,3 +45,12 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         ) as exception:
             self.update_interval = timedelta(minutes=5)
             raise UpdateFailed from exception
+
+    def generate_unique_id(self, key: str) -> str:
+        """Generate a unique ID for an entity."""
+        machine_name = self.config_entry.data["name"]
+        machine_id = self.config_entry.data["id"]
+        if not machine_name or machine_name == "":
+            return machine_id + "_" + key
+        else:
+            return machine_name.replace(" ", "_").lower() + "_" + key
