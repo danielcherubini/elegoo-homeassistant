@@ -1,7 +1,9 @@
+#
 # Makefile
 #
 # This Makefile provides a set of useful commands for setting up and managing
 # this Python project. It uses 'uv' for fast dependency management.
+# All commands that need the virtual environment are run via 'uv run'.
 #
 
 # Use bash as the shell
@@ -37,15 +39,15 @@ setup:
 	@echo "--> Setup complete. Environment is ready."
 
 # --- DEVELOPMENT TASKS ---
-# Runs the main application script.
+# Runs the main application script within the uv-managed environment.
 start:
 	@echo "--> Starting the application..."
-	@./scripts/start
+	@uv run ./scripts/start
 
-# Runs the application in debug mode.
+# Runs the application in debug mode within the uv-managed environment.
 debug:
 	@echo "--> Starting the application in DEBUG mode..."
-	@DEBUG=true $(PYTHON) -m debug
+	@DEBUG=true uv run $(PYTHON) -m debug
 
 # Executes the start script within a devcontainer.
 devcontainer:
@@ -80,8 +82,8 @@ help:
 	@echo "Makefile Commands:"
 	@echo ""
 	@echo "  setup         Install uv (if needed) and sync dependencies."
-	@echo "  start         Run the application."
-	@echo "  debug         Run the application in debug mode."
+	@echo "  start         Run the application in the virtual environment."
+	@echo "  debug         Run the application in debug mode in the virtual environment."
 	@echo "  devcontainer  Run the application within a devcontainer."
 	@echo "  format        Format code using Ruff."
 	@echo "  check         Check for linting errors using Ruff."
