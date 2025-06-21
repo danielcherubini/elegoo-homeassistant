@@ -11,6 +11,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from homeassistant.const import Platform
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.loader import async_get_loaded_integration
 
 from .api import ElegooPrinterApiClient
@@ -45,7 +46,7 @@ async def async_setup_entry(
     )
 
     if client is None:
-        return False
+        raise ConfigEntryNotReady("Failed to connect to the printer")
 
     entry.runtime_data = ElegooPrinterData(
         client=client,
