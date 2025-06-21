@@ -7,7 +7,7 @@ from custom_components.elegoo_printer import ElegooDataUpdateCoordinator
 from custom_components.elegoo_printer.const import CONF_CENTAURI_CARBON
 from custom_components.elegoo_printer.data import ElegooPrinterConfigEntry
 from custom_components.elegoo_printer.definitions import (
-    PRINTER_CAMERAS,
+    PRINTER_MJPEG_CAMERAS,
     ElegooPrinterSensorEntityDescription,
 )
 from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
@@ -28,7 +28,7 @@ async def async_setup_entry(
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
 
-    for camera in PRINTER_CAMERAS:
+    for camera in PRINTER_MJPEG_CAMERAS:
         if camera.exists_fn(
             coordinator.config_entry.data.get(CONF_CENTAURI_CARBON, False)
         ):
@@ -63,7 +63,10 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         self.printer_client: ElegooPrinterClient = runtime_data.client._elegoo_printer
         if not self.printer_client.ip_address:
             raise PlatformNotReady("Printer IP address not available")
+
+        ## Temporary until we finish testing
         _mjpeg_url = f"http://{self.printer_client.ip_address}:3031/video"
+
         self.entity_description.value_fn(_mjpeg_url)
         MjpegCamera.__init__(self, mjpeg_url=_mjpeg_url, still_image_url=_mjpeg_url)
 

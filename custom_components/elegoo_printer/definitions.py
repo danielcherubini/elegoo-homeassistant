@@ -202,7 +202,7 @@ PRINTER_IMAGES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
 )
 
-PRINTER_CAMERAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+PRINTER_MJPEG_CAMERAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="centauri_carbon_camera",
         name="Centauri Carbon Camera",
