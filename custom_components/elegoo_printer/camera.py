@@ -1,5 +1,6 @@
 from homeassistant.components.mjpeg.camera import MjpegCamera
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.elegoo_printer import ElegooDataUpdateCoordinator
@@ -57,10 +58,10 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         )
         runtime_data = coordinator.config_entry.runtime_data
         if not runtime_data or not runtime_data.client:
-            raise ValueError("Printer client not available")
+            raise HomeAssistantError("Printer client not available")
         self.printer_client: ElegooPrinterClient = runtime_data.client._elegoo_printer
         if not self.printer_client.ip_address:
-            raise ValueError("Printer IP address not available")
+            raise HomeAssistantError("Printer IP address not available")
         _mjpeg_url = f"http://{self.printer_client.ip_address}:3031/video"
         self.entity_description.value_fn(_mjpeg_url)
         MjpegCamera.__init__(self, mjpeg_url=_mjpeg_url, still_image_url=_mjpeg_url)
