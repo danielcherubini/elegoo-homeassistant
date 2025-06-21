@@ -206,7 +206,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     # --- Nozzle Temperature Sensor ---
     ElegooPrinterSensorEntityDescription(
         key="nozzle_temp",
-        name="Temperature - Nozzle",
+        name="Nozzle Temperature",
         icon="mdi:thermometer",
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -218,7 +218,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     # --- Bed Temperature Sensor ---
     ElegooPrinterSensorEntityDescription(
         key="bed_temp",
-        name="Temperature - Bed",
+        name="Bed Temperature",
         icon="mdi:thermometer",
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -226,18 +226,6 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         # Correct path to bed/hotbed temperature
         available_fn=lambda self: self.coordinator.data.status.temp_of_hotbed > 0,
         value_fn=lambda self: self.coordinator.data.status.temp_of_hotbed,
-    ),
-    # --- Enclosure Temperature Sensor (using temp_of_box) ---
-    ElegooPrinterSensorEntityDescription(
-        key="enclosure_temp",
-        name="Temperature - Enclosure",
-        icon="mdi:home-thermometer",
-        device_class=SensorDeviceClass.TEMPERATURE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        # Also points to temp_of_box as per the class model
-        available_fn=lambda self: self.coordinator.data.status.temp_of_box > 0,
-        value_fn=lambda self: self.coordinator.data.status.temp_of_box,
     ),
     # --- Z Offset Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -254,7 +242,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     # --- Model Fan Speed Sensor ---
     ElegooPrinterSensorEntityDescription(
         key="model_fan_speed",
-        name="Fan Speed - Model",
+        name="Model Fan Speed",
         icon="mdi:fan",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
@@ -266,7 +254,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     # --- Auxiliary Fan Speed Sensor ---
     ElegooPrinterSensorEntityDescription(
         key="aux_fan_speed",
-        name="Fan Speed - Auxiliary",
+        name="Auxiliary Fan Speed",
         icon="mdi:fan",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
@@ -278,7 +266,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     # --- Box/Enclosure Fan Speed Sensor ---
     ElegooPrinterSensorEntityDescription(
         key="box_fan_speed",
-        name="Fan Speed - Enclosure",
+        name="Enclosure Fan Speed",
         icon="mdi:fan",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
