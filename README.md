@@ -77,7 +77,7 @@ For any issues or feature requests, please [open an issue](https://github.com/da
 To develop locally please clone the repo, then run the following
 
 ```bash
-make
+make setup
 ```
 ```bash
 source .venv/bin/activate
