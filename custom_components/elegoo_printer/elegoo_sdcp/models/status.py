@@ -9,8 +9,10 @@ from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus
 class CurrentFanSpeed:
     """Represents the speed of the various fans."""
 
-    def __init__(self, data: dict[str, Any] = {}) -> None:  # noqa: B006
+    def __init__(self, data: dict[str, Any] | None = None) -> None:
         """Initialize a new CurrentFanSpeed object."""
+        if data is None:
+            data = {}
         self.model_fan: int = data.get("ModelFan", 0)
         self.auxiliary_fan: int = data.get("AuxiliaryFan", 0)
         self.box_fan: int = data.get("BoxFan", 0)
@@ -19,8 +21,10 @@ class CurrentFanSpeed:
 class LightStatus:
     """Represents the status of the printer's lights."""
 
-    def __init__(self, data: dict[str, Any] = {}) -> None:  # noqa: B006
+    def __init__(self, data: dict[str, Any] | None = None) -> None:
         """Initialize a new LightStatus object."""
+        if data is None:
+            data = {}
         self.second_light: int = data.get("SecondLight", 0)
         self.rgb_light: List[int] = data.get("RgbLight", [0, 0, 0])
 
@@ -45,7 +49,7 @@ class PrintInfo:
         task_id (str): Current Task ID.
     """
 
-    def __init__(self, data: dict[str, Any] = {}) -> None:  # noqa: B006
+    def __init__(self, data: dict[str, Any] | None = None) -> None:
         """
         Initialize a new PrintInfo object.
 
@@ -53,6 +57,8 @@ class PrintInfo:
             data (Dict[str, Any], optional): A dictionary containing print info data.
                                             Defaults to an empty dictionary.
         """
+        if data is None:
+            data = {}
         status_int: int = data.get("Status", 0)
         self.status: ElegooPrintStatus | None = ElegooPrintStatus.from_int(status_int)
         self.current_layer: int = data.get("CurrentLayer", 0)
@@ -86,10 +92,12 @@ class PrinterStatus:
     Represents the status of a 3D printer.
     """
 
-    def __init__(self, data: dict[str, Any] = {}) -> None:  # noqa: B006
+    def __init__(self, data: dict[str, Any] | None = None) -> None:
         """
         Initialize a new PrinterStatus object from a dictionary.
         """
+        if data is None:
+            data = {}
         status = data.get("Status", {"CurrentStatus": {}})
         current_status_list = status.get("CurrentStatus", [])
         self.current_status: ElegooMachineStatus | None = ElegooMachineStatus.from_list(
