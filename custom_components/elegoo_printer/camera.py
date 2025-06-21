@@ -80,5 +80,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             hasattr(self, "entity_description")
             and self.entity_description.available_fn is not None
         ):
-            return self.entity_description.available_fn(self.printer_client)
+            return self.entity_description.available_fn(
+                self.printer_client.printer_data.attributes
+            )
         return super().available
