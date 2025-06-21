@@ -10,8 +10,11 @@ from homeassistant.const import UnitOfTime
 from custom_components.elegoo_printer.const import CONF_CENTAURI_CARBON
 
 from .definitions import (
-    PRINTER_ATTRIBUTES,
-    PRINTER_STATUS,
+    PRINTER_ATTRIBUTES_COMMON,
+    PRINTER_ATTRIBUTES_RESIN,
+    PRINTER_STATUS_COMMON,
+    PRINTER_STATUS_FDM,
+    PRINTER_STATUS_RESIN,
     ElegooPrinterSensorEntityDescription,
 )
 from .entity import ElegooPrinterEntity
@@ -37,26 +40,64 @@ async def async_setup_entry(
 
     Creates and adds sensor entities for each printer status and attribute description, ensuring they are updated before being added to Home Assistant.
     """
-    for entity_description in PRINTER_STATUS:
+    coordinator: ElegooDataUpdateCoordinator = entry.runtime_data.coordinator
+    fdm_printer: bool = entry.runtime_data.coordinator.config_entry.data.get(
+        CONF_CENTAURI_CARBON, False
+    )
+    for entity_description in PRINTER_STATUS_COMMON:
         async_add_entities(
             [
                 ElegooPrinterSensor(
-                    coordinator=entry.runtime_data.coordinator,
+                    coordinator=coordinator,
                     entity_description=entity_description,
                 )
             ],
             update_before_add=True,
         )
-    for entity_description in PRINTER_ATTRIBUTES:
+    for entity_description in PRINTER_ATTRIBUTES_COMMON:
         async_add_entities(
             [
                 ElegooPrinterSensor(
-                    coordinator=entry.runtime_data.coordinator,
+                    coordinator=coordinator,
                     entity_description=entity_description,
                 )
             ],
             update_before_add=True,
         )
+
+    if fdm_printer:
+        for entity_description in PRINTER_STATUS_FDM:
+            async_add_entities(
+                [
+                    ElegooPrinterSensor(
+                        coordinator=coordinator,
+                        entity_description=entity_description,
+                    )
+                ],
+                update_before_add=True,
+            )
+    else:
+        for entity_description in PRINTER_STATUS_RESIN:
+            async_add_entities(
+                [
+                    ElegooPrinterSensor(
+                        coordinator=coordinator,
+                        entity_description=entity_description,
+                    )
+                ],
+                update_before_add=True,
+            )
+
+        for entity_description in PRINTER_ATTRIBUTES_RESIN:
+            async_add_entities(
+                [
+                    ElegooPrinterSensor(
+                        coordinator=coordinator,
+                        entity_description=entity_description,
+                    )
+                ],
+                update_before_add=True,
+            )
 
 
 class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
