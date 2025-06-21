@@ -6,7 +6,7 @@ from datetime import datetime
 
 from homeassistant.components.sensor import SensorEntityDescription
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
-from homeassistant.const import PERCENTAGE, UnitOfTemperature, UnitOfTime
+from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfTemperature, UnitOfTime
 from homeassistant.helpers.typing import StateType
 
 
@@ -179,6 +179,7 @@ PRINTER_STATUS_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
 
 
 PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+    # --- Enclosure/Box Temperature Sensor ---
     ElegooPrinterSensorEntityDescription(
         key="temp_of_box",
         name="Box Temp",
@@ -186,10 +187,11 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        exists_fn=lambda self: self.coordinator.data.status.temp_of_box > 0,
+        # Check if the attribute exists and has a valid temperature
         available_fn=lambda self: self.coordinator.data.status.temp_of_box > 0,
         value_fn=lambda self: self.coordinator.data.status.temp_of_box,
     ),
+    # --- Target Enclosure/Box Temperature Sensor ---
     ElegooPrinterSensorEntityDescription(
         key="temp_target_box",
         name="Box Target Temp",
@@ -197,9 +199,104 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        exists_fn=lambda self: self.coordinator.data.status.temp_target_box > 0,
+        # Check if the attribute exists and has a valid target temperature
         available_fn=lambda self: self.coordinator.data.status.temp_target_box > 0,
         value_fn=lambda self: self.coordinator.data.status.temp_target_box,
+    ),
+    # --- Nozzle Temperature Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="nozzle_temp",
+        name="Temperature - Nozzle",
+        icon="mdi:thermometer",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        # Correct path to nozzle temperature
+        available_fn=lambda self: self.coordinator.data.status.temp_of_nozzle > 0,
+        value_fn=lambda self: self.coordinator.data.status.temp_of_nozzle,
+    ),
+    # --- Bed Temperature Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="bed_temp",
+        name="Temperature - Bed",
+        icon="mdi:thermometer",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        # Correct path to bed/hotbed temperature
+        available_fn=lambda self: self.coordinator.data.status.temp_of_hotbed > 0,
+        value_fn=lambda self: self.coordinator.data.status.temp_of_hotbed,
+    ),
+    # --- Enclosure Temperature Sensor (using temp_of_box) ---
+    ElegooPrinterSensorEntityDescription(
+        key="enclosure_temp",
+        name="Temperature - Enclosure",
+        icon="mdi:home-thermometer",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        # Also points to temp_of_box as per the class model
+        available_fn=lambda self: self.coordinator.data.status.temp_of_box > 0,
+        value_fn=lambda self: self.coordinator.data.status.temp_of_box,
+    ),
+    # --- Z Offset Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="z_offset",
+        name="Z Offset",
+        icon="mdi:arrow-expand-vertical",
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        # Z-Offset is a direct attribute of PrinterStatus
+        available_fn=lambda self: self.coordinator.data.status is not None,
+        value_fn=lambda self: self.coordinator.data.status.z_offset,
+    ),
+    # --- Model Fan Speed Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="model_fan_speed",
+        name="Fan Speed - Model",
+        icon="mdi:fan",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        # Check if the nested fan speed object is available
+        available_fn=lambda self: self.coordinator.data.status.current_fan_speed
+        is not None,
+        value_fn=lambda self: self.coordinator.data.status.current_fan_speed.model_fan,
+    ),
+    # --- Auxiliary Fan Speed Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="aux_fan_speed",
+        name="Fan Speed - Auxiliary",
+        icon="mdi:fan",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        # Correct path to auxiliary_fan inside the nested object
+        available_fn=lambda self: self.coordinator.data.status.current_fan_speed
+        is not None,
+        value_fn=lambda self: self.coordinator.data.status.current_fan_speed.auxiliary_fan,
+    ),
+    # --- Box/Enclosure Fan Speed Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="box_fan_speed",
+        name="Fan Speed - Enclosure",
+        icon="mdi:fan",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        # Correct path to box_fan inside the nested object
+        available_fn=lambda self: self.coordinator.data.status.current_fan_speed
+        is not None,
+        value_fn=lambda self: self.coordinator.data.status.current_fan_speed.box_fan,
+    ),
+    # --- Print Speed Percentage Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="print_speed_pct",
+        name="Print Speed",
+        icon="mdi:speedometer",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        # Check if the nested print info object is available
+        available_fn=lambda self: self.coordinator.data.status.print_info is not None,
+        value_fn=lambda self: self.coordinator.data.status.print_info.print_speed_pct,
     ),
 )
 
