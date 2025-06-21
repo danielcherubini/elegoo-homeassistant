@@ -56,10 +56,16 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         self._attr_unique_id = coordinator.generate_unique_id(
             self.entity_description.key
         )
-        runtime_data = coordinator.config_entry.runtime_data
-        if not runtime_data or not runtime_data.client:
-            raise HomeAssistantError("Printer client not available")
-        self.printer_client: ElegooPrinterClient = runtime_data.client._elegoo_printer
+# At the top of custom_components/elegoo_printer/camera.py
+-from homeassistant.exceptions import HomeAssistantError
++from homeassistant.exceptions import PlatformNotReady
+
+# Inside the __init__ method
+         runtime_data = coordinator.config_entry.runtime_data
+         if not runtime_data or not runtime_data.client:
+-            raise HomeAssistantError("Printer client not available")
++            raise PlatformNotReady("Printer client not yet available")
+         self.printer_client: ElegooPrinterClient = runtime_data.client._elegoo_printer
         if not self.printer_client.ip_address:
             raise HomeAssistantError("Printer IP address not available")
         _mjpeg_url = f"http://{self.printer_client.ip_address}:3031/video"
