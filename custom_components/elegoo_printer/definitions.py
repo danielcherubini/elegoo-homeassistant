@@ -29,7 +29,25 @@ class ElegooPrinterSensorEntityDescription(
     icon_fn: Callable[..., str] = lambda _: "mdi:eye"
 
 
-PRINTER_ATTRIBUTES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+    ElegooPrinterSensorEntityDescription(
+        key="video_stream_connected",
+        name="Video Stream Connected",
+        icon="mdi:camera",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda self: self.coordinator.data.attributes.num_video_stream_connected,  # noqa: E501
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="video_stream_max",
+        name="Video Stream Max",
+        icon="mdi:camera",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda self: self.coordinator.data.attributes.max_video_stream_allowed,
+    ),
+)
+
+
+PRINTER_ATTRIBUTES_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="release_film_max",
         name="Release Film Max",
@@ -50,32 +68,9 @@ PRINTER_ATTRIBUTES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         and self.coordinator.data.attributes.temp_of_uvled_max > 0,
         entity_registry_enabled_default=False,
     ),
-    ElegooPrinterSensorEntityDescription(
-        key="video_stream_connected",
-        name="Video Stream Connected",
-        icon="mdi:camera",
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda self: self.coordinator.data.attributes.num_video_stream_connected,  # noqa: E501
-    ),
-    ElegooPrinterSensorEntityDescription(
-        key="video_stream_max",
-        name="Video Stream Max",
-        icon="mdi:camera",
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda self: self.coordinator.data.attributes.max_video_stream_allowed,
-    ),
 )
 
-PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
-    ElegooPrinterSensorEntityDescription(
-        key="temp_of_uvled",
-        name="UV LED Temp",
-        icon="mdi:thermometer",
-        device_class=SensorDeviceClass.TEMPERATURE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda self: self.coordinator.data.status.temp_of_uvled,
-    ),
+PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="total_ticks",
         name="Total Print Time",
@@ -161,6 +156,18 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         available_fn=lambda self: self.coordinator.data.status.print_info.error_number
         is not None,
     ),
+)
+
+PRINTER_STATUS_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+    ElegooPrinterSensorEntityDescription(
+        key="temp_of_uvled",
+        name="UV LED Temp",
+        icon="mdi:thermometer",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda self: self.coordinator.data.status.temp_of_uvled,
+    ),
     ElegooPrinterSensorEntityDescription(
         key="release_film",
         name="Release Film",
@@ -168,6 +175,10 @@ PRINTER_STATUS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda self: self.coordinator.data.status.release_film,
     ),
+)
+
+
+PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="temp_of_box",
         name="Box Temp",
