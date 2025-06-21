@@ -208,7 +208,6 @@ PRINTER_MJPEG_CAMERAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Centauri Carbon Camera",
         value_fn=lambda _camera_url: _camera_url,
         exists_fn=lambda _centauri_carbon: _centauri_carbon,
-        available_fn=lambda _printer_attributes: _printer_attributes.num_video_stream_connected
-        < _printer_attributes.max_video_stream_allowed,
+        available_fn=lambda _printer_attributes: True,
     ),
 )
