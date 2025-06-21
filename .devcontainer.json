@@ -6,6 +6,7 @@
   "remoteEnv": {
     "DEBUG": "false"
     "VENV": ".dev",
+    "UV_LINK_MODE": "copy",
   },
   "portsAttributes": {
     "8123": {

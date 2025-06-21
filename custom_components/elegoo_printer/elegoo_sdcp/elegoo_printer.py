@@ -284,17 +284,13 @@ class ElegooPrinterClient:
     def _status_handler(self, data: dict[str, Any]) -> None:  # Pass parsed data
         if DEBUG:
             self.logger.debug(f"status >> \n{json.dumps(data, indent=5)}")
-        printer_status = PrinterStatus.from_json(
-            json.dumps(data), self.centauri_carbon
-        )  # Pass json string to from_json
+        printer_status = PrinterStatus.from_json(json.dumps(data))
         self.printer_data.status = printer_status
 
     def _attributes_handler(self, data: dict[str, Any]) -> None:  # Pass parsed data
         if DEBUG:
             self.logger.debug(f"attributes >> \n{json.dumps(data, indent=5)}")
-        printer_attributes = PrinterAttributes.from_json(
-            json.dumps(data)
-        )  # Pass json string to from_json
+        printer_attributes = PrinterAttributes.from_json(json.dumps(data))
         self.printer_data.attributes = printer_attributes
 
     def _print_history_handler(self, data_data: dict[str, Any]) -> None:

@@ -39,14 +39,14 @@ setup:
 	@echo "--> Creating virtual environment in [$(VENV)]..."
 	@uv venv $(VENV) --python $(PYTHON)
 	@echo "--> Syncing dependencies into [$(VENV)]..."
-	@VIRTUAL_ENV=$(VENV) uv sync --active --all-extras --dev
+	@VIRTUAL_ENV=$(VENV) uv sync --active --all-extras --dev --locked
 	@echo "--> Setup complete. Environment is ready."
 
 # --- DEVELOPMENT TASKS ---
 # Runs the main application script within the uv-managed environment.
 start:
 	@echo "--> Starting the application..."
-	@VIRTUAL_ENV=$(VENV) uv run ./scripts/start
+	@VIRTUAL_ENV=$(VENV) uv run --active ./scripts/start
 
 # Runs the application in debug mode within the uv-managed environment.
 debug:
