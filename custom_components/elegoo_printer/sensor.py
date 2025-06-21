@@ -40,12 +40,15 @@ async def async_setup_entry(
 
     Creates and adds sensor entities for each printer status and attribute description, ensuring they are updated before being added to Home Assistant.
     """
-
+    coordinator: ElegooDataUpdateCoordinator = entry.runtime_data.coordinator
+    fdm_printer: bool = entry.runtime_data.coordinator.config_entry.data.get(
+        CONF_CENTAURI_CARBON, False
+    )
     for entity_description in PRINTER_STATUS_COMMON:
         async_add_entities(
             [
                 ElegooPrinterSensor(
-                    coordinator=entry.runtime_data.coordinator,
+                    coordinator=coordinator,
                     entity_description=entity_description,
                 )
             ],
@@ -55,21 +58,19 @@ async def async_setup_entry(
         async_add_entities(
             [
                 ElegooPrinterSensor(
-                    coordinator=entry.runtime_data.coordinator,
+                    coordinator=coordinator,
                     entity_description=entity_description,
                 )
             ],
             update_before_add=True,
         )
 
-    if entry.runtime_data.coordinator.config_entry.data.get(
-        CONF_CENTAURI_CARBON, False
-    ):
+    if fdm_printer:
         for entity_description in PRINTER_STATUS_FDM:
             async_add_entities(
                 [
                     ElegooPrinterSensor(
-                        coordinator=entry.runtime_data.coordinator,
+                        coordinator=coordinator,
                         entity_description=entity_description,
                     )
                 ],
@@ -80,7 +81,7 @@ async def async_setup_entry(
             async_add_entities(
                 [
                     ElegooPrinterSensor(
-                        coordinator=entry.runtime_data.coordinator,
+                        coordinator=coordinator,
                         entity_description=entity_description,
                     )
                 ],
@@ -91,7 +92,7 @@ async def async_setup_entry(
             async_add_entities(
                 [
                     ElegooPrinterSensor(
-                        coordinator=entry.runtime_data.coordinator,
+                        coordinator=coordinator,
                         entity_description=entity_description,
                     )
                 ],
