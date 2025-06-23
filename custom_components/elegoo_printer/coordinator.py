@@ -37,6 +37,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                 if connected:
                     self.update_interval = timedelta(seconds=2)
                     await self.config_entry.runtime_data.client.async_get_attributes()
+                    await self.config_entry.runtime_data.client.async_get_current_task()
                     return (
                         await self.config_entry.runtime_data.client.async_get_status()
                     )

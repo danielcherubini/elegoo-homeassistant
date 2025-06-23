@@ -94,7 +94,7 @@ class ElegooPrinterClient:
         """Retreves current print Thumbnail."""
         print_history = await self.get_printer_current_task()
         if print_history:
-            return print_history[0].Thumbnail
+            return print_history[0].thumbnail
 
         return None
 

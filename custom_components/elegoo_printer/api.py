@@ -10,6 +10,9 @@ from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
     ElegooPrinterClientWebsocketConnectionError,
     ElegooPrinterClientWebsocketError,
 )
+from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
+    PrintHistoryDetail,
+)
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -77,6 +80,10 @@ class ElegooPrinterApiClient:
     async def async_get_current_thumbnail(self) -> str | None:
         """Get the current print thumbnail from the printer."""
         return await self._elegoo_printer.get_current_print_thumbnail()
+
+    async def async_get_current_task(self) -> list[PrintHistoryDetail] | None:
+        """Get the current print thumbnail from the printer."""
+        return await self._elegoo_printer.get_printer_current_task()
 
     async def retry(self) -> bool:
         """Retry connecting to the printer and getting data."""

@@ -156,6 +156,16 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         available_fn=lambda self: self.coordinator.data.status.print_info.error_number
         is not None,
     ),
+    ElegooPrinterSensorEntityDescription(
+        key="current_print_error_status_reason",
+        translation_key="error_status_reason",
+        name="Error Status Reason",
+        icon="mdi:file",
+        available_fn=lambda self: len(self.coordinator.data.print_history) > 0,
+        value_fn=lambda self: self.coordinator.data.print_history[
+            -1
+        ].error_status_reason,
+    ),
 )
 
 PRINTER_STATUS_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
