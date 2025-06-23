@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
+from custom_components.elegoo_printer.elegoo_sdcp.client import (
     ElegooPrinterClient,
     ElegooPrinterClientWebsocketConnectionError,
     ElegooPrinterClientWebsocketError,

@@ -6,10 +6,8 @@ import sys
 
 from loguru import logger
 
+from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG
-from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
-    ElegooPrinterClient,
-)
 
 LOG_LEVEL = "DEBUG"
 logger.remove()

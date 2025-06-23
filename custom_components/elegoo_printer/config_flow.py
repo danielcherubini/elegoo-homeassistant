@@ -10,7 +10,7 @@ from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
+from custom_components.elegoo_printer.elegoo_sdcp.client import (
     ElegooPrinterClient,
     ElegooPrinterClientWebsocketConnectionError,
     ElegooPrinterClientWebsocketError,
