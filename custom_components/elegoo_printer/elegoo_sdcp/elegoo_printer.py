@@ -93,7 +93,7 @@ class ElegooPrinterClient:
     async def get_current_print_thumbnail(self) -> str | None:
         """
         Asynchronously retrieves the thumbnail URL of the current print task.
-        
+
         Returns:
             str | None: The thumbnail URL if a current print task exists, otherwise None.
         """

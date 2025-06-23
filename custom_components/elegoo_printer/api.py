@@ -80,7 +80,7 @@ class ElegooPrinterApiClient:
     async def async_get_current_thumbnail(self) -> str | None:
         """
         Asynchronously retrieves the current print job's thumbnail image from the printer.
-        
+
         Returns:
             The thumbnail image as a string, or None if unavailable.
         """
@@ -89,7 +89,7 @@ class ElegooPrinterApiClient:
     async def async_get_current_task(self) -> list[PrintHistoryDetail] | None:
         """
         Asynchronously retrieve details of the current print task from the printer.
-        
+
         Returns:
             A list of PrintHistoryDetail objects representing the current print task, or None if no task is active.
         """
@@ -98,7 +98,7 @@ class ElegooPrinterApiClient:
     async def retry(self) -> bool:
         """
         Attempt to reconnect to the printer asynchronously.
-        
+
         Returns:
             bool: True if the reconnection is successful, False otherwise.
         """

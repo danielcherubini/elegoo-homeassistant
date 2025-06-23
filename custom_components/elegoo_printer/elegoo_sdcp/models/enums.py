@@ -139,10 +139,10 @@ class ElegooPrintError(Enum):
     def from_int(cls, status_int: int) -> Optional["ElegooPrintError"] | None:
         """
         Convert an integer to the corresponding ElegooPrintError enum member.
-        
+
         Parameters:
             status_int (int): Integer value representing a print error status.
-        
+
         Returns:
             ElegooPrintError or None: The matching enum member, or None if the integer does not correspond to any defined error.
         """  # noqa: D401
@@ -205,7 +205,7 @@ class ErrorStatusReason(Enum):
     def from_int(cls, status_int: int) -> Optional["ErrorStatusReason"]:
         """
         Convert an integer to the corresponding ErrorStatusReason enum member.
-        
+
         Returns:
             The matching ErrorStatusReason member if the integer is valid; otherwise, None.
         """
