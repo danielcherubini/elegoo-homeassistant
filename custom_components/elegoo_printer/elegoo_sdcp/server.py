@@ -13,9 +13,7 @@ from websockets.legacy.server import WebSocketServerProtocol, serve
 
 from .models.printer import Printer
 
-DISCOVERY_TIMEOUT = 2
 DISCOVERY_PORT = 3000
-DEFAULT_PORT = 54780
 WEBSOCKET_PORT = 3030
 
 
