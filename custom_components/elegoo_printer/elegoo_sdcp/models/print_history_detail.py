@@ -10,11 +10,9 @@ class PrintHistoryDetail:
 
     def __init__(self, data: dict[str, Any]) -> None:
         """
-        Initialize a PrintHistoryDetail object.
-
-        Args:
-            data: A dictionary containing the print history data.
-
+        Initialize a PrintHistoryDetail instance with print job details from a dictionary.
+        
+        The input dictionary should contain keys corresponding to print job attributes such as thumbnail, task name, timing, status, slice information, print layers, task ID, MD5 hash, current layer volume, time-lapse video details, and error status reason. Missing keys default to None or zero where applicable.
         """
         self.thumbnail: str | None = data.get("Thumbnail")
         self.task_name: str | None = data.get("TaskName")
@@ -40,11 +38,7 @@ class PrintHistoryDetail:
 
     def __repr__(self) -> str:
         """
-        Return a string representation of the object.
-
-        Returns:
-            A string representation of the object's attributes.
-
+        Return a string representation of the instance's attributes as a dictionary.
         """
         return str(self.__dict__)
 
