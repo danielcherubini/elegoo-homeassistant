@@ -38,7 +38,17 @@ class ElegooPrinterApiClient:
     async def async_create(
         cls, config: MappingProxyType[str, Any], logger: Logger
     ) -> ElegooPrinterApiClient | None:
-        """Sample API Client."""
+        """
+        Asynchronously creates and initializes an ElegooPrinterApiClient instance using the provided configuration.
+        
+        Attempts to discover and connect to the printer at the specified IP address. Returns the initialized API client if successful, or None if the printer cannot be found or connected.
+         
+        Parameters:
+            config (MappingProxyType[str, Any]): Configuration containing the printer's IP address and optional model flag.
+        
+        Returns:
+            ElegooPrinterApiClient | None: The initialized API client instance, or None if initialization fails.
+        """
         ip_address = config.get("ip_address")
         centauri_carbon: bool = config.get("centauri_carbon", False)
         if ip_address is None:
