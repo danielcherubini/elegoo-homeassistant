@@ -27,6 +27,9 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
     """Protocol to handle UDP discovery broadcasts by replying with JSON."""
 
     def __init__(self, logger: Any, printer: Printer, proxy_ip: str):
+        """
+        Initialize the DiscoveryProtocol with logging, printer information, and the proxy server's IP address.
+        """
         self.logger = logger
         self.printer = printer
         self.proxy_ip = proxy_ip
@@ -34,9 +37,17 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         super().__init__()
 
     def connection_made(self, transport):
+        """
+        Store the transport object when a UDP connection is established.
+        """
         self.transport = transport
 
     def datagram_received(self, data, addr):
+        """
+        Handles incoming UDP datagrams and responds to discovery requests with printer metadata in JSON format.
+        
+        When a discovery message ("M99999") is received, sends a JSON response containing printer identification and network details to the sender.
+        """
         message = data.decode()
         if message == "M99999":
             self.logger.info(
@@ -63,14 +74,26 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                 self.transport.sendto(json_string.encode(), addr)
 
     def error_received(self, exc):
+        """
+        Handles errors received by the UDP discovery server by logging the exception.
+        """
         self.logger.error(f"UDP Discovery Server Error: {exc}")
 
     def connection_lost(self, exc):
+        """
+        Handles cleanup when the UDP discovery server connection is lost.
+        """
         self.logger.warning("UDP Discovery Server Closed.")
         super().connection_lost(exc)
 
     def get_local_ip(self):
         # Try to get the IP that would be used to reach the printer
+        """
+        Determine the local IP address used to reach the printer.
+        
+        Returns:
+            str: The local IP address that would be used to connect to the printer, or "127.0.0.1" if it cannot be determined.
+        """
         if self.printer.ip_address:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.settimeout(0)
@@ -87,7 +110,13 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
 
 
 async def _forward_messages(source: Forwardable, dest: Forwardable, logger: Any):
-    """Asynchronously forward messages from a source to a destination websocket."""
+    """
+    Continuously forwards messages from a source WebSocket to a destination WebSocket until the connection is closed or an error occurs.
+    
+    Parameters:
+        source (Forwardable): The WebSocket connection to receive messages from.
+        dest (Forwardable): The WebSocket connection to send messages to.
+    """
     try:
         while True:
             message = await source.recv()
@@ -108,8 +137,13 @@ async def _proxy_handler(
     local_client_ws: WebSocketServerProtocol, remote_ip: str, logger: Any
 ):
     """
-    Handles a new client connection to the proxy.
-    It establishes a connection to the remote printer and forwards messages between the client and the printer.
+    Handles a new WebSocket client connection to the proxy, establishing a connection to the remote printer and forwarding messages bidirectionally.
+    
+    Parameters:
+        local_client_ws (WebSocketServerProtocol): The WebSocket connection from the local client.
+        remote_ip (str): The IP address of the remote printer.
+    
+    The function manages the lifecycle of both connections, ensuring proper cleanup and logging connection events and errors.
     """
     logger.info(f"Proxy client connected from {local_client_ws.remote_address}")
     remote_uri = f"ws://{remote_ip}:{WEBSOCKET_PORT}/websocket"
@@ -154,7 +188,12 @@ async def _proxy_handler(
 
 
 def start_proxy_server(printer: Printer, logger: Any, startup_event: Event):
-    """Starts the websocket and discovery proxy servers in its own asyncio event loop."""
+    """
+    Start the WebSocket and UDP discovery proxy servers for the specified printer in a dedicated asyncio event loop.
+    
+    Raises:
+        ValueError: If the printer's IP address is not set.
+    """
     if not printer.ip_address:
         raise ValueError("Printer IP address is not set. Cannot start proxy server.")
 
@@ -169,6 +208,12 @@ def start_proxy_server(printer: Printer, logger: Any, startup_event: Event):
 
     # --- Start WebSocket (TCP) Proxy Server ---
     def ws_handler(ws):
+        """
+        Handles incoming WebSocket connections by forwarding them to the remote printer via the proxy.
+        
+        Returns:
+            Coroutine that manages bidirectional message forwarding between the client WebSocket and the remote printer.
+        """
         return _proxy_handler(ws, printer_ip_address, logger)
 
     start_ws_server = serve(ws_handler, "0.0.0.0", WEBSOCKET_PORT)
@@ -178,6 +223,9 @@ def start_proxy_server(printer: Printer, logger: Any, startup_event: Event):
     proxy_ip = socket.gethostbyname(socket.gethostname())
 
     def discovery_protocol_factory():
+        """
+        Creates and returns a new instance of the DiscoveryProtocol with the configured logger, printer, and proxy IP address.
+        """
         return DiscoveryProtocol(logger, printer, proxy_ip)
 
     start_discovery_server = loop.create_datagram_endpoint(
@@ -196,7 +244,16 @@ def start_proxy_server(printer: Printer, logger: Any, startup_event: Event):
 
 
 def is_port_in_use(host: str, port: int) -> bool:
-    """Check if a TCP port is already in use on the given host."""
+    """
+    Determine whether a TCP port is currently open and accepting connections on the specified host.
+    
+    Parameters:
+        host (str): The hostname or IP address to check. If "0.0.0.0", checks "127.0.0.1" instead.
+        port (int): The TCP port number to check.
+    
+    Returns:
+        bool: True if the port is in use (connection succeeds), False otherwise.
+    """
     check_host = "127.0.0.1" if host == "0.0.0.0" else host
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex((check_host, port)) == 0
