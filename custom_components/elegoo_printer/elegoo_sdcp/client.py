@@ -410,7 +410,7 @@ class ElegooPrinterClient:
         ws = websocket.WebSocketApp(
             url,
             on_message=ws_msg_handler,
-            on_open=ws_connected_handler(self.printer.name),
+            on_open=lambda ws: ws_connected_handler(self.printer.name),
             on_close=on_close,
             on_error=on_error,
         )
