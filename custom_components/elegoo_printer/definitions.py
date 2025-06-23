@@ -139,12 +139,21 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         and self.coordinator.data.status.print_info.filename != "",
     ),
     ElegooPrinterSensorEntityDescription(
+        key="current_status",
+        translation_key="current_status",
+        name="Current Status",
+        icon="mdi:file",
+        value_fn=lambda self: self.coordinator.data.status.current_status.name.lower(),
+        available_fn=lambda self: self.coordinator.data.status.current_status
+        is not None,
+    ),
+    ElegooPrinterSensorEntityDescription(
         key="print_status",
         translation_key="print_status",
         name="Print Status",
         icon="mdi:file",
-        value_fn=lambda self: self.coordinator.data.status.current_status.name.lower(),
-        available_fn=lambda self: self.coordinator.data.status.current_status
+        value_fn=lambda self: self.coordinator.data.status.print_info.status.name.lower(),
+        available_fn=lambda self: self.coordinator.data.status.print_info.status
         is not None,
     ),
     ElegooPrinterSensorEntityDescription(
