@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import ErrorStatusReason
+
 
 class PrintHistoryDetail:
     """Represents the details of a print history entry."""
@@ -30,7 +32,11 @@ class PrintHistoryDetail:
         )  # Or int, depending on actual type
         self.TimeLapseVideoStatus: int | None = data.get("TimeLapseVideoStatus")
         self.TimeLapseVideoUrl: str | None = data.get("TimeLapseVideoUrl")
-        self.ErrorStatusReason: int | None = data.get("ErrorStatusReason")
+
+        _error_status_reason: int = data.get("ErrorStatusReason", 0)
+        self.ErrorStatusReason: ErrorStatusReason | None = ErrorStatusReason.from_int(
+            _error_status_reason
+        )
 
     def __repr__(self) -> str:
         """

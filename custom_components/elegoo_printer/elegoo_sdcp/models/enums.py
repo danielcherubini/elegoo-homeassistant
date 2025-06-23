@@ -152,3 +152,71 @@ class ElegooPrintError(Enum):
             return cls(status_int)  # Use cls() to create enum members
         except ValueError:
             return None
+
+
+class ErrorStatusReason(Enum):
+    """
+    Represents the reason for a print job status or error.
+
+    Attributes:
+        OK: Normal operation.
+        TEMP_ERROR: Over-temperature error for the nozzle or bed.
+        FILAMENT_RUNOUT: Filament runout was detected.
+        FILAMENT_JAM: A filament jam or clog was detected.
+        LEVEL_FAILED: Auto-bed leveling process failed.
+        UDISK_REMOVE: USB drive was removed during printing.
+        HOME_FAILED_X: Homing failed on the X-axis, likely a motor or endstop issue.
+        HOME_FAILED_Z: Homing failed on the Z-axis, likely a motor or endstop issue.
+        HOME_FAILED: A general homing failure occurred.
+        BED_ADHESION_FAILED: The print detached from the print bed.
+        ERROR: A general, unspecified printing exception occurred.
+        MOVE_ABNORMAL: An abnormality was detected in motor movement.
+        HOME_FAILED_Y: Homing failed on the Y-axis, likely a motor or endstop issue.
+        FILE_ERROR: An error occurred while reading the G-code file.
+        CAMERA_ERROR: A camera connection error occurred.
+        NETWORK_ERROR: A network connection error occurred.
+        SERVER_CONNECT_FAILED: Failed to connect to the server.
+        DISCONNECT_APP: The controlling application disconnected during the print.
+        NOZZLE_TEMP_SENSOR_OFFLINE: The nozzle thermistor is offline or disconnected.
+        BED_TEMP_SENSOR_OFFLINE: The bed thermistor is offline or disconnected.
+
+    """  # noqa: E501
+
+    OK = 0
+    TEMP_ERROR = 1
+    FILAMENT_RUNOUT = 3
+    FILAMENT_JAM = 6
+    LEVEL_FAILED = 7
+    UDISK_REMOVE = 12
+    HOME_FAILED_X = 13
+    HOME_FAILED_Z = 14
+    HOME_FAILED = 17
+    BED_ADHESION_FAILED = 18
+    ERROR = 19
+    MOVE_ABNORMAL = 20
+    HOME_FAILED_Y = 23
+    FILE_ERROR = 24
+    CAMERA_ERROR = 25
+    NETWORK_ERROR = 26
+    SERVER_CONNECT_FAILED = 27
+    DISCONNECT_APP = 28
+    NOZZLE_TEMP_SENSOR_OFFLINE = 33
+    BED_TEMP_SENSOR_OFFLINE = 34
+
+    @classmethod
+    def from_int(cls, status_int: int) -> Optional["ErrorStatusReason"]:
+        """
+        Converts an integer to an ErrorStatusReason enum member.
+
+        Args:
+            status_int: The integer representing the error reason.
+
+        Returns:
+            The corresponding ErrorStatusReason enum member, or None if the
+            integer is not a valid value.
+
+        """
+        try:
+            return cls(status_int)
+        except ValueError:
+            return None
