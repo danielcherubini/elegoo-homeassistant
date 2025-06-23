@@ -39,6 +39,31 @@
           "unknown_format": "Unknown format",
           "unknown_model": "Unknown model"
         }
+      },
+      "error_status_reason": {
+        "name": "Error Status Reason",
+        "state": {
+          "ok": "Normal",
+          "temp_error": "Over-temperature error (nozzle/bed)",
+          "filament_runout": "Filament runout detected",
+          "filament_jam": "Filament jam or clog detected",
+          "level_failed": "Auto-bed leveling failed",
+          "udisk_remove": "USB drive removed during print",
+          "home_failed_x": "X-axis homing failure",
+          "home_failed_z": "Z-axis homing failure",
+          "home_failed": "General homing failure",
+          "bed_adhesion_failed": "Print detachment from bed",
+          "error": "General printing error",
+          "move_abnormal": "Motor movement abnormality",
+          "home_failed_y": "Y-axis homing failure",
+          "file_error": "G-code file error",
+          "camera_error": "Camera connection error",
+          "network_error": "Network connection error",
+          "server_connect_failed": "Server connection failed",
+          "disconnect_app": "App disconnected during print",
+          "nozzle_temp_sensor_offline": "Nozzle temperature sensor offline",
+          "bed_temp_sensor_offline": "Bed temperature sensor offline"
+        }
       }
     }
   }
