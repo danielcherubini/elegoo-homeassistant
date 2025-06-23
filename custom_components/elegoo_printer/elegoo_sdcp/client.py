@@ -19,16 +19,63 @@ from .models.print_history_detail import PrintHistoryDetail
 from .models.printer import Printer, PrinterData
 from .models.status import PrinterStatus
 
-DISCOVERY_TIMEOUT = 1
+DISCOVERY_TIMEOUT = 2
+DISCOVERY_PORT = 3000
 DEFAULT_PORT = 54780
 WEBSOCKET_PORT = 3030
 
 
-# --- Websocket Proxy/Multiplexer ---
-# This section contains the logic for the local proxy server.
+# --- Discovery and Websocket Proxy/Multiplexer ---
 
 # Define a type alias for protocols that can be forwarded
 Forwardable = Union[WebSocketServerProtocol, WebSocketClientProtocol]
+
+
+class DiscoveryProtocol(asyncio.DatagramProtocol):
+    """Protocol to handle UDP discovery broadcasts by replying with JSON."""
+
+    def __init__(self, logger: Any, printer: Printer, proxy_ip: str):
+        self.logger = logger
+        self.printer = printer
+        self.proxy_ip = proxy_ip
+        self.transport = None
+        super().__init__()
+
+    def connection_made(self, transport):
+        self.transport = transport
+
+    def datagram_received(self, data, addr):
+        message = data.decode()
+        if message == "M99999":
+            self.logger.info(
+                f"Discovery request received from {addr}, responding with JSON."
+            )
+            # Construct the JSON response based on the user-provided structure,
+            # using details from the real printer object.
+            response_payload = {
+                "Id": getattr(self.printer, "connection", os.urandom(8).hex()),
+                "Data": {
+                    "Name": getattr(self.printer, "name", "Elegoo Proxy"),
+                    "MachineName": getattr(self.printer, "name", "Elegoo Proxy"),
+                    "BrandName": "Elegoo",
+                    "MainboardIP": self.proxy_ip,  # The crucial substitution
+                    "MainboardID": getattr(self.printer, "id", "unknown"),
+                    "ProtocolVersion": "V3.0.0",
+                    "FirmwareVersion": getattr(self.printer, "version", "V1.0.0"),
+                },
+            }
+            # The original implementation expects a string, so we send a string.
+            # The client will parse this string.
+            json_string = json.dumps(response_payload)
+            if self.transport:
+                self.transport.sendto(json_string.encode(), addr)
+
+    def error_received(self, exc):
+        self.logger.error(f"UDP Discovery Server Error: {exc}")
+
+    def connection_lost(self, exc):
+        self.logger.warning("UDP Discovery Server Closed.")
+        super().connection_lost(exc)
 
 
 async def _forward_messages(source: Forwardable, dest: Forwardable, logger: Any):
@@ -98,30 +145,41 @@ async def _proxy_handler(
             )
 
 
-def start_proxy_server(remote_ip: str, logger: Any, startup_event: Event):
-    """Starts the websocket proxy server in its own asyncio event loop."""
+def start_proxy_server(printer: Printer, logger: Any, startup_event: Event):
+    """Starts the websocket and discovery proxy servers in its own asyncio event loop."""
+    if not printer.ip_address:
+        raise ValueError("Printer IP address is not set. Cannot start proxy server.")
+
+    printer_ip_address = printer.ip_address
     logger.info(
-        f"Attempting to start websocket proxy server for remote printer {remote_ip}"
+        f"Attempting to start proxy server for remote printer {printer_ip_address}"
     )
 
     # Each thread needs its own asyncio event loop.
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    # Create a partial function to pass arguments to the handler.
-    def handler(ws):
-        return _proxy_handler(ws, remote_ip, logger)
+    # --- Start WebSocket (TCP) Proxy Server ---
+    def ws_handler(ws):
+        return _proxy_handler(ws, printer_ip_address, logger)
 
-    # Bind to 0.0.0.0 to accept connections from any network interface
-    start_server = serve(handler, "0.0.0.0", WEBSOCKET_PORT)
+    start_ws_server = serve(ws_handler, "0.0.0.0", WEBSOCKET_PORT)
+    ws_server = loop.run_until_complete(start_ws_server)
 
-    server = loop.run_until_complete(start_server)
-    if server.server.is_serving():
-        # Get the actual host IP to log a more helpful message
-        host_ip = socket.gethostbyname(socket.gethostname())
-        logger.info(
-            f"Proxy server is running on ws://{host_ip}:{WEBSOCKET_PORT} (and all other interfaces)"
-        )
+    # --- Start Discovery (UDP) Proxy Server ---
+    proxy_ip = socket.gethostbyname(socket.gethostname())
+
+    def discovery_protocol_factory():
+        return DiscoveryProtocol(logger, printer, proxy_ip)
+
+    start_discovery_server = loop.create_datagram_endpoint(
+        discovery_protocol_factory, local_addr=("0.0.0.0", DISCOVERY_PORT)
+    )
+    loop.run_until_complete(start_discovery_server)
+
+    if ws_server.server.is_serving():
+        logger.info(f"WebSocket Proxy running on ws://{proxy_ip}:{WEBSOCKET_PORT}")
+        logger.info(f"Discovery Proxy listening on UDP port {DISCOVERY_PORT}")
 
     # Signal that the server is up and running.
     startup_event.set()
@@ -131,7 +189,6 @@ def start_proxy_server(remote_ip: str, logger: Any, startup_event: Event):
 
 def is_port_in_use(host: str, port: int) -> bool:
     """Check if a TCP port is already in use on the given host."""
-    # When checking a server bound to 0.0.0.0, we can check against localhost
     check_host = "127.0.0.1" if host == "0.0.0.0" else host
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex((check_host, port)) == 0
@@ -270,35 +327,41 @@ class ElegooPrinterClient:
                 "Not connected"
             )
 
-    def discover_printer(self, ip_address: str = "255.255.255.255") -> Printer | None:
-        """Discover the Elegoo printer on the network."""
-        self.logger.info(f"Starting printer discovery at {ip_address}")
+    def discover_printer(
+        self, broadcast_address: str = "<broadcast>"
+    ) -> Printer | None:
+        """Discover the Elegoo printer (or proxy) on the network."""
+        self.logger.info("Broadcasting for printer/proxy discovery...")
         msg = b"M99999"
         with socket.socket(
             socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
         ) as sock:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             sock.settimeout(DISCOVERY_TIMEOUT)
-            sock.bind(("", DEFAULT_PORT))
             try:
-                _ = sock.sendto(msg, (ip_address, 3000))
-                data = sock.recv(8192)
+                sock.sendto(msg, (broadcast_address, DISCOVERY_PORT))
+                data, addr = sock.recvfrom(8192)
+                self.logger.info(f"Discovery response received from {addr}")
             except TimeoutError:
-                self.logger.warning("Printer discovery timed out.")
-            except OSError:
-                self.logger.exception("Socket error during discovery")
-            else:
-                printer = self._save_discovered_printer(data)
-                if printer:
-                    self.logger.debug("Discovery done.")
-                    self.printer = printer
-                    return printer
+                self.logger.warning("Printer/proxy discovery timed out.")
+                return None
+            except OSError as e:
+                self.logger.exception(f"Socket error during discovery: {e}")
+                return None
+
+            # The response from the proxy will be JSON.
+            printer = self._save_discovered_printer(data)
+            if printer:
+                self.logger.debug("Discovery successful.")
+                self.printer = printer
+                return printer
 
         return None
 
     def _save_discovered_printer(self, data: bytes) -> Printer | None:
         try:
             printer_info = data.decode("utf-8")
+            print(printer_info)
         except UnicodeDecodeError:
             self.logger.exception(
                 "Error decoding printer discovery data. Data may be malformed."
@@ -325,8 +388,19 @@ class ElegooPrinterClient:
         Returns:
             True if the connection was successful, False otherwise.
         """
-        # 1. Check if the proxy is already running on the default port.
+        # If this instance is designated to be the server host...
         if self.ws_server and not is_port_in_use("0.0.0.0", WEBSOCKET_PORT):
+            self.logger.info("Proxy server not found. This instance will host it.")
+
+            # This instance MUST discover the REAL printer first to impersonate it.
+            self.logger.info("Performing initial discovery of the REAL printer...")
+            real_printer = self._discover_real_printer()
+            if not real_printer:
+                self.logger.error(
+                    "Could not find the real printer. Cannot start proxy server."
+                )
+                return False
+
             self.logger.info(
                 f"Local proxy not found on port {WEBSOCKET_PORT}. Starting new proxy server..."
             )
@@ -336,29 +410,27 @@ class ElegooPrinterClient:
 
             proxy_thread = Thread(
                 target=start_proxy_server,
-                args=(self.printer.ip_address, self.logger, startup_event),
-                daemon=True,  # Daemon threads exit when the main program exits.
+                args=(real_printer, self.logger, startup_event),
+                daemon=True,
             )
             proxy_thread.start()
             self.proxy_thread = proxy_thread
 
-            # Wait for the server to be ready, with a timeout.
             ready = startup_event.wait(timeout=5.0)
             if not ready:
                 self.logger.error(
                     "Proxy server failed to start within the timeout period."
                 )
                 return False
-            self.logger.info("Proxy server has started.")
-        else:
-            self.logger.info(
-                f"Local proxy found on port {WEBSOCKET_PORT}. Connecting to it."
-            )
+            self.logger.info("Proxy server has started successfully.")
 
-        # 2. Connect this client to the local proxy.
-        # This client still connects to localhost, but the server listens on 0.0.0.0
-        url = f"ws://localhost:{WEBSOCKET_PORT}"
-        self.logger.info(f"Client connecting to local proxy at: {url}")
+        # Now, discover the printer/proxy and connect to its WebSocket
+        if not self.discover_printer():
+            return False
+
+        # Connect this client to the discovered printer/proxy's WebSocket.
+        url = f"ws://{self.printer.ip_address}:{WEBSOCKET_PORT}/websocket"
+        self.logger.info(f"Client connecting to WebSocket at: {url}")
 
         websocket.setdefaulttimeout(1)
 
@@ -374,7 +446,7 @@ class ElegooPrinterClient:
             close_msg: str,
         ) -> None:
             self.logger.debug(
-                f"Connection to {self.printer.name} (via proxy) closed: {close_msg} ({close_status_code})"  # noqa: E501
+                f"Connection to {self.printer.name} (via proxy) closed: {close_msg} ({close_status_code})"
             )
             self.printer_websocket = None
 
@@ -404,15 +476,39 @@ class ElegooPrinterClient:
             if ws.sock and ws.sock.connected:
                 await asyncio.sleep(2)  # Allow time for initial messages if any.
                 self.logger.info(
-                    f"Verified connection to {self.printer.name} via proxy."
+                    f"Verified WebSocket connection to {self.printer.name}."
                 )
                 return True
 
         self.logger.warning(
-            f"Failed to connect to {self.printer.name} via proxy within timeout."
+            f"Failed to connect WebSocket to {self.printer.name} within timeout."
         )
         self.printer_websocket = None
         return False
+
+    def _discover_real_printer(self) -> Printer | None:
+        """Discovers the real printer by sending a broadcast to its specific IP."""
+        self.logger.info(f"Pinging real printer at {self.ip_address}")
+        msg = b"M99999"
+        with socket.socket(
+            socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
+        ) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.settimeout(DISCOVERY_TIMEOUT)
+            sock.bind(("", DEFAULT_PORT))
+            try:
+                # Send directly to the known IP of the printer
+                sock.sendto(msg, (self.ip_address, DISCOVERY_PORT))
+                data, addr = sock.recvfrom(8192)
+            except TimeoutError:
+                self.logger.warning("Real printer discovery timed out.")
+                return None
+            except OSError:
+                self.logger.exception("Socket error during real printer discovery")
+                return None
+
+            # The real printer sends a string, so we parse it here.
+            return self._save_discovered_printer(data)
 
     def _parse_response(self, response: str) -> None:
         try:

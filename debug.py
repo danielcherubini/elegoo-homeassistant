@@ -21,7 +21,7 @@ async def main() -> None:
     stop_event = asyncio.Event()
     try:
         elegoo_printer = ElegooPrinterClient(
-            ip_address=PRINTER_IP, centauri_carbon=False, logger=logger, ws_server=False
+            ip_address=PRINTER_IP, centauri_carbon=False, logger=logger, ws_server=True
         )
         printer = elegoo_printer.discover_printer(PRINTER_IP)
         if printer:
