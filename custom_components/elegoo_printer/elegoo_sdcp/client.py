@@ -56,7 +56,7 @@ async def _proxy_handler(
 ):
     """
     Handles a new client connection to the local proxy server by establishing a websocket connection to the remote printer and forwarding messages bidirectionally between the client and the printer.
-    
+
     Parameters:
         local_client_ws (WebSocketServerProtocol): The websocket connection from the local client.
         remote_ip (str): The IP address of the remote printer.
@@ -100,7 +100,7 @@ async def _proxy_handler(
 def start_proxy_server(remote_ip: str, logger: Any):
     """
     Start a websocket proxy server on localhost to forward connections to a remote printer.
-    
+
     The proxy server runs in its own asyncio event loop and thread, listening on port 3030. It forwards websocket messages between local clients and the specified remote printer IP.
     """
     logger.info(
@@ -115,7 +115,7 @@ def start_proxy_server(remote_ip: str, logger: Any):
     def handler(ws, path):
         """
         Handles incoming websocket connections to the local proxy server and forwards them to the remote printer.
-        
+
         Delegates the connection to the internal proxy handler, enabling bidirectional message forwarding between the local client and the remote printer.
         """
         return _proxy_handler(ws, remote_ip, logger)
@@ -130,11 +130,11 @@ def start_proxy_server(remote_ip: str, logger: Any):
 def is_port_in_use(host: str, port: int) -> bool:
     """
     Check whether a TCP port is currently open and accepting connections on the specified host.
-    
+
     Parameters:
         host (str): The hostname or IP address to check.
         port (int): The TCP port number to check.
-    
+
     Returns:
         bool: True if the port is in use, False otherwise.
     """
@@ -166,11 +166,11 @@ class ElegooPrinterClient:
     ) -> None:
         """
         Initialize an ElegooPrinterClient for communicating with an Elegoo 3D printer.
-        
+
         Parameters:
             ip_address (str): The IP address of the target printer.
             centauri_carbon (bool, optional): Set to True if the printer is a Centauri Carbon model. Defaults to False.
-        
+
         Initializes internal state, including printer data, websocket connection, logger, and proxy thread management.
         """
         self.ip_address: str = ip_address
@@ -184,10 +184,10 @@ class ElegooPrinterClient:
     def get_printer_status(self) -> PrinterData:
         """
         Retrieve the current status of the printer.
-        
+
         Returns:
             PrinterData: The updated printer status data.
-        
+
         Raises:
             ElegooPrinterClientWebsocketError: If a websocket communication error occurs.
             OSError: If an OS-level error occurs during communication.
@@ -334,9 +334,9 @@ class ElegooPrinterClient:
     async def connect_printer(self) -> bool:
         """
         Asynchronously connects to the Elegoo printer via a local websocket proxy server.
-        
+
         If the proxy server is not running on localhost:3030, starts it in a daemon thread to forward messages between local clients and the remote printer. Then connects the client to the proxy, enabling multiple local applications to share the printer connection.
-        
+
         Returns:
             bool: True if the connection to the printer via the proxy is successful, False otherwise.
         """
@@ -368,7 +368,7 @@ class ElegooPrinterClient:
         def ws_msg_handler(ws, msg: str) -> None:  # noqa: ANN001, ARG001
             """
             Handles incoming websocket messages by parsing the response.
-            
+
             Parameters:
                 msg (str): The message received from the websocket.
             """
@@ -377,7 +377,7 @@ class ElegooPrinterClient:
         def ws_connected_handler(name: str) -> None:
             """
             Logs a message indicating that a client has successfully connected to the specified proxy.
-            
+
             Parameters:
                 name (str): The identifier or address of the proxy to which the client connected.
             """
@@ -390,7 +390,7 @@ class ElegooPrinterClient:
         ) -> None:
             """
             Handles the event when the websocket connection to the printer (via proxy) is closed.
-            
+
             Logs the closure event and resets the internal websocket reference.
             """
             self.logger.debug(
@@ -440,7 +440,7 @@ class ElegooPrinterClient:
     def _parse_response(self, response: str) -> None:
         """
         Parses a JSON response message from the printer and dispatches it to the appropriate handler based on its topic.
-        
+
         If the message contains a recognized topic, it is processed accordingly; otherwise, logs a warning or debug information for unknown or malformed messages.
         """
         try:
@@ -471,7 +471,7 @@ class ElegooPrinterClient:
     def _response_handler(self, data: dict[str, Any]) -> None:
         """
         Handles a printer response message by extracting nested print history data and passing it to the print history handler.
-        
+
         Parameters:
             data (dict): The response message containing nested "Data" fields.
         """
@@ -495,7 +495,7 @@ class ElegooPrinterClient:
     def _attributes_handler(self, data: dict[str, Any]) -> None:
         """
         Parses and updates the printer's attributes from the provided data dictionary.
-        
+
         Parameters:
             data (dict): Dictionary containing printer attribute information in JSON-compatible format.
         """
