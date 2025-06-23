@@ -361,7 +361,6 @@ class ElegooPrinterClient:
     def _save_discovered_printer(self, data: bytes) -> Printer | None:
         try:
             printer_info = data.decode("utf-8")
-            print(printer_info)
         except UnicodeDecodeError:
             self.logger.exception(
                 "Error decoding printer discovery data. Data may be malformed."

@@ -47,7 +47,7 @@ class ElegooPrinterApiClient:
         self = ElegooPrinterApiClient(ip_address, centauri_carbon, logger)
 
         elegoo_printer = ElegooPrinterClient(ip_address, centauri_carbon, logger)
-        printer = elegoo_printer.discover_printer()
+        printer = elegoo_printer.discover_printer(ip_address)
         if printer is None:
             return None
         connected = await elegoo_printer.connect_printer()
