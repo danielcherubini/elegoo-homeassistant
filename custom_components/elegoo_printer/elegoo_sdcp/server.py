@@ -45,7 +45,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
     def datagram_received(self, data, addr):
         """
         Handles incoming UDP datagrams and responds to discovery requests with printer metadata in JSON format.
-        
+
         When a discovery message ("M99999") is received, sends a JSON response containing printer identification and network details to the sender.
         """
         message = data.decode()
@@ -90,7 +90,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         # Try to get the IP that would be used to reach the printer
         """
         Determine the local IP address used to reach the printer.
-        
+
         Returns:
             str: The local IP address that would be used to connect to the printer, or "127.0.0.1" if it cannot be determined.
         """
@@ -112,7 +112,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
 async def _forward_messages(source: Forwardable, dest: Forwardable, logger: Any):
     """
     Continuously forwards messages from a source WebSocket to a destination WebSocket until the connection is closed or an error occurs.
-    
+
     Parameters:
         source (Forwardable): The WebSocket connection to receive messages from.
         dest (Forwardable): The WebSocket connection to send messages to.
@@ -138,11 +138,11 @@ async def _proxy_handler(
 ):
     """
     Handles a new WebSocket client connection to the proxy, establishing a connection to the remote printer and forwarding messages bidirectionally.
-    
+
     Parameters:
         local_client_ws (WebSocketServerProtocol): The WebSocket connection from the local client.
         remote_ip (str): The IP address of the remote printer.
-    
+
     The function manages the lifecycle of both connections, ensuring proper cleanup and logging connection events and errors.
     """
     logger.info(f"Proxy client connected from {local_client_ws.remote_address}")
@@ -190,7 +190,7 @@ async def _proxy_handler(
 def start_proxy_server(printer: Printer, logger: Any, startup_event: Event):
     """
     Start the WebSocket and UDP discovery proxy servers for the specified printer in a dedicated asyncio event loop.
-    
+
     Raises:
         ValueError: If the printer's IP address is not set.
     """
@@ -210,7 +210,7 @@ def start_proxy_server(printer: Printer, logger: Any, startup_event: Event):
     def ws_handler(ws):
         """
         Handles incoming WebSocket connections by forwarding them to the remote printer via the proxy.
-        
+
         Returns:
             Coroutine that manages bidirectional message forwarding between the client WebSocket and the remote printer.
         """
@@ -246,11 +246,11 @@ def start_proxy_server(printer: Printer, logger: Any, startup_event: Event):
 def is_port_in_use(host: str, port: int) -> bool:
     """
     Determine whether a TCP port is currently open and accepting connections on the specified host.
-    
+
     Parameters:
         host (str): The hostname or IP address to check. If "0.0.0.0", checks "127.0.0.1" instead.
         port (int): The TCP port number to check.
-    
+
     Returns:
         bool: True if the port is in use (connection succeeds), False otherwise.
     """

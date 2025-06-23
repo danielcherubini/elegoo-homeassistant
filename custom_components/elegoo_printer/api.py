@@ -40,12 +40,12 @@ class ElegooPrinterApiClient:
     ) -> ElegooPrinterApiClient | None:
         """
         Asynchronously creates and initializes an ElegooPrinterApiClient instance using the provided configuration.
-        
+
         Attempts to discover and connect to the printer at the specified IP address. Returns the initialized API client if successful, or None if the printer cannot be found or connected.
-         
+
         Parameters:
             config (MappingProxyType[str, Any]): Configuration containing the printer's IP address and optional model flag.
-        
+
         Returns:
             ElegooPrinterApiClient | None: The initialized API client instance, or None if initialization fails.
         """

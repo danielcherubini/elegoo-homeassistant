@@ -48,12 +48,12 @@ class ElegooPrinterClient:
     ) -> None:
         """
         Initialize an ElegooPrinterClient for communicating with an Elegoo 3D printer.
-        
+
         Parameters:
             ip_address (str): The IP address of the target printer.
             centauri_carbon (bool, optional): Set to True if the printer is a Centauri Carbon model. Defaults to False.
             ws_server (bool, optional): Whether to enable the local websocket proxy server. Defaults to True.
-        
+
         Initializes internal state, including printer data models, websocket references, and logging.
         """
         self.ip_address: str = ip_address
@@ -68,7 +68,7 @@ class ElegooPrinterClient:
     def get_printer_status(self) -> PrinterData:
         """
         Retrieve the current status of the printer.
-        
+
         Returns:
             PrinterData: The latest printer status information.
         """
@@ -130,7 +130,7 @@ class ElegooPrinterClient:
     def _send_printer_cmd(self, cmd: int, data: dict[str, Any] | None = None) -> None:
         """
         Send a JSON command to the printer over the websocket connection.
-        
+
         Raises:
             ElegooPrinterClientWebsocketError: If a websocket connection error occurs during sending.
             ElegooPrinterClientWebsocketConnectionError: If the websocket is not connected.
@@ -179,10 +179,10 @@ class ElegooPrinterClient:
     ) -> Printer | None:
         """
         Broadcasts a UDP discovery message to locate an Elegoo printer or proxy on the network.
-        
+
         Parameters:
             broadcast_address (str): The network address to broadcast the discovery message to. Defaults to "<broadcast>".
-        
+
         Returns:
             Printer | None: The discovered Printer object if a response is received and parsed successfully; otherwise, None.
         """
@@ -234,9 +234,9 @@ class ElegooPrinterClient:
     async def connect_printer(self) -> bool:
         """
         Establish an asynchronous connection to the Elegoo printer via a local WebSocket proxy.
-        
+
         If a local proxy server is not running, starts one that connects to the remote printer, enabling multiple local clients to share a single printer connection. Discovers the printer or proxy, then connects to its WebSocket interface. Waits for the connection to be established or times out.
-        
+
         Returns:
             bool: True if the connection to the printer via the proxy was successful, False otherwise.
         """
@@ -295,7 +295,7 @@ class ElegooPrinterClient:
         def ws_connected_handler(name: str) -> None:
             """
             Logs a message indicating a successful client connection to the specified proxy target.
-            
+
             Parameters:
                 name (str): The name or identifier of the proxy target to which the client connected.
             """
@@ -308,7 +308,7 @@ class ElegooPrinterClient:
         ) -> None:
             """
             Handles the event when the websocket connection to the printer is closed.
-            
+
             Resets the internal websocket reference and logs the closure event with the provided status code and message.
             """
             self.logger.debug(
@@ -358,7 +358,7 @@ class ElegooPrinterClient:
     def _discover_real_printer(self) -> Printer | None:
         """
         Send a UDP discovery message directly to the printer's IP address to obtain its details.
-        
+
         Returns:
             Printer: The discovered printer object if a valid response is received, or None if discovery fails.
         """
@@ -387,7 +387,7 @@ class ElegooPrinterClient:
     def _parse_response(self, response: str) -> None:
         """
         Parse and route an incoming JSON response message from the printer.
-        
+
         Attempts to decode the response as JSON and dispatches it to the appropriate handler based on the message topic. Logs unknown topics, missing topics, and JSON decoding errors.
         """
         try:
@@ -418,7 +418,7 @@ class ElegooPrinterClient:
     def _response_handler(self, data: dict[str, Any]) -> None:
         """
         Handles response messages by extracting print history data and passing it to the print history handler.
-        
+
         Parameters:
             data (dict): The parsed JSON response containing nested print history information.
         """
@@ -433,7 +433,7 @@ class ElegooPrinterClient:
     def _status_handler(self, data: dict[str, Any]) -> None:
         """
         Parses and updates the printer's status information from the provided data.
-        
+
         Parameters:
             data (dict): Dictionary containing the printer status information in JSON-compatible format.
         """
@@ -445,7 +445,7 @@ class ElegooPrinterClient:
     def _attributes_handler(self, data: dict[str, Any]) -> None:
         """
         Parses and updates the printer's attribute data from a JSON dictionary.
-        
+
         Parameters:
             data (dict): Dictionary containing printer attribute information.
         """
