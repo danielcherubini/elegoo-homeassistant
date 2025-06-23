@@ -5,10 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from homeassistant.components.sensor import SensorEntityDescription
-from homeassistant.components.sensor.const import (SensorDeviceClass,
-                                                   SensorStateClass)
-from homeassistant.const import (PERCENTAGE, UnitOfLength, UnitOfTemperature,
-                                 UnitOfTime)
+from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
+from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfTemperature, UnitOfTime
 from homeassistant.helpers.typing import StateType
 
 
