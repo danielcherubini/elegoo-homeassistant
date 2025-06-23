@@ -270,9 +270,9 @@ class ElegooPrinterClient:
                 "Not connected"
             )
 
-    def discover_printer(self) -> Printer | None:
+    def discover_printer(self, ip_address: str = "255.255.255.255") -> Printer | None:
         """Discover the Elegoo printer on the network."""
-        self.logger.info(f"Starting printer discovery at {self.ip_address}")
+        self.logger.info(f"Starting printer discovery at {ip_address}")
         msg = b"M99999"
         with socket.socket(
             socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
@@ -281,7 +281,7 @@ class ElegooPrinterClient:
             sock.settimeout(DISCOVERY_TIMEOUT)
             sock.bind(("", DEFAULT_PORT))
             try:
-                _ = sock.sendto(msg, (self.ip_address, 3000))
+                _ = sock.sendto(msg, (ip_address, 3000))
                 data = sock.recv(8192)
             except TimeoutError:
                 self.logger.warning("Printer discovery timed out.")

@@ -10,6 +10,8 @@ from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterCli
 from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG
 
 LOG_LEVEL = "DEBUG"
+PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.212")
+
 logger.remove()
 logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)
 
@@ -18,11 +20,10 @@ async def main() -> None:
     """Declare Main function for debugging purposes."""
     stop_event = asyncio.Event()
     try:
-        printer_ip = os.getenv("PRINTER_IP", "10.0.0.212")
         elegoo_printer = ElegooPrinterClient(
-            ip_address=printer_ip, centauri_carbon=False, logger=logger, ws_server=False
+            ip_address=PRINTER_IP, centauri_carbon=False, logger=logger, ws_server=False
         )
-        printer = elegoo_printer.discover_printer()
+        printer = elegoo_printer.discover_printer(PRINTER_IP)
         if printer:
             connected = await elegoo_printer.connect_printer()
             if connected:
