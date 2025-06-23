@@ -58,7 +58,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                     "Name": getattr(self.printer, "name", "Elegoo Proxy"),
                     "MachineName": getattr(self.printer, "name", "Elegoo Proxy"),
                     "BrandName": "Elegoo",
-                    "MainboardIP": self.proxy_ip,  # The crucial substitution
+                    "MainboardIP": self.get_ip(),  # The crucial substitution
                     "MainboardID": getattr(self.printer, "id", "unknown"),
                     "ProtocolVersion": "V3.0.0",
                     "FirmwareVersion": getattr(self.printer, "version", "V1.0.0"),
@@ -76,6 +76,19 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
     def connection_lost(self, exc):
         self.logger.warning("UDP Discovery Server Closed.")
         super().connection_lost(exc)
+
+    def get_ip(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0)
+        try:
+            # doesn't even have to be reachable
+            s.connect(("10.254.254.254", 1))
+            IP = s.getsockname()[0]
+        except Exception:
+            IP = "127.0.0.1"
+        finally:
+            s.close()
+        return IP
 
 
 async def _forward_messages(source: Forwardable, dest: Forwardable, logger: Any):
