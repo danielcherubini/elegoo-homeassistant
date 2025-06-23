@@ -2,11 +2,13 @@
   "name": "danielcherubini/elegoo_printer",
   "image": "mcr.microsoft.com/devcontainers/python:3.13",
   "postCreateCommand": "make setup",
-  "forwardPorts": [8123],
+  "forwardPorts": [
+    8123
+  ],
   "remoteEnv": {
-    "DEBUG": "false"
+    "DEBUG": "false",
     "VENV": ".dev",
-    "UV_LINK_MODE": "copy",
+    "UV_LINK_MODE": "copy"
   },
   "portsAttributes": {
     "8123": {
@@ -42,7 +44,11 @@
   "remoteUser": "vscode",
   "features": {
     "ghcr.io/devcontainers-extra/features/apt-packages:1": {
-      "packages": ["ffmpeg", "libturbojpeg0", "libpcap-dev"]
+      "packages": [
+        "ffmpeg",
+        "libturbojpeg0",
+        "libpcap-dev"
+      ]
     }
   }
 }
