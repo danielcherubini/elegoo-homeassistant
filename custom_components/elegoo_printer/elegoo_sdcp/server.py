@@ -222,8 +222,10 @@ class ElegooPrinterServer:
         self.logger.info("Proxy server has started successfully.")
 
     def get_printer(self) -> Printer:
-        self.printer.ip_address = "127.0.0.1"
-        return self.printer
+        proxied_printer = Printer()
+        proxied_printer.__dict__.update(self.printer.__dict__)
+        proxied_printer.ip_address = "127.0.0.1"
+        return proxied_printer
 
     def _start_servers_in_thread(self):
         """
