@@ -84,7 +84,7 @@ class ElegooPrinterServer:
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
-        app = web.Application()
+        app = web.Application(client_max_size=1024 * 1024 * 2)
         app.router.add_route("*", "/{path:.*}", self._http_handler)
 
         self.runner = web.AppRunner(app)
