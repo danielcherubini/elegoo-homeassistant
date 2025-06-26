@@ -400,4 +400,3 @@ class ElegooPrinterClient:
                 PrintHistoryDetail(history_data) for history_data in history_data_list
             ]
             self.printer_data.print_history = print_history_detail_list
-

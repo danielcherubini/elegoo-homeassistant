@@ -212,6 +212,10 @@ class ElegooPrinterServer:
             f"Attempting to start proxy server for remote printer {self.printer.ip_address}"
         )
 
+        # Check if ports are available
+        if is_port_in_use("127.0.0.1", WEBSOCKET_PORT):
+            raise Exception(f"WebSocket port {WEBSOCKET_PORT} is already in use")
+
         self.proxy_thread = Thread(target=self._start_servers_in_thread, daemon=True)
         self.proxy_thread.start()
 
@@ -242,6 +246,10 @@ class ElegooPrinterServer:
             Returns:
                 Coroutine that manages bidirectional message forwarding between the client WebSocket and the remote printer.
             """
+            if not self.printer.ip_address:
+                self.logger.error("No Printer IP Address")
+                raise Exception("No Printer IP when starting proxy handler")
+
             return _proxy_handler(ws, self.printer.ip_address, self.logger)
 
         start_ws_server = serve(ws_handler, "0.0.0.0", WEBSOCKET_PORT)
@@ -299,4 +307,3 @@ def is_port_in_use(host: str, port: int) -> bool:
     check_host = "127.0.0.1" if host == "0.0.0.0" else host
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex((check_host, port)) == 0
-
