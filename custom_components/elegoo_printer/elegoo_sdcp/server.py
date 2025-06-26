@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import socket
-from threading import Event
+from threading import Event, Thread
 from typing import Any, Union
 
 from websockets.exceptions import ConnectionClosed
@@ -16,8 +16,6 @@ from .models.printer import Printer
 DISCOVERY_PORT = 3000
 WEBSOCKET_PORT = 3030
 
-
-# --- Discovery and Websocket Proxy/Multiplexer ---
 
 # Define a type alias for protocols that can be forwarded
 Forwardable = Union[WebSocketServerProtocol, WebSocketClientProtocol]
@@ -187,60 +185,90 @@ async def _proxy_handler(
             )
 
 
-def start_proxy_server(printer: Printer, logger: Any, startup_event: Event):
+class ElegooPrinterServer:
     """
-    Start the WebSocket and UDP discovery proxy servers for the specified printer in a dedicated asyncio event loop.
-
-    Raises:
-        ValueError: If the printer's IP address is not set.
+    Manages the local WebSocket and UDP discovery proxy servers for an Elegoo printer.
     """
-    if not printer.ip_address:
-        raise ValueError("Printer IP address is not set. Cannot start proxy server.")
 
-    printer_ip_address = printer.ip_address
-    logger.info(
-        f"Attempting to start proxy server for remote printer {printer_ip_address}"
-    )
-
-    # Each thread needs its own asyncio event loop.
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    # --- Start WebSocket (TCP) Proxy Server ---
-    def ws_handler(ws):
+    def __init__(self, printer: Printer, logger: Any):
         """
-        Handles incoming WebSocket connections by forwarding them to the remote printer via the proxy.
+        Initialize the ElegooPrinterServer.
 
-        Returns:
-            Coroutine that manages bidirectional message forwarding between the client WebSocket and the remote printer.
+        Args:
+            printer (Printer): The Printer object representing the real printer.
+            logger (Any): The logger instance to use for logging.
         """
-        return _proxy_handler(ws, printer_ip_address, logger)
+        self.printer = printer
+        self.logger = logger
+        self.startup_event = Event()
+        self.proxy_thread: Thread | None = None
 
-    start_ws_server = serve(ws_handler, "0.0.0.0", WEBSOCKET_PORT)
-    ws_server = loop.run_until_complete(start_ws_server)
+        if not self.printer.ip_address:
+            raise ValueError(
+                "Printer IP address is not set. Cannot start proxy server."
+            )
 
-    # --- Start Discovery (UDP) Proxy Server ---
-    proxy_ip = socket.gethostbyname(socket.gethostname())
+        self.logger.info(
+            f"Attempting to start proxy server for remote printer {self.printer.ip_address}"
+        )
 
-    def discovery_protocol_factory():
+        self.proxy_thread = Thread(target=self._start_servers_in_thread, daemon=True)
+        self.proxy_thread.start()
+
+        ready = self.startup_event.wait(timeout=5.0)
+        if not ready:
+            self.logger.error("Proxy server failed to start within the timeout period.")
+            raise Exception("Proxy server failed to start.")
+        self.logger.info("Proxy server has started successfully.")
+
+    def get_printer(self) -> Printer:
+        self.printer.ip_address = "127.0.0.1"
+        return self.printer
+
+    def _start_servers_in_thread(self):
         """
-        Creates and returns a new instance of the DiscoveryProtocol with the configured logger, printer, and proxy IP address.
+        Starts the WebSocket and UDP discovery proxy servers in a dedicated asyncio event loop.
         """
-        return DiscoveryProtocol(logger, printer, proxy_ip)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
-    start_discovery_server = loop.create_datagram_endpoint(
-        discovery_protocol_factory, local_addr=("0.0.0.0", DISCOVERY_PORT)
-    )
-    loop.run_until_complete(start_discovery_server)
+        # --- Start WebSocket (TCP) Proxy Server ---
+        def ws_handler(ws):
+            """
+            Handles incoming WebSocket connections by forwarding them to the remote printer via the proxy.
 
-    if ws_server.server.is_serving():
-        logger.info(f"WebSocket Proxy running on ws://{proxy_ip}:{WEBSOCKET_PORT}")
-        logger.info(f"Discovery Proxy listening on UDP port {DISCOVERY_PORT}")
+            Returns:
+                Coroutine that manages bidirectional message forwarding between the client WebSocket and the remote printer.
+            """
+            return _proxy_handler(ws, self.printer.ip_address, self.logger)
 
-    # Signal that the server is up and running.
-    startup_event.set()
+        start_ws_server = serve(ws_handler, "0.0.0.0", WEBSOCKET_PORT)
+        ws_server = loop.run_until_complete(start_ws_server)
 
-    loop.run_forever()
+        # --- Start Discovery (UDP) Proxy Server ---
+        proxy_ip = socket.gethostbyname(socket.gethostname())
+
+        def discovery_protocol_factory():
+            """
+            Creates and returns a new instance of the DiscoveryProtocol with the configured logger, printer, and proxy IP address.
+            """
+            return DiscoveryProtocol(self.logger, self.printer, proxy_ip)
+
+        start_discovery_server = loop.create_datagram_endpoint(
+            discovery_protocol_factory, local_addr=("0.0.0.0", DISCOVERY_PORT)
+        )
+        loop.run_until_complete(start_discovery_server)
+
+        if ws_server.server.is_serving():
+            self.logger.info(
+                f"WebSocket Proxy running on ws://{proxy_ip}:{WEBSOCKET_PORT}"
+            )
+            self.logger.info(f"Discovery Proxy listening on UDP port {DISCOVERY_PORT}")
+
+        # Signal that the server is up and running.
+        self.startup_event.set()
+
+        loop.run_forever()
 
 
 def is_port_in_use(host: str, port: int) -> bool:
@@ -257,3 +285,4 @@ def is_port_in_use(host: str, port: int) -> bool:
     check_host = "127.0.0.1" if host == "0.0.0.0" else host
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex((check_host, port)) == 0
+

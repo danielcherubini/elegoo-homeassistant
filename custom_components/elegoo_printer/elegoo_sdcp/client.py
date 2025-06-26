@@ -5,7 +5,7 @@ import json
 import os
 import socket
 import time
-from threading import Event, Thread
+from threading import Thread
 from typing import Any
 
 import websocket
@@ -15,7 +15,7 @@ from .models.attributes import PrinterAttributes
 from .models.print_history_detail import PrintHistoryDetail
 from .models.printer import Printer, PrinterData
 from .models.status import PrinterStatus
-from .server import is_port_in_use, start_proxy_server
+from .server import ElegooPrinterServer
 
 DISCOVERY_TIMEOUT = 2
 DISCOVERY_PORT = 3000
@@ -62,8 +62,8 @@ class ElegooPrinterClient:
         self.printer: Printer = Printer()
         self.printer_data = PrinterData()
         self.logger = logger
-        self.proxy_thread: Thread | None = None
         self.ws_server = ws_server
+        self.elegoo_printer_server: ElegooPrinterServer | None = None
 
     def get_printer_status(self) -> PrinterData:
         """
@@ -97,19 +97,25 @@ class ElegooPrinterClient:
         self._send_printer_cmd(386, {"Enable": int(toggle)})
 
     def get_printer_historical_tasks(self) -> None:
-        """Retreves historical tasks from printer."""
+        """
+        Retreves historical tasks from printer.
+        """
         self._send_printer_cmd(320)
 
     def get_printer_task_detail(self, id_list: list[str]) -> None:
-        """Retreves historical tasks from printer."""
+        """
+        Retreves historical tasks from printer.
+        """
         self._send_printer_cmd(321, data={"Id": id_list})
 
     async def get_printer_current_task(self) -> list[PrintHistoryDetail]:
-        """Retreves current task."""
+        """
+        Retreves current task.
+        """
         if self.printer_data.status.print_info.task_id:
             self.get_printer_task_detail([self.printer_data.status.print_info.task_id])
 
-            await asyncio.sleep(2)
+            await asyncio.sleep(2)  # Give the printer time to respond
             return self.printer_data.print_history
 
         return []
@@ -231,7 +237,7 @@ class ElegooPrinterClient:
 
         return None
 
-    async def connect_printer(self) -> bool:
+    async def connect_printer(self, printer: Printer) -> bool:
         """
         Establish an asynchronous connection to the Elegoo printer via a local WebSocket proxy.
 
@@ -240,45 +246,7 @@ class ElegooPrinterClient:
         Returns:
             bool: True if the connection to the printer via the proxy was successful, False otherwise.
         """
-        # If this instance is designated to be the server host...
-        if self.ws_server and not is_port_in_use("0.0.0.0", WEBSOCKET_PORT):
-            self.logger.info("Proxy server not found. This instance will host it.")
-
-            # This instance MUST discover the REAL printer first to impersonate it.
-            self.logger.info("Performing initial discovery of the REAL printer...")
-            real_printer = self._discover_real_printer()
-            if not real_printer:
-                self.logger.error(
-                    "Could not find the real printer. Cannot start proxy server."
-                )
-                return False
-
-            self.logger.info(
-                f"Local proxy not found on port {WEBSOCKET_PORT}. Starting new proxy server..."
-            )
-
-            # Use an event to signal when the server is ready
-            startup_event = Event()
-
-            proxy_thread = Thread(
-                target=start_proxy_server,
-                args=(real_printer, self.logger, startup_event),
-                daemon=True,
-            )
-            proxy_thread.start()
-            self.proxy_thread = proxy_thread
-
-            ready = startup_event.wait(timeout=5.0)
-            if not ready:
-                self.logger.error(
-                    "Proxy server failed to start within the timeout period."
-                )
-                return False
-            self.logger.info("Proxy server has started successfully.")
-
-        # Now, discover the printer/proxy and connect to its WebSocket
-        if not self.discover_printer():
-            return False
+        self.printer = printer
 
         # Connect this client to the discovered printer/proxy's WebSocket.
         url = f"ws://{self.printer.ip_address}:{WEBSOCKET_PORT}/websocket"
@@ -354,35 +322,6 @@ class ElegooPrinterClient:
         )
         self.printer_websocket = None
         return False
-
-    def _discover_real_printer(self) -> Printer | None:
-        """
-        Send a UDP discovery message directly to the printer's IP address to obtain its details.
-
-        Returns:
-            Printer: The discovered printer object if a valid response is received, or None if discovery fails.
-        """
-        self.logger.info(f"Pinging real printer at {self.ip_address}")
-        msg = b"M99999"
-        with socket.socket(
-            socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
-        ) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            sock.settimeout(DISCOVERY_TIMEOUT)
-            sock.bind(("", DEFAULT_PORT))
-            try:
-                # Send directly to the known IP of the printer
-                sock.sendto(msg, (self.ip_address, DISCOVERY_PORT))
-                data, addr = sock.recvfrom(8192)
-            except TimeoutError:
-                self.logger.warning("Real printer discovery timed out.")
-                return None
-            except OSError:
-                self.logger.exception("Socket error during real printer discovery")
-                return None
-
-            # The real printer sends a string, so we parse it here.
-            return self._save_discovered_printer(data)
 
     def _parse_response(self, response: str) -> None:
         """
@@ -461,3 +400,4 @@ class ElegooPrinterClient:
                 PrintHistoryDetail(history_data) for history_data in history_data_list
             ]
             self.printer_data.print_history = print_history_detail_list
+
