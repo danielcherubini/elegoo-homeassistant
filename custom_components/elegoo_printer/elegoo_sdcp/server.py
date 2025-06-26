@@ -248,7 +248,19 @@ class ElegooPrinterServer:
         ws_server = loop.run_until_complete(start_ws_server)
 
         # --- Start Discovery (UDP) Proxy Server ---
-        proxy_ip = socket.gethostbyname(socket.gethostname())
+        # Use the same logic as DiscoveryProtocol.get_local_ip()
+        if self.printer.ip_address:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(0)
+            try:
+                s.connect((self.printer.ip_address, 1))
+                proxy_ip = s.getsockname()[0]
+            except Exception:
+                proxy_ip = "127.0.0.1"
+            finally:
+                s.close()
+        else:
+            proxy_ip = "127.0.0.1"
 
         def discovery_protocol_factory():
             """
