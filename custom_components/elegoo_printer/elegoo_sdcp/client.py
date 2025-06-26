@@ -5,7 +5,6 @@ import json
 import os
 import socket
 import time
-from logging import Logger
 from threading import Thread
 from typing import Any
 
@@ -44,7 +43,7 @@ class ElegooPrinterClient:
         self,
         ip_address: str,
         centauri_carbon: bool = False,
-        logger: Logger = LOGGER,
+        logger: Any = LOGGER,
         ws_server: bool = True,
     ) -> None:
         """
