@@ -102,10 +102,17 @@ class ElegooPrinterServer:
             app.router.add_route("*", "/{path:.*}", self._http_handler)
 
             self.runner = web.AppRunner(app)
-            await self.runner.setup()
+            if self.runner:
+                await self.runner.setup()
 
             site = web.TCPSite(self.runner, INADDR_ANY, WEBSOCKET_PORT)
-            await site.start()
+
+            try:
+                await site.start()
+            except OSError:
+                pass
+            except Exception:
+                pass
 
         self.loop.run_until_complete(startup())
 
