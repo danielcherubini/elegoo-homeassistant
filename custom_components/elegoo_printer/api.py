@@ -38,7 +38,13 @@ class ElegooPrinterApiClient:
     def __init__(
         self, ip_address: str, config: MappingProxyType[str, Any], logger: Logger
     ) -> None:
-        """Initialize."""
+        """
+        Initialize an ElegooPrinterApiClient instance with the specified IP address, configuration, and logger.
+        
+        Parameters:
+            ip_address (str): The IP address of the Elegoo printer.
+            config (MappingProxyType[str, Any]): Configuration mapping containing printer and feature flags.
+        """
         self._ip_address = ip_address
         self._centauri_carbon = config.get(CONF_CENTAURI_CARBON, False)
         self._logger = logger
@@ -48,15 +54,15 @@ class ElegooPrinterApiClient:
         cls, config: MappingProxyType[str, Any], logger: Logger
     ) -> ElegooPrinterApiClient | None:
         """
-        Asynchronously creates and initializes an ElegooPrinterApiClient instance using the provided configuration.
-
-        Attempts to discover and connect to the printer at the specified IP address. Returns the initialized API client if successful, or None if the printer cannot be found or connected.
-
+        Asynchronously creates and initializes an ElegooPrinterApiClient instance based on the provided configuration.
+        
+        Attempts to discover and connect to an Elegoo printer at the configured IP address. If proxy server mode is enabled, wraps the printer with a proxy server before connecting. Returns the initialized API client if the printer is found and connected; otherwise, returns None.
+        
         Parameters:
-            config (MappingProxyType[str, Any]): Configuration containing the printer's IP address and optional model flag.
-
+            config (MappingProxyType[str, Any]): Configuration containing the printer's IP address and optional proxy server flag.
+        
         Returns:
-            ElegooPrinterApiClient | None: The initialized API client instance, or None if initialization fails.
+            ElegooPrinterApiClient | None: The initialized API client instance if successful, or None if the printer cannot be found or connected.
         """
         ip_address = config.get(CONF_IP_ADDRESS)
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
@@ -125,10 +131,10 @@ class ElegooPrinterApiClient:
 
     async def retry(self) -> bool:
         """
-        Attempt to reconnect to the printer asynchronously.
-
+        Asynchronously attempts to reconnect to the printer.
+        
         Returns:
-            bool: True if the reconnection is successful, False otherwise.
+            bool: True if reconnection succeeds, False otherwise.
         """
 
         return await self._elegoo_printer.connect_printer(self._elegoo_printer.printer)

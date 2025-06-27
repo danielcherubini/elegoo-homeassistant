@@ -55,12 +55,9 @@ class Printer:
         config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
         """
-        Initialize a new Printer object from a JSON string.
-
-        Args:
-            json_string (str, optional): A JSON string containing printer data.
-                                         Defaults to None, creating a "nulled" printer.
-
+        Initialize a Printer instance from a JSON string and configuration mapping.
+        
+        If a JSON string is provided, parses printer details such as connection ID, name, model, brand, IP address, protocol version, firmware version, and mainboard ID. If no JSON string is given, initializes all attributes to None or empty values. Configuration flags for centauri_carbon and proxy_enabled are set from the provided config mapping.
         """
         if json_string is None:
             self.connection: str | None = None
@@ -99,12 +96,10 @@ class Printer:
 
     def to_dict(self) -> dict:
         """
-        Return a dictionary representation of the Printer object.
-
-        The dictionary keys directly match the attribute names of the class model.
-
+        Return a dictionary containing all attributes of the Printer instance.
+        
         Returns:
-            dict: A dictionary containing the printer's data.
+            dict: Dictionary with keys for connection, name, model, brand, ip_address, protocol, firmware, id, centauri_carbon, and proxy_enabled.
         """
         return {
             "connection": self.connection,

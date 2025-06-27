@@ -47,17 +47,14 @@ OPTIONS_SCHEMA = vol.Schema(
 
 def _test_credentials(user_input: Dict[str, Any]) -> Printer:
     """
-    Attempts to discover an Elegoo printer at the specified IP address.
-
-    Args:
-        ip_address: The IP address of the printer to discover.
-        centauri_carbon: Whether to use seconds instead of milliseconds for time values.
-
-    Returns:
-        The discovered Printer object.
-
+    Discover an Elegoo printer using the provided user input.
+    
+    Attempts to connect to the printer at the specified IP address using the configuration in `user_input`. Returns the discovered Printer object if successful.
+    
     Raises:
-        ElegooPrinterClientGeneralError: If no printer is found at the given IP address.
+        ElegooPrinterClientGeneralError: If no printer is found at the specified IP address.
+    Returns:
+        Printer: The discovered printer object.
     """
     ip_address = user_input[CONF_IP_ADDRESS]
 
@@ -73,6 +70,15 @@ def _test_credentials(user_input: Dict[str, Any]) -> Printer:
 
 
 async def _async_validate_input(user_input: dict[str, Any]) -> dict:
+    """
+    Asynchronously validates user input for Elegoo printer configuration and returns the discovered printer or error details.
+    
+    Parameters:
+        user_input (dict[str, Any]): Dictionary containing configuration parameters for the printer.
+    
+    Returns:
+        dict: A dictionary with keys "printer" (the discovered Printer object or None) and "errors" (None or a dictionary of error codes if validation fails).
+    """
     _errors = {}
     try:
         printer = _test_credentials(user_input)
@@ -107,9 +113,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
         """
-        Handles the initial step of the Elegoo printer configuration flow.
-
-        Prompts the user for printer connection details, validates the provided IP address by attempting to discover the printer, and creates a new configuration entry if successful. Displays relevant error messages if connection or validation fails.
+        Handle the initial user step for configuring an Elegoo printer integration.
+        
+        Prompts the user for printer connection details, validates the input by attempting to discover the printer, and creates a new configuration entry if successful. If validation fails, displays the form again with appropriate error messages.
+        
+        Returns:
+            A ConfigFlowResult indicating the outcome of the step, such as showing the form, creating an entry, or aborting if already configured.
         """
         _errors = {}
         if user_input is not None:
@@ -164,9 +173,12 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """
-        Handles the options flow for updating Elegoo printer configuration.
-
-        Presents a form for the user to update printer settings. Validates the provided IP address by attempting to discover the printer. On successful validation, creates a new options entry with the printer's details; otherwise, displays relevant error messages in the form.
+        Handle the initial step of the options flow for updating Elegoo printer configuration.
+        
+        Presents a form to update printer settings, validates the input by attempting to discover the printer, and creates an options entry with updated details if validation succeeds. Displays error messages if validation fails.
+        
+        Returns:
+            ConfigFlowResult: The result of the options flow step, either showing the form or creating an entry.
         """
         _errors = {}
         if user_input is not None:

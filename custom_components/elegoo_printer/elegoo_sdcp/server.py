@@ -29,6 +29,13 @@ class ElegooPrinterServer:
     """
 
     def __init__(self, printer: Printer, logger: Any):
+        """
+        Initialize the ElegooPrinterServer, starting proxy servers for the specified printer in a background thread.
+        
+        Raises:
+            ValueError: If the provided printer does not have an IP address.
+            Exception: If the proxy server fails to start within 10 seconds.
+        """
         self.printer = printer
         self.logger = logger
         self.startup_event = Event()
@@ -56,9 +63,14 @@ class ElegooPrinterServer:
         self.logger.info("Proxy server has started successfully.")
 
     def stop(self):
-        """Stops the running server and cleans up resources."""
+        """
+        Shuts down the proxy server, closes network connections, and releases associated resources.
+        """
 
         async def cleanup():
+            """
+            Asynchronously closes the HTTP client session and cleans up the aiohttp web server runner if they exist.
+            """
             if self.session:
                 await self.session.close()  # Close the session
             if self.runner:
@@ -71,12 +83,26 @@ class ElegooPrinterServer:
         self.logger.info("Proxy server stopped.")
 
     def get_printer(self) -> Printer:
+        """
+        Return a copy of the printer object with its IP address set to the local proxy's IP.
+        
+        Returns:
+            Printer: A new Printer instance representing the proxied printer, using the local proxy IP address.
+        """
         proxied_printer = Printer()
         proxied_printer.__dict__.update(self.printer.__dict__)
         proxied_printer.ip_address = self.get_local_ip()
         return proxied_printer
 
     def get_local_ip(self):
+        """
+        Determine the local IP address used to reach the printer.
+        
+        Attempts to open a UDP socket to the printer's IP address to discover the local network interface IP. Returns localhost if the operation fails.
+        
+        Returns:
+            str: The detected local IP address, or "127.0.0.1" if detection fails.
+        """
         s = None
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -89,12 +115,21 @@ class ElegooPrinterServer:
                 s.close()
 
     def _start_servers_in_thread(self):
-        """Starts the aiohttp server in a dedicated asyncio event loop."""
+        """
+        Initializes and starts the HTTP/WebSocket proxy server and UDP discovery server in a dedicated asyncio event loop running on a separate thread.
+        
+        Sets up an aiohttp web server to handle HTTP and WebSocket requests, and a UDP server for printer discovery. Signals readiness via the startup event and runs the event loop indefinitely.
+        """
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
         async def startup():
             # Create the persistent session
+            """
+            Initializes and starts the aiohttp web server for HTTP and WebSocket proxying.
+            
+            Creates a persistent HTTP client session, sets up the aiohttp application with a catch-all route handled by the internal HTTP handler, and starts the server listening on all interfaces at the designated WebSocket port.
+            """
             self.session = aiohttp.ClientSession()
 
             app = web.Application(client_max_size=1024 * 1024 * 2)
@@ -114,6 +149,9 @@ class ElegooPrinterServer:
 
         # --- Start Discovery (UDP) Proxy Server ---
         def discovery_factory():
+            """
+            Creates and returns a new DiscoveryProtocol instance configured with the current logger, printer, and local proxy IP address.
+            """
             return DiscoveryProtocol(self.logger, self.printer, self.get_local_ip())
 
         self.loop.run_until_complete(
@@ -128,7 +166,12 @@ class ElegooPrinterServer:
         self.loop.run_forever()
 
     async def _http_handler(self, request: web.Request):
-        """Handles all incoming HTTP requests, routing to WebSocket or HTTP proxy."""
+        """
+        Routes incoming HTTP requests to the appropriate handler for WebSocket upgrades or file upload proxying.
+        
+        Returns:
+            web.Response or web.WebSocketResponse: The response from the proxied handler or a 404 response if the request is unrecognized.
+        """
         if request.headers.get("Upgrade", "").lower() == "websocket":
             return await self._websocket_handler(request)
         elif request.method == "POST" and request.path == "/uploadFile/upload":
@@ -140,7 +183,13 @@ class ElegooPrinterServer:
             return web.Response(status=404, text="Not Found")
 
     async def _websocket_handler(self, request: web.Request):
-        """Handles WebSocket connections."""
+        """
+        Proxies a WebSocket connection between a client and the remote Elegoo printer.
+        
+        Establishes a WebSocket connection with the client and a separate connection to the printer, forwarding messages bidirectionally until either side disconnects. Cleans up connections and logs connection events and errors.
+        Returns:
+            ws (web.WebSocketResponse): The WebSocket response object for the client connection.
+        """
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
@@ -156,6 +205,11 @@ class ElegooPrinterServer:
                 )
 
                 async def forward_to_printer():
+                    """
+                    Forwards incoming WebSocket messages from the client to the remote printer WebSocket.
+                    
+                    This coroutine iterates over messages received from the client WebSocket and sends text or binary messages to the remote printer WebSocket.
+                    """
                     async for msg in ws:
                         if (
                             msg.type == web.WSMsgType.TEXT
@@ -164,6 +218,11 @@ class ElegooPrinterServer:
                             await remote_ws.send(msg.data)
 
                 async def forward_to_client():
+                    """
+                    Forwards messages received from the remote WebSocket to the client WebSocket.
+                    
+                    Messages are sent as bytes if the received message is of type `bytes`; otherwise, they are sent as strings.
+                    """
                     async for msg in remote_ws:
                         if isinstance(msg, bytes):
                             await ws.send_bytes(msg)
@@ -189,9 +248,9 @@ class ElegooPrinterServer:
 
     async def _http_file_proxy_passthrough_handler(self, request: web.Request):
         """
-        Correctly proxies a multipart file upload by buffering the request to add
-        a Content-Length header, while preserving the original headers from the client
-        (like Content-Type, S-File-MD5, Uuid, etc.).
+        Proxies multipart file upload POST requests to the printer, buffering the request to add a Content-Length header and forwarding required headers.
+        
+        Reads the entire request body to ensure compatibility with the printer's API, extracts and forwards necessary headers (such as Content-Type, S-File-MD5, Uuid, etc.), and relays the printer's response back to the client. Returns a 400 response if mandatory headers are missing, or a 502 response if an error occurs during proxying.
         """
         remote_url = f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path}"
         self.logger.debug(
@@ -259,15 +318,31 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
     """Protocol to handle UDP discovery broadcasts by replying with JSON."""
 
     def __init__(self, logger: Any, printer: Printer, proxy_ip: str):
+        """
+        Initialize the DiscoveryProtocol for handling UDP discovery requests.
+        
+        Parameters:
+            logger: Logger instance for recording events and errors.
+            printer (Printer): The printer object containing metadata to be advertised.
+            proxy_ip (str): The local proxy IP address to include in discovery responses.
+        """
         self.logger = logger
         self.printer = printer
         self.proxy_ip = proxy_ip
         self.transport = None
 
     def connection_made(self, transport):
+        """
+        Store the transport object for sending UDP responses.
+        """
         self.transport = transport
 
     def datagram_received(self, data, addr):
+        """
+        Handles incoming UDP datagrams for printer discovery requests.
+        
+        If the received data matches the discovery request string ("M99999"), sends a JSON response containing printer metadata and the proxy IP address to the sender.
+        """
         if data.decode() == "M99999":
             self.logger.debug(
                 f"Discovery request received from {addr}, responding with JSON."
@@ -289,4 +364,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                 self.transport.sendto(json_string.encode(), addr)
 
     def error_received(self, exc):
+        """
+        Logs errors encountered by the UDP discovery server.
+        """
         self.logger.error(f"UDP Discovery Server Error: {exc}")
