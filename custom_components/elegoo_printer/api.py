@@ -13,6 +13,7 @@ from custom_components.elegoo_printer.elegoo_sdcp.client import (
 from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
+from custom_components.elegoo_printer.elegoo_sdcp.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -60,7 +61,10 @@ class ElegooPrinterApiClient:
         printer = elegoo_printer.discover_printer(ip_address)
         if printer is None:
             return None
-        connected = await elegoo_printer.connect_printer()
+
+        server = ElegooPrinterServer(printer, logger=logger)
+        proxied_printer = server.get_printer()
+        connected = await elegoo_printer.connect_printer(proxied_printer)
         if connected:
             logger.info("Polling Started")
             self._elegoo_printer = elegoo_printer
