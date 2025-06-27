@@ -1,12 +1,15 @@
 """Elegoo Printer Server and Proxy."""
 
 import asyncio
+import hashlib
 import json
 import os
 import socket
+import uuid
 from threading import Event, Thread
 from typing import Any, Union
 
+import aiohttp
 from aiohttp import ClientSession, web
 from websockets.legacy.client import WebSocketClientProtocol, connect
 from websockets.legacy.server import WebSocketServerProtocol
@@ -34,6 +37,7 @@ class ElegooPrinterServer:
         self.proxy_thread: Thread | None = None
         self.runner: web.AppRunner | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
+        self.session: ClientSession | None = None
 
         if not self.printer.ip_address:
             raise ValueError(
@@ -55,10 +59,17 @@ class ElegooPrinterServer:
 
     def stop(self):
         """Stops the running server and cleans up resources."""
-        if self.loop and self.runner:
-            asyncio.run_coroutine_threadsafe(self.runner.cleanup(), self.loop).result()
-        if self.loop:
+
+        async def cleanup():
+            if self.session:
+                await self.session.close()  # Close the session
+            if self.runner:
+                await self.runner.cleanup()
+
+        if self.loop and self.loop.is_running():
+            asyncio.run_coroutine_threadsafe(cleanup(), self.loop).result(timeout=5)
             self.loop.call_soon_threadsafe(self.loop.stop)
+
         self.logger.info("Proxy server stopped.")
 
     def get_printer(self) -> Printer:
@@ -84,14 +95,21 @@ class ElegooPrinterServer:
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
-        app = web.Application(client_max_size=1024 * 1024 * 2)
-        app.router.add_route("*", "/{path:.*}", self._http_handler)
+        async def startup():
+            # Create the persistent session
+            self.session = aiohttp.ClientSession()
 
-        self.runner = web.AppRunner(app)
-        self.loop.run_until_complete(self.runner.setup())
+            app = web.Application(client_max_size=1024 * 1024 * 2)
+            app.router.add_route("*", "/{path:.*}", self._http_handler)
 
-        site = web.TCPSite(self.runner, INADDR_ANY, WEBSOCKET_PORT)
-        self.loop.run_until_complete(site.start())
+            self.runner = web.AppRunner(app)
+            await self.runner.setup()
+
+            site = web.TCPSite(self.runner, INADDR_ANY, WEBSOCKET_PORT)
+            await site.start()
+
+        self.loop.run_until_complete(startup())
+
         self.logger.info(
             f"Unified HTTP/WebSocket Proxy running on http://{self.get_local_ip()}:{WEBSOCKET_PORT}"
         )
@@ -108,16 +126,17 @@ class ElegooPrinterServer:
         self.logger.info(f"Discovery Proxy listening on UDP port {DISCOVERY_PORT}")
 
         self.startup_event.set()
+
         self.loop.run_forever()
 
     async def _http_handler(self, request: web.Request):
         """Handles all incoming HTTP requests, routing to WebSocket or HTTP proxy."""
-        # Check if it's a WebSocket upgrade request
         if request.headers.get("Upgrade", "").lower() == "websocket":
             return await self._websocket_handler(request)
-        # Check if it's a file upload request
         elif request.method == "POST" and request.path == "/uploadFile/upload":
-            return await self._http_file_proxy_handler(request)
+            # --- CHANGE THIS LINE to call the new multipart handler ---
+            return await self._http_file_proxy_multipart_handler(request)
+            # ---------------------------------------------------------
         else:
             self.logger.warning(
                 f"Received unhandled HTTP request: {request.method} {request.path}"
@@ -203,6 +222,75 @@ class ElegooPrinterServer:
                     )
         except Exception as e:
             self.logger.error(f"HTTP file proxy error: {e}")
+            return web.Response(status=502, text=f"Bad Gateway: {e}")
+
+    async def _http_file_proxy_multipart_handler(self, request: web.Request):
+        """
+        Handles file uploads by creating a compliant multipart/form-data request
+        for printers that do not support streaming.
+        """
+        remote_url = f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path}"
+        self.logger.info(
+            f"Proxying file upload to {remote_url} using multipart/form-data"
+        )
+
+        try:
+            # 1. Store the entire file in memory. This is required by the printer's API.
+            file_data = await request.read()
+            if not file_data:
+                return web.Response(status=400, text="Bad Request: Empty file.")
+
+            # 2. Calculate the required values for the headers.
+            file_size = len(file_data)
+            md5_hash = hashlib.md5(file_data).hexdigest()
+            transfer_uuid = str(uuid.uuid4())
+
+            self.logger.debug(
+                f"File Size: {file_size}, MD5: {md5_hash}, UUID: {transfer_uuid}"
+            )
+
+            # 3. Construct the required headers for the printer.
+            printer_headers = {
+                "S-File-MD5": md5_hash,
+                "Check": "1",
+                "Offset": "0",
+                "Uuid": transfer_uuid,
+                "TotalSize": str(file_size),  # Must be a string
+            }
+
+            # 4. Create the multipart/form-data payload.
+            # aiohttp.FormData will correctly set the Content-Type header.
+            form_data = aiohttp.FormData()
+            form_data.add_field(
+                "file",  # 'file' is a standard field name, the API doesn't specify one.
+                file_data,
+                # The printer likely doesn't use the filename, but it's good practice.
+                filename="proxied_file.gcode",
+                content_type="application/octet-stream",
+            )
+
+            # 5. Send the compliant request to the printer.
+            # Assumes you have the persistent self.session from the previous optimization.
+            # If not, use 'async with aiohttp.ClientSession() as session:'.
+            if not self.session:
+                raise Exception("Persistent session not initialized.")
+
+            async with self.session.post(
+                remote_url, headers=printer_headers, data=form_data
+            ) as response:
+                self.logger.info(
+                    f"Printer responded to multipart upload with status: {response.status}"
+                )
+                # 6. Forward the printer's response back to the original client.
+                content = await response.read()
+                return web.Response(
+                    body=content,
+                    status=response.status,
+                    content_type=response.content_type,
+                )
+
+        except Exception as e:
+            self.logger.error(f"HTTP multipart proxy error: {e}")
             return web.Response(status=502, text=f"Bad Gateway: {e}")
 
 
