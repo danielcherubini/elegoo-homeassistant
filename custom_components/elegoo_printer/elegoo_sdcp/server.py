@@ -43,18 +43,43 @@ class ElegooPrinterServer:
                 "Printer IP address is not set. Cannot start proxy server."
             )
 
-        self.logger.info(
-            f"Initializing proxy server for remote printer {self.printer.ip_address}"
-        )
-        self.proxy_thread = Thread(target=self._start_servers_in_thread, daemon=True)
-        self.proxy_thread.start()
+        if self._check_ports_are_available():
+            self.logger.info(
+                f"Initializing proxy server for remote printer {self.printer.ip_address}"
+            )
+            self.proxy_thread = Thread(
+                target=self._start_servers_in_thread, daemon=True
+            )
+            self.proxy_thread.start()
 
-        ready = self.startup_event.wait(timeout=10.0)
-        if not ready:
-            self.logger.error("Proxy server failed to start within the timeout period.")
-            self.stop()
-            raise ConfigEntryNotReady("Proxy server failed to start.")
-        self.logger.info("Proxy server has started successfully.")
+            ready = self.startup_event.wait(timeout=10.0)
+            if not ready:
+                self.logger.error(
+                    "Proxy server failed to start within the timeout period."
+                )
+                self.stop()
+                raise ConfigEntryNotReady("Proxy server failed to start.")
+            self.logger.info("Proxy server has started successfully.")
+
+    def _check_ports_are_available(self) -> bool:
+        """Checks if the necessary ports are free. Returns True if available, False otherwise."""
+        for port, proto, name in [
+            (WEBSOCKET_PORT, socket.SOCK_STREAM, "TCP"),
+            (DISCOVERY_PORT, socket.SOCK_DGRAM, "UDP"),
+        ]:
+            try:
+                with socket.socket(socket.AF_INET, proto) as s:
+                    # Set SO_REUSEADDR to allow immediate reuse of the port after it's been closed
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    s.bind((INADDR_ANY, port))
+            except OSError:
+                # The port is already in use.
+                error_msg = (
+                    f"{name} port {port} is already in use. Proxy server cannot start."
+                )
+                self.logger.debug(error_msg)
+                return False
+        return True
 
     def stop(self):
         """Stops the running server and cleans up resources."""
@@ -122,12 +147,11 @@ class ElegooPrinterServer:
             except OSError:
                 # So We ignore the OSError since that's when multiple happen
                 self.logger.info("Extra server detected")
-                pass
+                return
             except Exception as e:
                 # And we ignore exceptions since we dont care also
                 self.logger.info(f"Exception on site start: {e}")
-
-                pass
+                return
 
         self.loop.run_until_complete(startup())
 
