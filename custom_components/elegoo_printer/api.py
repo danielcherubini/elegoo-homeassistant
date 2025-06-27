@@ -41,6 +41,7 @@ class ElegooPrinterApiClient:
         """Initialize."""
         self._ip_address = ip_address
         self._centauri_carbon = config.get(CONF_CENTAURI_CARBON, False)
+        self._proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
         self._logger = logger
 
     @classmethod
@@ -59,7 +60,7 @@ class ElegooPrinterApiClient:
             ElegooPrinterApiClient | None: The initialized API client instance, or None if initialization fails.
         """
         ip_address = config.get(CONF_IP_ADDRESS)
-        proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
+        cls._proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
 
         if ip_address is None:
             return None
@@ -72,9 +73,7 @@ class ElegooPrinterApiClient:
         if printer is None:
             return None
 
-        print(config)
-
-        if proxy_server_enabled:
+        if cls._proxy_server_enabled:
             server = ElegooPrinterServer(printer, logger=logger)
             printer = server.get_printer()
 
@@ -130,5 +129,9 @@ class ElegooPrinterApiClient:
         Returns:
             bool: True if the reconnection is successful, False otherwise.
         """
+        printer = self._elegoo_printer.printer
+        if self._proxy_server_enabled:
+            server = ElegooPrinterServer(printer, logger=self._logger)
+            printer = server.get_printer()
 
-        return await self._elegoo_printer.connect_printer(self._elegoo_printer.printer)
+        return await self._elegoo_printer.connect_printer(printer)
