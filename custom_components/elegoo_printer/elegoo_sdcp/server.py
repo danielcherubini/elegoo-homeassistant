@@ -31,10 +31,10 @@ class ElegooPrinterServer:
 
     def __init__(self, printer: Printer, logger: Any):
         """
-        Initializes the Elegoo printer proxy server, validating configuration and starting proxy services in a background thread.
+        Initializes the Elegoo printer proxy server, validating the printer configuration and starting HTTP/WebSocket and UDP discovery proxy services in a background thread.
 
         Raises:
-            ConfigEntryNotReady: If the printer IP address is not set or if the proxy server fails to start within the timeout period.
+            ConfigEntryNotReady: If the printer IP address is missing or if the proxy server fails to start within 10 seconds.
         """
         self.printer = printer
         self.logger = logger
@@ -69,10 +69,10 @@ class ElegooPrinterServer:
 
     def _check_ports_are_available(self) -> bool:
         """
-        Check if the required TCP and UDP ports for the proxy server are available.
+        Determine if both the WebSocket (TCP) and discovery (UDP) ports required by the proxy server are available.
 
         Returns:
-            bool: True if both the WebSocket (TCP) and discovery (UDP) ports are free; False if either is in use.
+            True if both ports are free; False if either port is already in use.
         """
         for port, proto, name in [
             (WEBSOCKET_PORT, socket.SOCK_STREAM, "TCP"),
@@ -94,12 +94,15 @@ class ElegooPrinterServer:
 
     def stop(self):
         """
-        Shuts down the proxy server and releases associated resources.
+        Shuts down the proxy server and cleans up resources.
 
-        Closes the HTTP client session and aiohttp runner, stops the event loop if running, and logs the server shutdown.
+        Closes the HTTP client session and aiohttp runner, stops the event loop if it is running, and logs the shutdown event.
         """
 
         async def cleanup():
+            """
+            Asynchronously closes the HTTP client session and cleans up the aiohttp web server runner if they exist.
+            """
             if self.session:
                 await self.session.close()  # Close the session
             if self.runner:
@@ -112,6 +115,12 @@ class ElegooPrinterServer:
         self.logger.info("Proxy server stopped.")
 
     def get_printer(self) -> Printer:
+        """
+        Return a copy of the printer object with its IP address replaced by the local proxy server's IP.
+
+        Returns:
+            Printer: A copy of the printer object with the IP address set to the local IP used by the proxy.
+        """
         proxied_printer = Printer()
         proxied_printer.__dict__.update(self.printer.__dict__)
         proxied_printer.ip_address = self.get_local_ip()
@@ -119,12 +128,12 @@ class ElegooPrinterServer:
 
     def get_local_ip(self):
         """
-        Determine the local IP address used to reach the printer.
+        Returns the local IP address used to communicate with the printer.
 
-        Attempts to create a UDP socket connection to the printer's IP address to infer the local network interface IP. Falls back to localhost ("127.0.0.1") if detection fails.
+        Attempts to determine the outbound local IP by connecting a UDP socket to the printer's IP address. If detection fails, returns "127.0.0.1".
 
         Returns:
-            str: The detected local IP address, or "127.0.0.1" on failure.
+            str: The local IP address, or "127.0.0.1" if detection is unsuccessful.
         """
         s = None
         try:
@@ -141,7 +150,7 @@ class ElegooPrinterServer:
         """
         Starts the HTTP/WebSocket and UDP discovery proxy servers in a dedicated asyncio event loop on a separate thread.
 
-        Initializes an aiohttp server for proxying HTTP and WebSocket requests, handling startup exceptions to avoid crashes from port conflicts. Also launches a UDP discovery server for printer identification. The event loop runs indefinitely to keep proxy services active.
+        Initializes an aiohttp server to proxy HTTP and WebSocket requests to the printer, handling startup exceptions to avoid crashes from port conflicts or multiple instances. Also launches a UDP discovery server to respond to printer discovery requests. The event loop runs indefinitely to keep proxy services active.
         """
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
@@ -149,9 +158,9 @@ class ElegooPrinterServer:
         async def startup():
             # Create the persistent session
             """
-            Initializes and starts the aiohttp HTTP/WebSocket proxy server.
+            Initializes and starts the aiohttp HTTP/WebSocket proxy server for the Elegoo printer.
 
-            Creates a persistent HTTP client session, sets up the aiohttp application with a catch-all route for proxying, and starts the server on all interfaces at the configured WebSocket port. Suppresses and logs exceptions during startup to handle port conflicts or other errors gracefully.
+            Creates a persistent HTTP client session, configures the aiohttp application with a catch-all route for proxying requests, and starts the server on all interfaces at the designated WebSocket port. Handles and logs exceptions during startup, including port conflicts, to ensure graceful failure without crashing the process.
             """
             self.session = aiohttp.ClientSession()
 
