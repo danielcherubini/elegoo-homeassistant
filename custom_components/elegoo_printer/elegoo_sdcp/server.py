@@ -106,7 +106,7 @@ class ElegooPrinterServer:
                 await self.runner.setup()
 
             site = web.TCPSite(self.runner, INADDR_ANY, WEBSOCKET_PORT)
-            
+
             # We only want one server here
             try:
                 await site.start()
