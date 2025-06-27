@@ -16,7 +16,7 @@ from custom_components.elegoo_printer.elegoo_sdcp.client import (
     ElegooPrinterClientWebsocketError,
 )
 
-from .const import CONF_CENTAURI_CARBON, DOMAIN, LOGGER
+from .const import CONF_CENTAURI_CARBON, CONF_PROXY_ENABLED, DOMAIN, LOGGER
 
 if TYPE_CHECKING:
     from .elegoo_sdcp.models.printer import Printer
@@ -29,6 +29,11 @@ OPTIONS_SCHEMA = vol.Schema(
             selector.TextSelectorConfig(
                 type=selector.TextSelectorType.TEXT,
             ),
+        ),
+        vol.Required(
+            CONF_PROXY_ENABLED,
+        ): selector.BooleanSelector(
+            selector.BooleanSelectorConfig(),
         ),
         vol.Required(
             CONF_CENTAURI_CARBON,
@@ -54,7 +59,7 @@ def _test_credentials(ip_address: str, centauri_carbon: bool) -> Printer:
         ElegooPrinterClientGeneralError: If no printer is found at the given IP address.
     """
     elegoo_printer = ElegooPrinterClient(ip_address, centauri_carbon, LOGGER)
-    printer = elegoo_printer.discover_printer()
+    printer = elegoo_printer.discover_printer(ip_address)
     if printer:
         return printer
     raise ElegooPrinterClientGeneralError(
@@ -92,8 +97,8 @@ class ElegooPrinterClientGeneralError(Exception):
 class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Elegoo."""
 
-    VERSION = 1
-    MINOR_VERSION = 2
+    VERSION = 2
+    MINOR_VERSION = 0
 
     async def async_step_user(
         self,

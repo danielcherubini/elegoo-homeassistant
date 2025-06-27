@@ -52,6 +52,8 @@ class ElegooPrinterApiClient:
         """
         ip_address = config.get("ip_address")
         centauri_carbon: bool = config.get("centauri_carbon", False)
+        proxy_server_enabled: bool = config.get("proxy_server_enabled", False)
+
         if ip_address is None:
             return None
 
@@ -62,9 +64,12 @@ class ElegooPrinterApiClient:
         if printer is None:
             return None
 
-        server = ElegooPrinterServer(printer, logger=logger)
-        proxied_printer = server.get_printer()
-        connected = await elegoo_printer.connect_printer(proxied_printer)
+        if proxy_server_enabled:
+            server = ElegooPrinterServer(printer, logger=logger)
+            proxied_printer = server.get_printer()
+            connected = await elegoo_printer.connect_printer(proxied_printer)
+        else:
+            connected = await elegoo_printer.connect_printer(printer)
         if connected:
             logger.info("Polling Started")
             self._elegoo_printer = elegoo_printer
