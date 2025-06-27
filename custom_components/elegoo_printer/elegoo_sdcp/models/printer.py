@@ -89,8 +89,13 @@ class Printer:
             self.firmware = data.get("FirmwareVersion")
             self.id = data.get("MainboardID")
 
-            self.centauri_carbon = config.get(CONF_CENTAURI_CARBON, False)
-            self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
+            self.protocol = data.get("ProtocolVersion")
+            self.firmware = data.get("FirmwareVersion")
+            self.id = data.get("MainboardID")
+
+        # Initialize config-based attributes for all instances
+        self.centauri_carbon = config.get(CONF_CENTAURI_CARBON, False)
+        self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
 
     def to_dict(self) -> dict:
         """
