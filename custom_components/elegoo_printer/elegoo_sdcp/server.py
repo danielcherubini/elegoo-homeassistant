@@ -90,12 +90,21 @@ class ElegooPrinterServer:
                 s.close()
 
     def _start_servers_in_thread(self):
-        """Starts the aiohttp server in a dedicated asyncio event loop."""
+        """
+        Initializes and starts the HTTP/WebSocket and UDP discovery proxy servers in a dedicated asyncio event loop running on a separate thread.
+        
+        This method sets up the aiohttp server for HTTP and WebSocket proxying, handles server startup exceptions gracefully, and launches the UDP discovery server for printer identification. The event loop runs indefinitely to keep the proxy services active.
+        """
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
         async def startup():
             # Create the persistent session
+            """
+            Initializes and starts the aiohttp HTTP server for proxying requests.
+            
+            Creates a persistent HTTP client session, sets up the aiohttp application with a catch-all route, and starts the server on all interfaces at the designated WebSocket port. Handles and suppresses exceptions during server startup to allow for graceful handling of port conflicts or other startup errors.
+            """
             self.session = aiohttp.ClientSession()
 
             app = web.Application(client_max_size=1024 * 1024 * 2)
