@@ -112,9 +112,12 @@ class ElegooPrinterServer:
                 await site.start()
             except OSError:
                 # So We ignore the OSError since that's when multiple happen
+                self.logger.info("Extra server detected")
                 pass
-            except Exception:
+            except Exception as e:
                 # And we ignore exceptions since we dont care also
+                self.logger.info(f"Exception on site start: {e}")
+
                 pass
 
         self.loop.run_until_complete(startup())
