@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
+from custom_components.elegoo_printer.elegoo_sdcp.client import (
     ElegooPrinterClientWebsocketConnectionError,
     ElegooPrinterClientWebsocketError,
 )
@@ -24,7 +24,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> Any:
         """
-        Asynchronously fetches the latest printer attributes and status from the Elegoo printer API.
+        Fetches the latest printer attributes and status asynchronously from the Elegoo printer API.
 
         If a websocket connection error occurs, attempts to reconnect and retries the data fetch. Adjusts the polling interval based on connection success or failure. Raises UpdateFailed if data cannot be retrieved.
         """
@@ -37,6 +37,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                 if connected:
                     self.update_interval = timedelta(seconds=2)
                     await self.config_entry.runtime_data.client.async_get_attributes()
+                    await self.config_entry.runtime_data.client.async_get_current_task()
                     return (
                         await self.config_entry.runtime_data.client.async_get_status()
                     )

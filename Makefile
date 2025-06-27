@@ -51,7 +51,7 @@ start:
 # Runs the application in debug mode within the uv-managed environment.
 debug:
 	@echo "--> Starting the application in DEBUG mode..."
-	@DEBUG=true VIRTUAL_ENV=$(VENV) uv run $(PYTHON) -m debug
+	@DEBUG=true VIRTUAL_ENV=$(VENV) uv run --active $(PYTHON) -m debug
 
 # Executes the start script within a devcontainer.
 devcontainer:

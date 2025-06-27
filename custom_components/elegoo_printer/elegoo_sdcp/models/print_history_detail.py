@@ -2,43 +2,43 @@
 
 from typing import Any
 
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import ErrorStatusReason
+
 
 class PrintHistoryDetail:
     """Represents the details of a print history entry."""
 
     def __init__(self, data: dict[str, Any]) -> None:
         """
-        Initialize a PrintHistoryDetail object.
+        Initialize a PrintHistoryDetail instance with print job details from a dictionary.
 
-        Args:
-            data: A dictionary containing the print history data.
-
+        The input dictionary should contain keys corresponding to print job attributes such as thumbnail, task name, timing, status, slice information, print layers, task ID, MD5 hash, current layer volume, time-lapse video details, and error status reason. Missing keys default to None or zero where applicable.
         """
-        self.Thumbnail: str | None = data.get("Thumbnail")
-        self.TaskName: str | None = data.get("TaskName")
-        self.BeginTime: int | None = data.get("BeginTime")
-        self.EndTime: int | None = data.get("EndTime")
-        self.TaskStatus: int | None = data.get("TaskStatus")
-        self.SliceInformation: SliceInformation = SliceInformation(
+        self.thumbnail: str | None = data.get("Thumbnail")
+        self.task_name: str | None = data.get("TaskName")
+        self.begin_time: int | None = data.get("BeginTime")
+        self.end_time: int | None = data.get("EndTime")
+        self.task_status: int | None = data.get("TaskStatus")
+        self.slice_information: SliceInformation = SliceInformation(
             data.get("SliceInformation", {})
         )
-        self.AlreadyPrintLayer: int | None = data.get("AlreadyPrintLayer")
-        self.TaskId: str | None = data.get("TaskId")
+        self.already_print_layer: int | None = data.get("AlreadyPrintLayer")
+        self.task_id: str | None = data.get("TaskId")
         self.MD5: str | None = data.get("MD5")
-        self.CurrentLayerTalVolume: float | None = data.get(
+        self.current_layer_tal_volume: float | None = data.get(
             "CurrentLayerTalVolume"
         )  # Or int, depending on actual type
-        self.TimeLapseVideoStatus: int | None = data.get("TimeLapseVideoStatus")
-        self.TimeLapseVideoUrl: str | None = data.get("TimeLapseVideoUrl")
-        self.ErrorStatusReason: int | None = data.get("ErrorStatusReason")
+        self.time_lapse_video_status: int | None = data.get("TimeLapseVideoStatus")
+        self.time_lapse_video_url: str | None = data.get("TimeLapseVideoUrl")
+
+        _error_status_reason: int = data.get("ErrorStatusReason", 0)
+        self.error_status_reason: ErrorStatusReason | None = ErrorStatusReason.from_int(
+            _error_status_reason
+        )
 
     def __repr__(self) -> str:
         """
-        Return a string representation of the object.
-
-        Returns:
-            A string representation of the object's attributes.
-
+        Return a string representation of the instance's attributes as a dictionary.
         """
         return str(self.__dict__)
 

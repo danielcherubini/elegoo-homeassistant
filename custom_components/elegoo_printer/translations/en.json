@@ -1,11 +1,24 @@
 {
-  "config": {
+  "options": {
     "step": {
-      "printer": {
+      "init": {
         "description": "If you need help with the configuration have a look here: https://github.com/danielcherubini/elegoo_printer",
         "data": {
           "ip_address": "Printer IP Address",
-          "centauri_carbon": "Is the printer a Centauri Carbon"
+          "centauri_carbon": "Is this an FDM Printer",
+          "proxy_enabled": "Enable the proxy server (restart after changing this)"
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "description": "If you need help with the configuration have a look here: https://github.com/danielcherubini/elegoo_printer",
+        "data": {
+          "ip_address": "Printer IP Address",
+          "centauri_carbon": "Is this an FDM Printer",
+          "proxy_enabled": "Enable the proxy server (restart after changing this)"
         }
       }
     },
@@ -21,6 +34,22 @@
     "sensor": {
       "print_status": {
         "name": "Print Status",
+        "state": {
+          "idle": "The print job is idle and not actively printing.",
+          "homing": "The printer is resetting or homing its axes.",
+          "dropping": "The print platform is descending.",
+          "exposuring": "The printer is exposing the resin/material.",
+          "lifting": "The print platform is lifting.",
+          "pausing": "The printer is in the process of pausing the print job.",
+          "paused": "The print job is currently paused.",
+          "stopping": "The printer is in the process of stopping the print job.",
+          "stopped": "The print job is stopped.",
+          "complete": "The print job has completed successfully.",
+          "file_checking": "The printer is currently checking the print file."
+        }
+      },
+      "current_status": {
+        "name": "Current Status",
         "state": {
           "idle": "Idle",
           "printing": "Printing",
@@ -38,6 +67,31 @@
           "invalid_resolution": "Invalid resolution",
           "unknown_format": "Unknown format",
           "unknown_model": "Unknown model"
+        }
+      },
+      "error_status_reason": {
+        "name": "Error Status Reason",
+        "state": {
+          "ok": "Normal",
+          "temp_error": "Over-temperature error (nozzle/bed)",
+          "filament_runout": "Filament runout detected",
+          "filament_jam": "Filament jam or clog detected",
+          "level_failed": "Auto-bed leveling failed",
+          "udisk_remove": "USB drive removed during print",
+          "home_failed_x": "X-axis homing failure",
+          "home_failed_z": "Z-axis homing failure",
+          "home_failed": "General homing failure",
+          "bed_adhesion_failed": "Print detachment from bed",
+          "error": "General printing error",
+          "move_abnormal": "Motor movement abnormality",
+          "home_failed_y": "Y-axis homing failure",
+          "file_error": "G-code file error",
+          "camera_error": "Camera connection error",
+          "network_error": "Network connection error",
+          "server_connect_failed": "Server connection failed",
+          "disconnect_app": "App disconnected during print",
+          "nozzle_temp_sensor_offline": "Nozzle temperature sensor offline",
+          "bed_temp_sensor_offline": "Bed temperature sensor offline"
         }
       }
     }

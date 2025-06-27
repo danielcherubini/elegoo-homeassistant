@@ -1,6 +1,13 @@
 """Printer object for the Elegoo Printers."""
 
 import json
+from types import MappingProxyType
+from typing import Any
+
+from custom_components.elegoo_printer.const import (
+    CONF_CENTAURI_CARBON,
+    CONF_PROXY_ENABLED,
+)
 
 from .attributes import PrinterAttributes
 from .print_history_detail import PrintHistoryDetail
@@ -43,7 +50,9 @@ class Printer:
     """
 
     def __init__(
-        self, json_string: str | None = None, centauri_carbon: bool = False
+        self,
+        json_string: str | None = None,
+        config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
         """
         Initialize a new Printer object from a JSON string.
@@ -62,7 +71,6 @@ class Printer:
             self.protocol: str | None = None
             self.firmware: str | None = None
             self.id: str | None = None
-            self.centauri_carbon: bool | None = False
         else:
             try:
                 j: dict = json.loads(json_string)  # Decode the JSON string
@@ -80,9 +88,14 @@ class Printer:
             self.protocol = data.get("ProtocolVersion")
             self.firmware = data.get("FirmwareVersion")
             self.id = data.get("MainboardID")
-            self.centauri_carbon = centauri_carbon
-            if centauri_carbon and self.model:
-                self.model += "-s"
+
+            self.protocol = data.get("ProtocolVersion")
+            self.firmware = data.get("FirmwareVersion")
+            self.id = data.get("MainboardID")
+
+        # Initialize config-based attributes for all instances
+        self.centauri_carbon = config.get(CONF_CENTAURI_CARBON, False)
+        self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
 
     def to_dict(self) -> dict:
         """
@@ -103,6 +116,7 @@ class Printer:
             "firmware": self.firmware,
             "id": self.id,
             "centauri_carbon": self.centauri_carbon,
+            "proxy_enabled": self.proxy_enabled,
         }
 
 
