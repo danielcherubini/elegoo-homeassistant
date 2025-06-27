@@ -30,6 +30,12 @@ class ElegooPrinterServer:
     """
 
     def __init__(self, printer: Printer, logger: Any):
+        """
+        Initializes the Elegoo printer proxy server, validating configuration and starting proxy services in a background thread.
+
+        Raises:
+            ConfigEntryNotReady: If the printer IP address is not set or if the proxy server fails to start within the timeout period.
+        """
         self.printer = printer
         self.logger = logger
         self.startup_event = Event()
@@ -43,21 +49,55 @@ class ElegooPrinterServer:
                 "Printer IP address is not set. Cannot start proxy server."
             )
 
-        self.logger.info(
-            f"Initializing proxy server for remote printer {self.printer.ip_address}"
-        )
-        self.proxy_thread = Thread(target=self._start_servers_in_thread, daemon=True)
-        self.proxy_thread.start()
+        if self._check_ports_are_available():
+            self.logger.info(
+                f"Initializing proxy server for remote printer {self.printer.ip_address}"
+            )
+            self.proxy_thread = Thread(
+                target=self._start_servers_in_thread, daemon=True
+            )
+            self.proxy_thread.start()
 
-        ready = self.startup_event.wait(timeout=10.0)
-        if not ready:
-            self.logger.error("Proxy server failed to start within the timeout period.")
-            self.stop()
-            raise ConfigEntryNotReady("Proxy server failed to start.")
-        self.logger.info("Proxy server has started successfully.")
+            ready = self.startup_event.wait(timeout=10.0)
+            if not ready:
+                self.logger.error(
+                    "Proxy server failed to start within the timeout period."
+                )
+                self.stop()
+                raise ConfigEntryNotReady("Proxy server failed to start.")
+            self.logger.info("Proxy server has started successfully.")
+
+    def _check_ports_are_available(self) -> bool:
+        """
+        Check if the required TCP and UDP ports for the proxy server are available.
+
+        Returns:
+            bool: True if both the WebSocket (TCP) and discovery (UDP) ports are free; False if either is in use.
+        """
+        for port, proto, name in [
+            (WEBSOCKET_PORT, socket.SOCK_STREAM, "TCP"),
+            (DISCOVERY_PORT, socket.SOCK_DGRAM, "UDP"),
+        ]:
+            try:
+                with socket.socket(socket.AF_INET, proto) as s:
+                    # Set SO_REUSEADDR to allow immediate reuse of the port after it's been closed
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    s.bind((INADDR_ANY, port))
+            except OSError:
+                # The port is already in use.
+                error_msg = (
+                    f"{name} port {port} is already in use. Proxy server cannot start."
+                )
+                self.logger.debug(error_msg)
+                return False
+        return True
 
     def stop(self):
-        """Stops the running server and cleans up resources."""
+        """
+        Shuts down the proxy server and releases associated resources.
+
+        Closes the HTTP client session and aiohttp runner, stops the event loop if running, and logs the server shutdown.
+        """
 
         async def cleanup():
             if self.session:
@@ -78,6 +118,14 @@ class ElegooPrinterServer:
         return proxied_printer
 
     def get_local_ip(self):
+        """
+        Determine the local IP address used to reach the printer.
+
+        Attempts to create a UDP socket connection to the printer's IP address to infer the local network interface IP. Falls back to localhost ("127.0.0.1") if detection fails.
+
+        Returns:
+            str: The detected local IP address, or "127.0.0.1" on failure.
+        """
         s = None
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -90,22 +138,43 @@ class ElegooPrinterServer:
                 s.close()
 
     def _start_servers_in_thread(self):
-        """Starts the aiohttp server in a dedicated asyncio event loop."""
+        """
+        Starts the HTTP/WebSocket and UDP discovery proxy servers in a dedicated asyncio event loop on a separate thread.
+
+        Initializes an aiohttp server for proxying HTTP and WebSocket requests, handling startup exceptions to avoid crashes from port conflicts. Also launches a UDP discovery server for printer identification. The event loop runs indefinitely to keep proxy services active.
+        """
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
         async def startup():
             # Create the persistent session
+            """
+            Initializes and starts the aiohttp HTTP/WebSocket proxy server.
+
+            Creates a persistent HTTP client session, sets up the aiohttp application with a catch-all route for proxying, and starts the server on all interfaces at the configured WebSocket port. Suppresses and logs exceptions during startup to handle port conflicts or other errors gracefully.
+            """
             self.session = aiohttp.ClientSession()
 
             app = web.Application(client_max_size=1024 * 1024 * 2)
             app.router.add_route("*", "/{path:.*}", self._http_handler)
 
             self.runner = web.AppRunner(app)
-            await self.runner.setup()
+            if self.runner:
+                await self.runner.setup()
 
             site = web.TCPSite(self.runner, INADDR_ANY, WEBSOCKET_PORT)
-            await site.start()
+
+            # We only want one server here
+            try:
+                await site.start()
+            except OSError:
+                # So We ignore the OSError since that's when multiple happen
+                self.logger.info("Extra server detected")
+                return
+            except Exception as e:
+                # And we ignore exceptions since we dont care also
+                self.logger.info(f"Exception on site start: {e}")
+                return
 
         self.loop.run_until_complete(startup())
 
