@@ -60,7 +60,7 @@ class ElegooPrinterApiClient:
             ElegooPrinterApiClient | None: The initialized API client instance, or None if initialization fails.
         """
         ip_address = config.get(CONF_IP_ADDRESS)
-        cls._proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
+        proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
 
         if ip_address is None:
             return None
@@ -73,9 +73,13 @@ class ElegooPrinterApiClient:
         if printer is None:
             return None
 
-        if cls._proxy_server_enabled:
-            server = ElegooPrinterServer(printer, logger=logger)
-            printer = server.get_printer()
+        if proxy_server_enabled:
+            try:
+                server = ElegooPrinterServer(printer, logger=logger)
+                printer = server.get_printer()
+            except Exception as e:
+                logger.error("Failed to create proxy server: %s", e)
+                # Continue with direct printer connection
 
         connected = await elegoo_printer.connect_printer(printer)
         if connected:
