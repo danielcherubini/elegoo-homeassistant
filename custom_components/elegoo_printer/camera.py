@@ -10,9 +10,7 @@ from custom_components.elegoo_printer.definitions import (
     PRINTER_MJPEG_CAMERAS,
     ElegooPrinterSensorEntityDescription,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
-    ElegooPrinterClient,
-)
+from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 
@@ -65,10 +63,13 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             raise PlatformNotReady("Printer IP address not available")
 
         ## Temporary until we finish testing
-        _mjpeg_url = f"http://{self.printer_client.ip_address}:3031/video"
+        self.printer_client.set_printer_video_stream(toggle=True)
+        self._mjpeg_url = f"http://{self.printer_client.ip_address}:3031/video"
 
-        self.entity_description.value_fn(_mjpeg_url)
-        MjpegCamera.__init__(self, mjpeg_url=_mjpeg_url, still_image_url=_mjpeg_url)
+        self.entity_description.value_fn(self._mjpeg_url)
+        MjpegCamera.__init__(
+            self, mjpeg_url=self._mjpeg_url, still_image_url=self._mjpeg_url
+        )
 
     @property
     def available(self) -> bool:

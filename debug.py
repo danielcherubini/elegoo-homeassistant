@@ -25,9 +25,7 @@ async def main() -> None:
     """
     stop_event = asyncio.Event()
     try:
-        elegoo_printer = ElegooPrinterClient(
-            ip_address=PRINTER_IP, centauri_carbon=False, logger=logger, ws_server=True
-        )
+        elegoo_printer = ElegooPrinterClient(ip_address=PRINTER_IP, logger=logger)
         printer = elegoo_printer.discover_printer(PRINTER_IP)
         if printer:
             server = ElegooPrinterServer(printer, logger=logger)
@@ -37,6 +35,7 @@ async def main() -> None:
                 logger.debug("Polling Started")
                 await asyncio.sleep(2)
                 elegoo_printer.get_printer_attributes()
+                elegoo_printer.set_printer_video_stream(toggle=True)
                 while not stop_event.is_set():  # noqa: ASYNC110
                     elegoo_printer.get_printer_status()
                     await asyncio.sleep(2)
