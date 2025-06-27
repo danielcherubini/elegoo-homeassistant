@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Dict
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -31,12 +32,12 @@ OPTIONS_SCHEMA = vol.Schema(
             ),
         ),
         vol.Required(
-            CONF_PROXY_ENABLED,
+            CONF_CENTAURI_CARBON,
         ): selector.BooleanSelector(
             selector.BooleanSelectorConfig(),
         ),
         vol.Required(
-            CONF_CENTAURI_CARBON,
+            CONF_PROXY_ENABLED,
         ): selector.BooleanSelector(
             selector.BooleanSelectorConfig(),
         ),
@@ -44,7 +45,7 @@ OPTIONS_SCHEMA = vol.Schema(
 )
 
 
-def _test_credentials(ip_address: str, centauri_carbon: bool) -> Printer:
+def _test_credentials(user_input: Dict[str, Any]) -> Printer:
     """
     Attempts to discover an Elegoo printer at the specified IP address.
 
@@ -58,7 +59,11 @@ def _test_credentials(ip_address: str, centauri_carbon: bool) -> Printer:
     Raises:
         ElegooPrinterClientGeneralError: If no printer is found at the given IP address.
     """
-    elegoo_printer = ElegooPrinterClient(ip_address, centauri_carbon, LOGGER)
+    ip_address = user_input[CONF_IP_ADDRESS]
+
+    elegoo_printer = ElegooPrinterClient(
+        ip_address, config=MappingProxyType(user_input), logger=LOGGER
+    )
     printer = elegoo_printer.discover_printer(ip_address)
     if printer:
         return printer
@@ -70,10 +75,7 @@ def _test_credentials(ip_address: str, centauri_carbon: bool) -> Printer:
 async def _async_validate_input(user_input: dict[str, Any]) -> dict:
     _errors = {}
     try:
-        printer = _test_credentials(
-            ip_address=user_input[CONF_IP_ADDRESS],
-            centauri_carbon=user_input[CONF_CENTAURI_CARBON],
-        )
+        printer = _test_credentials(user_input)
         return {"printer": printer, "errors": None}
     except ElegooPrinterClientGeneralError as exception:  # New specific catch
         LOGGER.error("No printer found: %s", exception)
@@ -97,8 +99,8 @@ class ElegooPrinterClientGeneralError(Exception):
 class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Elegoo."""
 
-    VERSION = 2
-    MINOR_VERSION = 0
+    VERSION = 1
+    MINOR_VERSION = 3
 
     async def async_step_user(
         self,
@@ -117,6 +119,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
             printer_object.ip_address = user_input[CONF_IP_ADDRESS]
             printer_object.centauri_carbon = user_input[CONF_CENTAURI_CARBON]
+            printer_object.proxy_enabled = user_input[CONF_PROXY_ENABLED]
 
             if not _errors:
                 await self.async_set_unique_id(unique_id=printer_object.id)
@@ -173,6 +176,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
 
             printer_object.ip_address = user_input[CONF_IP_ADDRESS]
             printer_object.centauri_carbon = user_input[CONF_CENTAURI_CARBON]
+            printer_object.proxy_enabled = user_input[CONF_PROXY_ENABLED]
 
             if not _errors:
                 return self.async_create_entry(
@@ -184,7 +188,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
-                OPTIONS_SCHEMA, self.config_entry.options
+                OPTIONS_SCHEMA, self.config_entry.data
             ),
             errors=_errors,
         )

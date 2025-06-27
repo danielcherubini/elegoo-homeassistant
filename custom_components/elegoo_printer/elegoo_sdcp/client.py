@@ -6,6 +6,7 @@ import os
 import socket
 import time
 from threading import Thread
+from types import MappingProxyType
 from typing import Any
 
 import websocket
@@ -15,7 +16,6 @@ from .models.attributes import PrinterAttributes
 from .models.print_history_detail import PrintHistoryDetail
 from .models.printer import Printer, PrinterData
 from .models.status import PrinterStatus
-from .server import ElegooPrinterServer
 
 DISCOVERY_TIMEOUT = 2
 DISCOVERY_PORT = 3000
@@ -42,28 +42,24 @@ class ElegooPrinterClient:
     def __init__(
         self,
         ip_address: str,
-        centauri_carbon: bool = False,
         logger: Any = LOGGER,
-        ws_server: bool = True,
+        config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
         """
         Initialize an ElegooPrinterClient for communicating with an Elegoo 3D printer.
 
         Parameters:
             ip_address (str): The IP address of the target printer.
-            centauri_carbon (bool, optional): Set to True if the printer is a Centauri Carbon model. Defaults to False.
-            ws_server (bool, optional): Whether to enable the local websocket proxy server. Defaults to True.
+            config (Dict, optional): A Dictionary containing the config for the printer
 
         Initializes internal state, including printer data models, websocket references, and logging.
         """
         self.ip_address: str = ip_address
-        self.centauri_carbon: bool = centauri_carbon
         self.printer_websocket: websocket.WebSocketApp | None = None
-        self.printer: Printer = Printer()
+        self.config = config
+        self.printer: Printer = Printer(config=config)
         self.printer_data = PrinterData()
         self.logger = logger
-        self.ws_server = ws_server
-        self.elegoo_printer_server: ElegooPrinterServer | None = None
 
     def get_printer_status(self) -> PrinterData:
         """
@@ -228,7 +224,7 @@ class ElegooPrinterClient:
             )
         else:
             try:
-                printer = Printer(printer_info, centauri_carbon=self.centauri_carbon)
+                printer = Printer(printer_info, config=self.config)
             except (ValueError, TypeError):
                 self.logger.exception("Error creating Printer object")
             else:
