@@ -1,11 +1,24 @@
 {
-  "config": {
+  "options": {
     "step": {
-      "printer": {
+      "init": {
         "description": "If you need help with the configuration have a look here: https://github.com/danielcherubini/elegoo_printer",
         "data": {
           "ip_address": "Printer IP Address",
-          "centauri_carbon": "Is the printer a Centauri Carbon"
+          "centauri_carbon": "Is this an FDM Printer",
+          "proxy_enabled": "Enable the proxy server (restart after changing this)"
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "description": "If you need help with the configuration have a look here: https://github.com/danielcherubini/elegoo_printer",
+        "data": {
+          "ip_address": "Printer IP Address",
+          "centauri_carbon": "Is this an FDM Printer",
+          "proxy_enabled": "Enable the proxy server (restart after changing this)"
         }
       }
     },

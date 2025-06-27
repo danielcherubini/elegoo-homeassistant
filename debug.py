@@ -6,27 +6,33 @@ import sys
 
 from loguru import logger
 
+from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG
-from custom_components.elegoo_printer.elegoo_sdcp.elegoo_printer import (
-    ElegooPrinterClient,
-)
+from custom_components.elegoo_printer.elegoo_sdcp.server import ElegooPrinterServer
 
 LOG_LEVEL = "DEBUG"
+PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.212")
+
 logger.remove()
 logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)
 
 
 async def main() -> None:
-    """Declare Main function for debugging purposes."""
+    """
+    Run a debug polling loop to discover, connect to, and monitor an Elegoo printer.
+
+    Attempts to discover a printer at the specified IP address, connect to it, retrieve its attributes, and periodically poll its status until interrupted.
+    """
     stop_event = asyncio.Event()
     try:
-        printer_ip = os.getenv("PRINTER_IP", "10.0.0.212")
         elegoo_printer = ElegooPrinterClient(
-            ip_address=printer_ip, centauri_carbon=False, logger=logger
+            ip_address=PRINTER_IP, centauri_carbon=False, logger=logger, ws_server=True
         )
-        printer = elegoo_printer.discover_printer()
+        printer = elegoo_printer.discover_printer(PRINTER_IP)
         if printer:
-            connected = await elegoo_printer.connect_printer()
+            server = ElegooPrinterServer(printer, logger=logger)
+            proxied_printer = server.get_printer()
+            connected = await elegoo_printer.connect_printer(proxied_printer)
             if connected:
                 logger.debug("Polling Started")
                 await asyncio.sleep(2)

@@ -1,11 +1,11 @@
 """Elegoo Printer Client."""
 
-from .const import DEBUG, LOGGER
-from .elegoo_printer import (
+from .client import (
     ElegooPrinterClient,
     ElegooPrinterClientWebsocketConnectionError,
     ElegooPrinterClientWebsocketError,
 )
+from .const import DEBUG, LOGGER
 
 __all__ = [
     "DEBUG",
