@@ -106,12 +106,15 @@ class ElegooPrinterServer:
                 await self.runner.setup()
 
             site = web.TCPSite(self.runner, INADDR_ANY, WEBSOCKET_PORT)
-
+            
+            # We only want one server here
             try:
                 await site.start()
             except OSError:
+                # So We ignore the OSError since that's when multiple happen
                 pass
             except Exception:
+                # And we ignore exceptions since we dont care also
                 pass
 
         self.loop.run_until_complete(startup())
