@@ -30,6 +30,12 @@ class ElegooPrinterServer:
     """
 
     def __init__(self, printer: Printer, logger: Any):
+        """
+        Initializes the Elegoo printer proxy server, validating configuration and starting proxy services in a background thread.
+        
+        Raises:
+            ConfigEntryNotReady: If the printer IP address is not set or if the proxy server fails to start within the timeout period.
+        """
         self.printer = printer
         self.logger = logger
         self.startup_event = Event()
@@ -62,7 +68,12 @@ class ElegooPrinterServer:
             self.logger.info("Proxy server has started successfully.")
 
     def _check_ports_are_available(self) -> bool:
-        """Checks if the necessary ports are free. Returns True if available, False otherwise."""
+        """
+        Check if the required TCP and UDP ports for the proxy server are available.
+        
+        Returns:
+            bool: True if both the WebSocket (TCP) and discovery (UDP) ports are free; False if either is in use.
+        """
         for port, proto, name in [
             (WEBSOCKET_PORT, socket.SOCK_STREAM, "TCP"),
             (DISCOVERY_PORT, socket.SOCK_DGRAM, "UDP"),
@@ -82,7 +93,11 @@ class ElegooPrinterServer:
         return True
 
     def stop(self):
-        """Stops the running server and cleans up resources."""
+        """
+        Shuts down the proxy server and releases associated resources.
+        
+        Closes the HTTP client session and aiohttp runner, stops the event loop if running, and logs the server shutdown.
+        """
 
         async def cleanup():
             if self.session:
@@ -103,6 +118,14 @@ class ElegooPrinterServer:
         return proxied_printer
 
     def get_local_ip(self):
+        """
+        Determine the local IP address used to reach the printer.
+        
+        Attempts to create a UDP socket connection to the printer's IP address to infer the local network interface IP. Falls back to localhost ("127.0.0.1") if detection fails.
+        
+        Returns:
+            str: The detected local IP address, or "127.0.0.1" on failure.
+        """
         s = None
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -116,9 +139,9 @@ class ElegooPrinterServer:
 
     def _start_servers_in_thread(self):
         """
-        Initializes and starts the HTTP/WebSocket and UDP discovery proxy servers in a dedicated asyncio event loop running on a separate thread.
-
-        This method sets up the aiohttp server for HTTP and WebSocket proxying, handles server startup exceptions gracefully, and launches the UDP discovery server for printer identification. The event loop runs indefinitely to keep the proxy services active.
+        Starts the HTTP/WebSocket and UDP discovery proxy servers in a dedicated asyncio event loop on a separate thread.
+        
+        Initializes an aiohttp server for proxying HTTP and WebSocket requests, handling startup exceptions to avoid crashes from port conflicts. Also launches a UDP discovery server for printer identification. The event loop runs indefinitely to keep proxy services active.
         """
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
@@ -126,9 +149,9 @@ class ElegooPrinterServer:
         async def startup():
             # Create the persistent session
             """
-            Initializes and starts the aiohttp HTTP server for proxying requests.
-
-            Creates a persistent HTTP client session, sets up the aiohttp application with a catch-all route, and starts the server on all interfaces at the designated WebSocket port. Handles and suppresses exceptions during server startup to allow for graceful handling of port conflicts or other startup errors.
+            Initializes and starts the aiohttp HTTP/WebSocket proxy server.
+            
+            Creates a persistent HTTP client session, sets up the aiohttp application with a catch-all route for proxying, and starts the server on all interfaces at the configured WebSocket port. Suppresses and logs exceptions during startup to handle port conflicts or other errors gracefully.
             """
             self.session = aiohttp.ClientSession()
 
