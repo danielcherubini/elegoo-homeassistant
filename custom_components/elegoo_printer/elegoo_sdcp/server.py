@@ -9,6 +9,7 @@ from typing import Any, Union
 
 import aiohttp
 from aiohttp import ClientSession, web
+from homeassistant.exceptions import ConfigEntryNotReady
 from websockets.legacy.client import WebSocketClientProtocol, connect
 from websockets.legacy.server import WebSocketServerProtocol
 
@@ -38,7 +39,7 @@ class ElegooPrinterServer:
         self.session: ClientSession | None = None
 
         if not self.printer.ip_address:
-            raise ValueError(
+            raise ConfigEntryNotReady(
                 "Printer IP address is not set. Cannot start proxy server."
             )
 
@@ -52,7 +53,7 @@ class ElegooPrinterServer:
         if not ready:
             self.logger.error("Proxy server failed to start within the timeout period.")
             self.stop()
-            raise Exception("Proxy server failed to start.")
+            raise ConfigEntryNotReady("Proxy server failed to start.")
         self.logger.info("Proxy server has started successfully.")
 
     def stop(self):
