@@ -1,11 +1,9 @@
 """Elegoo Printer Server and Proxy."""
 
 import asyncio
-import hashlib
 import json
 import os
 import socket
-import uuid
 from threading import Event, Thread
 from typing import Any, Union
 
@@ -134,9 +132,7 @@ class ElegooPrinterServer:
         if request.headers.get("Upgrade", "").lower() == "websocket":
             return await self._websocket_handler(request)
         elif request.method == "POST" and request.path == "/uploadFile/upload":
-            # --- CHANGE THIS LINE to call the new multipart handler ---
             return await self._http_file_proxy_passthrough_handler(request)
-            # ---------------------------------------------------------
         else:
             self.logger.warning(
                 f"Received unhandled HTTP request: {request.method} {request.path}"
@@ -191,110 +187,6 @@ class ElegooPrinterServer:
             await ws.close()
         return ws
 
-    async def _http_file_proxy_handler(self, request: web.Request):
-        """Proxies HTTP file upload requests to the real printer."""
-        remote_url = f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path}"
-        self.logger.debug(f"Proxying file upload to {remote_url}")
-
-        headers = {
-            h: v
-            for h, v in request.headers.items()
-            if h.upper() not in ("HOST", "CONTENT-LENGTH", "CONTENT-TYPE")
-        }
-
-        try:
-            async with ClientSession() as session:
-                async with session.post(
-                    remote_url, headers=headers, data=request.content
-                ) as response:
-                    self.logger.debug(
-                        f"Printer responded to file upload with status: {response.status}"
-                    )
-
-                    # Read the response from the printer
-                    content = await response.read()
-
-                    # Forward the printer's response back to the original client
-                    return web.Response(
-                        body=content,
-                        status=response.status,
-                        content_type=response.content_type,
-                    )
-        except Exception as e:
-            self.logger.error(f"HTTP file proxy error: {e}")
-            return web.Response(status=502, text=f"Bad Gateway: {e}")
-
-    async def _http_file_proxy_multipart_handler(self, request: web.Request):
-        """
-        Handles file uploads by creating a compliant multipart/form-data request
-        for printers that do not support streaming.
-        """
-        remote_url = f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path}"
-        self.logger.debug(
-            f"Proxying file upload to {remote_url} using multipart/form-data"
-        )
-
-        try:
-            # 1. Store the entire file in memory. This is required by the printer's API.
-            file_data = await request.read()
-            if not file_data:
-                return web.Response(status=400, text="Bad Request: Empty file.")
-
-            request_headers = request.headers
-
-            # 2. Calculate the required values for the headers.
-            file_size = len(file_data)
-            md5_hash = hashlib.md5(file_data).hexdigest()
-            transfer_uuid = str(uuid.uuid4())
-
-            self.logger.debug(
-                f"File Size: {file_size}, MD5: {md5_hash}, UUID: {transfer_uuid}"
-            )
-
-            # 3. Construct the required headers for the printer.
-            printer_headers = {
-                "S-File-MD5": md5_hash,
-                "Check": "1",
-                "Offset": "0",
-                "Uuid": transfer_uuid,
-                "TotalSize": str(file_size),  # Must be a string
-            }
-
-            # 4. Create the multipart/form-data payload.
-            # aiohttp.FormData will correctly set the Content-Type header.
-            form_data = aiohttp.FormData()
-            form_data.add_field(
-                "file",  # 'file' is a standard field name, the API doesn't specify one.
-                file_data,
-                # The printer likely doesn't use the filename, but it's good practice.
-                filename="proxied_file.gcode",
-                content_type="application/octet-stream",
-            )
-
-            # 5. Send the compliant request to the printer.
-            # Assumes you have the persistent self.session from the previous optimization.
-            # If not, use 'async with aiohttp.ClientSession() as session:'.
-            if not self.session:
-                raise Exception("Persistent session not initialized.")
-
-            async with self.session.post(
-                remote_url, headers=request_headers, data=file_data
-            ) as response:
-                self.logger.debug(
-                    f"Printer responded to multipart upload with status: {response.status}"
-                )
-                # 6. Forward the printer's response back to the original client.
-                content = await response.read()
-                return web.Response(
-                    body=content,
-                    status=response.status,
-                    content_type=response.content_type,
-                )
-
-        except Exception as e:
-            self.logger.error(f"HTTP multipart proxy error: {e}")
-            return web.Response(status=502, text=f"Bad Gateway: {e}")
-
     async def _http_file_proxy_passthrough_handler(self, request: web.Request):
         """
         Correctly proxies a multipart file upload by buffering the request to add
@@ -302,7 +194,7 @@ class ElegooPrinterServer:
         (like Content-Type, S-File-MD5, Uuid, etc.).
         """
         remote_url = f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path}"
-        self.logger.info(
+        self.logger.debug(
             f"Proxying multipart request for {request.path} by re-assembling for printer"
         )
 
@@ -325,6 +217,8 @@ class ElegooPrinterServer:
                 "TotalSize",
             ]
 
+            self.logger.info(request.headers)
+
             for name in required_headers:
                 if name in request.headers:
                     headers_to_forward[name] = request.headers[name]
@@ -334,9 +228,6 @@ class ElegooPrinterServer:
                         msg = "Aborting proxy attempt: Client request is missing Content-Type header."
                         self.logger.error(msg)
                         return web.Response(status=400, text=msg)
-                    self.logger.warning(
-                        f"Client request is missing expected header '{name}', forwarding anyway."
-                    )
 
             # 3. Forward the raw body and the extracted headers to the printer.
             # aiohttp will automatically calculate and add the Content-Length header
@@ -347,7 +238,7 @@ class ElegooPrinterServer:
             async with self.session.post(
                 remote_url, headers=headers_to_forward, data=raw_body
             ) as response:
-                self.logger.info(
+                self.logger.debug(
                     f"Printer responded to proxied upload with status: {response.status}"
                 )
 
@@ -378,7 +269,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
 
     def datagram_received(self, data, addr):
         if data.decode() == "M99999":
-            self.logger.info(
+            self.logger.debug(
                 f"Discovery request received from {addr}, responding with JSON."
             )
             response_payload = {

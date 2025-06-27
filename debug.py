@@ -43,7 +43,6 @@ async def main() -> None:
         else:
             logger.exception("No printers discovered.")
     except asyncio.CancelledError:
-        server.stop()
         stop_event.set()
 
 
