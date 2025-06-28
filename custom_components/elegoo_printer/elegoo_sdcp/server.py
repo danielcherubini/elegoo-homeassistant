@@ -81,7 +81,7 @@ class ElegooPrinterServer:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     s.bind((INADDR_ANY, port))
             except OSError:
-                self.logger.error(
+                self.logger.info(
                     f"{name} port {port} is already in use. Proxy server cannot start."
                 )
                 return False
@@ -182,7 +182,7 @@ class ElegooPrinterServer:
             try:
                 await site.start()
             except OSError as e:
-                self.logger.error(
+                self.logger.info(
                     f"Failed to start TCP site on port {WEBSOCKET_PORT}, it may be in use. Error: {e}"
                 )
                 self.startup_event.set()  # Signal to unblock main thread for shutdown
@@ -207,7 +207,7 @@ class ElegooPrinterServer:
                         f"Discovery Proxy listening on UDP port {DISCOVERY_PORT}"
                     )
             except OSError as e:
-                self.logger.error(
+                self.logger.info(
                     f"Failed to start UDP Discovery on port {DISCOVERY_PORT}. Error: {e}"
                 )
                 self.startup_event.set()  # Signal to unblock main thread for shutdown
