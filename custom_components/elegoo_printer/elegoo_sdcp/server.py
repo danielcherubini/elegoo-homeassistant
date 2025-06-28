@@ -281,7 +281,6 @@ class ElegooPrinterServer:
                 data=request.content,  # Stream the request body
                 allow_redirects=False,
             ) as upstream_response:
-
                 # Prepare a streaming response for the client
                 client_response = web.StreamResponse(
                     status=upstream_response.status, headers=upstream_response.headers
