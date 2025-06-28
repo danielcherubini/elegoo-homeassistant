@@ -95,6 +95,10 @@ class ElegooPrinterServer:
         """
         self.logger.info("Stopping proxy server...")
 
+        if hasattr(self, "_stopping"):
+            return
+        self._stopping = True
+
         async def cleanup():
             """
             Asynchronously closes the HTTP client session and cleans up the web application runner if they exist.
