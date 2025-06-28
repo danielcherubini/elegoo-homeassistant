@@ -160,9 +160,10 @@ class ElegooPrinterServer:
             """
             self.session = aiohttp.ClientSession()
 
-            app = web.Application(
-                client_max_size=512 * 1024 * 1024
-            )  # Increased max size
+            # Configure max upload size (default 2MB for large firmware/model files)
+            max_size = self.printer.__dict__.get("client_max_size", 2 * 1024 * 1024)
+            app = web.Application(client_max_size=max_size)
+
             app.router.add_route("*", "/{path:.*}", self._http_handler)
 
             self.runner = web.AppRunner(app)
