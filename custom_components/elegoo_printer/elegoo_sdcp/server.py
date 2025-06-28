@@ -165,7 +165,7 @@ class ElegooPrinterServer:
             self.session = aiohttp.ClientSession()
 
             # Configure max upload size (default 2MB for large firmware/model files)
-            max_size = self.printer.__dict__.get("client_max_size", 2 * 1024 * 1024)
+            max_size = 2 * 1024 * 1024
             app = web.Application(client_max_size=max_size)
 
             app.router.add_route("*", "/{path:.*}", self._http_handler)
@@ -285,6 +285,8 @@ class ElegooPrinterServer:
                                 if msg.type == WSMsgType.BINARY
                                 else await dest.send_str(msg.data)
                             )
+                        elif msg.type == WSMsgType.CLOSE:
+                            break
                         elif msg.type == WSMsgType.ERROR:
                             self.logger.error(
                                 f"WebSocket error in {direction}: {source.exception()}"
