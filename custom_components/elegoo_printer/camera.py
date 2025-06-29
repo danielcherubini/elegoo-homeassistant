@@ -65,12 +65,13 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     @property
     async def stream_source(self) -> str:
-        if self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False):
-            return "http://127.0.0.1:3031/video"
 
         video = await self._printer_client.get_printer_video(toggle=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
-            self._mjpeg_url = video.video_url
+            if self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False):
+                self._mjpeg_url = "http://127.0.0.1:3031/video"
+            else:
+                self._mjpeg_url = video.video_url
 
         return self._mjpeg_url
 
