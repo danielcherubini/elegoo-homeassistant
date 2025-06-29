@@ -11,7 +11,7 @@ class ElegooVideo:
     def __init__(self, data: dict[str, Any] | None = None):
         """
         Initialize an ElegooVideo instance with status and video URL extracted from the provided data dictionary.
-        
+
         Parameters:
             data (dict[str, Any] | None): Optional dictionary containing video information. If not provided, defaults are used for all attributes.
         """
@@ -26,7 +26,7 @@ class ElegooVideo:
     def to_dict(self) -> dict[str, Any]:
         """
         Return a dictionary representation of the ElegooVideo instance, including its status and video URL.
-        
+
         Returns:
             dict: A dictionary with keys "status" and "video_url" reflecting the current attributes of the object.
         """

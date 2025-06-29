@@ -24,7 +24,7 @@ async def async_setup_entry(
 ) -> None:
     """
     Asynchronously sets up Elegoo Printer MJPEG camera entities for a Home Assistant configuration entry.
-    
+
     Initializes and adds camera entities if the Centauri Carbon feature is enabled in the printer configuration, and enables the printer's video stream.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
@@ -50,7 +50,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     ) -> None:
         """
         Initialize the Elegoo MJPEG camera entity with its description and printer client.
-        
+
         Assigns a unique ID based on the entity description and stores references to the printer client and MJPEG stream URL for later use.
         """
         super().__init__(coordinator)
@@ -67,9 +67,9 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     async def stream_source(self) -> str:
         """
         Asynchronously retrieves the current MJPEG stream URL for the printer camera.
-        
+
         If the printer video stream is successfully enabled, returns either a local proxy URL or the direct printer video URL based on configuration. Otherwise, returns the last known MJPEG URL.
-         
+
         Returns:
             str: The MJPEG stream URL for the camera.
         """
@@ -86,7 +86,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     def available(self) -> bool:
         """
         Return whether the camera entity is currently available.
-        
+
         If the entity description specifies an availability function, this function is used to determine availability based on the printer's video data. Otherwise, falls back to the default availability check.
         """
         if (

@@ -93,19 +93,19 @@ class ElegooPrinterClient:
     def set_printer_video_stream(self, *, toggle: bool) -> None:
         """
         Enable or disable the printer's video stream.
-        
+
         Parameters:
-        	toggle (bool): If True, enables the video stream; if False, disables it.
+                toggle (bool): If True, enables the video stream; if False, disables it.
         """
         self._send_printer_cmd(386, {"Enable": int(toggle)})
 
     async def get_printer_video(self, toggle: bool = False) -> ElegooVideo:
         """
         Toggle the printer's video stream and retrieve the current video stream information.
-        
+
         Parameters:
             toggle (bool): If True, enables the video stream; if False, disables it.
-        
+
         Returns:
             ElegooVideo: The current video stream information from the printer.
         """
@@ -374,7 +374,7 @@ class ElegooPrinterClient:
     def _response_handler(self, data: dict[str, Any]) -> None:
         """
         Handles response messages by dispatching to the appropriate handler based on the command type.
-        
+
         Routes print history and video stream response data to their respective handlers according to the command ID in the response.
         """
         if DEBUG:
@@ -418,7 +418,7 @@ class ElegooPrinterClient:
     def _print_history_handler(self, data_data: dict[str, Any]) -> None:
         """
         Parses and updates the printer's print history details from the provided data.
-        
+
         If a list of print history details is present in the input, updates the printer data with a list of `PrintHistoryDetail` objects.
         """
         history_data_list = data_data.get("HistoryDetailList")
@@ -431,7 +431,7 @@ class ElegooPrinterClient:
     def _print_video_handler(self, data_data: dict[str, Any]) -> None:
         """
         Parse video stream data and update the printer's video attribute.
-        
+
         Parameters:
             data_data (dict[str, Any]): Dictionary containing video stream information.
         """

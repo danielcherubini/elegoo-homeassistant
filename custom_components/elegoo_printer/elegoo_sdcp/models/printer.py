@@ -133,7 +133,7 @@ class PrinterData:
     ) -> None:
         """
         Initialize a PrinterData instance with optional printer-related data.
-        
+
         If any argument is omitted or None, the corresponding attribute is set to a default instance of its class. The `video` attribute is always initialized as a new ElegooVideo instance.
         """
         self.status: PrinterStatus = status or PrinterStatus()

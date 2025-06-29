@@ -139,7 +139,7 @@ class ElegooPrintError(Enum):
     def from_int(cls, status_int: int) -> Optional["ElegooPrintError"] | None:
         """
         Convert an integer to the corresponding ElegooPrintError enum member.
-        
+
         Returns:
             The matching ElegooPrintError member if the integer is valid, or None if it does not correspond to any defined error.
         """  # noqa: D401
@@ -170,7 +170,7 @@ class ElegooVideoStatus(Enum):
     def from_int(cls, status_int: int) -> Optional["ElegooVideoStatus"] | None:
         """
         Convert an integer to the corresponding ElegooVideoStatus enum member.
-        
+
         Returns:
             ElegooVideoStatus: The matching enum member if the integer is valid, otherwise None.
         """

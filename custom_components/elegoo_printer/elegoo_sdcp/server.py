@@ -28,7 +28,7 @@ class ElegooPrinterServer:
     def __init__(self, printer: Printer, logger: Any):
         """
         Initializes the Elegoo printer proxy server and starts HTTP/WebSocket, video, and UDP discovery proxy services in a background thread.
-        
+
         Validates the provided printer configuration and checks that required ports are available. Raises a ConfigEntryNotReady exception if the printer IP address is missing or if the proxy server fails to start within 10 seconds.
         """
         self.printer = printer
@@ -65,7 +65,7 @@ class ElegooPrinterServer:
     def _check_ports_are_available(self) -> bool:
         """
         Determine if the required TCP and UDP ports for the proxy server are free.
-        
+
         Returns:
             True if the WebSocket (TCP), video (TCP), and discovery (UDP) ports are all available; False if any are in use.
         """
@@ -88,7 +88,7 @@ class ElegooPrinterServer:
     def stop(self):
         """
         Stops the proxy server and asynchronously cleans up all associated resources.
-        
+
         Closes the HTTP client session, cleans up all aiohttp application runners, and stops the event loop if it is running.
         """
         self.logger.info("Stopping proxy server...")
@@ -149,12 +149,12 @@ class ElegooPrinterServer:
     def _start_servers_in_thread(self):
         """
         Starts the HTTP/WebSocket, video, and UDP discovery proxy servers in a dedicated background thread with its own asyncio event loop.
-        
+
         Initializes and launches:
         - An aiohttp HTTP/WebSocket proxy server on TCP port 3030.
         - An aiohttp video proxy server on TCP port 3031.
         - A UDP discovery server on port 3000 for printer discovery.
-        
+
         Handles startup errors by logging and signaling the main thread. Runs the event loop until stopped, then closes it upon shutdown.
         """
         self.loop = asyncio.new_event_loop()
@@ -163,12 +163,12 @@ class ElegooPrinterServer:
         async def startup():
             """
             Asynchronously starts the HTTP/WebSocket proxy server, video proxy server, and UDP discovery server for the Elegoo printer proxy system.
-            
+
             Initializes and launches:
             - The main aiohttp application for HTTP and WebSocket proxying on TCP port 3030.
             - A separate aiohttp application for video proxying on TCP port 3031.
             - The UDP discovery server on port 3000 for printer discovery requests.
-            
+
             Logs startup status and signals completion or failure via an event.
             """
             self.session = aiohttp.ClientSession()
@@ -252,9 +252,9 @@ class ElegooPrinterServer:
     async def _http_handler(self, request: web.Request) -> web.StreamResponse:
         """
         Dispatches incoming HTTP requests to the appropriate proxy handler.
-        
+
         WebSocket upgrade requests are handled by the WebSocket proxy, file upload POST requests to `/uploadFile/upload` are handled by the file upload passthrough proxy, and all other requests are forwarded to the generic HTTP proxy handler.
-        
+
         Returns:
             web.StreamResponse: The response from the selected proxy handler.
         """
@@ -270,7 +270,7 @@ class ElegooPrinterServer:
     async def _video_proxy_handler(self, request: web.Request) -> web.StreamResponse:
         """
         Proxies incoming video stream requests to the printer's video server and streams the response back to the client.
-        
+
         Returns:
             web.StreamResponse: The proxied video stream response from the printer, or an error response if the proxy session is unavailable or the upstream connection fails.
         """
@@ -306,9 +306,9 @@ class ElegooPrinterServer:
     async def _websocket_handler(self, request: web.Request) -> web.WebSocketResponse:
         """
         Proxy a WebSocket connection between a client and the remote printer.
-        
+
         Establishes a WebSocket connection with the client and the printer, forwarding messages bidirectionally. Closes the client connection if the upstream printer session is unavailable or an error occurs.
-        
+
         Returns:
             web.WebSocketResponse: The WebSocket response object for the client connection.
         """
