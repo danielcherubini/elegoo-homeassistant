@@ -1,12 +1,12 @@
-from time import sleep
-
 from homeassistant.components.mjpeg.camera import MjpegCamera
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.elegoo_printer import ElegooDataUpdateCoordinator
-from custom_components.elegoo_printer.const import CONF_CENTAURI_CARBON
+from custom_components.elegoo_printer.const import (
+    CONF_CENTAURI_CARBON,
+    CONF_PROXY_ENABLED,
+)
 from custom_components.elegoo_printer.data import ElegooPrinterConfigEntry
 from custom_components.elegoo_printer.definitions import (
     PRINTER_MJPEG_CAMERAS,
@@ -30,16 +30,17 @@ async def async_setup_entry(
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
 
     for camera in PRINTER_MJPEG_CAMERAS:
-        if camera.exists_fn(
-            coordinator.config_entry.data.get(CONF_CENTAURI_CARBON, False)
-        ):
+        if coordinator.config_entry.data.get(CONF_CENTAURI_CARBON, False):
             async_add_entities([ElegooMjpegCamera(hass, coordinator, camera)])
+
+    printer_client: ElegooPrinterClient = (
+        coordinator.config_entry.runtime_data.client._elegoo_printer
+    )
+    printer_client.set_printer_video_stream(toggle=True)
 
 
 class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     """Representation of an MjpegCamera"""
-
-    printer_client: ElegooPrinterClient
 
     def __init__(
         self,
@@ -57,25 +58,21 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         self._attr_unique_id = coordinator.generate_unique_id(
             self.entity_description.key
         )
+        self._mjpeg_url = ""
+        self._printer_client: ElegooPrinterClient = (
+            coordinator.config_entry.runtime_data.client._elegoo_printer
+        )
 
-        runtime_data = coordinator.config_entry.runtime_data
-        if not runtime_data or not runtime_data.client:
-            raise PlatformNotReady("Printer client not yet available")
-        self.printer_client: ElegooPrinterClient = runtime_data.client._elegoo_printer
-        if not self.printer_client.ip_address:
-            raise PlatformNotReady("Printer IP address not available")
+    @property
+    async def stream_source(self) -> str:
+        if self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False):
+            return "http://127.0.0.1:3031/video"
 
-        ## Temporary until we finish testing
-        self.printer_client.set_printer_video_stream(toggle=True)
-        sleep(2)
-        video = self.printer_client.get_printer_video()
+        video = await self._printer_client.get_printer_video(toggle=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             self._mjpeg_url = video.video_url
 
-        self.entity_description.value_fn(self._mjpeg_url)
-        MjpegCamera.__init__(
-            self, mjpeg_url=self._mjpeg_url, still_image_url=self._mjpeg_url
-        )
+        return self._mjpeg_url
 
     @property
     def available(self) -> bool:
@@ -88,6 +85,6 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             and self.entity_description.available_fn is not None
         ):
             return self.entity_description.available_fn(
-                self.printer_client.printer_data.video
+                self._printer_client.printer_data.video
             )
         return super().available

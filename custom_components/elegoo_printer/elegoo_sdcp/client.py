@@ -94,8 +94,10 @@ class ElegooPrinterClient:
         """Toggles the printer video stream."""
         self._send_printer_cmd(386, {"Enable": int(toggle)})
 
-    def get_printer_video(self) -> ElegooVideo:
+    async def get_printer_video(self, toggle: bool = False) -> ElegooVideo:
         """Retrieves the current video stream information from the printer."""
+        self.set_printer_video_stream(toggle=toggle)
+        await asyncio.sleep(2)
         return self.printer_data.video
 
     def get_printer_historical_tasks(self) -> None:
