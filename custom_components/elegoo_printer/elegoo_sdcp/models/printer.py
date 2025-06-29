@@ -8,6 +8,7 @@ from custom_components.elegoo_printer.const import (
     CONF_CENTAURI_CARBON,
     CONF_PROXY_ENABLED,
 )
+from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
 
 from .attributes import PrinterAttributes
 from .print_history_detail import PrintHistoryDetail
@@ -141,3 +142,4 @@ class PrinterData:
         self.attributes: PrinterAttributes = attributes or PrinterAttributes()
         self.printer: Printer = printer or Printer()
         self.print_history: list[PrintHistoryDetail] = print_history or []
+        self.video: ElegooVideo = ElegooVideo()

@@ -11,13 +11,15 @@ from typing import Any
 
 import websocket
 
+from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
+
 from .const import DEBUG, LOGGER
 from .models.attributes import PrinterAttributes
 from .models.print_history_detail import PrintHistoryDetail
 from .models.printer import Printer, PrinterData
 from .models.status import PrinterStatus
 
-DISCOVERY_TIMEOUT = 2
+DISCOVERY_TIMEOUT = 5
 DISCOVERY_PORT = 3000
 DEFAULT_PORT = 54780
 WEBSOCKET_PORT = 3030
@@ -91,6 +93,10 @@ class ElegooPrinterClient:
     def set_printer_video_stream(self, *, toggle: bool) -> None:
         """Toggles the printer video stream."""
         self._send_printer_cmd(386, {"Enable": int(toggle)})
+
+    def get_printer_video(self) -> ElegooVideo:
+        """Retrieves the current video stream information from the printer."""
+        return self.printer_data.video
 
     def get_printer_historical_tasks(self) -> None:
         """
@@ -360,8 +366,14 @@ class ElegooPrinterClient:
         if DEBUG:
             self.logger.debug(f"response >> \n{json.dumps(data, indent=5)}")
         try:
-            data_data = data.get("Data", {}).get("Data", {})
-            self._print_history_handler(data_data)
+            inner_data = data.get("Data")
+            if inner_data:
+                data_data = inner_data.get("Data", {})
+                cmd: int = inner_data.get("Cmd", 0)
+                if cmd == 320:
+                    self._print_history_handler(data_data)
+                elif cmd == 386:
+                    self._print_video_handler(data_data)
         except json.JSONDecodeError:
             self.logger.exception("Invalid JSON")
 
@@ -396,3 +408,7 @@ class ElegooPrinterClient:
                 PrintHistoryDetail(history_data) for history_data in history_data_list
             ]
             self.printer_data.print_history = print_history_detail_list
+
+    def _print_video_handler(self, data_data: dict[str, Any]) -> None:
+        """Parses and updates the video attribute on the printer object"""
+        self.printer_data.video = ElegooVideo(data_data)

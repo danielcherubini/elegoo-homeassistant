@@ -1,3 +1,5 @@
+from time import sleep
+
 from homeassistant.components.mjpeg.camera import MjpegCamera
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import PlatformNotReady
@@ -11,6 +13,7 @@ from custom_components.elegoo_printer.definitions import (
     ElegooPrinterSensorEntityDescription,
 )
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import ElegooVideoStatus
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 
@@ -64,7 +67,10 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
         ## Temporary until we finish testing
         self.printer_client.set_printer_video_stream(toggle=True)
-        self._mjpeg_url = f"http://{self.printer_client.ip_address}:3031/video"
+        sleep(2)
+        video = self.printer_client.get_printer_video()
+        if video.status and video.status == ElegooVideoStatus.SUCCESS:
+            self._mjpeg_url = video.video_url
 
         self.entity_description.value_fn(self._mjpeg_url)
         MjpegCamera.__init__(
@@ -82,6 +88,6 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             and self.entity_description.available_fn is not None
         ):
             return self.entity_description.available_fn(
-                self.printer_client.printer_data.attributes
+                self.printer_client.printer_data.video
             )
         return super().available

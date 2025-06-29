@@ -9,6 +9,8 @@ from homeassistant.components.sensor.const import SensorDeviceClass, SensorState
 from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfTemperature, UnitOfTime
 from homeassistant.helpers.typing import StateType
 
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import ElegooVideoStatus
+
 
 @dataclass
 class ElegooPrinterSensorEntityDescriptionMixin:
@@ -323,7 +325,7 @@ PRINTER_MJPEG_CAMERAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         key="centauri_carbon_camera",
         name="Centauri Carbon Camera",
         value_fn=lambda _camera_url: _camera_url,
-        available_fn=lambda _printer_attributes: _printer_attributes.num_video_stream_connected
-        < _printer_attributes.max_video_stream_allowed,
+        available_fn=lambda _video: _video.status is not None
+        and _video.status == ElegooVideoStatus.SUCCESS,
     ),
 )

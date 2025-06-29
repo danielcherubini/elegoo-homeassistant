@@ -152,6 +152,42 @@ class ElegooPrintError(Enum):
             return None
 
 
+class ElegooVideoStatus(Enum):
+    """
+    Represents a video status
+
+    Attributes:
+        0 - Success
+        1 - Exceeded maximum streaming limit
+        2 - Camera does not exist
+        3 - Unknown error
+
+    """
+
+    SUCCESS = 0
+    EXCEEDED_MAX_STREAMING_LIMIT = 1
+    CAMERA_DOES_NOT_EXIST = 2
+    UNKNOWN_ERROR = 3
+
+    @classmethod
+    def from_int(cls, status_int: int) -> Optional["ElegooVideoStatus"] | None:
+        """
+        Converts an integer to a VideoStatus enum member.
+
+        Args:
+            status_int: The integer representing the video status.
+
+        Returns:
+            The corresponding VideoStatus enum member, or None if the
+            integer is not a valid status value.
+
+        """
+        try:
+            return cls(status_int)
+        except ValueError:
+            return None
+
+
 class ErrorStatusReason(Enum):
     """
     Represents the reason for a print job status or error.
