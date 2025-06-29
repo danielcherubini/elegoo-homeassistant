@@ -3,10 +3,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.elegoo_printer import ElegooDataUpdateCoordinator
-from custom_components.elegoo_printer.const import (
-    CONF_CENTAURI_CARBON,
-    CONF_PROXY_ENABLED,
-)
+from custom_components.elegoo_printer.const import CONF_CENTAURI_CARBON
 from custom_components.elegoo_printer.data import ElegooPrinterConfigEntry
 from custom_components.elegoo_printer.definitions import (
     PRINTER_MJPEG_CAMERAS,
@@ -65,8 +62,8 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     @property
     async def stream_source(self) -> str:
-        if self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False):
-            return "http://127.0.0.1:3031/video"
+        # if self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False):
+        #     return "http://127.0.0.1:3031/video"
 
         video = await self._printer_client.get_printer_video(toggle=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
