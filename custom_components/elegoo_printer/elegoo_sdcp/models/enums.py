@@ -139,12 +139,9 @@ class ElegooPrintError(Enum):
     def from_int(cls, status_int: int) -> Optional["ElegooPrintError"] | None:
         """
         Convert an integer to the corresponding ElegooPrintError enum member.
-
-        Parameters:
-            status_int (int): Integer value representing a print error status.
-
+        
         Returns:
-            ElegooPrintError or None: The matching enum member, or None if the integer does not correspond to any defined error.
+            The matching ElegooPrintError member if the integer is valid, or None if it does not correspond to any defined error.
         """  # noqa: D401
         try:
             return cls(status_int)  # Use cls() to create enum members
@@ -172,15 +169,10 @@ class ElegooVideoStatus(Enum):
     @classmethod
     def from_int(cls, status_int: int) -> Optional["ElegooVideoStatus"] | None:
         """
-        Converts an integer to a VideoStatus enum member.
-
-        Args:
-            status_int: The integer representing the video status.
-
+        Convert an integer to the corresponding ElegooVideoStatus enum member.
+        
         Returns:
-            The corresponding VideoStatus enum member, or None if the
-            integer is not a valid status value.
-
+            ElegooVideoStatus: The matching enum member if the integer is valid, otherwise None.
         """
         try:
             return cls(status_int)

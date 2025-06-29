@@ -23,9 +23,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """
-    Set up Elegoo Printer camera entities for a configuration entry in Home Assistant.
-
-    Adds camera entities based on the printer's configuration and supported features.
+    Asynchronously sets up Elegoo Printer MJPEG camera entities for a Home Assistant configuration entry.
+    
+    Initializes and adds camera entities if the Centauri Carbon feature is enabled in the printer configuration, and enables the printer's video stream.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
 
@@ -49,9 +49,9 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
         """
-        Initialize an Elegoo MJPEG camera entity for Home Assistant.
-
-        Creates a camera entity with a unique ID and sets up the MJPEG stream URL using the printer's IP address. The entity description and printer client are stored for later use.
+        Initialize the Elegoo MJPEG camera entity with its description and printer client.
+        
+        Assigns a unique ID based on the entity description and stores references to the printer client and MJPEG stream URL for later use.
         """
         super().__init__(coordinator)
         self.entity_description = description
@@ -65,6 +65,14 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     @property
     async def stream_source(self) -> str:
+        """
+        Asynchronously retrieves the current MJPEG stream URL for the printer camera.
+        
+        If the printer video stream is successfully enabled, returns either a local proxy URL or the direct printer video URL based on configuration. Otherwise, returns the last known MJPEG URL.
+         
+        Returns:
+            str: The MJPEG stream URL for the camera.
+        """
         video = await self._printer_client.get_printer_video(toggle=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             if self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False):
@@ -77,8 +85,9 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     @property
     def available(self) -> bool:
         """
-        Indicates whether the camera entity is currently available.
-        If an availability function is defined in the entity description, it is called with the printer client to determine the entity's availability.
+        Return whether the camera entity is currently available.
+        
+        If the entity description specifies an availability function, this function is used to determine availability based on the printer's video data. Otherwise, falls back to the default availability check.
         """
         if (
             hasattr(self, "entity_description")
