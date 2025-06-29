@@ -154,48 +154,54 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
-    """Options flow handler for Elegoo Printer"""
+    """Options flow handler for Elegoo Printer."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """
-        Initialize the options flow handler for managing updates to an Elegoo printer configuration.
+        Initialize the options flow handler.
 
         Parameters:
-            config_entry (ConfigEntry): The configuration entry representing the Elegoo printer to be updated.
+            config_entry (ConfigEntry): The configuration entry for which the options are being managed.
         """
+        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """
-        Handle the initial step of the options flow for updating Elegoo printer configuration.
+        Manage the options for the Elegoo printer.
 
-        Displays a form for modifying printer settings, validates the input by attempting to discover the printer at the specified address, and creates an options entry with the updated configuration if validation is successful. Shows error messages on the form if validation fails.
-
-        Returns:
-            ConfigFlowResult: The result of the options flow step, either showing the form or creating the options entry.
+        Handles displaying and saving updated configuration options.
         """
         _errors = {}
         if user_input is not None:
-            validation_result = await _async_validate_input(user_input)
-            _errors = validation_result["errors"]
-            printer_object: Printer = validation_result["printer"]
+            # When validating, it's good practice to use the full current config
+            # combined with the new user input.
+            combined_input = {
+                **self.config_entry.data,
+                **self.config_entry.options,
+                **user_input,
+            }
 
-            printer_object.ip_address = user_input[CONF_IP_ADDRESS]
-            printer_object.centauri_carbon = user_input[CONF_CENTAURI_CARBON]
-            printer_object.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+            validation_result = await _async_validate_input(combined_input)
+            _errors = validation_result.get("errors")
 
             if not _errors:
-                return self.async_create_entry(
-                    title=printer_object.name,
-                    description=printer_object.name,
-                    data=printer_object.to_dict(),
-                )
+                # Save the user's input from the form to the .options dictionary.
+                # Any existing options not in the form will be preserved if you
+                # merge them first.
+                updated_options = {**self.config_entry.options, **user_input}
+                return self.async_create_entry(title="", data=updated_options)
+
+        # Create a dictionary of the current settings by merging data and options.
+        # This ensures the form is always populated with the current effective values.
+        current_settings = {**self.config_entry.data, **self.config_entry.options}
 
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
-                OPTIONS_SCHEMA, self.config_entry.data
+                OPTIONS_SCHEMA,
+                suggested_values=current_settings,
             ),
             errors=_errors,
         )
