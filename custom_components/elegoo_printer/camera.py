@@ -65,7 +65,6 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     @property
     async def stream_source(self) -> str:
-
         video = await self._printer_client.get_printer_video(toggle=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             if self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False):
