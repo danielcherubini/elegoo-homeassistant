@@ -7,4 +7,4 @@ LOGGER: Logger = getLogger(__package__)
 CONF_CENTAURI_CARBON = "centauri_carbon"
 CONF_PROXY_ENABLED = "proxy_enabled"
 DOMAIN = "elegoo_printer"
-ATTRIBUTION = "Data provided by https://github.com/danielcherubini/elegoo_printer"
+ATTRIBUTION = "Data provided by https://github.com/danielcherubini/elegoo-homeassistant"

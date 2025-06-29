@@ -157,16 +157,23 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
     """Options flow handler for Elegoo Printer"""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
+        """
+        Initialize the options flow handler for managing updates to an Elegoo printer configuration.
+
+        Parameters:
+            config_entry (ConfigEntry): The configuration entry representing the Elegoo printer to be updated.
+        """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """
-        Handles the options flow for updating Elegoo printer configuration.
+        Handle the initial step of the options flow for updating Elegoo printer configuration.
 
-        Presents a form for the user to update printer settings. Validates the provided IP address by attempting to discover the printer. On successful validation, creates a new options entry with the printer's details; otherwise, displays relevant error messages in the form.
+        Displays a form for modifying printer settings, validates the input by attempting to discover the printer at the specified address, and creates an options entry with the updated configuration if validation is successful. Shows error messages on the form if validation fails.
+
+        Returns:
+            ConfigFlowResult: The result of the options flow step, either showing the form or creating the options entry.
         """
         _errors = {}
         if user_input is not None:
