@@ -19,9 +19,9 @@ logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)
 
 async def main() -> None:
     """
-    Run a debug polling loop to discover, connect to, and monitor an Elegoo printer.
-
-    Attempts to discover a printer at the specified IP address, connect to it, retrieve its attributes, and periodically poll its status until interrupted.
+    Asynchronously discovers, connects to, and monitors an Elegoo printer for debugging purposes.
+    
+    Discovers a printer at the specified IP address, attempts to connect, enables the printer's video stream, and periodically polls until interrupted. Prints the video status if available.
     """
     stop_event = asyncio.Event()
     try:

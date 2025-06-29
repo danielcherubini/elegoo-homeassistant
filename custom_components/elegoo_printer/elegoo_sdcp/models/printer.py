@@ -132,11 +132,9 @@ class PrinterData:
         print_history: list[PrintHistoryDetail] | None = None,
     ) -> None:
         """
-        Initialize a new PrinterData object with optional data.
-
-        If any of the data arguments (status, attributes, printer)
-        are not provided, the corresponding attribute is initialized
-        with a blank/default instance of the respective model class.
+        Initialize a PrinterData instance with optional printer-related data.
+        
+        If any argument is omitted or None, the corresponding attribute is set to a default instance of its class. The `video` attribute is always initialized as a new ElegooVideo instance.
         """
         self.status: PrinterStatus = status or PrinterStatus()
         self.attributes: PrinterAttributes = attributes or PrinterAttributes()

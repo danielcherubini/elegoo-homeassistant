@@ -91,18 +91,31 @@ class ElegooPrinterClient:
         return self.printer_data
 
     def set_printer_video_stream(self, *, toggle: bool) -> None:
-        """Toggles the printer video stream."""
+        """
+        Enable or disable the printer's video stream.
+        
+        Parameters:
+        	toggle (bool): If True, enables the video stream; if False, disables it.
+        """
         self._send_printer_cmd(386, {"Enable": int(toggle)})
 
     async def get_printer_video(self, toggle: bool = False) -> ElegooVideo:
-        """Retrieves the current video stream information from the printer."""
+        """
+        Toggle the printer's video stream and retrieve the current video stream information.
+        
+        Parameters:
+            toggle (bool): If True, enables the video stream; if False, disables it.
+        
+        Returns:
+            ElegooVideo: The current video stream information from the printer.
+        """
         self.set_printer_video_stream(toggle=toggle)
         await asyncio.sleep(2)
         return self.printer_data.video
 
     def get_printer_historical_tasks(self) -> None:
         """
-        Retreves historical tasks from printer.
+        Requests the list of historical print tasks from the printer.
         """
         self._send_printer_cmd(320)
 
@@ -360,10 +373,9 @@ class ElegooPrinterClient:
 
     def _response_handler(self, data: dict[str, Any]) -> None:
         """
-        Handles response messages by extracting print history data and passing it to the print history handler.
-
-        Parameters:
-            data (dict): The parsed JSON response containing nested print history information.
+        Handles response messages by dispatching to the appropriate handler based on the command type.
+        
+        Routes print history and video stream response data to their respective handlers according to the command ID in the response.
         """
         if DEBUG:
             self.logger.debug(f"response >> \n{json.dumps(data, indent=5)}")
@@ -404,6 +416,11 @@ class ElegooPrinterClient:
         self.printer_data.attributes = printer_attributes
 
     def _print_history_handler(self, data_data: dict[str, Any]) -> None:
+        """
+        Parses and updates the printer's print history details from the provided data.
+        
+        If a list of print history details is present in the input, updates the printer data with a list of `PrintHistoryDetail` objects.
+        """
         history_data_list = data_data.get("HistoryDetailList")
         if history_data_list:
             print_history_detail_list: list[PrintHistoryDetail] = [
@@ -412,5 +429,10 @@ class ElegooPrinterClient:
             self.printer_data.print_history = print_history_detail_list
 
     def _print_video_handler(self, data_data: dict[str, Any]) -> None:
-        """Parses and updates the video attribute on the printer object"""
+        """
+        Parse video stream data and update the printer's video attribute.
+        
+        Parameters:
+            data_data (dict[str, Any]): Dictionary containing video stream information.
+        """
         self.printer_data.video = ElegooVideo(data_data)
