@@ -267,7 +267,7 @@ class ElegooPrinterServer:
 
     async def _video_proxy_handler(self, request: web.Request) -> web.StreamResponse:
         """Proxies all requests to this server to the printer's video stream."""
-        remote_url = f"http://{self.printer.ip_address}:{VIDEO_PORT}/video"
+        remote_url = f"http://{self.printer.ip_address}:{VIDEO_PORT}{request.path_qs}"
         self.logger.info(f"Proxying video request to {remote_url}")
 
         if not self.session or self.session.closed:
