@@ -5,7 +5,7 @@ import json
 import os
 import socket
 from threading import Event, Thread
-from typing import Any
+from typing import Any, List
 
 import aiohttp
 from aiohttp import ClientSession, WSMsgType, web
@@ -17,6 +17,7 @@ LOCALHOST = "127.0.0.1"
 INADDR_ANY = "0.0.0.0"
 DISCOVERY_PORT = 3000
 WEBSOCKET_PORT = 3030
+VIDEO_PORT = 3031
 
 
 class ElegooPrinterServer:
@@ -38,7 +39,7 @@ class ElegooPrinterServer:
         self.logger = logger
         self.startup_event = Event()
         self.proxy_thread: Thread | None = None
-        self.runner: web.AppRunner | None = None
+        self.runners: List[web.AppRunner] = []
         self.loop: asyncio.AbstractEventLoop | None = None
         self.session: ClientSession | None = None
 
@@ -74,6 +75,7 @@ class ElegooPrinterServer:
         """
         for port, proto, name in [
             (WEBSOCKET_PORT, socket.SOCK_STREAM, "TCP"),
+            (VIDEO_PORT, socket.SOCK_STREAM, "Video TCP"),
             (DISCOVERY_PORT, socket.SOCK_DGRAM, "UDP"),
         ]:
             try:
@@ -105,8 +107,8 @@ class ElegooPrinterServer:
             """
             if self.session and not self.session.closed:
                 await self.session.close()
-            if self.runner:
-                await self.runner.cleanup()
+            for runner in self.runners:
+                await runner.cleanup()
 
         if self.loop and self.loop.is_running():
             try:
@@ -168,24 +170,44 @@ class ElegooPrinterServer:
             """
             self.session = aiohttp.ClientSession()
 
-            # Configure max upload size (default 2MB for large firmware/model files)
-            max_size = 2 * 1024 * 1024
-            app = web.Application(client_max_size=max_size)
-
-            app.router.add_route("*", "/{path:.*}", self._http_handler)
-
-            self.runner = web.AppRunner(app)
-            await self.runner.setup()
-
-            site = web.TCPSite(self.runner, INADDR_ANY, WEBSOCKET_PORT)
+            # 1. --- Setup Main Application (Port 3030) ---
+            main_app = web.Application(client_max_size=2 * 1024 * 1024)
+            main_app.router.add_route("*", "/{path:.*}", self._http_handler)
+            main_runner = web.AppRunner(main_app)
+            await main_runner.setup()
+            main_site = web.TCPSite(main_runner, INADDR_ANY, WEBSOCKET_PORT)
 
             try:
-                await site.start()
+                await main_site.start()
+                self.runners.append(main_runner)
+                self.logger.info(
+                    f"Main HTTP/WebSocket Proxy running on http://{self.get_local_ip()}:{WEBSOCKET_PORT}"
+                )
             except OSError as e:
                 self.logger.info(
                     f"Failed to start TCP site on port {WEBSOCKET_PORT}, it may be in use. Error: {e}"
                 )
-                self.startup_event.set()  # Signal to unblock main thread for shutdown
+                self.startup_event.set()
+                return
+
+            # 2. --- Setup Video Proxy Application (Port 3031) ---
+            video_app = web.Application()
+            video_app.router.add_route("*", "/{path:.*}", self._video_proxy_handler)
+            video_runner = web.AppRunner(video_app)
+            await video_runner.setup()
+            video_site = web.TCPSite(video_runner, INADDR_ANY, VIDEO_PORT)
+
+            try:
+                await video_site.start()
+                self.runners.append(video_runner)
+                self.logger.info(
+                    f"Video Proxy running on http://{self.get_local_ip()}:{VIDEO_PORT}"
+                )
+            except OSError as e:
+                self.logger.info(
+                    f"Failed to start TCP Video site on port {VIDEO_PORT}. Error: {e}"
+                )
+                self.startup_event.set()
                 return
 
             # --- Start Discovery (UDP) Proxy Server ---
@@ -242,6 +264,37 @@ class ElegooPrinterServer:
 
         # All other HTTP requests are forwarded by the generic proxy
         return await self._http_proxy_handler(request)
+
+    async def _video_proxy_handler(self, request: web.Request) -> web.StreamResponse:
+        """Proxies all requests to this server to the printer's video stream."""
+        remote_url = f"http://{self.printer.ip_address}:{VIDEO_PORT}/video"
+        self.logger.info(f"Proxying video request to {remote_url}")
+
+        if not self.session or self.session.closed:
+            return web.Response(status=503, text="Session not available.")
+
+        try:
+            async with self.session.get(
+                remote_url, timeout=aiohttp.ClientTimeout(total=60)
+            ) as proxy_response:
+                response = web.StreamResponse(
+                    status=proxy_response.status,
+                    reason=proxy_response.reason,
+                    headers=proxy_response.headers,
+                )
+                await response.prepare(request)
+                async for chunk in proxy_response.content.iter_chunked(8192):
+                    await response.write(chunk)
+
+                await response.write_eof()
+                return response
+
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            self.logger.error(f"Error proxying video stream: {e}")
+            return web.Response(
+                status=502,
+                text="Bad Gateway: Error connecting to printer's video stream.",
+            )
 
     async def _websocket_handler(self, request: web.Request) -> web.WebSocketResponse:
         """
