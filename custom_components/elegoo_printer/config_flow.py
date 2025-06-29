@@ -178,8 +178,8 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             # When validating, it's good practice to use the full current config
             # combined with the new user input.
             combined_input = {
-                **self.config_entry.data,
-                **self.config_entry.options,
+                **(self.config_entry.data or {}),
+                **(self.config_entry.options or {}),
                 **user_input,
             }
 
@@ -195,8 +195,10 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
 
         # Create a dictionary of the current settings by merging data and options.
         # This ensures the form is always populated with the current effective values.
-        current_settings = {**self.config_entry.data, **self.config_entry.options}
-
+        current_settings = {
+            **(self.config_entry.data or {}),
+            **(self.config_entry.options or {}),
+        }
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
