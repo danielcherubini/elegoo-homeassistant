@@ -19,26 +19,27 @@ logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)
 
 async def main() -> None:
     """
-    Run a debug polling loop to discover, connect to, and monitor an Elegoo printer.
+    Asynchronously discovers, connects to, and monitors an Elegoo printer for debugging purposes.
 
-    Attempts to discover a printer at the specified IP address, connect to it, retrieve its attributes, and periodically poll its status until interrupted.
+    Discovers a printer at the specified IP address, attempts to connect, enables the printer's video stream, and periodically polls until interrupted. Prints the video status if available.
     """
     stop_event = asyncio.Event()
     try:
-        elegoo_printer = ElegooPrinterClient(
-            ip_address=PRINTER_IP, centauri_carbon=False, logger=logger, ws_server=True
-        )
+        elegoo_printer = ElegooPrinterClient(ip_address=PRINTER_IP, logger=logger)
         printer = elegoo_printer.discover_printer(PRINTER_IP)
         if printer:
             server = ElegooPrinterServer(printer, logger=logger)
-            proxied_printer = server.get_printer()
-            connected = await elegoo_printer.connect_printer(proxied_printer)
+            printer = server.get_printer()
+            connected = await elegoo_printer.connect_printer(printer)
             if connected:
                 logger.debug("Polling Started")
                 await asyncio.sleep(2)
-                elegoo_printer.get_printer_attributes()
+                # elegoo_printer.get_printer_attributes()
+                video = await elegoo_printer.get_printer_video(toggle=True)
+                if video.status:
+                    print(video.status.name)
                 while not stop_event.is_set():  # noqa: ASYNC110
-                    elegoo_printer.get_printer_status()
+                    # elegoo_printer.get_printer_status()
                     await asyncio.sleep(2)
         else:
             logger.exception("No printers discovered.")

@@ -8,6 +8,7 @@ from custom_components.elegoo_printer.const import (
     CONF_CENTAURI_CARBON,
     CONF_PROXY_ENABLED,
 )
+from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
 
 from .attributes import PrinterAttributes
 from .print_history_detail import PrintHistoryDetail
@@ -131,13 +132,12 @@ class PrinterData:
         print_history: list[PrintHistoryDetail] | None = None,
     ) -> None:
         """
-        Initialize a new PrinterData object with optional data.
+        Initialize a PrinterData instance with optional printer-related data.
 
-        If any of the data arguments (status, attributes, printer)
-        are not provided, the corresponding attribute is initialized
-        with a blank/default instance of the respective model class.
+        If any argument is omitted or None, the corresponding attribute is set to a default instance of its class. The `video` attribute is always initialized as a new ElegooVideo instance.
         """
         self.status: PrinterStatus = status or PrinterStatus()
         self.attributes: PrinterAttributes = attributes or PrinterAttributes()
         self.printer: Printer = printer or Printer()
         self.print_history: list[PrintHistoryDetail] = print_history or []
+        self.video: ElegooVideo = ElegooVideo()

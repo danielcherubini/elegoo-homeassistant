@@ -5,7 +5,7 @@ import json
 import os
 import socket
 from threading import Event, Thread
-from typing import Any
+from typing import Any, List
 
 import aiohttp
 from aiohttp import ClientSession, WSMsgType, web
@@ -17,6 +17,7 @@ LOCALHOST = "127.0.0.1"
 INADDR_ANY = "0.0.0.0"
 DISCOVERY_PORT = 3000
 WEBSOCKET_PORT = 3030
+VIDEO_PORT = 3031
 
 
 class ElegooPrinterServer:
@@ -26,19 +27,15 @@ class ElegooPrinterServer:
 
     def __init__(self, printer: Printer, logger: Any):
         """
-        Initialize the Elegoo printer proxy server and start HTTP/WebSocket and UDP discovery proxy services in a background thread.
+        Initializes the Elegoo printer proxy server and starts HTTP/WebSocket, video, and UDP discovery proxy services in a background thread.
 
-        Validates the printer configuration and ensures required ports are available.
-        Raises an exception if the printer IP is missing or if the proxy server fails to start within 10 seconds.
-
-        Raises:
-            ConfigEntryNotReady: If the printer IP address is not set or the proxy server does not start successfully within the timeout.
+        Validates the provided printer configuration and checks that required ports are available. Raises a ConfigEntryNotReady exception if the printer IP address is missing or if the proxy server fails to start within 10 seconds.
         """
         self.printer = printer
         self.logger = logger
         self.startup_event = Event()
         self.proxy_thread: Thread | None = None
-        self.runner: web.AppRunner | None = None
+        self.runners: List[web.AppRunner] = []
         self.loop: asyncio.AbstractEventLoop | None = None
         self.session: ClientSession | None = None
 
@@ -67,13 +64,14 @@ class ElegooPrinterServer:
 
     def _check_ports_are_available(self) -> bool:
         """
-        Check if the required TCP and UDP ports for the proxy server are available.
+        Determine if the required TCP and UDP ports for the proxy server are free.
 
         Returns:
-            bool: True if both the WebSocket (TCP) and discovery (UDP) ports are free; False if either port is in use.
+            True if the WebSocket (TCP), video (TCP), and discovery (UDP) ports are all available; False if any are in use.
         """
         for port, proto, name in [
             (WEBSOCKET_PORT, socket.SOCK_STREAM, "TCP"),
+            (VIDEO_PORT, socket.SOCK_STREAM, "Video TCP"),
             (DISCOVERY_PORT, socket.SOCK_DGRAM, "UDP"),
         ]:
             try:
@@ -89,9 +87,9 @@ class ElegooPrinterServer:
 
     def stop(self):
         """
-        Stops the proxy server and performs asynchronous cleanup of resources.
+        Stops the proxy server and asynchronously cleans up all associated resources.
 
-        This method closes the HTTP client session, cleans up the web runner, and safely stops the event loop if it is running.
+        Closes the HTTP client session, cleans up all aiohttp application runners, and stops the event loop if it is running.
         """
         self.logger.info("Stopping proxy server...")
 
@@ -101,12 +99,12 @@ class ElegooPrinterServer:
 
         async def cleanup():
             """
-            Asynchronously closes the HTTP client session and cleans up the web application runner if they exist.
+            Asynchronously closes the HTTP client session and cleans up all web application runners associated with the server.
             """
             if self.session and not self.session.closed:
                 await self.session.close()
-            if self.runner:
-                await self.runner.cleanup()
+            for runner in self.runners:
+                await runner.cleanup()
 
         if self.loop and self.loop.is_running():
             try:
@@ -150,42 +148,69 @@ class ElegooPrinterServer:
 
     def _start_servers_in_thread(self):
         """
-        Starts the HTTP/WebSocket and UDP discovery proxy servers in a dedicated asyncio event loop.
+        Starts the HTTP/WebSocket, video, and UDP discovery proxy servers in a dedicated background thread with its own asyncio event loop.
 
-        Initializes an aiohttp server for HTTP and WebSocket proxying on TCP port 3030 and a UDP discovery server on port 3000.
-        Handles server startup errors by logging and signaling the main thread. Runs the event loop until stopped, then closes it upon shutdown.
+        Initializes and launches:
+        - An aiohttp HTTP/WebSocket proxy server on TCP port 3030.
+        - An aiohttp video proxy server on TCP port 3031.
+        - A UDP discovery server on port 3000 for printer discovery.
+
+        Handles startup errors by logging and signaling the main thread. Runs the event loop until stopped, then closes it upon shutdown.
         """
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
         async def startup():
             """
-            Asynchronously initializes and starts the HTTP/WebSocket proxy server and UDP discovery server components.
+            Asynchronously starts the HTTP/WebSocket proxy server, video proxy server, and UDP discovery server for the Elegoo printer proxy system.
 
-            Sets up an aiohttp web application with increased client size, configures a catch-all route for proxying,
-            and starts the TCP server for HTTP and WebSocket traffic. Also starts the UDP discovery server for printer discovery requests.
-            Logs errors and signals startup completion or failure via an event.
+            Initializes and launches:
+            - The main aiohttp application for HTTP and WebSocket proxying on TCP port 3030.
+            - A separate aiohttp application for video proxying on TCP port 3031.
+            - The UDP discovery server on port 3000 for printer discovery requests.
+
+            Logs startup status and signals completion or failure via an event.
             """
             self.session = aiohttp.ClientSession()
 
-            # Configure max upload size (default 2MB for large firmware/model files)
-            max_size = 2 * 1024 * 1024
-            app = web.Application(client_max_size=max_size)
-
-            app.router.add_route("*", "/{path:.*}", self._http_handler)
-
-            self.runner = web.AppRunner(app)
-            await self.runner.setup()
-
-            site = web.TCPSite(self.runner, INADDR_ANY, WEBSOCKET_PORT)
+            # 1. --- Setup Main Application (Port 3030) ---
+            main_app = web.Application(client_max_size=2 * 1024 * 1024)
+            main_app.router.add_route("*", "/{path:.*}", self._http_handler)
+            main_runner = web.AppRunner(main_app)
+            await main_runner.setup()
+            main_site = web.TCPSite(main_runner, INADDR_ANY, WEBSOCKET_PORT)
 
             try:
-                await site.start()
+                await main_site.start()
+                self.runners.append(main_runner)
+                self.logger.info(
+                    f"Main HTTP/WebSocket Proxy running on http://{self.get_local_ip()}:{WEBSOCKET_PORT}"
+                )
             except OSError as e:
                 self.logger.info(
                     f"Failed to start TCP site on port {WEBSOCKET_PORT}, it may be in use. Error: {e}"
                 )
-                self.startup_event.set()  # Signal to unblock main thread for shutdown
+                self.startup_event.set()
+                return
+
+            # 2. --- Setup Video Proxy Application (Port 3031) ---
+            video_app = web.Application()
+            video_app.router.add_route("*", "/{path:.*}", self._video_proxy_handler)
+            video_runner = web.AppRunner(video_app)
+            await video_runner.setup()
+            video_site = web.TCPSite(video_runner, INADDR_ANY, VIDEO_PORT)
+
+            try:
+                await video_site.start()
+                self.runners.append(video_runner)
+                self.logger.info(
+                    f"Video Proxy running on http://{self.get_local_ip()}:{VIDEO_PORT}"
+                )
+            except OSError as e:
+                self.logger.info(
+                    f"Failed to start TCP Video site on port {VIDEO_PORT}. Error: {e}"
+                )
+                self.startup_event.set()
                 return
 
             # --- Start Discovery (UDP) Proxy Server ---
@@ -226,13 +251,12 @@ class ElegooPrinterServer:
 
     async def _http_handler(self, request: web.Request) -> web.StreamResponse:
         """
-        Routes incoming HTTP requests to the appropriate proxy handler based on request type.
+        Dispatches incoming HTTP requests to the appropriate proxy handler.
 
-        WebSocket upgrade requests are routed to the WebSocket proxy handler, file upload POST requests to the file upload passthrough handler,
-        and all other requests to the generic HTTP proxy handler.
+        WebSocket upgrade requests are handled by the WebSocket proxy, file upload POST requests to `/uploadFile/upload` are handled by the file upload passthrough proxy, and all other requests are forwarded to the generic HTTP proxy handler.
 
         Returns:
-            web.StreamResponse: The response generated by the selected proxy handler.
+            web.StreamResponse: The response from the selected proxy handler.
         """
         if request.headers.get("Upgrade", "").lower() == "websocket":
             return await self._websocket_handler(request)
@@ -243,12 +267,47 @@ class ElegooPrinterServer:
         # All other HTTP requests are forwarded by the generic proxy
         return await self._http_proxy_handler(request)
 
+    async def _video_proxy_handler(self, request: web.Request) -> web.StreamResponse:
+        """
+        Proxies incoming video stream requests to the printer's video server and streams the response back to the client.
+
+        Returns:
+            web.StreamResponse: The proxied video stream response from the printer, or an error response if the proxy session is unavailable or the upstream connection fails.
+        """
+        remote_url = f"http://{self.printer.ip_address}:{VIDEO_PORT}{request.path_qs}"
+        self.logger.info(f"Proxying video request to {remote_url}")
+
+        if not self.session or self.session.closed:
+            return web.Response(status=503, text="Session not available.")
+
+        try:
+            async with self.session.get(
+                remote_url, timeout=aiohttp.ClientTimeout(total=60)
+            ) as proxy_response:
+                response = web.StreamResponse(
+                    status=proxy_response.status,
+                    reason=proxy_response.reason,
+                    headers=proxy_response.headers,
+                )
+                await response.prepare(request)
+                async for chunk in proxy_response.content.iter_chunked(8192):
+                    await response.write(chunk)
+
+                await response.write_eof()
+                return response
+
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            self.logger.error(f"Error proxying video stream: {e}")
+            return web.Response(
+                status=502,
+                text="Bad Gateway: Error connecting to printer's video stream.",
+            )
+
     async def _websocket_handler(self, request: web.Request) -> web.WebSocketResponse:
         """
-        Proxies a WebSocket connection between the client and the remote printer.
+        Proxy a WebSocket connection between a client and the remote printer.
 
-        Establishes a WebSocket connection with the client, connects to the printer's WebSocket endpoint,
-        and forwards messages bidirectionally between the two. Closes the client connection if the upstream session is unavailable or on error.
+        Establishes a WebSocket connection with the client and the printer, forwarding messages bidirectionally. Closes the client connection if the upstream printer session is unavailable or an error occurs.
 
         Returns:
             web.WebSocketResponse: The WebSocket response object for the client connection.
