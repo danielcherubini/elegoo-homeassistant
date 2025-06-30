@@ -53,12 +53,16 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
         Assigns a unique ID based on the entity description and stores references to the printer client and MJPEG stream URL for later use.
         """
-        super().__init__(coordinator)
-        self.entity_description = description
-        self._attr_unique_id = coordinator.generate_unique_id(
-            self.entity_description.key
+        MjpegCamera.__init__(
+            self,
+            name=f"{description.name}",
+            mjpeg_url="http://127.0.0.1:3031/video",
+            still_image_url=None,  # This camera does not have a separate still image URL
+            unique_id=coordinator.generate_unique_id(description.key),
         )
-        self._mjpeg_url = ""
+
+        ElegooPrinterEntity.__init__(self, coordinator)
+        self.entity_description = description
         self._printer_client: ElegooPrinterClient = (
             coordinator.config_entry.runtime_data.client._elegoo_printer
         )
