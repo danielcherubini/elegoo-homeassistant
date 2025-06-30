@@ -10,6 +10,7 @@ from types import MappingProxyType
 from typing import Any
 
 import websocket
+from homeassistant.exceptions import PlatformNotReady
 
 from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
 
@@ -27,10 +28,6 @@ WEBSOCKET_PORT = 3030
 
 class ElegooPrinterClientWebsocketError(Exception):
     """Exception to indicate a general API error."""
-
-
-class ElegooPrinterClientWebsocketConnectionError(Exception):
-    """Exception to indicate a Websocket Connection error."""
 
 
 class ElegooPrinterClient:
@@ -183,7 +180,7 @@ class ElegooPrinterClient:
                 websocket.WebSocketException,
             ) as e:
                 self.logger.exception("WebSocket connection closed error")
-                raise ElegooPrinterClientWebsocketError from e
+                raise PlatformNotReady from e
             except (
                 OSError
             ):  # Catch potential OS errors like Broken Pipe, Connection Refused
@@ -193,9 +190,7 @@ class ElegooPrinterClient:
             self.logger.warning(
                 "Attempted to send command but websocket is not connected."
             )
-            raise ElegooPrinterClientWebsocketConnectionError from Exception(
-                "Not connected"
-            )
+            raise PlatformNotReady("Not connected")
 
     def discover_printer(
         self, broadcast_address: str = "<broadcast>"

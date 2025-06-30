@@ -9,11 +9,11 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.core import callback
+from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import selector
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import (
     ElegooPrinterClient,
-    ElegooPrinterClientWebsocketConnectionError,
     ElegooPrinterClientWebsocketError,
 )
 
@@ -80,7 +80,7 @@ async def _async_validate_input(user_input: dict[str, Any]) -> dict:
     except ElegooPrinterClientGeneralError as exception:  # New specific catch
         LOGGER.error("No printer found: %s", exception)
         _errors["base"] = "no_printer_found"  # Or "cannot_connect"
-    except ElegooPrinterClientWebsocketConnectionError as exception:
+    except PlatformNotReady as exception:
         LOGGER.error(exception)
         _errors["base"] = "connection"
     except ElegooPrinterClientWebsocketError as exception:

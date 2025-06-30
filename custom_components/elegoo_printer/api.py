@@ -6,7 +6,6 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.const import CONF_IP_ADDRESS
-from homeassistant.exceptions import ConfigEntryNotReady
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
@@ -86,17 +85,11 @@ class ElegooPrinterApiClient:
 
     async def async_get_status(self) -> PrinterData:
         """Get data from the API."""
-        try:
-            return self._elegoo_printer.get_printer_status()
-        except Exception as e:
-            raise ConfigEntryNotReady(f"Error getting status from printer: {e}")
+        return self._elegoo_printer.get_printer_status()
 
     async def async_get_attributes(self) -> PrinterData:
         """Get data from the API."""
-        try:
-            return self._elegoo_printer.get_printer_attributes()
-        except Exception as e:
-            raise ConfigEntryNotReady(f"Error getting attributes from printer: {e}")
+        return self._elegoo_printer.get_printer_attributes()
 
     async def async_get_current_thumbnail(self) -> str | None:
         """
@@ -105,10 +98,7 @@ class ElegooPrinterApiClient:
         Returns:
             The thumbnail image as a string, or None if unavailable.
         """
-        try:
-            return await self._elegoo_printer.get_current_print_thumbnail()
-        except Exception as e:
-            raise ConfigEntryNotReady(f"Error getting thumbnail from printer: {e}")
+        return await self._elegoo_printer.get_current_print_thumbnail()
 
     async def async_get_current_task(self) -> list[PrintHistoryDetail] | None:
         """
@@ -117,10 +107,7 @@ class ElegooPrinterApiClient:
         Returns:
             A list of PrintHistoryDetail objects representing the current print task, or None if no task is active.
         """
-        try:
-            return await self._elegoo_printer.get_printer_current_task()
-        except Exception as e:
-            raise ConfigEntryNotReady(f"Error getting current task from printer: {e}")
+        return await self._elegoo_printer.get_printer_current_task()
 
     async def retry(self) -> bool:
         """
