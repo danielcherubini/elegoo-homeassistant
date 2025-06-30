@@ -348,12 +348,12 @@ PRINTER_FDM_LIGHTS: tuple[ElegooPrinterLightEntityDescription, ...] = (
         key="second_light",
         name="Chamber Light",
         value_fn=lambda _light_status: _light_status.second_light,
-        available_fn=lambda _light_status: bool(_light_status.second_light),
+        available_fn=lambda _light_status: _light_status.second_light is not None,
     ),
     ElegooPrinterLightEntityDescription(
         key="rgb_light",
         name="RGB Light",
         value_fn=lambda _light_status: _light_status.rgb_light,
-        available_fn=lambda _light_status: any(c > 0 for c in _light_status.rgb_light),
+        available_fn=lambda _light_status: _light_status.rgb_light is not None,
     ),
 )
