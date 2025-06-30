@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.exceptions import ConfigEntryNotReady, PlatformNotReady
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
+from custom_components.elegoo_printer.api import ElegooPrinterConnectionError
+from custom_components.elegoo_printer.const import LOGGER
 
 if TYPE_CHECKING:
     from .data import ElegooPrinterConfigEntry
@@ -29,19 +31,12 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             await self.config_entry.runtime_data.client.async_get_attributes()
             return await self.config_entry.runtime_data.client.async_get_status()
-        except PlatformNotReady:
-            try:
-                connected = await self.config_entry.runtime_data.client.retry()
-                if connected:
-                    await self.config_entry.runtime_data.client.async_get_attributes()
-                    await self.config_entry.runtime_data.client.async_get_current_task()
-                    return (
-                        await self.config_entry.runtime_data.client.async_get_status()
-                    )
-            except Exception as e:
-                raise ConfigEntryNotReady from e
-        except OSError as exception:
-            raise ConfigEntryNotReady from exception
+        except ElegooPrinterConnectionError as e:
+            LOGGER.warning("Could not connect to Elegoo printer: %s", e)
+            raise UpdateFailed(f"Error communicating with Elegoo printer: {e}") from e
+        except OSError as e:
+            LOGGER.warning(f"OSError while communicating with Elegoo printer: {e}")
+            raise UpdateFailed("Unexpected Error") from e
 
     def generate_unique_id(self, key: str) -> str:
         """
