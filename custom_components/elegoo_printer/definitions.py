@@ -36,12 +36,12 @@ class ElegooPrinterSensorEntityDescription(
 class ElegooPrinterLightEntityDescription(
     LightEntityDescription, ElegooPrinterSensorEntityDescriptionMixin
 ):
-    """Sensor entity description for Elegoo Printers."""
+    """Light entity description for Elegoo Printers."""
 
     available_fn: Callable[..., bool] = lambda self: self.coordinator.data
     exists_fn: Callable[..., bool] = lambda _: True
     extra_attributes: Callable[..., dict] = lambda _: {}
-    icon_fn: Callable[..., str] = lambda _: "mdi:eye"
+    icon_fn: Callable[..., str] = lambda _: "mdi:lightbulb"
 
 
 PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
@@ -347,14 +347,12 @@ PRINTER_FDM_LIGHTS: tuple[ElegooPrinterLightEntityDescription, ...] = (
     ElegooPrinterLightEntityDescription(
         key="second_light",
         name="Chamber Light",
-        icon="mdi:light",
         value_fn=lambda _light_status: _light_status.second_light,
         available_fn=lambda _light_status: bool(_light_status.second_light),
     ),
     ElegooPrinterLightEntityDescription(
         key="rgb_light",
         name="RGB Light",
-        icon="mdi:light",
         value_fn=lambda _light_status: _light_status.rgb_light,
         available_fn=lambda _light_status: any(c > 0 for c in _light_status.rgb_light),
     ),

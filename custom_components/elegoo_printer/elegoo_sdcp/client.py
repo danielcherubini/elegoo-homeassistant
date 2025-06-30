@@ -157,7 +157,7 @@ class ElegooPrinterClient:
         Parameters:
             light_status (LightStatus): The desired light status to apply to the printer.
         """
-        self._send_printer_cmd(403, light_status.__dict__)
+        self._send_printer_cmd(403, light_status.to_dict())
 
     def _send_printer_cmd(self, cmd: int, data: dict[str, Any] | None = None) -> None:
         """
