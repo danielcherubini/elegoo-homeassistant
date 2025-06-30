@@ -10,6 +10,7 @@ from types import MappingProxyType
 from typing import Any
 
 import websocket
+from homeassistant.exceptions import PlatformNotReady
 
 from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
 
@@ -23,14 +24,6 @@ DISCOVERY_TIMEOUT = 5
 DISCOVERY_PORT = 3000
 DEFAULT_PORT = 54780
 WEBSOCKET_PORT = 3030
-
-
-class ElegooPrinterClientWebsocketError(Exception):
-    """Exception to indicate a general API error."""
-
-
-class ElegooPrinterClientWebsocketConnectionError(Exception):
-    """Exception to indicate a Websocket Connection error."""
 
 
 class ElegooPrinterClient:
@@ -70,24 +63,12 @@ class ElegooPrinterClient:
         Returns:
             PrinterData: The latest printer status information.
         """
-        try:
-            self._send_printer_cmd(0)
-        except (ElegooPrinterClientWebsocketError, OSError):
-            self.logger.exception(
-                "Error sending printer command in process_printer_job"
-            )
-            raise
+        self._send_printer_cmd(0)
         return self.printer_data
 
     def get_printer_attributes(self) -> PrinterData:
         """Retreves the printer attributes."""
-        try:
-            self._send_printer_cmd(1)
-        except (ElegooPrinterClientWebsocketError, OSError):
-            self.logger.exception(
-                "Error sending printer command in process_printer_job"
-            )
-            raise
+        self._send_printer_cmd(1)
         return self.printer_data
 
     def set_printer_video_stream(self, *, toggle: bool) -> None:
@@ -164,8 +145,7 @@ class ElegooPrinterClient:
         Sends a JSON command to the printer over the WebSocket connection.
 
         Raises:
-            ElegooPrinterClientWebsocketError: If a WebSocket error occurs during sending.
-            ElegooPrinterClientWebsocketConnectionError: If the WebSocket is not connected.
+            PlatformNotReady: If the websocket is not connected or a websocket error occurs.
             OSError: If an operating system error occurs while sending the command.
         """
         ts = int(time.time())
@@ -192,7 +172,7 @@ class ElegooPrinterClient:
                 websocket.WebSocketException,
             ) as e:
                 self.logger.exception("WebSocket connection closed error")
-                raise ElegooPrinterClientWebsocketError from e
+                raise PlatformNotReady from e
             except (
                 OSError
             ):  # Catch potential OS errors like Broken Pipe, Connection Refused
@@ -202,21 +182,19 @@ class ElegooPrinterClient:
             self.logger.warning(
                 "Attempted to send command but websocket is not connected."
             )
-            raise ElegooPrinterClientWebsocketConnectionError from Exception(
-                "Not connected"
-            )
+            raise PlatformNotReady("Not connected")
 
     def discover_printer(
         self, broadcast_address: str = "<broadcast>"
     ) -> Printer | None:
         """
-        Broadcasts a UDP discovery message to locate an Elegoo printer or proxy on the network.
+        Broadcasts a UDP message to discover an Elegoo printer or proxy on the local network.
 
         Parameters:
-            broadcast_address (str): The network address to broadcast the discovery message to. Defaults to "<broadcast>".
+            broadcast_address (str): The network address to send the discovery message to. Defaults to "<broadcast>".
 
         Returns:
-            Printer | None: The discovered Printer object if a response is received and parsed successfully; otherwise, None.
+            Printer | None: The discovered Printer object if a valid response is received; otherwise, None.
         """
         self.logger.info("Broadcasting for printer/proxy discovery...")
         msg = b"M99999"

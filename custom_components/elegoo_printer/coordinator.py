@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-
-from custom_components.elegoo_printer.elegoo_sdcp.client import (
-    ElegooPrinterClientWebsocketConnectionError,
-    ElegooPrinterClientWebsocketError,
-)
+from homeassistant.exceptions import ConfigEntryNotReady, PlatformNotReady
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 if TYPE_CHECKING:
     from .data import ElegooPrinterConfigEntry
@@ -24,38 +19,41 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> Any:
         """
-        Fetches the latest printer attributes and status asynchronously from the Elegoo printer API.
+        Asynchronously fetches the latest attributes and status from the Elegoo printer.
 
-        If a websocket connection error occurs, attempts to reconnect and retries the data fetch. Adjusts the polling interval based on connection success or failure. Raises UpdateFailed if data cannot be retrieved.
+        Attempts to reconnect and retry data retrieval if the printer is temporarily unavailable. Raises `ConfigEntryNotReady` if the printer cannot be reached or data cannot be fetched after retry attempts.
+
+        Returns:
+            The latest printer status data.
         """
         try:
             await self.config_entry.runtime_data.client.async_get_attributes()
             return await self.config_entry.runtime_data.client.async_get_status()
-        except ElegooPrinterClientWebsocketConnectionError:
+        except PlatformNotReady:
             try:
                 connected = await self.config_entry.runtime_data.client.retry()
                 if connected:
-                    self.update_interval = timedelta(seconds=2)
                     await self.config_entry.runtime_data.client.async_get_attributes()
                     await self.config_entry.runtime_data.client.async_get_current_task()
                     return (
                         await self.config_entry.runtime_data.client.async_get_status()
                     )
-            except ElegooPrinterClientWebsocketError as e:
-                self.update_interval = timedelta(minutes=5)
-                raise UpdateFailed from e
-        except (
-            ElegooPrinterClientWebsocketError,
-            OSError,
-        ) as exception:
-            self.update_interval = timedelta(minutes=5)
-            raise UpdateFailed from exception
+            except Exception as e:
+                raise ConfigEntryNotReady from e
+        except OSError as exception:
+            raise ConfigEntryNotReady from exception
 
     def generate_unique_id(self, key: str) -> str:
         """
-        Generate a unique identifier string for an entity based on the printer's name or ID and the provided key.
+        Generate a unique entity identifier by combining the printer's name or machine ID with the given key.
 
-        If the printer name is missing or empty, the unique ID is formed by combining the machine ID and the key. Otherwise, the unique ID uses the sanitized (lowercased and underscores for spaces) machine name and the key.
+        If the printer name is unavailable or empty, the machine ID is used. Otherwise, the printer name is sanitized (spaces replaced with underscores and converted to lowercase) before concatenation with the key.
+
+        Parameters:
+            key (str): Suffix to append for uniqueness.
+
+        Returns:
+            str: The generated unique identifier.
         """
         machine_name = self.config_entry.data["name"]
         machine_id = self.config_entry.data["id"]

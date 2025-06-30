@@ -9,13 +9,10 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.core import callback
+from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import selector
 
-from custom_components.elegoo_printer.elegoo_sdcp.client import (
-    ElegooPrinterClient,
-    ElegooPrinterClientWebsocketConnectionError,
-    ElegooPrinterClientWebsocketError,
-)
+from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 
 from .const import CONF_CENTAURI_CARBON, CONF_PROXY_ENABLED, DOMAIN, LOGGER
 
@@ -73,6 +70,15 @@ def _test_credentials(user_input: Dict[str, Any]) -> Printer:
 
 
 async def _async_validate_input(user_input: dict[str, Any]) -> dict:
+    """
+    Validate user input for Elegoo printer configuration and return the discovered printer or error details.
+
+    Parameters:
+        user_input (dict): Dictionary containing configuration data for the printer.
+
+    Returns:
+        dict: A dictionary with keys "printer" (the discovered printer object or None) and "errors" (error details or None).
+    """
     _errors = {}
     try:
         printer = _test_credentials(user_input)
@@ -80,12 +86,9 @@ async def _async_validate_input(user_input: dict[str, Any]) -> dict:
     except ElegooPrinterClientGeneralError as exception:  # New specific catch
         LOGGER.error("No printer found: %s", exception)
         _errors["base"] = "no_printer_found"  # Or "cannot_connect"
-    except ElegooPrinterClientWebsocketConnectionError as exception:
+    except PlatformNotReady as exception:
         LOGGER.error(exception)
         _errors["base"] = "connection"
-    except ElegooPrinterClientWebsocketError as exception:
-        LOGGER.exception(exception)
-        _errors["base"] = "websocket"
     except (OSError, Exception) as exception:
         LOGGER.exception(exception)
         _errors["base"] = "unknown"
