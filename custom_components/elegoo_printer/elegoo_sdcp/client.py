@@ -184,9 +184,6 @@ class ElegooPrinterClient:
                 self.logger.exception("Operating System error during send")
                 raise  # Re-raise OS errors
         else:
-            self.logger.warning(
-                "Attempted to send command but websocket is not connected."
-            )
             raise ElegooPrinterConnectionError("Not connected")
 
     def discover_printer(
