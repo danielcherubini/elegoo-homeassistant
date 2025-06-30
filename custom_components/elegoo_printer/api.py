@@ -35,7 +35,11 @@ class ElegooPrinterApiClient:
     def __init__(
         self, ip_address: str, config: MappingProxyType[str, Any], logger: Logger
     ) -> None:
-        """Initialize."""
+        """
+        Initialize the ElegooPrinterApiClient with the printer's IP address, configuration, and logger.
+        
+        Sets internal flags for printer model type and proxy server usage based on the provided configuration.
+        """
         self._ip_address = ip_address
         self._centauri_carbon = config.get(CONF_CENTAURI_CARBON, False)
         self._proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
@@ -86,10 +90,10 @@ class ElegooPrinterApiClient:
 
     async def async_get_status(self) -> PrinterData:
         """
-        Asynchronously retrieves the current status data from the connected printer.
-
+        Asynchronously retrieves and updates the current status information from the connected printer.
+        
         Returns:
-            PrinterData: The current status information of the printer.
+            PrinterData: The latest status data of the printer.
         """
 
         self.printer_data = self._elegoo_printer.get_printer_status()
@@ -97,38 +101,38 @@ class ElegooPrinterApiClient:
 
     async def async_get_attributes(self) -> PrinterData:
         """
-        Asynchronously retrieves the printer's attribute data.
-
+        Asynchronously retrieves and updates the printer's attribute data.
+        
         Returns:
-            PrinterData: The printer's attribute information.
+            PrinterData: The latest attribute information for the printer.
         """
         self.printer_data = self._elegoo_printer.get_printer_attributes()
         return self.printer_data
 
     async def async_get_current_thumbnail(self) -> str | None:
         """
-        Asynchronously retrieves the current print job's thumbnail image.
-
+        Asynchronously retrieves the current print job's thumbnail image as a string.
+        
         Returns:
-            str | None: The thumbnail image as a string, or None if no thumbnail is available.
+            str | None: The thumbnail image if available, or None if there is no active print job or thumbnail.
         """
         return await self._elegoo_printer.get_current_print_thumbnail()
 
     async def async_get_current_task(self) -> list[PrintHistoryDetail] | None:
         """
         Asynchronously retrieves details of the current print task from the printer.
-
+        
         Returns:
-            A list of PrintHistoryDetail objects for the current print task, or None if there is no active task.
+            A list of PrintHistoryDetail objects representing the current print task, or None if no task is active.
         """
         return await self._elegoo_printer.get_printer_current_task()
 
     async def reconnect(self) -> bool:
         """
-        Asynchronously attempts to reconnect to the printer, optionally wrapping it with a proxy server.
-
+        Asynchronously attempts to reconnect to the printer, using a proxy server if enabled.
+        
         Returns:
-            bool: True if reconnection succeeds, False otherwise.
+            bool: True if reconnection is successful, False otherwise.
         """
         printer = self._elegoo_printer.printer
         if self._proxy_server_enabled:
