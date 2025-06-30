@@ -6,7 +6,6 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.const import CONF_IP_ADDRESS
-from homeassistant.exceptions import ConfigEntryNotReady
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
@@ -85,49 +84,47 @@ class ElegooPrinterApiClient:
         return self
 
     async def async_get_status(self) -> PrinterData:
-        """Get data from the API."""
-        try:
-            return self._elegoo_printer.get_printer_status()
-        except Exception as e:
-            raise ConfigEntryNotReady(f"Error getting status from printer: {e}")
+        """
+        Asynchronously retrieves the current status data from the connected printer.
+
+        Returns:
+            PrinterData: The current status information of the printer.
+        """
+        return self._elegoo_printer.get_printer_status()
 
     async def async_get_attributes(self) -> PrinterData:
-        """Get data from the API."""
-        try:
-            return self._elegoo_printer.get_printer_attributes()
-        except Exception as e:
-            raise ConfigEntryNotReady(f"Error getting attributes from printer: {e}")
+        """
+        Asynchronously retrieves the printer's attribute data.
+
+        Returns:
+            PrinterData: The printer's attribute information.
+        """
+        return self._elegoo_printer.get_printer_attributes()
 
     async def async_get_current_thumbnail(self) -> str | None:
         """
-        Asynchronously retrieves the current print job's thumbnail image from the printer.
+        Asynchronously retrieves the current print job's thumbnail image.
 
         Returns:
-            The thumbnail image as a string, or None if unavailable.
+            str | None: The thumbnail image as a string, or None if no thumbnail is available.
         """
-        try:
-            return await self._elegoo_printer.get_current_print_thumbnail()
-        except Exception as e:
-            raise ConfigEntryNotReady(f"Error getting thumbnail from printer: {e}")
+        return await self._elegoo_printer.get_current_print_thumbnail()
 
     async def async_get_current_task(self) -> list[PrintHistoryDetail] | None:
         """
-        Asynchronously retrieve details of the current print task from the printer.
+        Asynchronously retrieves details of the current print task from the printer.
 
         Returns:
-            A list of PrintHistoryDetail objects representing the current print task, or None if no task is active.
+            A list of PrintHistoryDetail objects for the current print task, or None if there is no active task.
         """
-        try:
-            return await self._elegoo_printer.get_printer_current_task()
-        except Exception as e:
-            raise ConfigEntryNotReady(f"Error getting current task from printer: {e}")
+        return await self._elegoo_printer.get_printer_current_task()
 
     async def retry(self) -> bool:
         """
-        Attempt to reconnect to the printer asynchronously.
+        Asynchronously attempts to reconnect to the printer, optionally wrapping it with a proxy server.
 
         Returns:
-            bool: True if the reconnection is successful, False otherwise.
+            bool: True if reconnection succeeds, False otherwise.
         """
         printer = self._elegoo_printer.printer
         if self._proxy_server_enabled:

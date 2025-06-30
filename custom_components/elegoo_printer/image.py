@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import io
-import logging
 from typing import TYPE_CHECKING
 
 from homeassistant.components.image import ImageEntity
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 from PIL import Image
 
@@ -19,8 +18,6 @@ from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 from .definitions import PRINTER_IMAGES
 
-_LOGGER = logging.getLogger(__name__)
-
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
@@ -31,12 +28,12 @@ if TYPE_CHECKING:
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    async_add_entities: AddConfigEntryEntitiesCallback,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """
-    Asynchronously sets up Elegoo Printer image entities for a given config entry in Home Assistant.
+    Asynchronously sets up Elegoo Printer image entities for a Home Assistant config entry.
 
-    Adds a CoverImage entity for each predefined printer image, ensuring each is updated before being added to the platform.
+    Creates and adds a CoverImage entity for each supported printer image, ensuring each entity is updated before being added to the platform.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
 
