@@ -345,9 +345,17 @@ PRINTER_MJPEG_CAMERAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
 
 PRINTER_FDM_LIGHTS: tuple[ElegooPrinterLightEntityDescription, ...] = (
     ElegooPrinterLightEntityDescription(
-        key="chamber_light",
+        key="second_light",
         name="Chamber Light",
-        value_fn=lambda _light: _light,
-        available_fn=lambda _light: _light,
+        icon="mdi:light",
+        value_fn=lambda _light_status: _light_status.second_light,
+        available_fn=lambda _light_status: bool(_light_status.second_light),
+    ),
+    ElegooPrinterLightEntityDescription(
+        key="rgb_light",
+        name="RGB Light",
+        icon="mdi:light",
+        value_fn=lambda _light_status: _light_status.rgb_light,
+        available_fn=lambda _light_status: any(c > 0 for c in _light_status.rgb_light),
     ),
 )

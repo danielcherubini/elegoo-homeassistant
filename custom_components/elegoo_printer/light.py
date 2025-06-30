@@ -130,7 +130,5 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         If the entity description specifies an availability function, this function is used to determine availability based on the printer's video data. Otherwise, falls back to the default availability check.
         """
         if self.entity_description.available_fn is not None:
-            return self.entity_description.available_fn(
-                bool(self.light_status.second_light)
-            )
+            return self.entity_description.available_fn(self.light_status)
         return super().available
