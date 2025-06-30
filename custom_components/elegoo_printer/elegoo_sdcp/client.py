@@ -11,7 +11,6 @@ from typing import Any
 
 import websocket
 
-from custom_components.elegoo_printer.api import ElegooPrinterConnectionError
 from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
 
 from .const import DEBUG, LOGGER
@@ -24,6 +23,12 @@ DISCOVERY_TIMEOUT = 5
 DISCOVERY_PORT = 3000
 DEFAULT_PORT = 54780
 WEBSOCKET_PORT = 3030
+
+
+class ElegooPrinterConnectionError(Exception):
+    """Exception to indicate a connection error with the Elegoo printer."""
+
+    pass
 
 
 class ElegooPrinterClient:

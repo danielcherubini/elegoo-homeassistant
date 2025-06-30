@@ -6,8 +6,10 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from custom_components.elegoo_printer.api import ElegooPrinterConnectionError
 from custom_components.elegoo_printer.const import LOGGER
+from custom_components.elegoo_printer.elegoo_sdcp.client import (
+    ElegooPrinterConnectionError,
+)
 
 if TYPE_CHECKING:
     from .data import ElegooPrinterConfigEntry
