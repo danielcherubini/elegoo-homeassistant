@@ -24,7 +24,7 @@ async def async_setup_entry(
 ) -> None:
     """
     Asynchronously sets up Elegoo printer light entities for an FDM printer in Home Assistant.
-    
+
     Adds light entities for each supported FDM light type if the printer configuration indicates FDM model support.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
@@ -48,7 +48,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
     ) -> None:
         """
         Initialize an Elegoo printer light entity with the given data coordinator and entity description.
-        
+
         Configures the entity's unique ID, display name, and supported color modes based on whether it represents an RGB or on/off light.
         """
         super().__init__(coordinator)
@@ -80,7 +80,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
     def is_on(self) -> bool | None:
         """
         Indicates whether the light is currently on.
-        
+
         Returns:
             True if the light is on, False if it is off, or None if the light status is unavailable.
         """
@@ -101,7 +101,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         """
         Asynchronously turns the light on.
-        
+
         For RGB lights, sets the color to the specified RGB value or defaults to white if none is provided. For on/off lights, enables the light. Updates the printer with the new light status and requests a state refresh.
         """
         # Get the current status of ALL lights to avoid overriding the other light's state
@@ -124,7 +124,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
     async def async_turn_off(self, **kwargs: Any) -> None:
         """
         Asynchronously turns off the printer light.
-        
+
         For RGB lights, sets all color channels to zero. For on/off lights, turns the light off. Updates the printer with the new state and requests a data refresh.
         """
         light_status = self.light_status
