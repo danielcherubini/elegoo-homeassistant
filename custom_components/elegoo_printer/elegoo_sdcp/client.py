@@ -15,6 +15,7 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVide
 
 from .const import DEBUG, LOGGER
 from .models.attributes import PrinterAttributes
+from .models.light import LightStatus
 from .models.print_history_detail import PrintHistoryDetail
 from .models.printer import Printer, PrinterData
 from .models.status import PrinterStatus
@@ -149,6 +150,12 @@ class ElegooPrinterClient:
             return print_history[0].thumbnail
 
         return None
+
+    def set_light_status(self, light_status: LightStatus) -> None:
+        """
+        Sets the light
+        """
+        self._send_printer_cmd(403, light_status.__dict__)
 
     def _send_printer_cmd(self, cmd: int, data: dict[str, Any] | None = None) -> None:
         """
