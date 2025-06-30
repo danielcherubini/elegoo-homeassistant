@@ -73,6 +73,15 @@ def _test_credentials(user_input: Dict[str, Any]) -> Printer:
 
 
 async def _async_validate_input(user_input: dict[str, Any]) -> dict:
+    """
+    Validate user input for Elegoo printer configuration and return the discovered printer or error details.
+    
+    Parameters:
+        user_input (dict): Dictionary containing configuration data for the printer.
+    
+    Returns:
+        dict: A dictionary with keys "printer" (the discovered printer object or None) and "errors" (error details or None).
+    """
     _errors = {}
     try:
         printer = _test_credentials(user_input)
