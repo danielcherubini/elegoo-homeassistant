@@ -26,12 +26,12 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> Any:
         """
         Asynchronously fetches and updates the latest attributes and status from the Elegoo printer.
-        
+
         Dynamically adjusts the polling interval based on connection status. If the printer is disconnected, attempts to reconnect and modifies the update interval accordingly.
-        
+
         Returns:
             The most recent printer data retrieved from the client.
-        
+
         Raises:
             UpdateFailed: If a connection or operating system error prevents data retrieval.
         """
@@ -59,12 +59,12 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
     def generate_unique_id(self, key: str) -> str:
         """
         Create a unique identifier for an entity by combining the sanitized printer name or machine ID with a specified key.
-        
+
         If the printer name is unavailable or empty, the machine ID is used as the prefix. Otherwise, the printer name is converted to lowercase and spaces are replaced with underscores before appending the key.
-        
+
         Parameters:
             key (str): Suffix to ensure uniqueness for the entity.
-        
+
         Returns:
             str: The generated unique identifier.
         """

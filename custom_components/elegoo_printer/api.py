@@ -37,7 +37,7 @@ class ElegooPrinterApiClient:
     ) -> None:
         """
         Initialize the ElegooPrinterApiClient with the printer's IP address, configuration, and logger.
-        
+
         Sets internal flags for printer model type and proxy server usage based on the provided configuration.
         """
         self._ip_address = ip_address
@@ -91,7 +91,7 @@ class ElegooPrinterApiClient:
     async def async_get_status(self) -> PrinterData:
         """
         Asynchronously retrieves and updates the current status information from the connected printer.
-        
+
         Returns:
             PrinterData: The latest status data of the printer.
         """
@@ -102,7 +102,7 @@ class ElegooPrinterApiClient:
     async def async_get_attributes(self) -> PrinterData:
         """
         Asynchronously retrieves and updates the printer's attribute data.
-        
+
         Returns:
             PrinterData: The latest attribute information for the printer.
         """
@@ -112,7 +112,7 @@ class ElegooPrinterApiClient:
     async def async_get_current_thumbnail(self) -> str | None:
         """
         Asynchronously retrieves the current print job's thumbnail image as a string.
-        
+
         Returns:
             str | None: The thumbnail image if available, or None if there is no active print job or thumbnail.
         """
@@ -121,7 +121,7 @@ class ElegooPrinterApiClient:
     async def async_get_current_task(self) -> list[PrintHistoryDetail] | None:
         """
         Asynchronously retrieves details of the current print task from the printer.
-        
+
         Returns:
             A list of PrintHistoryDetail objects representing the current print task, or None if no task is active.
         """
@@ -130,7 +130,7 @@ class ElegooPrinterApiClient:
     async def reconnect(self) -> bool:
         """
         Asynchronously attempts to reconnect to the printer, using a proxy server if enabled.
-        
+
         Returns:
             bool: True if reconnection is successful, False otherwise.
         """

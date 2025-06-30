@@ -154,7 +154,7 @@ class ElegooPrinterClient:
     def _send_printer_cmd(self, cmd: int, data: dict[str, Any] | None = None) -> None:
         """
         Send a JSON command to the printer over the WebSocket connection.
-        
+
         Raises:
             ElegooPrinterNotConnectedError: If the printer is not connected.
             ElegooPrinterConnectionError: If a WebSocket error or timeout occurs during sending.
@@ -201,12 +201,12 @@ class ElegooPrinterClient:
     ) -> Printer | None:
         """
         Broadcasts a UDP discovery message to locate an Elegoo printer or proxy on the local network.
-        
+
         Sends a discovery request and waits for a response containing printer information. Returns a `Printer` object if a valid response is received, or `None` if discovery fails or times out.
-        
+
         Parameters:
             broadcast_address (str): The network address to send the discovery message to. Defaults to "<broadcast>".
-        
+
         Returns:
             Printer | None: The discovered printer object if successful; otherwise, None.
         """
