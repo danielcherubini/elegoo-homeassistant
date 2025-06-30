@@ -350,10 +350,4 @@ PRINTER_FDM_LIGHTS: tuple[ElegooPrinterLightEntityDescription, ...] = (
         value_fn=lambda _light_status: _light_status.second_light,
         available_fn=lambda _light_status: _light_status.second_light is not None,
     ),
-    ElegooPrinterLightEntityDescription(
-        key="rgb_light",
-        name="RGB Light",
-        value_fn=lambda _light_status: _light_status.rgb_light,
-        available_fn=lambda _light_status: _light_status.rgb_light is not None,
-    ),
 )
