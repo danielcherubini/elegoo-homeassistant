@@ -34,7 +34,7 @@ async def async_setup_entry(
             async_add_entities([ElegooMjpegCamera(hass, coordinator, camera)])
 
     printer_client: ElegooPrinterClient = (
-        coordinator.config_entry.runtime_data.client._elegoo_printer
+        coordinator.config_entry.runtime_data.api.client
     )
     printer_client.set_printer_video_stream(toggle=True)
 
@@ -64,7 +64,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         ElegooPrinterEntity.__init__(self, coordinator)
         self.entity_description = description
         self._printer_client: ElegooPrinterClient = (
-            coordinator.config_entry.runtime_data.client._elegoo_printer
+            coordinator.config_entry.runtime_data.api.client
         )
 
     @property

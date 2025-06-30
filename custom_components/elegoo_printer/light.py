@@ -54,7 +54,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         super().__init__(coordinator)
         self.entity_description = description
         self._elegoo_printer_client: ElegooPrinterClient = (
-            coordinator.config_entry.runtime_data.client._elegoo_printer
+            coordinator.config_entry.runtime_data.api.client
         )
         # Set a unique ID and a friendly name for the entity
         self._attr_unique_id = coordinator.generate_unique_id(

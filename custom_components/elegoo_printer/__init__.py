@@ -45,16 +45,16 @@ async def async_setup_entry(
         update_interval=timedelta(seconds=2),
     )
 
-    client = await ElegooPrinterApiClient.async_create(
+    api = await ElegooPrinterApiClient.async_create(
         config=entry.data,
         logger=LOGGER,
     )
 
-    if client is None:
+    if api is None:
         raise ConfigEntryNotReady("Failed to connect to the printer")
 
     entry.runtime_data = ElegooPrinterData(
-        client=client,
+        api=api,
         integration=async_get_loaded_integration(hass, entry.domain),
         coordinator=coordinator,
     )

@@ -25,12 +25,13 @@ if TYPE_CHECKING:
 class ElegooPrinterApiClient:
     """Sample API Client."""
 
+    client: ElegooPrinterClient
+    server: ElegooPrinterServer
+    printer_data: PrinterData
     _ip_address: str
     _centauri_carbon: bool
-    _elegoo_printer: ElegooPrinterClient
     _logger: Logger
     _printer: Printer
-    printer_data: PrinterData
 
     def __init__(
         self, ip_address: str, config: MappingProxyType[str, Any], logger: Logger
@@ -78,6 +79,7 @@ class ElegooPrinterApiClient:
             try:
                 server = ElegooPrinterServer(printer, logger=logger)
                 printer = server.get_printer()
+                self.server = server
             except Exception as e:
                 logger.error("Failed to create proxy server: %s", e)
                 # Continue with direct printer connection
@@ -85,7 +87,7 @@ class ElegooPrinterApiClient:
         connected = await elegoo_printer.connect_printer(printer)
         if connected:
             logger.info("Polling Started")
-            self._elegoo_printer = elegoo_printer
+            self.client = elegoo_printer
         return self
 
     async def async_get_status(self) -> PrinterData:
@@ -96,7 +98,7 @@ class ElegooPrinterApiClient:
             PrinterData: The latest status data of the printer.
         """
 
-        self.printer_data = self._elegoo_printer.get_printer_status()
+        self.printer_data = self.client.get_printer_status()
         return self.printer_data
 
     async def async_get_attributes(self) -> PrinterData:
@@ -106,7 +108,7 @@ class ElegooPrinterApiClient:
         Returns:
             PrinterData: The latest attribute information for the printer.
         """
-        self.printer_data = self._elegoo_printer.get_printer_attributes()
+        self.printer_data = self.client.get_printer_attributes()
         return self.printer_data
 
     async def async_get_current_thumbnail(self) -> str | None:
@@ -116,7 +118,7 @@ class ElegooPrinterApiClient:
         Returns:
             str | None: The thumbnail image if available, or None if there is no active print job or thumbnail.
         """
-        return await self._elegoo_printer.get_current_print_thumbnail()
+        return await self.client.get_current_print_thumbnail()
 
     async def async_get_current_task(self) -> list[PrintHistoryDetail] | None:
         """
@@ -125,7 +127,7 @@ class ElegooPrinterApiClient:
         Returns:
             A list of PrintHistoryDetail objects representing the current print task, or None if no task is active.
         """
-        return await self._elegoo_printer.get_printer_current_task()
+        return await self.client.get_printer_current_task()
 
     async def reconnect(self) -> bool:
         """
@@ -134,9 +136,10 @@ class ElegooPrinterApiClient:
         Returns:
             bool: True if reconnection is successful, False otherwise.
         """
-        printer = self._elegoo_printer.printer
+        printer = self.client.printer
         if self._proxy_server_enabled:
+            self.server.stop()
             server = ElegooPrinterServer(printer, logger=self._logger)
             printer = server.get_printer()
 
-        return await self._elegoo_printer.connect_printer(printer)
+        return await self.client.connect_printer(printer)

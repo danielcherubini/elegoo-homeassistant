@@ -81,7 +81,7 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
             and self.entity_description.value_fn is not None
         ):
             _printer_client: ElegooPrinterApiClient = (
-                self.coordinator.config_entry.runtime_data.client
+                self.coordinator.config_entry.runtime_data.api
             )
             thumbnail = await _printer_client.async_get_current_thumbnail()
             image_url = self.entity_description.value_fn(thumbnail)
