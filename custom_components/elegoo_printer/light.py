@@ -28,15 +28,14 @@ async def async_setup_entry(
     Adds light entities to Home Assistant if the printer is identified as an FDM model supporting lights.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
-
-    FDM_PRINTER: bool = coordinator.config_entry.data.get(CONF_CENTAURI_CARBON, False)
+    fdm_printer: bool = coordinator.config_entry.data.get(CONF_CENTAURI_CARBON, False)
 
     # Check if the printer supports lights before adding entities
-    if FDM_PRINTER:
-        entities = [
-            ElegooLight(coordinator, description) for description in PRINTER_FDM_LIGHTS
-        ]
-        async_add_entities(entities)
+    if fdm_printer:
+        for light in PRINTER_FDM_LIGHTS:
+            async_add_entities(
+                [ElegooLight(coordinator, light)], update_before_add=True
+            )
 
 
 class ElegooLight(ElegooPrinterEntity, LightEntity):
