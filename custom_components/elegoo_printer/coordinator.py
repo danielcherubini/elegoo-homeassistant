@@ -24,9 +24,9 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> Any:
         """
         Asynchronously fetches the latest attributes and status from the Elegoo printer.
-        
+
         Attempts to reconnect and retry data retrieval if the printer is temporarily unavailable. Raises `ConfigEntryNotReady` if the printer cannot be reached or data cannot be fetched after retry attempts.
-        
+
         Returns:
             The latest printer status data.
         """
@@ -53,12 +53,12 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
     def generate_unique_id(self, key: str) -> str:
         """
         Generate a unique entity identifier by combining the printer's name or machine ID with the given key.
-        
+
         If the printer name is unavailable or empty, the machine ID is used. Otherwise, the printer name is sanitized (spaces replaced with underscores and converted to lowercase) before concatenation with the key.
-        
+
         Parameters:
             key (str): Suffix to append for uniqueness.
-        
+
         Returns:
             str: The generated unique identifier.
         """
