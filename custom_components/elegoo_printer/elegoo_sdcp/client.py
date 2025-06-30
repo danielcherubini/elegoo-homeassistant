@@ -142,10 +142,10 @@ class ElegooPrinterClient:
 
     def _send_printer_cmd(self, cmd: int, data: dict[str, Any] | None = None) -> None:
         """
-        Sends a JSON command to the printer over the WebSocket connection.
-
+        Send a JSON command to the printer over the WebSocket connection.
+        
         Raises:
-            PlatformNotReady: If the websocket is not connected or a websocket error occurs.
+            ElegooPrinterConnectionError: If the WebSocket is not connected or a WebSocket error occurs.
             OSError: If an operating system error occurs while sending the command.
         """
         ts = int(time.time())
@@ -188,13 +188,15 @@ class ElegooPrinterClient:
         self, broadcast_address: str = "<broadcast>"
     ) -> Printer | None:
         """
-        Broadcasts a UDP message to discover an Elegoo printer or proxy on the local network.
-
+        Discovers an Elegoo printer or proxy on the local network via UDP broadcast.
+        
+        Sends a discovery message and waits for a response containing printer information. Returns a `Printer` object if a valid response is received, or `None` if discovery fails or times out.
+        
         Parameters:
             broadcast_address (str): The network address to send the discovery message to. Defaults to "<broadcast>".
-
+        
         Returns:
-            Printer | None: The discovered Printer object if a valid response is received; otherwise, None.
+            Printer | None: The discovered printer object if successful; otherwise, None.
         """
         self.logger.info("Broadcasting for printer/proxy discovery...")
         msg = b"M99999"
