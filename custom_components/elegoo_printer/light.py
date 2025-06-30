@@ -4,7 +4,6 @@ from homeassistant.components.light import ATTR_RGB_COLOR, LightEntity
 from homeassistant.components.light.const import ColorMode
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from propcache.api import cached_property
 
 from custom_components.elegoo_printer.const import CONF_CENTAURI_CARBON, LOGGER
 from custom_components.elegoo_printer.coordinator import ElegooDataUpdateCoordinator
@@ -79,7 +78,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         """
         return self._elegoo_printer_client.printer_data.status.light_status
 
-    @cached_property
+    @property
     def is_on(self) -> bool | None:
         """
         Indicates whether the light entity is currently on.
@@ -97,7 +96,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         # For the standard on/off light
         return bool(self.light_status.second_light)
 
-    @cached_property
+    @property
     def rgb_color(self) -> tuple[int, int, int] | None:
         """
         Returns the current RGB color of the light as a tuple if the entity represents an RGB light and status is available; otherwise returns None.
@@ -147,7 +146,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         self._elegoo_printer_client.set_light_status(light_status)
         await self.coordinator.async_request_refresh()
 
-    @cached_property
+    @property
     def available(self) -> bool:
         """
         Return whether the light entity is currently available.
