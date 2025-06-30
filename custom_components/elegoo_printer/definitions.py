@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
+from homeassistant.components.light import LightEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfTemperature, UnitOfTime
@@ -29,6 +30,18 @@ class ElegooPrinterSensorEntityDescription(
     exists_fn: Callable[..., bool] = lambda _: True
     extra_attributes: Callable[..., dict] = lambda _: {}
     icon_fn: Callable[..., str] = lambda _: "mdi:eye"
+
+
+@dataclass
+class ElegooPrinterLightEntityDescription(
+    LightEntityDescription, ElegooPrinterSensorEntityDescriptionMixin
+):
+    """Light entity description for Elegoo Printers."""
+
+    available_fn: Callable[..., bool] = lambda self: self.coordinator.data
+    exists_fn: Callable[..., bool] = lambda _: True
+    extra_attributes: Callable[..., dict] = lambda _: {}
+    icon_fn: Callable[..., str] = lambda _: "mdi:lightbulb"
 
 
 PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
@@ -327,5 +340,20 @@ PRINTER_MJPEG_CAMERAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         value_fn=lambda _camera_url: _camera_url,
         available_fn=lambda _video: _video.status is not None
         and _video.status == ElegooVideoStatus.SUCCESS,
+    ),
+)
+
+PRINTER_FDM_LIGHTS: tuple[ElegooPrinterLightEntityDescription, ...] = (
+    ElegooPrinterLightEntityDescription(
+        key="second_light",
+        name="Chamber Light",
+        value_fn=lambda _light_status: _light_status.second_light,
+        available_fn=lambda _light_status: bool(_light_status.second_light),
+    ),
+    ElegooPrinterLightEntityDescription(
+        key="rgb_light",
+        name="RGB Light",
+        value_fn=lambda _light_status: _light_status.rgb_light,
+        available_fn=lambda _light_status: any(c > 0 for c in _light_status.rgb_light),
     ),
 )

@@ -22,11 +22,44 @@ class LightStatus:
     """Represents the status of the printer's lights."""
 
     def __init__(self, data: dict[str, Any] | None = None) -> None:
-        """Initialize a new LightStatus object."""
+        """
+        Initialize a LightStatus instance with secondary and RGB light values.
+
+        Parameters:
+            data (dict[str, Any] | None): Optional dictionary containing "SecondLight" and "RgbLight" keys. Defaults to all lights off if not provided.
+        """
         if data is None:
             data = {}
         self.second_light: int = data.get("SecondLight", 0)
         self.rgb_light: List[int] = data.get("RgbLight", [0, 0, 0])
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Return a dictionary representation of the LightStatus instance in the original JSON format.
+
+        Returns:
+            dict: A dictionary with keys "LightStatus", "SecondLight", and "RgbLight" reflecting the current light status.
+        """
+        return {
+            "LightStatus": {
+                "SecondLight": self.second_light,
+                "RgbLight": self.rgb_light,
+            }
+        }
+
+    def __repr__(self) -> str:
+        """
+        Return a developer-oriented string representation of the LightStatus instance, showing the values of second_light and rgb_light.
+        """
+        return (
+            f"LightStatus(second_light={self.second_light}, rgb_light={self.rgb_light})"
+        )
+
+    def __str__(self) -> str:
+        """
+        Return a user-friendly string describing the secondary light status and RGB light values.
+        """
+        return f"Secondary Light: {'On' if self.second_light else 'Off'}, RGB: {self.rgb_light}"
 
 
 class PrintInfo:
