@@ -25,7 +25,7 @@ async def async_setup_entry(
 ) -> None:
     """
     Asynchronously sets up Elegoo printer light entities for an FDM printer configuration entry.
-    
+
     Adds light entities to Home Assistant if the printer is identified as an FDM model supporting lights.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
@@ -50,7 +50,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
     ) -> None:
         """
         Initialize an Elegoo printer light entity with the provided coordinator and entity description.
-        
+
         Sets up unique identification, display name, and supported color modes based on the light type (RGB or On/Off).
         """
         super().__init__(coordinator)
@@ -83,7 +83,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
     def is_on(self) -> bool | None:
         """
         Indicates whether the light entity is currently on.
-        
+
         Returns:
             True if the light is on, False if off, or None if the light status is unavailable.
         """
@@ -111,7 +111,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         """
         Asynchronously turns the light on.
-        
+
         For RGB lights, sets the color to the specified RGB value or defaults to white if none is provided. For on/off lights, enables the light. Updates the printer with the new light status and requests a state refresh.
         """
         # Get the current status of ALL lights to avoid overriding the other light's state
@@ -133,7 +133,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
     async def async_turn_off(self, **kwargs: Any) -> None:
         """
         Asynchronously turns off the printer light.
-        
+
         For RGB lights, sets all color components to zero. For on/off lights, disables the light. Updates the printer with the new state and requests a data refresh.
         """
         light_status = self.light_status
@@ -151,7 +151,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
     def available(self) -> bool:
         """
         Return whether the light entity is currently available.
-        
+
         If the entity description provides an availability function, uses it with the current light status; otherwise, falls back to the base class availability check.
         """
         if self.entity_description.available_fn is not None:

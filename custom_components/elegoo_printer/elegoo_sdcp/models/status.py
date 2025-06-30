@@ -24,7 +24,7 @@ class LightStatus:
     def __init__(self, data: dict[str, Any] | None = None) -> None:
         """
         Initialize a LightStatus instance with secondary and RGB light values.
-        
+
         Parameters:
             data (dict[str, Any] | None): Optional dictionary containing "SecondLight" and "RgbLight" keys. Defaults to all lights off if not provided.
         """
@@ -36,7 +36,7 @@ class LightStatus:
     def to_dict(self) -> dict[str, Any]:
         """
         Return a dictionary representation of the LightStatus instance in the original JSON format.
-        
+
         Returns:
             dict: A dictionary with keys "LightStatus", "SecondLight", and "RgbLight" reflecting the current light status.
         """

@@ -140,7 +140,7 @@ class ElegooPrinterClient:
     async def get_current_print_thumbnail(self) -> str | None:
         """
         Asynchronously returns the thumbnail URL of the current print task, or None if unavailable.
-        
+
         Returns:
             str | None: The thumbnail URL of the current print task, or None if no task is active or no thumbnail exists.
         """
@@ -153,7 +153,7 @@ class ElegooPrinterClient:
     def set_light_status(self, light_status: LightStatus) -> None:
         """
         Set the printer's light status using the provided LightStatus configuration.
-        
+
         Parameters:
             light_status (LightStatus): The desired light status to apply to the printer.
         """
@@ -162,7 +162,7 @@ class ElegooPrinterClient:
     def _send_printer_cmd(self, cmd: int, data: dict[str, Any] | None = None) -> None:
         """
         Sends a JSON command to the printer over the WebSocket connection.
-        
+
         Raises:
             ElegooPrinterClientWebsocketError: If a WebSocket error occurs during sending.
             ElegooPrinterClientWebsocketConnectionError: If the WebSocket is not connected.
