@@ -347,7 +347,7 @@ PRINTER_FDM_LIGHTS: tuple[ElegooPrinterLightEntityDescription, ...] = (
     ElegooPrinterLightEntityDescription(
         key="chamber_light",
         name="Chamber Light",
-        value_fn=lambda _camera_url: _camera_url,
+        value_fn=lambda _light: _light,
         available_fn=lambda _light: _light,
     ),
 )

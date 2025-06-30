@@ -28,6 +28,28 @@ class LightStatus:
         self.second_light: int = data.get("SecondLight", 0)
         self.rgb_light: List[int] = data.get("RgbLight", [0, 0, 0])
 
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Returns a dictionary representation of the LightStatus object,
+        matching the original JSON structure.
+        """
+        return {
+            "LightStatus": {
+                "SecondLight": self.second_light,
+                "RgbLight": self.rgb_light,
+            }
+        }
+
+    def __repr__(self) -> str:
+        """Provides a developer-friendly string representation."""
+        return (
+            f"LightStatus(second_light={self.second_light}, rgb_light={self.rgb_light})"
+        )
+
+    def __str__(self) -> str:
+        """Provides a user-friendly string representation."""
+        return f"Secondary Light: {'On' if self.second_light else 'Off'}, RGB: {self.rgb_light}"
+
 
 class PrintInfo:
     """

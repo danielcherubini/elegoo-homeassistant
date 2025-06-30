@@ -15,10 +15,9 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVide
 
 from .const import DEBUG, LOGGER
 from .models.attributes import PrinterAttributes
-from .models.light import LightStatus
 from .models.print_history_detail import PrintHistoryDetail
 from .models.printer import Printer, PrinterData
-from .models.status import PrinterStatus
+from .models.status import LightStatus, PrinterStatus
 
 DISCOVERY_TIMEOUT = 5
 DISCOVERY_PORT = 3000
