@@ -22,6 +22,12 @@ if TYPE_CHECKING:
     from custom_components.elegoo_printer.elegoo_sdcp.models.printer import PrinterData
 
 
+class ElegooPrinterConnectionError(Exception):
+    """Exception to indicate a connection error with the Elegoo printer."""
+
+    pass
+
+
 class ElegooPrinterApiClient:
     """Sample API Client."""
 
