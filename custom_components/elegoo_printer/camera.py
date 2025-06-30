@@ -49,9 +49,9 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
         """
-        Initialize the Elegoo MJPEG camera entity with its description and printer client.
-
-        Assigns a unique ID based on the entity description and stores references to the printer client and MJPEG stream URL for later use.
+        Initialize an Elegoo MJPEG camera entity for a 3D printer.
+        
+        Creates the camera entity with a unique ID, assigns its description, and stores a reference to the printer client for accessing video streams.
         """
         MjpegCamera.__init__(
             self,
