@@ -118,7 +118,6 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
             self._elegoo_printer_client.set_light_status(light_status)
 
         LOGGER.debug("Turning on light '%s'", self.name)
-        # Request a refresh from the coordinator to get the updated state from the printer
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:

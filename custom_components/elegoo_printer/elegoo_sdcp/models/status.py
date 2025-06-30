@@ -30,8 +30,8 @@ class LightStatus:
         """
         if data is None:
             data = {}
-        self.second_light: int = data.get("SecondLight", 0)
-        self.rgb_light: List[int] = data.get("RgbLight", [0, 0, 0])
+        self.second_light: int | None = data.get("SecondLight")
+        self.rgb_light: List[int] | None = data.get("RgbLight")
 
     def to_dict(self) -> dict[str, Any]:
         """
