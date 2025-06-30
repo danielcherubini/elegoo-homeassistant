@@ -86,15 +86,8 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         Returns:
             True if the light is on, False if off, or None if the light status is unavailable.
         """
-        if not self.light_status:
-            return None
-
-        if self.entity_description.key == "rgb_light":
-            # The RGB light is on if any of its color components have a value > 0
-            return any(c > 0 for c in self.light_status.rgb_light)
-
         # For the standard on/off light
-        return bool(self.light_status.second_light)
+        return bool(self.entity_description.value_fn(self.light_status))
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
