@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -9,6 +10,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from custom_components.elegoo_printer.const import LOGGER
 from custom_components.elegoo_printer.elegoo_sdcp.client import (
     ElegooPrinterConnectionError,
+    ElegooPrinterNotConnectedError,
 )
 
 if TYPE_CHECKING:
@@ -33,13 +35,24 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         """
         try:
             await self.config_entry.runtime_data.client.async_get_attributes()
-            return await self.config_entry.runtime_data.client.async_get_status()
+            await self.config_entry.runtime_data.client.async_get_status()
+            if self.update_interval is not timedelta(seconds=2):
+                self.update_interval = timedelta(seconds=2)
         except ElegooPrinterConnectionError as e:
-            LOGGER.warning("Could not connect to Elegoo printer: %s", e)
-            raise UpdateFailed(f"Error communicating with Elegoo printer: {e}") from e
+            if self.update_interval is not timedelta(seconds=30):
+                self.update_interval = timedelta(seconds=30)
+            LOGGER.info("Elegoo printer is not connected: %s", e)
+            raise UpdateFailed("Elegoo printer is not connected") from e
+        except ElegooPrinterNotConnectedError:
+            connected = await self.config_entry.runtime_data.client.reconnect()
+            if connected:
+                LOGGER.info("Elegoo printer reconnected successfully.")
+                self.update_interval = timedelta(seconds=2)
         except OSError as e:
             LOGGER.warning(f"OSError while communicating with Elegoo printer: {e}")
             raise UpdateFailed("Unexpected Error") from e
+
+        return self.config_entry.runtime_data.client.printer_data
 
     def generate_unique_id(self, key: str) -> str:
         """

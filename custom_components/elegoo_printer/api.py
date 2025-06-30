@@ -30,6 +30,7 @@ class ElegooPrinterApiClient:
     _elegoo_printer: ElegooPrinterClient
     _logger: Logger
     _printer: Printer
+    printer_data: PrinterData
 
     def __init__(
         self, ip_address: str, config: MappingProxyType[str, Any], logger: Logger
@@ -90,7 +91,9 @@ class ElegooPrinterApiClient:
         Returns:
             PrinterData: The current status information of the printer.
         """
-        return self._elegoo_printer.get_printer_status()
+
+        self.printer_data = self._elegoo_printer.get_printer_status()
+        return self.printer_data
 
     async def async_get_attributes(self) -> PrinterData:
         """
@@ -99,7 +102,8 @@ class ElegooPrinterApiClient:
         Returns:
             PrinterData: The printer's attribute information.
         """
-        return self._elegoo_printer.get_printer_attributes()
+        self.printer_data = self._elegoo_printer.get_printer_attributes()
+        return self.printer_data
 
     async def async_get_current_thumbnail(self) -> str | None:
         """
@@ -119,7 +123,7 @@ class ElegooPrinterApiClient:
         """
         return await self._elegoo_printer.get_printer_current_task()
 
-    async def retry(self) -> bool:
+    async def reconnect(self) -> bool:
         """
         Asynchronously attempts to reconnect to the printer, optionally wrapping it with a proxy server.
 

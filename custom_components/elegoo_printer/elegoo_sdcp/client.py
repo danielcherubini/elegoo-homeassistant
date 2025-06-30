@@ -31,6 +31,12 @@ class ElegooPrinterConnectionError(Exception):
     pass
 
 
+class ElegooPrinterNotConnectedError(Exception):
+    """Exception to indicate that the Elegoo printer is not connected."""
+
+    pass
+
+
 class ElegooPrinterClient:
     """
     Client for interacting with an Elegoo printer.
@@ -172,19 +178,22 @@ class ElegooPrinterClient:
         if self.printer_websocket:
             try:
                 self.printer_websocket.send(json.dumps(payload))
+            except websocket.WebSocketTimeoutException as e:
+                self.logger.info("WebSocket timeout error during send")
+                raise ElegooPrinterConnectionError("WebSocket timeout") from e
             except (
                 websocket.WebSocketConnectionClosedException,
                 websocket.WebSocketException,
             ) as e:
-                self.logger.exception("WebSocket connection closed error")
+                self.logger.info("WebSocket connection closed error")
                 raise ElegooPrinterConnectionError from e
             except (
                 OSError
             ):  # Catch potential OS errors like Broken Pipe, Connection Refused
-                self.logger.exception("Operating System error during send")
+                self.logger.info("Operating System error during send")
                 raise  # Re-raise OS errors
         else:
-            raise ElegooPrinterConnectionError("Not connected")
+            raise ElegooPrinterNotConnectedError("Not connected")
 
     def discover_printer(
         self, broadcast_address: str = "<broadcast>"
