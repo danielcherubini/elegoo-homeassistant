@@ -26,10 +26,6 @@ DEFAULT_PORT = 54780
 WEBSOCKET_PORT = 3030
 
 
-class ElegooPrinterClientWebsocketError(Exception):
-    """Exception to indicate a general API error."""
-
-
 class ElegooPrinterClient:
     """
     Client for interacting with an Elegoo printer.
@@ -67,24 +63,12 @@ class ElegooPrinterClient:
         Returns:
             PrinterData: The latest printer status information.
         """
-        try:
-            self._send_printer_cmd(0)
-        except (ElegooPrinterClientWebsocketError, OSError):
-            self.logger.exception(
-                "Error sending printer command in process_printer_job"
-            )
-            raise
+        self._send_printer_cmd(0)
         return self.printer_data
 
     def get_printer_attributes(self) -> PrinterData:
         """Retreves the printer attributes."""
-        try:
-            self._send_printer_cmd(1)
-        except (ElegooPrinterClientWebsocketError, OSError):
-            self.logger.exception(
-                "Error sending printer command in process_printer_job"
-            )
-            raise
+        self._send_printer_cmd(1)
         return self.printer_data
 
     def set_printer_video_stream(self, *, toggle: bool) -> None:

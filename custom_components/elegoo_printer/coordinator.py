@@ -7,10 +7,6 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.exceptions import ConfigEntryNotReady, PlatformNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from custom_components.elegoo_printer.elegoo_sdcp.client import (
-    ElegooPrinterClientWebsocketError,
-)
-
 if TYPE_CHECKING:
     from .data import ElegooPrinterConfigEntry
 
@@ -44,10 +40,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                     )
             except Exception as e:
                 raise ConfigEntryNotReady from e
-        except (
-            ElegooPrinterClientWebsocketError,
-            OSError,
-        ) as exception:
+        except OSError as exception:
             raise ConfigEntryNotReady from exception
 
     def generate_unique_id(self, key: str) -> str:
