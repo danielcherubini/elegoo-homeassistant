@@ -31,6 +31,12 @@ class ElegooPrinterConnectionError(Exception):
     pass
 
 
+class ElegooPrinterNotConnectedError(Exception):
+    """Exception to indicate that the Elegoo printer is not connected."""
+
+    pass
+
+
 class ElegooPrinterClient:
     """
     Client for interacting with an Elegoo printer.
@@ -150,7 +156,8 @@ class ElegooPrinterClient:
         Send a JSON command to the printer over the WebSocket connection.
 
         Raises:
-            ElegooPrinterConnectionError: If the WebSocket is not connected or a WebSocket error occurs.
+            ElegooPrinterNotConnectedError: If the printer is not connected.
+            ElegooPrinterConnectionError: If a WebSocket error or timeout occurs during sending.
             OSError: If an operating system error occurs while sending the command.
         """
         ts = int(time.time())
@@ -172,27 +179,30 @@ class ElegooPrinterClient:
         if self.printer_websocket:
             try:
                 self.printer_websocket.send(json.dumps(payload))
+            except websocket.WebSocketTimeoutException as e:
+                self.logger.info("WebSocket timeout error during send")
+                raise ElegooPrinterConnectionError("WebSocket timeout") from e
             except (
                 websocket.WebSocketConnectionClosedException,
                 websocket.WebSocketException,
             ) as e:
-                self.logger.exception("WebSocket connection closed error")
+                self.logger.info("WebSocket connection closed error")
                 raise ElegooPrinterConnectionError from e
             except (
                 OSError
             ):  # Catch potential OS errors like Broken Pipe, Connection Refused
-                self.logger.exception("Operating System error during send")
+                self.logger.info("Operating System error during send")
                 raise  # Re-raise OS errors
         else:
-            raise ElegooPrinterConnectionError("Not connected")
+            raise ElegooPrinterNotConnectedError("Not connected")
 
     def discover_printer(
         self, broadcast_address: str = "<broadcast>"
     ) -> Printer | None:
         """
-        Discovers an Elegoo printer or proxy on the local network via UDP broadcast.
+        Broadcasts a UDP discovery message to locate an Elegoo printer or proxy on the local network.
 
-        Sends a discovery message and waits for a response containing printer information. Returns a `Printer` object if a valid response is received, or `None` if discovery fails or times out.
+        Sends a discovery request and waits for a response containing printer information. Returns a `Printer` object if a valid response is received, or `None` if discovery fails or times out.
 
         Parameters:
             broadcast_address (str): The network address to send the discovery message to. Defaults to "<broadcast>".
