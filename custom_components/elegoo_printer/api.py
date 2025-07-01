@@ -38,7 +38,7 @@ class ElegooPrinterApiClient:
     ) -> None:
         """
         Initialize the ElegooPrinterApiClient with a Printer object, configuration, and logger.
-        
+
         Creates an internal ElegooPrinterClient for communication with the specified printer and sets up proxy server usage based on the configuration.
         """
         self._ip_address = printer.ip_address
@@ -57,7 +57,7 @@ class ElegooPrinterApiClient:
     ) -> ElegooPrinterApiClient:
         """
         Asynchronously creates and initializes an ElegooPrinterApiClient instance from the provided configuration.
-        
+
         This method parses the configuration to construct a Printer object, optionally sets up a proxy server, and attempts to connect to the printer. Returns the initialized API client instance regardless of connection success.
         """
         json_config = json.dumps(dict(config))

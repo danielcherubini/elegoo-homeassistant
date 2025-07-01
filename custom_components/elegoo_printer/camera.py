@@ -25,7 +25,7 @@ async def async_setup_entry(
 ) -> None:
     """
     Asynchronously sets up Elegoo MJPEG camera entities for a printer configuration entry in Home Assistant.
-    
+
     Adds camera entities for FDM-type printers and enables the printer's video stream.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator

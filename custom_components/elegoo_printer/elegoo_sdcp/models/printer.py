@@ -56,7 +56,7 @@ class Printer:
     ) -> None:
         """
         Initialize a Printer instance from a JSON string and configuration mapping.
-        
+
         If a valid JSON string is provided, extracts printer attributes from the JSON data. If parsing fails or no data is given, initializes all attributes to default "nulled" values. The printer type is determined from the model name, and the proxy_enabled flag is set based on the configuration.
         """
         j = None
@@ -98,9 +98,9 @@ class Printer:
     def to_dict(self) -> dict:
         """
         Return a dictionary containing all attributes of the Printer instance.
-        
+
         The resulting dictionary includes connection details, identification, model information, printer type (as a string value or None), and proxy status.
-         
+
         Returns:
             dict: Dictionary with printer attributes and metadata.
         """

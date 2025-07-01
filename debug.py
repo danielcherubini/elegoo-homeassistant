@@ -20,7 +20,7 @@ logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)
 async def main() -> None:
     """
     Asynchronously discovers, connects to, and monitors an Elegoo printer for debugging.
-    
+
     Discovers available printers at the configured IP address, connects to the first discovered printer, retrieves printer attributes, enables the video stream, prints the video status if available, and enters a polling loop until interrupted.
     """
     stop_event = asyncio.Event()

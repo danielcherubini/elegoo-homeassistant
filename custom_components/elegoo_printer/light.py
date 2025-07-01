@@ -24,7 +24,7 @@ async def async_setup_entry(
 ) -> None:
     """
     Asynchronously sets up Elegoo printer light entities for FDM printers in Home Assistant.
-    
+
     Creates and adds a light entity for each supported FDM light type if the connected printer is identified as an FDM model.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator

@@ -43,14 +43,14 @@ async def _async_test_connection(
 ) -> Printer:
     """
     Asynchronously attempts to connect to an Elegoo printer using the given Printer object and user input configuration.
-    
+
     Parameters:
         printer_object (Printer): The printer to connect to.
         user_input (dict): Configuration options for the connection.
-    
+
     Returns:
         Printer: The validated Printer object if the connection is successful.
-    
+
     Raises:
         ElegooPrinterClientGeneralError: If the connection to the printer fails.
     """
@@ -69,11 +69,11 @@ async def _async_validate_input(
 ) -> dict:
     """
     Asynchronously validates user input for Elegoo printer configuration, attempting to match a discovered printer or locate one by IP address, and verifies connectivity.
-    
+
     Parameters:
         user_input (dict): User-provided configuration data, which may include a printer ID or IP address.
         discovered_printers (list[Printer] | None): Optional list of previously discovered Printer objects.
-    
+
     Returns:
         dict: A dictionary containing the validated printer object under the "printer" key (or None if validation fails), and any error details under the "errors" key.
     """
@@ -144,7 +144,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.ConfigFlowResult:
         """
         Initiates the configuration flow by attempting to discover available Elegoo printers.
-        
+
         If printers are discovered, proceeds to the printer selection step; otherwise, prompts the user to manually enter a printer IP address.
         """
         # Initiate discovery
@@ -166,14 +166,14 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.ConfigFlowResult:
         """
         Handle the configuration flow step for selecting a discovered Elegoo printer or opting for manual IP entry.
-        
+
         If user input is provided, processes the selection:
         - If "manual_ip" is chosen, advances to manual IP entry.
         - If a discovered printer is selected, proceeds to options configuration for that printer.
         - If the selection is invalid, displays an error.
-        
+
         If no input is provided, displays a form listing discovered printers and an option to enter an IP address manually.
-        
+
         Returns:
             The result of the configuration flow step, either advancing to the next step or displaying the selection form with any errors.
         """
@@ -235,7 +235,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.ConfigFlowResult:
         """
         Handles the configuration flow step for manually entering a printer's IP address.
-        
+
         If user input is provided, validates the IP and attempts to connect to the printer. On successful validation, creates a new configuration entry for the printer. If validation fails or no input is provided, displays the manual IP entry form with any relevant errors.
         """
         _errors = {}
@@ -264,7 +264,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.ConfigFlowResult:
         """
         Handle the configuration of additional options, such as proxy enabling, for a discovered Elegoo printer.
-        
+
         If user input is provided and a printer is selected, validates the combined configuration and creates a config entry upon success. Otherwise, displays a form to set the proxy enabled option, defaulting to the current printer setting.
         """
         _errors = {}
@@ -314,10 +314,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ElegooOptionsFlowHandler:
         """
         Return an options flow handler for managing configuration options of an Elegoo printer integration.
-        
+
         Parameters:
             config_entry (ConfigEntry): The configuration entry for which to create the options flow.
-        
+
         Returns:
             ElegooOptionsFlowHandler: The handler managing the options flow for the given configuration entry.
         """
