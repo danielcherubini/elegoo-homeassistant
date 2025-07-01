@@ -278,10 +278,10 @@ class PrinterType(Enum):
             "Saturn 4 Ultra 16k",
         ]
 
-        if any(fdm_printer in model for fdm_printer in fdm_printers):
+        if model in fdm_printers:
             return cls.FDM
 
-        if any(resin_printer in model for resin_printer in resin_printers):
+        if model in resin_printers:
             return cls.RESIN
 
         return None
