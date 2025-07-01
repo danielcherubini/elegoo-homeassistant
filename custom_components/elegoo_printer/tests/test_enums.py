@@ -1,4 +1,5 @@
 """Tests for the enums in the Elegoo SDCP models."""
+
 from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
 
 
