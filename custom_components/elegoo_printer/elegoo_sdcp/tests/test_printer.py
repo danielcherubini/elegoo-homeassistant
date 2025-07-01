@@ -1,4 +1,5 @@
 """Tests for the Printer model in the Elegoo SDCP models."""
+
 import json
 from types import MappingProxyType
 
