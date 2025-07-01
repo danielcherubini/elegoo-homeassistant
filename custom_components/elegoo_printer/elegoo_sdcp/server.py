@@ -119,6 +119,28 @@ class ElegooPrinterServer:
 
         self.logger.info("Proxy server stopped.")
 
+    def _initiate_shutdown(self):
+        """Schedules the server cleanup and stops the event loop."""
+        if hasattr(self, "_stopping"):
+            return
+
+        async def cleanup_and_stop():
+            """Cleans up resources and stops the loop."""
+            self._stopping = True
+            self.logger.info(
+                "Printer appears to be offline. Shutting down proxy server."
+            )
+            if self.session and not self.session.closed:
+                await self.session.close()
+            for runner in self.runners:
+                await runner.cleanup()
+            if self.loop:
+                self.loop.stop()
+            self.logger.info("Proxy server shutdown complete.")
+
+        if self.loop and self.loop.is_running():
+            asyncio.create_task(cleanup_and_stop())
+
     def get_printer(self) -> Printer:
         """
         Return a copy of the printer object with its IP address set to the local proxy server.
@@ -370,6 +392,9 @@ class ElegooPrinterServer:
                 for task in pending:
                     task.cancel()
 
+        except aiohttp.ClientConnectionError:
+            self.logger.info("Printer connection failed, initiating shutdown.")
+            self._initiate_shutdown()
         except Exception as e:
             self.logger.error(f"WebSocket proxy error: {e}")
         finally:
