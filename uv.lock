@@ -580,7 +580,7 @@ dependencies = [
     { name = "websockets" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "pytest" },
 ]
@@ -590,12 +590,13 @@ requires-dist = [
     { name = "colorlog", specifier = ">=6.9.0" },
     { name = "homeassistant", specifier = ">=2025.3.2" },
     { name = "loguru", specifier = ">=0.7.3" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.0" },
     { name = "ruff", specifier = ">=0.9.10" },
     { name = "websocket-client", specifier = ">=1.8.0" },
     { name = "websockets", specifier = ">=15.0.1" },
 ]
-provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.4.1" }]
 
 [[package]]
 name = "envs"

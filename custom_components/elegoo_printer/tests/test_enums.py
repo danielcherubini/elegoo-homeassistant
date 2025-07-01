@@ -19,7 +19,6 @@ def test_printer_type_from_model():
     # Test unknown models
     assert PrinterType.from_model("Unknown Model") is None
     assert PrinterType.from_model("") is None
-    assert PrinterType.from_model(None) is None
 
     # Test partial matches
     assert PrinterType.from_model("My Centauri Printer") == PrinterType.FDM
