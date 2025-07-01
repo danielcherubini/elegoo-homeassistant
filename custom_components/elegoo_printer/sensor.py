@@ -73,7 +73,7 @@ async def async_setup_entry(
                 ],
                 update_before_add=True,
             )
-    else:
+    elif printer_type == PrinterType.RESIN:
         for entity_description in PRINTER_STATUS_RESIN:
             async_add_entities(
                 [
