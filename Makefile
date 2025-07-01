@@ -69,6 +69,11 @@ lint:
 	@echo "--> Linting code with Ruff..."
 	@VIRTUAL_ENV=$(VENV) uv run ruff check .
 
+# Run tests using pytest
+test:
+	@echo "--> Running tests with pytest..."
+	@VIRTUAL_ENV=$(VENV) uv run pytest
+
 # Fixes any problems found in the code
 fix: 
 	@echo "--> Fixing code with Ruff..."
