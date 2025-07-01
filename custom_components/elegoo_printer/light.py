@@ -1,11 +1,11 @@
 from typing import Any
 
-from homeassistant.components.light import ATTR_RGB_COLOR, LightEntity
+from homeassistant.components.light import LightEntity
 from homeassistant.components.light.const import ColorMode
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.elegoo_printer.const import CONF_CENTAURI_CARBON, LOGGER
+from custom_components.elegoo_printer.const import CONF_CENTAURI_CARBON
 from custom_components.elegoo_printer.coordinator import ElegooDataUpdateCoordinator
 from custom_components.elegoo_printer.data import ElegooPrinterConfigEntry
 from custom_components.elegoo_printer.definitions import (
@@ -62,12 +62,8 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         )
         self._attr_name = f"{description.name}"
         # Configure color modes based on what this entity represents (from its description)
-        if self.entity_description.key == "rgb_light":
-            self._attr_supported_color_modes = {ColorMode.RGB}
-            self._attr_color_mode = ColorMode.RGB
-        else:
-            self._attr_supported_color_modes = {ColorMode.ONOFF}
-            self._attr_color_mode = ColorMode.ONOFF
+        self._attr_supported_color_modes = {ColorMode.ONOFF}
+        self._attr_color_mode = ColorMode.ONOFF
 
     @property
     def light_status(self) -> LightStatus:
@@ -87,37 +83,16 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         # For the standard on/off light
         return self.entity_description.value_fn(self.light_status)
 
-    @property
-    def rgb_color(self) -> tuple[int, int, int] | None:
-        """
-        Return the current RGB color of the light as a tuple, or None if unavailable or not an RGB light.
-        """
-        if self.entity_description.key == "rgb_light" and self.light_status:
-            rgb = self.light_status.rgb_light
-            if isinstance(rgb, list) and len(rgb) == 3:
-                return (rgb[0], rgb[1], rgb[2])
-        return None
-
     async def async_turn_on(self, **kwargs: Any) -> None:
         """
         Asynchronously turns the light on.
 
         For RGB lights, sets the color to the specified RGB value or defaults to white if none is provided. For on/off lights, enables the light. Updates the printer with the new light status and requests a state refresh.
         """
-        # Get the current status of ALL lights to avoid overriding the other light's state
         light_status = self.light_status
+        light_status.second_light = True
+        self._elegoo_printer_client.set_light_status(light_status)
 
-        if self.entity_description.key == "rgb_light":
-            # If a color is specified in the service call (e.g., from a color wheel), use it.
-            # Otherwise, when just turning "on", default to white.
-            rgb_color = kwargs.get(ATTR_RGB_COLOR, (255, 255, 255))
-            light_status.rgb_light = list(rgb_color)
-            self._elegoo_printer_client.set_light_status(light_status)
-        else:  # This is the on/off light
-            light_status.second_light = True
-            self._elegoo_printer_client.set_light_status(light_status)
-
-        LOGGER.debug("Turning on light '%s'", self.name)
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -127,15 +102,9 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         For RGB lights, sets all color channels to zero. For on/off lights, turns the light off. Updates the printer with the new state and requests a data refresh.
         """
         light_status = self.light_status
+        light_status.second_light = False
+        self._elegoo_printer_client.set_light_status(light_status)
 
-        if self.entity_description.key == "rgb_light":
-            light_status.rgb_light = [0, 0, 0]
-            self._elegoo_printer_client.set_light_status(light_status)
-        else:  # This is the on/off light
-            light_status.second_light = False
-            self._elegoo_printer_client.set_light_status(light_status)
-
-        LOGGER.debug("Turning off light '%s'", self.name)
         await self.coordinator.async_request_refresh()
 
     @property
