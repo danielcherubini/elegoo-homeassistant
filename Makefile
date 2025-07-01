@@ -19,7 +19,7 @@ VENV ?= .venv
 # --- PHONY TARGETS ---
 # .PHONY ensures that make will run the command even if a file with the same
 # name as the target exists.
-.PHONY: all setup start debug devcontainer format check ruff clean help
+.PHONY: all setup start debug devcontainer format check lint clean help
 
 # --- DEFAULT TARGET ---
 # The default target that runs when you just type 'make'
@@ -70,7 +70,7 @@ check:
 	@VIRTUAL_ENV=$(VENV) uv run ruff check . --fix
 
 # A convenience target to run both format and check.
-ruff: format check
+lint: format check
 
 # --- CLEANUP ---
 # Cleans up Python bytecode, cache directories, and the virtual environment.
@@ -96,7 +96,7 @@ help:
 	@echo "  devcontainer         Run the application within a devcontainer."
 	@echo "  format               Format code using Ruff."
 	@echo "  check                Check for linting errors using Ruff."
-	@echo "  ruff                 Run both format and check."
+	@echo "  lint                 Run both format and check."
 	@echo "  clean                Remove Python artifacts and the virtual environment."
 	@echo "  help                 Show this help message."
 	@echo ""

@@ -51,17 +51,25 @@ class Printer:
 
     def __init__(
         self,
-        data: str | dict | None = None,
+        data: str | None = None,
         config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
         """
-        Initialize a new Printer object from a JSON string or dictionary.
+        Initialize a new Printer object from a JSON string.
 
         Args:
-            data (str | dict | None): A JSON string or dictionary containing printer data.
-                                      Defaults to None, creating a "nulled" printer.
+            data (str | None): A JSON string containing printer data.
+                               Defaults to None, creating a "nulled" printer.
         """
-        if data is None:
+        j = None
+        if data:
+            try:
+                j: dict = json.loads(data)  # Decode the JSON string
+            except json.JSONDecodeError:
+                # Handle the error appropriately (e.g., log it, raise an exception)
+                j = None
+
+        if j is None:
             self.connection: str | None = None
             self.name: str = ""
             self.model: str | None = None
@@ -72,15 +80,6 @@ class Printer:
             self.id: str | None = None
             self.printer_type: PrinterType | None = None
         else:
-            if isinstance(data, str):
-                try:
-                    j: dict = json.loads(data)  # Decode the JSON string
-                except json.JSONDecodeError:
-                    # Handle the error appropriately (e.g., log it, raise an exception)
-                    return
-            else:
-                j = data
-
             self.connection = j.get("Id")
 
             data_dict = j.get("Data", j)

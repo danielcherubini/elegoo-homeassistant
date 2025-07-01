@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -65,7 +66,8 @@ class ElegooPrinterApiClient:
         Returns:
             ElegooPrinterApiClient | None: The initialized API client instance, or None if initialization fails.
         """
-        printer = Printer(config)
+        json_config = json.dumps(dict(config))
+        printer = Printer(json_config)
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
 
         self = ElegooPrinterApiClient(printer, config=config, logger=logger)
