@@ -2,7 +2,7 @@
   "name": "danielcherubini/elegoo_printer",
   "image": "mcr.microsoft.com/devcontainers/python:3.13",
   "postCreateCommand": "make setup",
-  "forwardPorts": [8123],
+  "forwardPorts": [8123, 3000, 3030, 3031],
   "remoteEnv": {
     "DEBUG": "false",
     "VENV": ".dev",
@@ -46,4 +46,3 @@
     }
   }
 }
-
