@@ -119,9 +119,7 @@ class Printer:
             "protocol": self.protocol,
             "firmware": self.firmware,
             "id": self.id,
-            "printer_type": self.printer_type.value
-            if self.printer_type
-            else None,
+            "printer_type": self.printer_type.value if self.printer_type else None,
             "proxy_enabled": self.proxy_enabled,
         }
 

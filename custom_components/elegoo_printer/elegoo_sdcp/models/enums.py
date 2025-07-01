@@ -242,6 +242,7 @@ class ErrorStatusReason(Enum):
         except ValueError:
             return None
 
+
 class PrinterType(Enum):
     """
     Represents the type of printer.

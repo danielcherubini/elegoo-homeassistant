@@ -115,7 +115,9 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         self._attr_unique_id = coordinator.generate_unique_id(
             self.entity_description.key
         )
-        printer_type = coordinator.config_entry.runtime_data.client._printer.printer_type
+        printer_type = (
+            coordinator.config_entry.runtime_data.client._printer.printer_type
+        )
 
         """This block fixes the issues with the Centurai Carbon"""
         if (

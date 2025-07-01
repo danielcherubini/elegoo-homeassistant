@@ -196,9 +196,7 @@ class ElegooPrinterClient:
         else:
             raise ElegooPrinterNotConnectedError("Not connected")
 
-    def discover_printer(
-        self, broadcast_address: str = "<broadcast>"
-    ) -> list[Printer]:
+    def discover_printer(self, broadcast_address: str = "<broadcast>") -> list[Printer]:
         """
         Broadcasts a UDP discovery message to locate Elegoo printers or proxies on the local network.
 
