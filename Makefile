@@ -39,7 +39,7 @@ setup:
 	@echo "--> Creating virtual environment in [$(VENV)]..."
 	@uv venv $(VENV) --python $(PYTHON)
 	@echo "--> Syncing dependencies into [$(VENV)]..."
-	@VIRTUAL_ENV=$(VENV) uv sync --active --all-extras --dev --locked
+	@VIRTUAL_ENV=$(VENV) uv sync --active --all-extras --dev
 	@echo "--> Setup complete. Environment is ready."
 
 # --- DEVELOPMENT TASKS ---
