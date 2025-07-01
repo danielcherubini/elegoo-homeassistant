@@ -24,9 +24,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """
-    Asynchronously sets up Elegoo Printer MJPEG camera entities for a Home Assistant configuration entry.
-
-    Initializes and adds camera entities if the Centauri Carbon feature is enabled in the printer configuration, and enables the printer's video stream.
+    Asynchronously sets up Elegoo MJPEG camera entities for a printer configuration entry in Home Assistant.
+    
+    Adds camera entities for FDM-type printers and enables the printer's video stream.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
     printer_type = coordinator.config_entry.runtime_data.client._printer.printer_type

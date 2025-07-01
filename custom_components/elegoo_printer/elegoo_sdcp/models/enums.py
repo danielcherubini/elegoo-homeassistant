@@ -233,7 +233,7 @@ class ErrorStatusReason(Enum):
     def from_int(cls, status_int: int) -> Optional["ErrorStatusReason"]:
         """
         Convert an integer to the corresponding ErrorStatusReason enum member.
-
+        
         Returns:
             The matching ErrorStatusReason member if the integer is valid; otherwise, None.
         """
@@ -258,13 +258,13 @@ class PrinterType(Enum):
     @classmethod
     def from_model(cls, model: str) -> Optional["PrinterType"]:
         """
-        Determine the printer type from the model name.
-
-        Args:
-            model (str): The model name of the printer.
-
+        Returns the printer type (RESIN or FDM) based on the provided model name.
+        
+        Parameters:
+            model (str): The printer model name to evaluate.
+        
         Returns:
-            PrinterType: The type of printer (RESIN or FDM), or None if no match is found.
+            PrinterType or None: The corresponding printer type if the model matches a known FDM or resin printer, otherwise None.
         """
         if not model:
             return None
