@@ -121,8 +121,6 @@ class ElegooPrinterServer:
         self.logger.info("Proxy server stopped.")
         self._connection_failure_count = 0
 
-    
-
     def get_printer(self) -> Printer:
         """
         Return a copy of the printer object with its IP address set to the local proxy server.
@@ -375,14 +373,22 @@ class ElegooPrinterServer:
                 for task in pending:
                     task.cancel()
 
-        except (aiohttp.ClientConnectionError, asyncio.TimeoutError, aiohttp.ClientError) as e:
+        except (
+            aiohttp.ClientConnectionError,
+            asyncio.TimeoutError,
+            aiohttp.ClientError,
+        ) as e:
             self.logger.warning(f"WebSocket connection to printer failed: {e}")
             self._connection_failure_count += 1
             if self._connection_failure_count >= 3:  # Threshold for shutdown
-                self.logger.info("Printer connection consistently failing, initiating shutdown.")
+                self.logger.info(
+                    "Printer connection consistently failing, initiating shutdown."
+                )
                 self.stop()
             else:
-                self.logger.info(f"Connection failure {self._connection_failure_count}/3. Retrying...")
+                self.logger.info(
+                    f"Connection failure {self._connection_failure_count}/3. Retrying..."
+                )
         except Exception as e:
             self.logger.error(f"WebSocket proxy error: {e}")
         finally:
