@@ -13,11 +13,12 @@ from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import selector
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+from .elegoo_sdcp.models.printer import Printer
 
-from .const import CONF_CENTAURI_CARBON, CONF_PROXY_ENABLED, DOMAIN, LOGGER
+from .const import CONF_PROXY_ENABLED, DOMAIN, LOGGER
 
 if TYPE_CHECKING:
-    from .elegoo_sdcp.models.printer import Printer
+    pass
 
 OPTIONS_SCHEMA = vol.Schema(
     {
@@ -29,11 +30,6 @@ OPTIONS_SCHEMA = vol.Schema(
             ),
         ),
         vol.Required(
-            CONF_CENTAURI_CARBON,
-        ): selector.BooleanSelector(
-            selector.BooleanSelectorConfig(),
-        ),
-        vol.Required(
             CONF_PROXY_ENABLED,
         ): selector.BooleanSelector(
             selector.BooleanSelectorConfig(),
@@ -42,56 +38,69 @@ OPTIONS_SCHEMA = vol.Schema(
 )
 
 
-def _test_credentials(user_input: Dict[str, Any]) -> Printer:
+async def _async_test_connection(
+    printer_object: Printer, user_input: Dict[str, Any]
+) -> Printer:
     """
-    Attempts to discover an Elegoo printer at the specified IP address.
-
-    Args:
-        ip_address: The IP address of the printer to discover.
-        centauri_carbon: Whether to use seconds instead of milliseconds for time values.
-
-    Returns:
-        The discovered Printer object.
-
-    Raises:
-        ElegooPrinterClientGeneralError: If no printer is found at the given IP address.
+    Attempts to connect to an Elegoo printer using the provided Printer object.
     """
-    ip_address = user_input[CONF_IP_ADDRESS]
-
     elegoo_printer = ElegooPrinterClient(
-        ip_address, config=MappingProxyType(user_input), logger=LOGGER
+        printer_object.ip_address, config=MappingProxyType(user_input), logger=LOGGER
     )
-    printer = elegoo_printer.discover_printer(ip_address)
-    if printer:
-        return printer
+    if await elegoo_printer.connect_printer(printer_object):
+        return printer_object
     raise ElegooPrinterClientGeneralError(
-        f"No printer found at IP address {ip_address}"
+        f"Failed to connect to printer {printer_object.name} at {printer_object.ip_address}"
     )
 
 
-async def _async_validate_input(user_input: dict[str, Any]) -> dict:
+async def _async_validate_input(
+    user_input: dict[str, Any], discovered_printers: list[Printer] | None = None
+) -> dict:
     """
     Validate user input for Elegoo printer configuration and return the discovered printer or error details.
-
-    Parameters:
-        user_input (dict): Dictionary containing configuration data for the printer.
-
-    Returns:
-        dict: A dictionary with keys "printer" (the discovered printer object or None) and "errors" (error details or None).
     """
     _errors = {}
-    try:
-        printer = _test_credentials(user_input)
-        return {"printer": printer, "errors": None}
-    except ElegooPrinterClientGeneralError as exception:  # New specific catch
-        LOGGER.error("No printer found: %s", exception)
-        _errors["base"] = "no_printer_found"  # Or "cannot_connect"
-    except PlatformNotReady as exception:
-        LOGGER.error(exception)
-        _errors["base"] = "connection"
-    except (OSError, Exception) as exception:
-        LOGGER.exception(exception)
-        _errors["base"] = "unknown"
+    printer_object: Printer | None = None
+
+    if "printer_id" in user_input and discovered_printers:
+        # User selected a discovered printer
+        selected_printer_id = user_input["printer_id"]
+        for p in discovered_printers:
+            if p.id == selected_printer_id:
+                printer_object = p
+                break
+        if not printer_object:
+            _errors["base"] = "invalid_printer_selection"
+    elif CONF_IP_ADDRESS in user_input:
+        # Manual IP entry
+        ip_address = user_input[CONF_IP_ADDRESS]
+        elegoo_printer = ElegooPrinterClient(
+            ip_address, config=MappingProxyType(user_input), logger=LOGGER
+        )
+        printers = elegoo_printer.discover_printer(ip_address)
+        if printers:
+            printer_object = printers[0]
+        else:
+            _errors["base"] = "no_printer_found"
+
+    if printer_object:
+        try:
+            # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled
+            validated_printer = await _async_test_connection(printer_object, user_input)
+            return {"printer": validated_printer, "errors": None}
+        except ElegooPrinterClientGeneralError as exception:
+            LOGGER.error("No printer found: %s", exception)
+            _errors["base"] = "no_printer_found"
+        except PlatformNotReady as exception:
+            LOGGER.error(exception)
+            _errors["base"] = "connection"
+        except (OSError, Exception) as exception:
+            LOGGER.exception(exception)
+            _errors["base"] = "unknown"
+    else:
+        _errors["base"] = "no_printer_selected_or_ip_provided"
+
     return {"printer": None, "errors": _errors}
 
 
@@ -105,14 +114,96 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
     MINOR_VERSION = 3
 
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        self.discovered_printers: list[Printer] = []
+        self.selected_printer: Printer | None = None
+
     async def async_step_user(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
         """
-        Handles the initial step of the Elegoo printer configuration flow.
+        Handle the initial step.
+        """
+        # Initiate discovery
+        elegoo_printer_client = ElegooPrinterClient(
+            "0.0.0.0", logger=LOGGER
+        )  # IP doesn't matter for discovery
+        self.discovered_printers = await self.hass.async_add_executor_job(
+            elegoo_printer_client.discover_printer
+        )
 
-        Prompts the user for printer connection details, validates the provided IP address by attempting to discover the printer, and creates a new configuration entry if successful. Displays relevant error messages if connection or validation fails.
+        if self.discovered_printers:
+            return await self.async_step_discover_printers()
+        else:
+            return await self.async_step_manual_ip()
+
+    async def async_step_discover_printers(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """
+        Handle the discovery step.
+        """
+        _errors = {}
+
+        if user_input is not None:
+            if user_input["selection"] == "manual_ip":
+                return await self.async_step_manual_ip()
+
+            selected_printer_id = user_input["selection"]
+            self.selected_printer = next(
+                (p for p in self.discovered_printers if p.id == selected_printer_id),
+                None,
+            )
+
+            if self.selected_printer:
+                # Proceed to the next step to get centauri_carbon and proxy_enabled
+                return self.async_show_form(
+                    step_id="manual_options",
+                    data_schema=vol.Schema(
+                        {
+                            vol.Required(
+                                CONF_PROXY_ENABLED,
+                                default=self.selected_printer.proxy_enabled,
+                            ): selector.BooleanSelector(
+                                selector.BooleanSelectorConfig(),
+                            ),
+                        }
+                    ),
+                    errors=_errors,
+                )
+            else:
+                _errors["base"] = "invalid_printer_selection"
+
+        printer_options = [
+            {"value": p.id, "label": f"{p.name} ({p.ip_address})"}
+            for p in self.discovered_printers
+        ]
+        printer_options.append({"value": "manual_ip", "label": "Enter IP manually"})
+
+        return self.async_show_form(
+            step_id="discover_printers",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("selection"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=printer_options,
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+            errors=_errors,
+        )
+
+    async def async_step_manual_ip(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """
+        Handle the manual IP entry step.
         """
         _errors = {}
         if user_input is not None:
@@ -120,22 +211,64 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             _errors = validation_result["errors"]
             printer_object: Printer = validation_result["printer"]
 
-            printer_object.ip_address = user_input[CONF_IP_ADDRESS]
-            printer_object.centauri_carbon = user_input[CONF_CENTAURI_CARBON]
-            printer_object.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+            if not _errors:
+                await self.async_set_unique_id(unique_id=printer_object.id)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=printer_object.name or "Elegoo Printer",
+                    data=printer_object.to_dict(),
+                )
+
+        return self.async_show_form(
+            step_id="manual_ip",
+            data_schema=self.add_suggested_values_to_schema(OPTIONS_SCHEMA, user_input),
+            errors=_errors,
+        )
+
+    async def async_step_manual_options(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """
+        Handle the manual options for a discovered printer.
+        """
+        _errors = {}
+        if user_input is not None and self.selected_printer:
+            # Combine selected printer info with manual options
+            combined_input = {
+                CONF_IP_ADDRESS: self.selected_printer.ip_address,
+                CONF_PROXY_ENABLED: user_input[CONF_PROXY_ENABLED],
+            }
+            validation_result = await _async_validate_input(
+                combined_input, discovered_printers=self.discovered_printers
+            )
+            _errors = validation_result["errors"]
+            printer_object: Printer = validation_result["printer"]
 
             if not _errors:
                 await self.async_set_unique_id(unique_id=printer_object.id)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=printer_object.name,
-                    description=printer_object.name,
+                    title=printer_object.name or "Elegoo Printer",
                     data=printer_object.to_dict(),
                 )
 
+        default_proxy_enabled = (
+            self.selected_printer.proxy_enabled if self.selected_printer else False
+        )
+
         return self.async_show_form(
-            step_id="user",
-            data_schema=self.add_suggested_values_to_schema(OPTIONS_SCHEMA, user_input),
+            step_id="manual_options",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_PROXY_ENABLED,
+                        default=default_proxy_enabled,
+                    ): selector.BooleanSelector(
+                        selector.BooleanSelectorConfig(),
+                    ),
+                }
+            ),
             errors=_errors,
         )
 

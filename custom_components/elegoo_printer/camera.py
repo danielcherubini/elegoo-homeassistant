@@ -2,19 +2,20 @@ from homeassistant.components.mjpeg.camera import MjpegCamera
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.elegoo_printer import ElegooDataUpdateCoordinator
-from custom_components.elegoo_printer.const import (
-    CONF_CENTAURI_CARBON,
-    CONF_PROXY_ENABLED,
-)
+from custom_components.elegoo_printer.const import CONF_PROXY_ENABLED
 from custom_components.elegoo_printer.data import ElegooPrinterConfigEntry
 from custom_components.elegoo_printer.definitions import (
     PRINTER_MJPEG_CAMERAS,
     ElegooPrinterSensorEntityDescription,
 )
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import ElegooVideoStatus
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+    ElegooVideoStatus,
+    PrinterType,
+)
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
+
+from .coordinator import ElegooDataUpdateCoordinator
 
 
 async def async_setup_entry(
@@ -28,9 +29,10 @@ async def async_setup_entry(
     Initializes and adds camera entities if the Centauri Carbon feature is enabled in the printer configuration, and enables the printer's video stream.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
+    printer_type = coordinator.config_entry.runtime_data.client._printer.printer_type
 
     for camera in PRINTER_MJPEG_CAMERAS:
-        if coordinator.config_entry.data.get(CONF_CENTAURI_CARBON, False):
+        if printer_type == PrinterType.FDM:
             async_add_entities([ElegooMjpegCamera(hass, coordinator, camera)])
 
     printer_client: ElegooPrinterClient = (

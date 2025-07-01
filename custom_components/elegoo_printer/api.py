@@ -5,8 +5,6 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.const import CONF_IP_ADDRESS
-
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
     PrintHistoryDetail,
@@ -14,7 +12,7 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail im
 from custom_components.elegoo_printer.elegoo_sdcp.models.printer import Printer
 from custom_components.elegoo_printer.elegoo_sdcp.server import ElegooPrinterServer
 
-from .const import CONF_CENTAURI_CARBON, CONF_PROXY_ENABLED
+from .const import CONF_PROXY_ENABLED
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -26,29 +24,36 @@ class ElegooPrinterApiClient:
     """Sample API Client."""
 
     _ip_address: str
-    _centauri_carbon: bool
     _elegoo_printer: ElegooPrinterClient
     _logger: Logger
     _printer: Printer
     printer_data: PrinterData
 
     def __init__(
-        self, ip_address: str, config: MappingProxyType[str, Any], logger: Logger
+        self,
+        printer: Printer,
+        config: MappingProxyType[str, Any],
+        logger: Logger,
     ) -> None:
         """
         Initialize the ElegooPrinterApiClient with the printer's IP address, configuration, and logger.
 
         Sets internal flags for printer model type and proxy server usage based on the provided configuration.
         """
-        self._ip_address = ip_address
-        self._centauri_carbon = config.get(CONF_CENTAURI_CARBON, False)
+        self._ip_address = printer.ip_address
         self._proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
         self._logger = logger
+        self._printer = printer
+        self._elegoo_printer = ElegooPrinterClient(
+            printer.ip_address, config=config, logger=logger
+        )
 
     @classmethod
     async def async_create(
-        cls, config: MappingProxyType[str, Any], logger: Logger
-    ) -> ElegooPrinterApiClient | None:
+        cls,
+        config: MappingProxyType[str, Any],
+        logger: Logger,
+    ) -> ElegooPrinterApiClient:
         """
         Asynchronously creates and initializes an ElegooPrinterApiClient instance using the provided configuration.
 
@@ -60,19 +65,14 @@ class ElegooPrinterApiClient:
         Returns:
             ElegooPrinterApiClient | None: The initialized API client instance, or None if initialization fails.
         """
-        ip_address = config.get(CONF_IP_ADDRESS)
+        printer = Printer(config)
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
 
-        if ip_address is None:
-            return None
+        self = ElegooPrinterApiClient(printer, config=config, logger=logger)
 
-        self = ElegooPrinterApiClient(ip_address, config=config, logger=logger)
-
-        elegoo_printer = ElegooPrinterClient(ip_address, config=config, logger=logger)
-        printer = elegoo_printer.discover_printer(ip_address)
-
-        if printer is None:
-            return None
+        elegoo_printer = ElegooPrinterClient(
+            printer.ip_address, config=config, logger=logger
+        )
 
         if proxy_server_enabled:
             try:

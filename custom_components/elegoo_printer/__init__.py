@@ -43,6 +43,7 @@ async def async_setup_entry(
         logger=LOGGER,
         name=DOMAIN,
         update_interval=timedelta(seconds=2),
+        config_entry=entry,
     )
 
     client = await ElegooPrinterApiClient.async_create(

@@ -4,13 +4,11 @@ import json
 from types import MappingProxyType
 from typing import Any
 
-from custom_components.elegoo_printer.const import (
-    CONF_CENTAURI_CARBON,
-    CONF_PROXY_ENABLED,
-)
+from custom_components.elegoo_printer.const import CONF_PROXY_ENABLED
 from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
 
 from .attributes import PrinterAttributes
+from .enums import PrinterType
 from .print_history_detail import PrintHistoryDetail
 from .status import PrinterStatus
 
@@ -28,6 +26,7 @@ class Printer:
         protocol (str): The protocol version used by the printer.
         firmware (str): The firmware version of the printer.
         id (str): The unique ID of the printer's mainboard.
+        printer_type (PrinterType): The type of printer (RESIN or FDM).
 
     Example usage:
 
@@ -52,18 +51,17 @@ class Printer:
 
     def __init__(
         self,
-        json_string: str | None = None,
+        data: str | dict | None = None,
         config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
         """
-        Initialize a new Printer object from a JSON string.
+        Initialize a new Printer object from a JSON string or dictionary.
 
         Args:
-            json_string (str, optional): A JSON string containing printer data.
-                                         Defaults to None, creating a "nulled" printer.
-
+            data (str | dict | None): A JSON string or dictionary containing printer data.
+                                      Defaults to None, creating a "nulled" printer.
         """
-        if json_string is None:
+        if data is None:
             self.connection: str | None = None
             self.name: str = ""
             self.model: str | None = None
@@ -72,30 +70,35 @@ class Printer:
             self.protocol: str | None = None
             self.firmware: str | None = None
             self.id: str | None = None
+            self.printer_type: PrinterType | None = None
         else:
-            try:
-                j: dict = json.loads(json_string)  # Decode the JSON string
-            except json.JSONDecodeError:
-                # Handle the error appropriately (e.g., log it, raise an exception)
-                return
+            if isinstance(data, str):
+                try:
+                    j: dict = json.loads(data)  # Decode the JSON string
+                except json.JSONDecodeError:
+                    # Handle the error appropriately (e.g., log it, raise an exception)
+                    return
+            else:
+                j = data
 
             self.connection = j.get("Id")
 
-            data = j.get("Data", {})
-            self.name = data.get("Name")
-            self.model = data.get("MachineName")
-            self.brand = data.get("BrandName")
-            self.ip_address = data.get("MainboardIP")
-            self.protocol = data.get("ProtocolVersion")
-            self.firmware = data.get("FirmwareVersion")
-            self.id = data.get("MainboardID")
-
-            self.protocol = data.get("ProtocolVersion")
-            self.firmware = data.get("FirmwareVersion")
-            self.id = data.get("MainboardID")
+            data_dict = j.get("Data", j)
+            self.name = data_dict.get("Name")
+            self.model = data_dict.get("MachineName")
+            self.brand = data_dict.get("BrandName")
+            self.ip_address = data_dict.get("MainboardIP") or data_dict.get(
+                "ip_address"
+            )
+            self.protocol = data_dict.get("ProtocolVersion")
+            self.firmware = data_dict.get("FirmwareVersion")
+            self.id = data_dict.get("MainboardID")
+            if self.model and "Centauri Carbon" in self.model:
+                self.printer_type = PrinterType.FDM
+            else:
+                self.printer_type = PrinterType.RESIN
 
         # Initialize config-based attributes for all instances
-        self.centauri_carbon = config.get(CONF_CENTAURI_CARBON, False)
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
 
     def to_dict(self) -> dict:
@@ -116,7 +119,9 @@ class Printer:
             "protocol": self.protocol,
             "firmware": self.firmware,
             "id": self.id,
-            "centauri_carbon": self.centauri_carbon,
+            "printer_type": self.printer_type.value
+            if self.printer_type
+            else None,
             "proxy_enabled": self.proxy_enabled,
         }
 

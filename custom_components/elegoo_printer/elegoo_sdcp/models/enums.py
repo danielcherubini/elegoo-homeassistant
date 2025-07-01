@@ -241,3 +241,15 @@ class ErrorStatusReason(Enum):
             return cls(status_int)
         except ValueError:
             return None
+
+class PrinterType(Enum):
+    """
+    Represents the type of printer.
+
+    Attributes:
+        RESIN: A resin-based 3D printer.
+        FDM: A fused deposition modeling (FDM) 3D printer.
+    """
+
+    RESIN = "resin"
+    FDM = "fdm"

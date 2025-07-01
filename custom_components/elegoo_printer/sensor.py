@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.const import UnitOfTime
 
-from custom_components.elegoo_printer.const import CONF_CENTAURI_CARBON
-
 from .definitions import (
     PRINTER_ATTRIBUTES_COMMON,
     PRINTER_ATTRIBUTES_RESIN,
@@ -17,6 +15,7 @@ from .definitions import (
     PRINTER_STATUS_RESIN,
     ElegooPrinterSensorEntityDescription,
 )
+from .elegoo_sdcp.models.enums import PrinterType
 from .entity import ElegooPrinterEntity
 
 if TYPE_CHECKING:
@@ -41,9 +40,7 @@ async def async_setup_entry(
     Creates and adds sensor entities for each printer status and attribute description, ensuring they are updated before being added to Home Assistant.
     """
     coordinator: ElegooDataUpdateCoordinator = entry.runtime_data.coordinator
-    fdm_printer: bool = entry.runtime_data.coordinator.config_entry.data.get(
-        CONF_CENTAURI_CARBON, False
-    )
+    printer_type = coordinator.config_entry.runtime_data.client._printer.printer_type
     for entity_description in PRINTER_STATUS_COMMON:
         async_add_entities(
             [
@@ -65,7 +62,7 @@ async def async_setup_entry(
             update_before_add=True,
         )
 
-    if fdm_printer:
+    if printer_type == PrinterType.FDM:
         for entity_description in PRINTER_STATUS_FDM:
             async_add_entities(
                 [
@@ -118,11 +115,12 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         self._attr_unique_id = coordinator.generate_unique_id(
             self.entity_description.key
         )
+        printer_type = coordinator.config_entry.runtime_data.client._printer.printer_type
 
         """This block fixes the issues with the Centurai Carbon"""
         if (
             self.entity_description.device_class == SensorDeviceClass.DURATION
-            and coordinator.config_entry.data.get(CONF_CENTAURI_CARBON, False)
+            and printer_type == PrinterType.FDM
         ):
             self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
 

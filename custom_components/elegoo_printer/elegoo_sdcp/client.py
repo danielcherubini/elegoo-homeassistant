@@ -198,18 +198,20 @@ class ElegooPrinterClient:
 
     def discover_printer(
         self, broadcast_address: str = "<broadcast>"
-    ) -> Printer | None:
+    ) -> list[Printer]:
         """
-        Broadcasts a UDP discovery message to locate an Elegoo printer or proxy on the local network.
+        Broadcasts a UDP discovery message to locate Elegoo printers or proxies on the local network.
 
-        Sends a discovery request and waits for a response containing printer information. Returns a `Printer` object if a valid response is received, or `None` if discovery fails or times out.
+        Sends a discovery request and waits for responses containing printer information within a timeout.
+        Returns a list of `Printer` objects for all valid responses received.
 
         Parameters:
             broadcast_address (str): The network address to send the discovery message to. Defaults to "<broadcast>".
 
         Returns:
-            Printer | None: The discovered printer object if successful; otherwise, None.
+            list[Printer]: A list of discovered printer objects. Returns an empty list if no printers are found or if discovery times out.
         """
+        discovered_printers: list[Printer] = []
         self.logger.info("Broadcasting for printer/proxy discovery...")
         msg = b"M99999"
         with socket.socket(
@@ -219,23 +221,24 @@ class ElegooPrinterClient:
             sock.settimeout(DISCOVERY_TIMEOUT)
             try:
                 sock.sendto(msg, (broadcast_address, DISCOVERY_PORT))
-                data, addr = sock.recvfrom(8192)
-                self.logger.info(f"Discovery response received from {addr}")
-            except TimeoutError:
-                self.logger.warning("Printer/proxy discovery timed out.")
-                return None
+                while True:
+                    try:
+                        data, addr = sock.recvfrom(8192)
+                        self.logger.info(f"Discovery response received from {addr}")
+                        printer = self._save_discovered_printer(data)
+                        if printer:
+                            discovered_printers.append(printer)
+                    except socket.timeout:
+                        break  # Timeout, no more responses
             except OSError as e:
                 self.logger.exception(f"Socket error during discovery: {e}")
-                return None
+                return []
 
-            # The response from the proxy will be JSON.
-            printer = self._save_discovered_printer(data)
-            if printer:
-                self.logger.debug("Discovery successful.")
-                self.printer = printer
-                return printer
-
-        return None
+        if not discovered_printers:
+            self.logger.warning("No printers found during discovery.")
+        else:
+            self.logger.debug(f"Discovered {len(discovered_printers)} printer(s).")
+        return discovered_printers
 
     def _save_discovered_printer(self, data: bytes) -> Printer | None:
         try:
