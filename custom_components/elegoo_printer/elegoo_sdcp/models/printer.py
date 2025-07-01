@@ -93,10 +93,7 @@ class Printer:
             self.protocol = data_dict.get("ProtocolVersion")
             self.firmware = data_dict.get("FirmwareVersion")
             self.id = data_dict.get("MainboardID")
-            if self.model and "Centauri Carbon" in self.model:
-                self.printer_type = PrinterType.FDM
-            else:
-                self.printer_type = PrinterType.RESIN
+            self.printer_type = PrinterType.from_model(self.model)
 
         # Initialize config-based attributes for all instances
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)

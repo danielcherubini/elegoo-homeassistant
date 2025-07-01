@@ -21,6 +21,7 @@ This integration supports the following Elegoo printer models:
 - Saturn 4 Ultra 16k
 
 ### FDM Printers
+- Centauri
 - Centauri Carbon
 
 ## Sensors

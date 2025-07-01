@@ -254,3 +254,34 @@ class PrinterType(Enum):
 
     RESIN = "resin"
     FDM = "fdm"
+
+    @classmethod
+    def from_model(cls, model: str) -> Optional["PrinterType"]:
+        """
+        Determine the printer type from the model name.
+
+        Args:
+            model (str): The model name of the printer.
+
+        Returns:
+            PrinterType: The type of printer (RESIN or FDM), or None if no match is found.
+        """
+        if not model:
+            return None
+
+        fdm_printers = ["Centauri Carbon", "Centauri"]
+        resin_printers = [
+            "Mars 5",
+            "Mars 5 Ultra",
+            "Saturn 4",
+            "Saturn 4 Ultra",
+            "Saturn 4 Ultra 16k",
+        ]
+
+        if any(fdm_printer in model for fdm_printer in fdm_printers):
+            return cls.FDM
+
+        if any(resin_printer in model for resin_printer in resin_printers):
+            return cls.RESIN
+
+        return None
