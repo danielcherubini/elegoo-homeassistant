@@ -37,7 +37,14 @@ async def async_setup_entry(
     hass: HomeAssistant,
     entry: ElegooPrinterConfigEntry,
 ) -> bool:
-    """Set up this integration using UI."""
+    """
+    Asynchronously sets up the Elegoo printer integration from a configuration entry.
+    
+    Initializes the data update coordinator and printer API client, performs the first data refresh, forwards setup to supported platforms, and registers a listener for entry updates. Raises ConfigEntryNotReady if the printer cannot be reached.
+    
+    Returns:
+        bool: True if the integration is set up successfully.
+    """
     coordinator = ElegooDataUpdateCoordinator(
         hass=hass,
         logger=LOGGER,

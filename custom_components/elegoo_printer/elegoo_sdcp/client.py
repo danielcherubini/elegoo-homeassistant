@@ -153,8 +153,8 @@ class ElegooPrinterClient:
 
     def _send_printer_cmd(self, cmd: int, data: dict[str, Any] | None = None) -> None:
         """
-        Send a JSON command to the printer over the WebSocket connection.
-
+        Send a JSON command to the printer via the WebSocket connection.
+        
         Raises:
             ElegooPrinterNotConnectedError: If the printer is not connected.
             ElegooPrinterConnectionError: If a WebSocket error or timeout occurs during sending.
@@ -199,15 +199,14 @@ class ElegooPrinterClient:
     def discover_printer(self, broadcast_address: str = "<broadcast>") -> list[Printer]:
         """
         Broadcasts a UDP discovery message to locate Elegoo printers or proxies on the local network.
-
-        Sends a discovery request and waits for responses containing printer information within a timeout.
-        Returns a list of `Printer` objects for all valid responses received.
-
+        
+        Sends a discovery request and collects responses within a timeout period, returning a list of discovered printers. If no printers are found or a socket error occurs, returns an empty list.
+        
         Parameters:
             broadcast_address (str): The network address to send the discovery message to. Defaults to "<broadcast>".
-
+        
         Returns:
-            list[Printer]: A list of discovered printer objects. Returns an empty list if no printers are found or if discovery times out.
+            list[Printer]: List of discovered printers, or an empty list if none are found.
         """
         discovered_printers: list[Printer] = []
         self.logger.info("Broadcasting for printer/proxy discovery...")
@@ -239,6 +238,11 @@ class ElegooPrinterClient:
         return discovered_printers
 
     def _save_discovered_printer(self, data: bytes) -> Printer | None:
+        """
+        Parse discovery response bytes and create a Printer object if valid.
+        
+        Attempts to decode the provided bytes as a UTF-8 string and instantiate a Printer object using the decoded information. Returns the Printer object if successful, or None if decoding or instantiation fails.
+        """
         try:
             printer_info = data.decode("utf-8")
         except UnicodeDecodeError:

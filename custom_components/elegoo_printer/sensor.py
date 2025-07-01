@@ -35,9 +35,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """
-    Asynchronously sets up Elegoo printer sensor entities for a given configuration entry.
-
-    Creates and adds sensor entities for each printer status and attribute description, ensuring they are updated before being added to Home Assistant.
+    Asynchronously sets up Elegoo printer sensor entities for a configuration entry.
+    
+    Adds sensor entities for printer statuses and attributes based on the printer type, ensuring each entity is updated before being added to Home Assistant.
     """
     coordinator: ElegooDataUpdateCoordinator = entry.runtime_data.coordinator
     printer_type = coordinator.config_entry.runtime_data.client._printer.printer_type
@@ -106,9 +106,9 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         entity_description: ElegooPrinterSensorEntityDescription,
     ) -> None:
         """
-        Initialize an Elegoo printer sensor entity with the provided data coordinator and entity description.
-
-        For duration sensors on Centauri Carbon printers, sets the native unit of measurement to seconds.
+        Initialize an Elegoo printer sensor entity with the given data coordinator and entity description.
+        
+        For duration sensors on FDM printers, sets the native unit of measurement to seconds.
         """
         super().__init__(coordinator)
         self.entity_description = entity_description
