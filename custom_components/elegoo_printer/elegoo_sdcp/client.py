@@ -510,7 +510,8 @@ class ElegooPrinterClient:
         if history_data_list:
             for history_data in history_data_list:
                 detail = PrintHistoryDetail(history_data)
-                self.printer_data.print_history[detail.task_id] = detail
+                if detail.task_id is not None:
+                    self.printer_data.print_history[detail.task_id] = detail
 
     def _print_video_handler(self, data_data: dict[str, Any]) -> None:
         """
