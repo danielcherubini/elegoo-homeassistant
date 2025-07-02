@@ -40,6 +40,7 @@ class ElegooPrinterServer:
         self.runners: List[web.AppRunner] = []
         self.loop: asyncio.AbstractEventLoop | None = None
         self.session: ClientSession | None = None
+        self._stopping = False
         self._connection_failure_count = 0
         self.datagram_transport: asyncio.DatagramTransport | None = None
         self.__class__._instances.append(self)
