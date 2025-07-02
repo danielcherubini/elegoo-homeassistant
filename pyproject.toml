@@ -12,6 +12,10 @@ dependencies = [
     "websockets>=15.0.1",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+]
 [tool.ruff]
 target-version = "py313"
 [lint]
@@ -31,3 +35,9 @@ fixture-parentheses = false
 keep-runtime-typing = true
 [mccabe]
 max-complexity = 25
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "."
+]
+

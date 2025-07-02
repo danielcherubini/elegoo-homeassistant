@@ -19,7 +19,7 @@ VENV ?= .venv
 # --- PHONY TARGETS ---
 # .PHONY ensures that make will run the command even if a file with the same
 # name as the target exists.
-.PHONY: all setup start debug devcontainer format check ruff clean help
+.PHONY: all setup start debug devcontainer format lint fix clean help
 
 # --- DEFAULT TARGET ---
 # The default target that runs when you just type 'make'
@@ -39,7 +39,7 @@ setup:
 	@echo "--> Creating virtual environment in [$(VENV)]..."
 	@uv venv $(VENV) --python $(PYTHON)
 	@echo "--> Syncing dependencies into [$(VENV)]..."
-	@VIRTUAL_ENV=$(VENV) uv sync --active --all-extras --dev --locked
+	@VIRTUAL_ENV=$(VENV) uv sync --active --all-extras --dev
 	@echo "--> Setup complete. Environment is ready."
 
 # --- DEVELOPMENT TASKS ---
@@ -65,12 +65,19 @@ format:
 	@VIRTUAL_ENV=$(VENV) uv run ruff format .
 
 # Checks for linting errors with Ruff and attempts to fix them.
-check:
-	@echo "--> Checking and fixing code with Ruff..."
-	@VIRTUAL_ENV=$(VENV) uv run ruff check . --fix
+lint:
+	@echo "--> Linting code with Ruff..."
+	@VIRTUAL_ENV=$(VENV) uv run ruff check .
 
-# A convenience target to run both format and check.
-ruff: format check
+# Run tests using pytest
+test:
+	@echo "--> Running tests with pytest..."
+	@VIRTUAL_ENV=$(VENV) uv run pytest
+
+# Fixes any problems found in the code
+fix: 
+	@echo "--> Fixing code with Ruff..."
+	@VIRTUAL_ENV=$(VENV) uv run ruff check . --fix
 
 # --- CLEANUP ---
 # Cleans up Python bytecode, cache directories, and the virtual environment.
@@ -95,8 +102,8 @@ help:
 	@echo "  debug                Run the application in debug mode."
 	@echo "  devcontainer         Run the application within a devcontainer."
 	@echo "  format               Format code using Ruff."
-	@echo "  check                Check for linting errors using Ruff."
-	@echo "  ruff                 Run both format and check."
+	@echo "  lint                 Check for linting errors using Ruff."
+	@echo "  fix                  Fixes any issues it finds."
 	@echo "  clean                Remove Python artifacts and the virtual environment."
 	@echo "  help                 Show this help message."
 	@echo ""

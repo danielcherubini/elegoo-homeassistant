@@ -8,6 +8,7 @@ https://github.com/danielcherubini/elegoo-homeassistant
 from __future__ import annotations
 
 from datetime import timedelta
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from homeassistant.const import Platform
@@ -37,16 +38,29 @@ async def async_setup_entry(
     hass: HomeAssistant,
     entry: ElegooPrinterConfigEntry,
 ) -> bool:
-    """Set up this integration using UI."""
+    """
+    Asynchronously sets up the Elegoo printer integration from a configuration entry.
+
+    Initializes the data update coordinator and printer API client, performs the first data refresh, forwards setup to supported platforms, and registers a listener for entry updates. Raises ConfigEntryNotReady if the printer cannot be reached.
+
+    Returns:
+        bool: True if the integration is set up successfully.
+    """
     coordinator = ElegooDataUpdateCoordinator(
         hass=hass,
         logger=LOGGER,
         name=DOMAIN,
         update_interval=timedelta(seconds=2),
+        config_entry=entry,
     )
 
+    config = {
+        **(entry.data or {}),
+        **(entry.options or {}),
+    }
+
     client = await ElegooPrinterApiClient.async_create(
-        config=entry.data,
+        config=MappingProxyType(config),
         logger=LOGGER,
     )
 
@@ -73,6 +87,8 @@ async def async_unload_entry(
     entry: ElegooPrinterConfigEntry,
 ) -> bool:
     """Handle removal of an entry."""
+    if client := entry.runtime_data.client:
+        client.stop_proxy()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 

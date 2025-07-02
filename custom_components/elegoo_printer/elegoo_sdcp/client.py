@@ -63,7 +63,7 @@ class ElegooPrinterClient:
         self.ip_address: str = ip_address
         self.printer_websocket: websocket.WebSocketApp | None = None
         self.config = config
-        self.printer: Printer = Printer(config=config)
+        self.printer: Printer = Printer.from_dict(dict(config))
         self.printer_data = PrinterData()
         self.logger = logger
 
@@ -187,7 +187,7 @@ class ElegooPrinterClient:
 
     def _send_printer_cmd(self, cmd: int, data: dict[str, Any] | None = None) -> None:
         """
-        Send a JSON command to the printer over the WebSocket connection.
+        Send a JSON command to the printer via the WebSocket connection.
 
         Raises:
             ElegooPrinterNotConnectedError: If the printer is not connected.
@@ -230,20 +230,19 @@ class ElegooPrinterClient:
         else:
             raise ElegooPrinterNotConnectedError("Not connected")
 
-    def discover_printer(
-        self, broadcast_address: str = "<broadcast>"
-    ) -> Printer | None:
+    def discover_printer(self, broadcast_address: str = "<broadcast>") -> list[Printer]:
         """
-        Broadcasts a UDP discovery message to locate an Elegoo printer or proxy on the local network.
+        Broadcasts a UDP discovery message to locate Elegoo printers or proxies on the local network.
 
-        Sends a discovery request and waits for a response containing printer information. Returns a `Printer` object if a valid response is received, or `None` if discovery fails or times out.
+        Sends a discovery request and collects responses within a timeout period, returning a list of discovered printers. If no printers are found or a socket error occurs, returns an empty list.
 
         Parameters:
             broadcast_address (str): The network address to send the discovery message to. Defaults to "<broadcast>".
 
         Returns:
-            Printer | None: The discovered printer object if successful; otherwise, None.
+            list[Printer]: List of discovered printers, or an empty list if none are found.
         """
+        discovered_printers: list[Printer] = []
         self.logger.info("Broadcasting for printer/proxy discovery...")
         msg = b"M99999"
         with socket.socket(
@@ -253,25 +252,57 @@ class ElegooPrinterClient:
             sock.settimeout(DISCOVERY_TIMEOUT)
             try:
                 sock.sendto(msg, (broadcast_address, DISCOVERY_PORT))
-                data, addr = sock.recvfrom(8192)
-                self.logger.info(f"Discovery response received from {addr}")
-            except TimeoutError:
-                self.logger.warning("Printer/proxy discovery timed out.")
-                return None
+                while True:
+                    try:
+                        data, addr = sock.recvfrom(8192)
+                        self.logger.info(f"Discovery response received from {addr}")
+                        printer = self._save_discovered_printer(data)
+                        if printer:
+                            discovered_printers.append(printer)
+                    except socket.timeout:
+                        break  # Timeout, no more responses
             except OSError as e:
                 self.logger.exception(f"Socket error during discovery: {e}")
-                return None
+                return []
 
-            # The response from the proxy will be JSON.
-            printer = self._save_discovered_printer(data)
-            if printer:
-                self.logger.debug("Discovery successful.")
-                self.printer = printer
-                return printer
+        if not discovered_printers:
+            self.logger.warning("No printers found during discovery.")
+        else:
+            self.logger.debug(f"Discovered {len(discovered_printers)} printer(s).")
 
-        return None
+        # Filter out printers on the same IP as the server with "None" or "Proxy" in the name
+        local_ip = self.get_local_ip()
+        filtered_printers = [
+            p
+            for p in discovered_printers
+            if not (
+                p.ip_address == local_ip and ("None" in p.name or "Proxy" in p.name)
+            )
+        ]
+
+        return filtered_printers
+
+    def get_local_ip(self) -> str:
+        """
+        Determine the local IP address used for outbound communication to the printer.
+
+        Returns:
+            str: The local IP address, or "127.0.0.1" if detection fails.
+        """
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                # Doesn't have to be reachable
+                s.connect((self.ip_address or "8.8.8.8", 1))
+                return s.getsockname()[0]
+        except Exception:
+            return "127.0.0.1"
 
     def _save_discovered_printer(self, data: bytes) -> Printer | None:
+        """
+        Parse discovery response bytes and create a Printer object if valid.
+
+        Attempts to decode the provided bytes as a UTF-8 string and instantiate a Printer object using the decoded information. Returns the Printer object if successful, or None if decoding or instantiation fails.
+        """
         try:
             printer_info = data.decode("utf-8")
         except UnicodeDecodeError:
@@ -280,7 +311,7 @@ class ElegooPrinterClient:
             )
         else:
             try:
-                printer = Printer(printer_info, config=self.config)
+                printer = Printer(printer_info)
             except (ValueError, TypeError):
                 self.logger.exception("Error creating Printer object")
             else:
@@ -289,7 +320,7 @@ class ElegooPrinterClient:
 
         return None
 
-    async def connect_printer(self, printer: Printer) -> bool:
+    async def connect_printer(self, printer: Printer, proxy_enabled: bool) -> bool:
         """
         Establish an asynchronous connection to the Elegoo printer via a local WebSocket proxy.
 
@@ -299,7 +330,10 @@ class ElegooPrinterClient:
             bool: True if the connection to the printer via the proxy was successful, False otherwise.
         """
         self.printer = printer
-
+        self.printer.proxy_enabled = proxy_enabled
+        self.logger.debug(
+            f"Connecting to printer: {self.printer.name} at {self.printer.ip_address} proxy_enabled: {proxy_enabled}"
+        )
         # Connect this client to the discovered printer/proxy's WebSocket.
         url = f"ws://{self.printer.ip_address}:{WEBSOCKET_PORT}/websocket"
         self.logger.info(f"Client connecting to WebSocket at: {url}")

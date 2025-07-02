@@ -13,11 +13,25 @@
   },
   "config": {
     "step": {
-      "user": {
+      "discover_printers": {
+        "title": "Select Printer",
+        "description": "Choose a discovered printer from the list or opt to enter the IP address manually.",
+        "data": {
+          "selection": "Available Printers"
+        }
+      },
+      "manual_ip": {
+        "title": "Manual Setup",
         "description": "If you need help with the configuration have a look here: https://github.com/danielcherubini/elegoo-homeassistant",
         "data": {
           "ip_address": "Printer IP Address",
-          "centauri_carbon": "Is this an FDM Printer",
+          "proxy_enabled": "Enable the proxy server (restart after changing this)"
+        }
+      },
+      "manual_options": {
+        "title": "Printer Options",
+        "description": "Configure additional options for your selected printer.",
+        "data": {
           "proxy_enabled": "Enable the proxy server (restart after changing this)"
         }
       }

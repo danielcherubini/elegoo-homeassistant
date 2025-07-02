@@ -241,3 +241,47 @@ class ErrorStatusReason(Enum):
             return cls(status_int)
         except ValueError:
             return None
+
+
+class PrinterType(Enum):
+    """
+    Represents the type of printer.
+
+    Attributes:
+        RESIN: A resin-based 3D printer.
+        FDM: A fused deposition modeling (FDM) 3D printer.
+    """
+
+    RESIN = "resin"
+    FDM = "fdm"
+
+    @classmethod
+    def from_model(cls, model: Optional[str]) -> Optional["PrinterType"]:
+        """
+        Returns the printer type (RESIN or FDM) based on the provided model name.
+
+        Parameters:
+            model (str): The printer model name to evaluate.
+
+        Returns:
+            PrinterType or None: The corresponding printer type if the model matches a known FDM or resin printer, otherwise None.
+        """
+        if model is None:
+            return None
+
+        fdm_printers = ["Centauri Carbon", "Centauri"]
+        resin_printers = [
+            "Mars 5",
+            "Mars 5 Ultra",
+            "Saturn 4",
+            "Saturn 4 Ultra",
+            "Saturn 4 Ultra 16k",
+        ]
+
+        if model in fdm_printers:
+            return cls.FDM
+
+        if model in resin_printers:
+            return cls.RESIN
+
+        return None

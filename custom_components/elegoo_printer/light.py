@@ -5,7 +5,6 @@ from homeassistant.components.light.const import ColorMode
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.elegoo_printer.const import CONF_CENTAURI_CARBON
 from custom_components.elegoo_printer.coordinator import ElegooDataUpdateCoordinator
 from custom_components.elegoo_printer.data import ElegooPrinterConfigEntry
 from custom_components.elegoo_printer.definitions import (
@@ -13,6 +12,7 @@ from custom_components.elegoo_printer.definitions import (
     ElegooPrinterLightEntityDescription,
 )
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
 from custom_components.elegoo_printer.elegoo_sdcp.models.status import LightStatus
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
@@ -23,15 +23,15 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """
-    Asynchronously sets up Elegoo printer light entities for an FDM printer in Home Assistant.
+    Asynchronously sets up Elegoo printer light entities for FDM printers in Home Assistant.
 
-    Adds light entities for each supported FDM light type if the printer configuration indicates FDM model support.
+    Creates and adds a light entity for each supported FDM light type if the connected printer is identified as an FDM model.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
-    fdm_printer: bool = coordinator.config_entry.data.get(CONF_CENTAURI_CARBON, False)
+    printer_type = coordinator.config_entry.runtime_data.client._printer.printer_type
 
     # Check if the printer supports lights before adding entities
-    if fdm_printer:
+    if printer_type == PrinterType.FDM:
         for light in PRINTER_FDM_LIGHTS:
             async_add_entities(
                 [ElegooLight(coordinator, light)], update_before_add=True

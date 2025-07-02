@@ -8,7 +8,6 @@ from loguru import logger
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG
-from custom_components.elegoo_printer.elegoo_sdcp.server import ElegooPrinterServer
 
 LOG_LEVEL = "DEBUG"
 PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.212")
@@ -19,25 +18,33 @@ logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)
 
 async def main() -> None:
     """
-    Asynchronously discovers, connects to, and monitors an Elegoo printer for debugging purposes.
+    Asynchronously discovers, connects to, and monitors an Elegoo printer for debugging.
 
-    Discovers a printer at the specified IP address, attempts to connect, enables the printer's video stream, and periodically polls until interrupted. Prints the video status if available.
+    Discovers available printers at the configured IP address, connects to the first discovered printer, retrieves printer attributes, enables the video stream, prints the video status if available, and enters a polling loop until interrupted.
     """
     stop_event = asyncio.Event()
     try:
         elegoo_printer = ElegooPrinterClient(ip_address=PRINTER_IP, logger=logger)
         printer = elegoo_printer.discover_printer(PRINTER_IP)
         if printer:
-            server = ElegooPrinterServer(printer, logger=logger)
-            printer = server.get_printer()
-            connected = await elegoo_printer.connect_printer(printer)
+            logger.debug(f"PrinterType: {printer[0].printer_type}")
+            logger.debug(f"Model Reported from Printer: {printer[0].model}")
+            # server = ElegooPrinterServer(printer[0], logger=logger)
+            # printer = server.get_printer()
+
+            logger.debug(
+                "Connecting to printer: %s at %s with proxy enabled: %s",
+                printer[0].name,
+                printer[0].ip_address,
+                printer[0].proxy_enabled,
+            )
+            connected = await elegoo_printer.connect_printer(
+                printer[0], printer[0].proxy_enabled
+            )
             if connected:
                 logger.debug("Polling Started")
                 await asyncio.sleep(2)
                 # elegoo_printer.get_printer_attributes()
-                video = await elegoo_printer.get_printer_video(toggle=True)
-                if video.status:
-                    print(video.status.name)
                 while not stop_event.is_set():  # noqa: ASYNC110
                     # elegoo_printer.get_printer_status()
                     await asyncio.sleep(2)
