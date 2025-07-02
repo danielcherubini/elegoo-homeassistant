@@ -145,7 +145,15 @@ class ElegooPrinterClient:
         Retreves last task.
         """
         if self.printer_data.print_history:
-            last_task_id = list(self.printer_data.print_history.keys())[0]
+            # Get task with the latest begin_time or end_time
+            last_task_id = max(
+                self.printer_data.print_history.keys(),
+                key=lambda tid: (
+                    self.printer_data.print_history[tid].end_time or 0
+                    if self.printer_data.print_history[tid]
+                    else 0
+                ),
+            )
             task = self.printer_data.print_history.get(last_task_id)
             if task is None:
                 self.get_printer_task_detail([last_task_id])
@@ -161,10 +169,6 @@ class ElegooPrinterClient:
         """
         if (task := self.get_printer_current_task()) and task.thumbnail:
             return task.thumbnail
-
-        if (task := self.get_printer_last_task()) and task.thumbnail:
-            return task.thumbnail
-
         return None
 
     async def async_get_printer_current_task(self) -> PrintHistoryDetail | None:
@@ -190,7 +194,15 @@ class ElegooPrinterClient:
         Retreves last task.
         """
         if self.printer_data.print_history:
-            last_task_id = list(self.printer_data.print_history.keys())[0]
+            # Get task with the latest begin_time or end_time
+            last_task_id = max(
+                self.printer_data.print_history.keys(),
+                key=lambda tid: (
+                    self.printer_data.print_history[tid].end_time or 0
+                    if self.printer_data.print_history[tid]
+                    else 0
+                ),
+            )
             task = self.printer_data.print_history.get(last_task_id)
             if task is None:
                 self.get_printer_task_detail([last_task_id])
@@ -207,9 +219,6 @@ class ElegooPrinterClient:
             str | None: The thumbnail URL of the current print task, or None if no task is active or no thumbnail exists.
         """
         if (task := await self.async_get_printer_current_task()) and task.thumbnail:
-            return task.thumbnail
-
-        if (task := await self.async_get_printer_last_task()) and task.thumbnail:
             return task.thumbnail
 
         return None
