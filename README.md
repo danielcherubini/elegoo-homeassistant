@@ -2,6 +2,10 @@
 
 This Home Assistant integration allows you to monitor the status and attributes of your Elegoo resin and FDM 3D printers, bringing valuable information directly into your smart home dashboard.
 
+## Installation
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=danielcherubini&repository=elegoo-homeassistant&category=Integration)
+
 ## Features
 
 - **Broad Printer Support:** Compatible with a growing list of Elegoo resin and FDM printers.
@@ -51,10 +55,6 @@ These sensors are specific to resin printers.
 - **Maximum UV LED Temperature:** The highest temperature the UV LED is allowed to reach. (Unit: °C)
 - **Release Film Status:** The current status of the release film.
 - **Maximum Release Film Usage:** Shows the maximum lifespan or usage limit for the release film.
-
-## Installation
-
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=danielcherubini&repository=elegoo-homeassistant&category=Integration)
 
 ## Configuration
 
