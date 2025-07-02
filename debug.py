@@ -31,7 +31,16 @@ async def main() -> None:
             logger.debug(f"Model Reported from Printer: {printer[0].model}")
             # server = ElegooPrinterServer(printer[0], logger=logger)
             # printer = server.get_printer()
-            connected = await elegoo_printer.connect_printer(printer[0])
+
+            logger.debug(
+                "Connecting to printer: %s at %s with proxy enabled: %s",
+                printer[0].name,
+                printer[0].ip_address,
+                printer[0].proxy_enabled,
+            )
+            connected = await elegoo_printer.connect_printer(
+                printer[0], printer[0].proxy_enabled
+            )
             if connected:
                 logger.debug("Polling Started")
                 await asyncio.sleep(2)

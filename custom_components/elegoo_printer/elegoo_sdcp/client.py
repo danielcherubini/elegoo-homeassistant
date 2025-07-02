@@ -286,7 +286,7 @@ class ElegooPrinterClient:
 
         return None
 
-    async def connect_printer(self, printer: Printer) -> bool:
+    async def connect_printer(self, printer: Printer, proxy_enabled: bool) -> bool:
         """
         Establish an asynchronous connection to the Elegoo printer via a local WebSocket proxy.
 
@@ -296,7 +296,10 @@ class ElegooPrinterClient:
             bool: True if the connection to the printer via the proxy was successful, False otherwise.
         """
         self.printer = printer
-
+        self.printer.proxy_enabled = proxy_enabled
+        self.logger.debug(
+            f"Connecting to printer: {self.printer.name} at {self.printer.ip_address} proxy_enabled: {proxy_enabled}"
+        )
         # Connect this client to the discovered printer/proxy's WebSocket.
         url = f"ws://{self.printer.ip_address}:{WEBSOCKET_PORT}/websocket"
         self.logger.info(f"Client connecting to WebSocket at: {url}")

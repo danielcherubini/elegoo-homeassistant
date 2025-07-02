@@ -8,6 +8,7 @@ https://github.com/danielcherubini/elegoo-homeassistant
 from __future__ import annotations
 
 from datetime import timedelta
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from homeassistant.const import Platform
@@ -53,8 +54,13 @@ async def async_setup_entry(
         config_entry=entry,
     )
 
+    config = {
+        **(entry.data or {}),
+        **(entry.options or {}),
+    }
+
     client = await ElegooPrinterApiClient.async_create(
-        config=entry.data,
+        config=MappingProxyType(config),
         logger=LOGGER,
     )
 

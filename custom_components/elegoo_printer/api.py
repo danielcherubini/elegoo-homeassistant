@@ -62,7 +62,7 @@ class ElegooPrinterApiClient:
         """
         printer = Printer.from_dict(dict(config))
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
-
+        logger.debug("CONFIGURATION %s", config)
         self = ElegooPrinterApiClient(printer, config=config, logger=logger)
 
         elegoo_printer = ElegooPrinterClient(
@@ -79,7 +79,15 @@ class ElegooPrinterApiClient:
                 logger.error("Failed to create proxy server: %s", e)
                 # Continue with direct printer connection
 
-        connected = await elegoo_printer.connect_printer(printer)
+        logger.debug(
+            "Connecting to printer: %s at %s with proxy enabled %s and printer.proxy: %s",
+            printer.name,
+            printer.ip_address,
+            proxy_server_enabled,
+            printer.proxy_enabled,
+        )
+
+        connected = await elegoo_printer.connect_printer(printer, proxy_server_enabled)
         if connected:
             logger.info("Polling Started")
             self._elegoo_printer = elegoo_printer
@@ -141,4 +149,11 @@ class ElegooPrinterApiClient:
             server = ElegooPrinterServer(printer, logger=self._logger)
             printer = server.get_printer()
 
-        return await self._elegoo_printer.connect_printer(printer)
+        self._logger.debug(
+            "Reconnecting to printer: %s proxy_enabled %s",
+            printer.ip_address,
+            self._proxy_server_enabled,
+        )
+        return await self._elegoo_printer.connect_printer(
+            printer, self._proxy_server_enabled
+        )

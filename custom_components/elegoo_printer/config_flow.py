@@ -57,7 +57,16 @@ async def _async_test_connection(
     elegoo_printer = ElegooPrinterClient(
         printer_object.ip_address, config=MappingProxyType(user_input), logger=LOGGER
     )
-    if await elegoo_printer.connect_printer(printer_object):
+    printer_object.proxy_enabled = user_input.get(CONF_PROXY_ENABLED, False)
+    LOGGER.debug(
+        "Connecting to printer: %s at %s with proxy enabled: %s",
+        printer_object.name,
+        printer_object.ip_address,
+        printer_object.proxy_enabled,
+    )
+    if await elegoo_printer.connect_printer(
+        printer_object, printer_object.proxy_enabled
+    ):
         return printer_object
     raise ElegooPrinterClientGeneralError(
         f"Failed to connect to printer {printer_object.name} at {printer_object.ip_address}"
@@ -269,15 +278,19 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         _errors = {}
         if user_input is not None and self.selected_printer:
-            self.selected_printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+            printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
+            printer_to_validate.proxy_enabled = user_input[CONF_PROXY_ENABLED]
             try:
                 # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled
-                await _async_test_connection(self.selected_printer, user_input)
-                await self.async_set_unique_id(unique_id=self.selected_printer.id)
+                validated_printer = await _async_test_connection(
+                    printer_to_validate, user_input
+                )
+                await self.async_set_unique_id(unique_id=validated_printer.id)
                 self._abort_if_unique_id_configured()
+                validated_printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
                 return self.async_create_entry(
-                    title=self.selected_printer.name or "Elegoo Printer",
-                    data=self.selected_printer.to_dict(),
+                    title=validated_printer.name or "Elegoo Printer",
+                    data=validated_printer.to_dict(),
                 )
             except ElegooPrinterClientGeneralError as exception:
                 LOGGER.error("No printer found: %s", exception)
@@ -330,7 +343,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         cls, config_entry: config_entries.ConfigEntry
     ) -> bool:
         """Return options flow support for this handler."""
-        return False
+        return True
 
 
 class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
@@ -356,16 +369,17 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         # Create a dictionary of the current settings by merging data and options.
         # This ensures the form is always populated with the current effective values.
         current_settings = {
+            **(self.config_entry.data or {}),
             **(self.config_entry.options or {}),
         }
         LOGGER.debug("data: %s", self.config_entry.data)
         LOGGER.debug("options: %s", self.config_entry.options)
         if user_input is not None:
             printer = Printer.from_dict(current_settings)
-            printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
             LOGGER.debug(printer.to_dict())
             try:
                 tested_printer = await _async_test_connection(printer, user_input)
+                tested_printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
                 LOGGER.debug("Tested printer: %s", tested_printer.to_dict())
                 return self.async_create_entry(
                     title=tested_printer.name,
