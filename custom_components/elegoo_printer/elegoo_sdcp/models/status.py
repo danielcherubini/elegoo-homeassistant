@@ -117,7 +117,7 @@ class PrintInfo:
         self.error_number: ElegooPrintError | None = ElegooPrintError.from_int(
             error_number_int
         )
-        self.task_id: str = data.get("TaskId", "")
+        self.task_id: str | None = data.get("TaskId")
 
 
 class PrinterStatus:
