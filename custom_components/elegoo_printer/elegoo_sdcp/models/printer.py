@@ -167,18 +167,18 @@ class PrinterData:
 
     def __init__(
         self,
-        status: Optional[PrinterStatus] = None,
-        attributes: Optional[PrinterAttributes] = None,
-        printer: Optional[Printer] = None,
-        print_history: Optional[List[PrintHistoryDetail]] = None,
+        status: PrinterStatus | None = None,
+        attributes: PrinterAttributes | None = None,
+        printer: Printer | None = None,
+        print_history: dict[str, PrintHistoryDetail | None] | None = None,
     ) -> None:
         """
         Initialize a PrinterData instance with optional printer-related data.
 
         If any argument is omitted or None, the corresponding attribute is set to a default instance of its class. The `video` attribute is always initialized as a new ElegooVideo instance.
         """
-        self.status = status or PrinterStatus()
-        self.attributes = attributes or PrinterAttributes()
-        self.printer = printer or Printer()
-        self.print_history = print_history or []
-        self.video = ElegooVideo()
+        self.status: PrinterStatus = status or PrinterStatus()
+        self.attributes: PrinterAttributes = attributes or PrinterAttributes()
+        self.printer: Printer = printer or Printer()
+        self.print_history: dict[str, PrintHistoryDetail | None] = print_history or {}
+        self.video: ElegooVideo = ElegooVideo()

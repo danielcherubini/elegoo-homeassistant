@@ -105,15 +105,9 @@ class ElegooPrinterClient:
         await asyncio.sleep(2)
         return self.printer_data.video
 
-    def get_printer_historical_tasks(self) -> None:
-        """
-        Requests the list of historical print tasks from the printer.
-        """
-        self._send_printer_cmd(320)
-
     async def async_get_printer_historical_tasks(
         self,
-    ) -> list[PrintHistoryDetail] | None:
+    ) -> dict[str, PrintHistoryDetail | None] | None:
         """
         Asynchronously requests the list of historical print tasks from the printer.
         """
@@ -121,22 +115,50 @@ class ElegooPrinterClient:
         await asyncio.sleep(2)  # Give the printer time to respond
         return self.printer_data.print_history
 
-    def get_printer_task_detail(self, id_list: list[str]) -> None:
+    def get_printer_task_detail(self, id_list: list[str]) -> PrintHistoryDetail | None:
         """
-        Retreves historical tasks from printer.
+        Retrieves historical tasks from the printer.
         """
-        self._send_printer_cmd(321, data={"Id": id_list})
+        for task_id in id_list:
+            if task_id in self.printer_data.print_history:
+                if self.printer_data.print_history[task_id] is None:
+                    self._send_printer_cmd(321, data={"Id": [task_id]})
+                else:
+                    return self.printer_data.print_history[task_id]
+        return None
 
-    def get_printer_current_task(self) -> list[PrintHistoryDetail]:
+    def get_printer_current_task(self) -> PrintHistoryDetail | None:
         """
         Retreves current task.
         """
         if self.printer_data.status.print_info.task_id:
-            self.get_printer_task_detail([self.printer_data.status.print_info.task_id])
+            task_id = self.printer_data.status.print_info.task_id
+            if task_id in self.printer_data.print_history:
+                return self.printer_data.print_history[task_id]
+            else:
+                self.get_printer_task_detail([task_id])
+                return None
+        return None
 
-            return self.printer_data.print_history
-
-        return []
+    def get_printer_last_task(self) -> PrintHistoryDetail | None:
+        """
+        Retreves last task.
+        """
+        if self.printer_data.print_history:
+            # Get task with the latest begin_time or end_time
+            last_task_id = max(
+                self.printer_data.print_history.keys(),
+                key=lambda tid: (
+                    self.printer_data.print_history[tid].end_time or 0
+                    if self.printer_data.print_history[tid]
+                    else 0
+                ),
+            )
+            task = self.printer_data.print_history.get(last_task_id)
+            if task is None:
+                self.get_printer_task_detail([last_task_id])
+            return task
+        return None
 
     def get_current_print_thumbnail(self) -> str | None:
         """
@@ -145,23 +167,49 @@ class ElegooPrinterClient:
         Returns:
             str | None: The thumbnail URL of the current print task, or None if no task is active or no thumbnail exists.
         """
-        print_history = self.get_printer_current_task()
-        if print_history:
-            return print_history[0].thumbnail
-
+        if (task := self.get_printer_current_task()) and task.thumbnail:
+            return task.thumbnail
         return None
 
-    async def async_get_printer_current_task(self) -> list[PrintHistoryDetail]:
+    async def async_get_printer_current_task(self) -> PrintHistoryDetail | None:
         """
         Retreves current task.
         """
         if self.printer_data.status.print_info.task_id:
-            self.get_printer_task_detail([self.printer_data.status.print_info.task_id])
+            task_id = self.printer_data.status.print_info.task_id
+            if (
+                task_id in self.printer_data.print_history
+                and self.printer_data.print_history[task_id] is not None
+            ):
+                return self.printer_data.print_history[task_id]
+            else:
+                self.get_printer_task_detail([task_id])
+                await asyncio.sleep(2)  # Give the printer time to respond
+                if task_id in self.printer_data.print_history:
+                    return self.printer_data.print_history[task_id]
+        return None
 
-            await asyncio.sleep(2)  # Give the printer time to respond
-            return self.printer_data.print_history
-
-        return []
+    async def async_get_printer_last_task(self) -> PrintHistoryDetail | None:
+        """
+        Retreves last task.
+        """
+        if self.printer_data.print_history:
+            # Get task with the latest begin_time or end_time
+            last_task_id = max(
+                self.printer_data.print_history.keys(),
+                key=lambda tid: (
+                    self.printer_data.print_history[tid].end_time or 0
+                    if self.printer_data.print_history[tid]
+                    else 0
+                ),
+            )
+            task = self.printer_data.print_history.get(last_task_id)
+            if task is None:
+                self.get_printer_task_detail([last_task_id])
+                await asyncio.sleep(2)  # Give the printer time to respond
+                return self.printer_data.print_history.get(last_task_id)
+            return task
+        return None
 
     async def async_get_current_print_thumbnail(self) -> str | None:
         """
@@ -170,9 +218,8 @@ class ElegooPrinterClient:
         Returns:
             str | None: The thumbnail URL of the current print task, or None if no task is active or no thumbnail exists.
         """
-        print_history = await self.async_get_printer_current_task()
-        if print_history:
-            return print_history[0].thumbnail
+        if (task := await self.async_get_printer_current_task()) and task.thumbnail:
+            return task.thumbnail
 
         return None
 
@@ -453,8 +500,10 @@ class ElegooPrinterClient:
             if inner_data:
                 data_data = inner_data.get("Data", {})
                 cmd: int = inner_data.get("Cmd", 0)
-                if cmd == 320 | 321:
+                if cmd == 320:
                     self._print_history_handler(data_data)
+                elif cmd == 321:
+                    self._print_history_detail_handler(data_data)
                 elif cmd == 386:
                     self._print_video_handler(data_data)
         except json.JSONDecodeError:
@@ -487,15 +536,25 @@ class ElegooPrinterClient:
     def _print_history_handler(self, data_data: dict[str, Any]) -> None:
         """
         Parses and updates the printer's print history details from the provided data.
+        """
+        history_data_list = data_data.get("HistoryData")
+        if history_data_list:
+            for task_id in history_data_list:
+                if task_id not in self.printer_data.print_history:
+                    self.printer_data.print_history[task_id] = None
+
+    def _print_history_detail_handler(self, data_data: dict[str, Any]) -> None:
+        """
+        Parses and updates the printer's print history details from the provided data.
 
         If a list of print history details is present in the input, updates the printer data with a list of `PrintHistoryDetail` objects.
         """
         history_data_list = data_data.get("HistoryDetailList")
         if history_data_list:
-            print_history_detail_list: list[PrintHistoryDetail] = [
-                PrintHistoryDetail(history_data) for history_data in history_data_list
-            ]
-            self.printer_data.print_history = print_history_detail_list
+            for history_data in history_data_list:
+                detail = PrintHistoryDetail(history_data)
+                if detail.task_id is not None:
+                    self.printer_data.print_history[detail.task_id] = detail
 
     def _print_video_handler(self, data_data: dict[str, Any]) -> None:
         """
