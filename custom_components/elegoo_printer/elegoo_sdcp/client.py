@@ -111,6 +111,16 @@ class ElegooPrinterClient:
         """
         self._send_printer_cmd(320)
 
+    async def async_get_printer_historical_tasks(
+        self,
+    ) -> list[PrintHistoryDetail] | None:
+        """
+        Asynchronously requests the list of historical print tasks from the printer.
+        """
+        self._send_printer_cmd(320)
+        await asyncio.sleep(2)  # Give the printer time to respond
+        return self.printer_data.print_history
+
     def get_printer_task_detail(self, id_list: list[str]) -> None:
         """
         Retreves historical tasks from printer.
@@ -130,7 +140,7 @@ class ElegooPrinterClient:
 
     def get_current_print_thumbnail(self) -> str | None:
         """
-        Asynchronously returns the thumbnail URL of the current print task, or None if unavailable.
+        Returns the thumbnail URL of the current print task, or None if unavailable.
 
         Returns:
             str | None: The thumbnail URL of the current print task, or None if no task is active or no thumbnail exists.

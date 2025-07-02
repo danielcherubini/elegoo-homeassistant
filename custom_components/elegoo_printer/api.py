@@ -134,7 +134,7 @@ class ElegooPrinterApiClient:
         Returns:
             A list of PrintHistoryDetail objects representing the print history, or None if no history is available.
         """
-        return self._elegoo_printer.get_printer_historical_tasks()
+        return await self._elegoo_printer.async_get_printer_historical_tasks()
 
     async def reconnect(self) -> bool:
         """
