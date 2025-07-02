@@ -118,7 +118,7 @@ class ElegooPrinterApiClient:
         """
         return await self._elegoo_printer.async_get_current_print_thumbnail()
 
-    async def async_get_current_task(self) -> list[PrintHistoryDetail] | None:
+    async def async_get_current_task(self) -> PrintHistoryDetail | None:
         """
         Asynchronously retrieves details of the current print task from the printer.
 
@@ -127,7 +127,9 @@ class ElegooPrinterApiClient:
         """
         return await self._elegoo_printer.async_get_printer_current_task()
 
-    async def async_get_print_history(self) -> list[PrintHistoryDetail] | None:
+    async def async_get_print_history(
+        self,
+    ) -> dict[str, PrintHistoryDetail | None] | None:
         """
         Asynchronously retrieves the print history from the printer.
 

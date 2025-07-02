@@ -199,7 +199,14 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         is not None,
         value_fn=lambda self: self.coordinator.data.print_history[
             self.coordinator.data.status.print_info.task_id
-        ].error_status_reason.name.lower(),
+        ].error_status_reason.name.lower()
+        if self.coordinator.data.status.print_info.task_id
+        in self.coordinator.data.print_history
+        and self.coordinator.data.print_history[
+            self.coordinator.data.status.print_info.task_id
+        ]
+        is not None
+        else None,
     ),
 )
 
