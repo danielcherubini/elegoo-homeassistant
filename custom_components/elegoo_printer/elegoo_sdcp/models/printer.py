@@ -139,7 +139,5 @@ class PrinterData:
         self.status: PrinterStatus = status or PrinterStatus()
         self.attributes: PrinterAttributes = attributes or PrinterAttributes()
         self.printer: Printer = printer or Printer()
-        self.print_history: dict[
-            str, PrintHistoryDetail | None
-        ] = print_history or {}
+        self.print_history: dict[str, PrintHistoryDetail | None] = print_history or {}
         self.video: ElegooVideo = ElegooVideo()

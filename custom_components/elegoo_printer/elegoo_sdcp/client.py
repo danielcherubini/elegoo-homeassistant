@@ -115,9 +115,7 @@ class ElegooPrinterClient:
         await asyncio.sleep(2)  # Give the printer time to respond
         return self.printer_data.print_history
 
-    def get_printer_task_detail(
-        self, id_list: list[str]
-    ) -> PrintHistoryDetail | None:
+    def get_printer_task_detail(self, id_list: list[str]) -> PrintHistoryDetail | None:
         """
         Retrieves historical tasks from the printer.
         """
