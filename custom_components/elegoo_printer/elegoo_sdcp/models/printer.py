@@ -129,7 +129,7 @@ class PrinterData:
         status: PrinterStatus | None = None,
         attributes: PrinterAttributes | None = None,
         printer: Printer | None = None,
-        print_history: list[PrintHistoryDetail] | None = None,
+        print_history: dict[str, PrintHistoryDetail | None] | None = None,
     ) -> None:
         """
         Initialize a PrinterData instance with optional printer-related data.
@@ -139,5 +139,7 @@ class PrinterData:
         self.status: PrinterStatus = status or PrinterStatus()
         self.attributes: PrinterAttributes = attributes or PrinterAttributes()
         self.printer: Printer = printer or Printer()
-        self.print_history: list[PrintHistoryDetail] = print_history or []
+        self.print_history: dict[
+            str, PrintHistoryDetail | None
+        ] = print_history or {}
         self.video: ElegooVideo = ElegooVideo()

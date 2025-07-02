@@ -38,7 +38,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             await self.config_entry.runtime_data.client.async_get_attributes()
             await self.config_entry.runtime_data.client.async_get_status()
-            await self.config_entry.runtime_data.client.async_get_current_task()
+            await self.config_entry.runtime_data.client.async_get_print_history()
             if self.update_interval is not timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
         except ElegooPrinterConnectionError as e:
