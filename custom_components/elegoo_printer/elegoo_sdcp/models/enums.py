@@ -256,7 +256,7 @@ class PrinterType(Enum):
     FDM = "fdm"
 
     @classmethod
-    def from_model(cls, model: str) -> Optional["PrinterType"]:
+    def from_model(cls, model: Optional[str]) -> Optional["PrinterType"]:
         """
         Returns the printer type (RESIN or FDM) based on the provided model name.
 
@@ -266,7 +266,7 @@ class PrinterType(Enum):
         Returns:
             PrinterType or None: The corresponding printer type if the model matches a known FDM or resin printer, otherwise None.
         """
-        if not model:
+        if model is None:
             return None
 
         fdm_printers = ["Centauri Carbon", "Centauri"]

@@ -25,6 +25,8 @@ class ElegooPrinterServer:
     Manages local proxy servers for an Elegoo printer, including WebSocket, UDP discovery, and a full HTTP reverse proxy.
     """
 
+    _instances: List["ElegooPrinterServer"] = []
+
     def __init__(self, printer: Printer, logger: Any):
         """
         Initializes the Elegoo printer proxy server and starts HTTP/WebSocket, video, and UDP discovery proxy services in a background thread.
@@ -39,6 +41,8 @@ class ElegooPrinterServer:
         self.loop: asyncio.AbstractEventLoop | None = None
         self.session: ClientSession | None = None
         self._connection_failure_count = 0
+        self.datagram_transport: asyncio.DatagramTransport | None = None
+        self.__class__._instances.append(self)
 
         if not self.printer.ip_address:
             raise ConfigEntryNotReady(
@@ -62,6 +66,13 @@ class ElegooPrinterServer:
                 self.stop()
                 raise ConfigEntryNotReady("Proxy server failed to start.")
             self.logger.info("Proxy server has started successfully.")
+
+    @classmethod
+    def stop_all(cls):
+        """Stops all running proxy server instances."""
+        for instance in cls._instances:
+            instance.stop()
+        cls._instances.clear()
 
     def _check_ports_are_available(self) -> bool:
         """
@@ -94,29 +105,18 @@ class ElegooPrinterServer:
         """
         self.logger.info("Stopping proxy server...")
 
-        if hasattr(self, "_stopping"):
+        if getattr(self, "_stopping", False):
             return
         self._stopping = True
 
-        async def cleanup():
-            """
-            Asynchronously closes the HTTP client session and cleans up all web application runners associated with the server.
-            """
-            if self.session and not self.session.closed:
-                await self.session.close()
-            for runner in self.runners:
-                await runner.cleanup()
-
         if self.loop and self.loop.is_running():
-            try:
-                # Schedule cleanup and wait for it to complete
-                future = asyncio.run_coroutine_threadsafe(cleanup(), self.loop)
-                future.result(timeout=5)
-            except Exception as e:
-                self.logger.error(f"Error during async cleanup: {e}")
-            finally:
-                # Stop the event loop
-                self.loop.call_soon_threadsafe(self.loop.stop)
+            self.loop.call_soon_threadsafe(self.loop.stop)
+
+        if self.proxy_thread and self.proxy_thread.is_alive():
+            self.proxy_thread.join(timeout=5)
+
+        if self in self.__class__._instances:
+            self.__class__._instances.remove(self)
 
         self.logger.info("Proxy server stopped.")
         self._connection_failure_count = 0
@@ -128,10 +128,9 @@ class ElegooPrinterServer:
         Returns:
             Printer: A new Printer instance identical to the original, except its IP address points to the local proxy.
         """
-        proxied_printer = Printer()
-        proxied_printer.__dict__.update(self.printer.__dict__)
-        proxied_printer.ip_address = self.get_local_ip()
-        return proxied_printer
+        printer_dict = self.printer.to_dict()
+        printer_dict["ip_address"] = self.get_local_ip()
+        return Printer.from_dict(printer_dict)
 
     def get_local_ip(self) -> str:
         """
@@ -227,9 +226,10 @@ class ElegooPrinterServer:
                     )
 
                 if self.loop:
-                    await self.loop.create_datagram_endpoint(
+                    transport, _ = await self.loop.create_datagram_endpoint(
                         discovery_factory, local_addr=(INADDR_ANY, DISCOVERY_PORT)
                     )
+                    self.datagram_transport = transport
                     self.logger.info(
                         f"Discovery Proxy listening on UDP port {DISCOVERY_PORT}"
                     )
@@ -246,10 +246,23 @@ class ElegooPrinterServer:
             # Signal that startup is complete and successful
             self.startup_event.set()
 
-        self.loop.run_until_complete(startup())
-        self.loop.run_forever()
-        # After loop stops, close it
-        self.loop.close()
+        async def cleanup():
+            """
+            Asynchronously closes the HTTP client session and cleans up all web application runners associated with the server.
+            """
+            if self.datagram_transport:
+                self.datagram_transport.close()
+            if self.session and not self.session.closed:
+                await self.session.close()
+            for runner in self.runners:
+                await runner.cleanup()
+
+        try:
+            self.loop.run_until_complete(startup())
+            self.loop.run_forever()
+        finally:
+            self.loop.run_until_complete(cleanup())
+            self.loop.close()
 
     async def _http_handler(self, request: web.Request) -> web.StreamResponse:
         """

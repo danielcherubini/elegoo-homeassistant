@@ -63,7 +63,7 @@ class ElegooPrinterClient:
         self.ip_address: str = ip_address
         self.printer_websocket: websocket.WebSocketApp | None = None
         self.config = config
-        self.printer: Printer = Printer(config=config)
+        self.printer: Printer = Printer.from_dict(dict(config))
         self.printer_data = PrinterData()
         self.logger = logger
 
@@ -235,7 +235,33 @@ class ElegooPrinterClient:
             self.logger.warning("No printers found during discovery.")
         else:
             self.logger.debug(f"Discovered {len(discovered_printers)} printer(s).")
-        return discovered_printers
+
+        # Filter out printers on the same IP as the server with "None" or "Proxy" in the name
+        local_ip = self.get_local_ip()
+        filtered_printers = [
+            p
+            for p in discovered_printers
+            if not (
+                p.ip_address == local_ip and ("None" in p.name or "Proxy" in p.name)
+            )
+        ]
+
+        return filtered_printers
+
+    def get_local_ip(self) -> str:
+        """
+        Determine the local IP address used for outbound communication to the printer.
+
+        Returns:
+            str: The local IP address, or "127.0.0.1" if detection fails.
+        """
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                # Doesn't have to be reachable
+                s.connect((self.ip_address or "8.8.8.8", 1))
+                return s.getsockname()[0]
+        except Exception:
+            return "127.0.0.1"
 
     def _save_discovered_printer(self, data: bytes) -> Printer | None:
         """
@@ -251,7 +277,7 @@ class ElegooPrinterClient:
             )
         else:
             try:
-                printer = Printer(printer_info, config=self.config)
+                printer = Printer(printer_info)
             except (ValueError, TypeError):
                 self.logger.exception("Error creating Printer object")
             else:

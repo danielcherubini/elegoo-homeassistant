@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -48,6 +47,7 @@ class ElegooPrinterApiClient:
         self._elegoo_printer = ElegooPrinterClient(
             printer.ip_address, config=config, logger=logger
         )
+        self.server: ElegooPrinterServer | None = None
 
     @classmethod
     async def async_create(
@@ -60,8 +60,7 @@ class ElegooPrinterApiClient:
 
         This method parses the configuration to construct a Printer object, optionally sets up a proxy server, and attempts to connect to the printer. Returns the initialized API client instance regardless of connection success.
         """
-        json_config = json.dumps(dict(config))
-        printer = Printer(json_config)
+        printer = Printer.from_dict(dict(config))
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
 
         self = ElegooPrinterApiClient(printer, config=config, logger=logger)
@@ -70,10 +69,12 @@ class ElegooPrinterApiClient:
             printer.ip_address, config=config, logger=logger
         )
 
-        if proxy_server_enabled:
+        if printer.proxy_enabled:
+            logger.debug("Proxy server is enabled, attempting to create proxy server.")
             try:
-                server = ElegooPrinterServer(printer, logger=logger)
-                printer = server.get_printer()
+                self.server = ElegooPrinterServer(printer, logger=logger)
+                printer = self.server.get_printer()
+                printer.proxy_enabled = proxy_server_enabled
             except Exception as e:
                 logger.error("Failed to create proxy server: %s", e)
                 # Continue with direct printer connection
@@ -83,6 +84,11 @@ class ElegooPrinterApiClient:
             logger.info("Polling Started")
             self._elegoo_printer = elegoo_printer
         return self
+
+    def stop_proxy(self):
+        """Stops the proxy server if it is running."""
+        if self.server:
+            self.server.stop()
 
     async def async_get_status(self) -> PrinterData:
         """

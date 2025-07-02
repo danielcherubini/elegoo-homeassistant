@@ -13,9 +13,9 @@ from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import selector
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from .elegoo_sdcp.models.printer import Printer
 
 from .const import CONF_PROXY_ENABLED, DOMAIN, LOGGER
+from .elegoo_sdcp.models.printer import Printer
 
 if TYPE_CHECKING:
     pass
@@ -269,24 +269,25 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         _errors = {}
         if user_input is not None and self.selected_printer:
-            # Combine selected printer info with manual options
-            combined_input = {
-                CONF_IP_ADDRESS: self.selected_printer.ip_address,
-                CONF_PROXY_ENABLED: user_input[CONF_PROXY_ENABLED],
-            }
-            validation_result = await _async_validate_input(
-                combined_input, discovered_printers=self.discovered_printers
-            )
-            _errors = validation_result["errors"]
-            printer_object: Printer = validation_result["printer"]
-
-            if not _errors:
-                await self.async_set_unique_id(unique_id=printer_object.id)
+            self.selected_printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+            try:
+                # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled
+                await _async_test_connection(self.selected_printer, user_input)
+                await self.async_set_unique_id(unique_id=self.selected_printer.id)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=printer_object.name or "Elegoo Printer",
-                    data=printer_object.to_dict(),
+                    title=self.selected_printer.name or "Elegoo Printer",
+                    data=self.selected_printer.to_dict(),
                 )
+            except ElegooPrinterClientGeneralError as exception:
+                LOGGER.error("No printer found: %s", exception)
+                _errors["base"] = "no_printer_found"
+            except PlatformNotReady as exception:
+                LOGGER.error(exception)
+                _errors["base"] = "connection"
+            except (OSError, Exception) as exception:
+                LOGGER.exception(exception)
+                _errors["base"] = "unknown"
 
         default_proxy_enabled = (
             self.selected_printer.proxy_enabled if self.selected_printer else False
@@ -329,7 +330,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         cls, config_entry: config_entries.ConfigEntry
     ) -> bool:
         """Return options flow support for this handler."""
-        return True
+        return False
 
 
 class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
@@ -342,7 +343,6 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         Parameters:
             config_entry (ConfigEntry): The configuration entry for which the options are being managed.
         """
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -353,31 +353,34 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         Handles displaying and saving updated configuration options.
         """
         _errors = {}
-        if user_input is not None:
-            # When validating, it's good practice to use the full current config
-            # combined with the new user input.
-            combined_input = {
-                **(self.config_entry.data or {}),
-                **(self.config_entry.options or {}),
-                **user_input,
-            }
-
-            validation_result = await _async_validate_input(combined_input)
-            _errors = validation_result.get("errors")
-
-            if not _errors:
-                # Save the user's input from the form to the .options dictionary.
-                # Any existing options not in the form will be preserved if you
-                # merge them first.
-                updated_options = {**self.config_entry.options, **user_input}
-                return self.async_create_entry(title="", data=updated_options)
-
         # Create a dictionary of the current settings by merging data and options.
         # This ensures the form is always populated with the current effective values.
         current_settings = {
-            **(self.config_entry.data or {}),
             **(self.config_entry.options or {}),
         }
+        LOGGER.debug("data: %s", self.config_entry.data)
+        LOGGER.debug("options: %s", self.config_entry.options)
+        if user_input is not None:
+            printer = Printer.from_dict(current_settings)
+            printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+            LOGGER.debug(printer.to_dict())
+            try:
+                tested_printer = await _async_test_connection(printer, user_input)
+                LOGGER.debug("Tested printer: %s", tested_printer.to_dict())
+                return self.async_create_entry(
+                    title=tested_printer.name,
+                    data=tested_printer.to_dict(),
+                )
+            except ElegooPrinterClientGeneralError as exception:
+                LOGGER.error("No printer found: %s", exception)
+                _errors["base"] = "no_printer_found"
+            except PlatformNotReady as exception:
+                LOGGER.error(exception)
+                _errors["base"] = "connection"
+            except (OSError, Exception) as exception:
+                LOGGER.exception(exception)
+                _errors["base"] = "unknown"
+
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(

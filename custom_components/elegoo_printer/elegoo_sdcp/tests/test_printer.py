@@ -117,3 +117,31 @@ def test_printer_initialization_with_resin_printer():
     assert printer.id == "GHIJKL"
     assert printer.printer_type == PrinterType.RESIN
     assert not printer.proxy_enabled
+
+
+def test_printer_from_dict():
+    """Test the from_dict method of the Printer model."""
+    printer_dict = {
+        "Id": "12345",
+        "Data": {
+            "Name": "My Printer",
+            "MachineName": "Centauri Carbon",
+            "BrandName": "Elegoo",
+            "MainboardIP": "192.168.1.100",
+            "ProtocolVersion": "2.0",
+            "FirmwareVersion": "1.5",
+            "MainboardID": "ABCDEF",
+        },
+    }
+    printer = Printer.from_dict(printer_dict)
+
+    assert printer.connection == "12345"
+    assert printer.name == "My Printer"
+    assert printer.model == "Centauri Carbon"
+    assert printer.brand == "Elegoo"
+    assert printer.ip_address == "192.168.1.100"
+    assert printer.protocol == "2.0"
+    assert printer.firmware == "1.5"
+    assert printer.id == "ABCDEF"
+    assert printer.printer_type == PrinterType.FDM
+    assert not printer.proxy_enabled
