@@ -117,7 +117,31 @@ class ElegooPrinterClient:
         """
         self._send_printer_cmd(321, data={"Id": id_list})
 
-    async def get_printer_current_task(self) -> list[PrintHistoryDetail]:
+    def get_printer_current_task(self) -> list[PrintHistoryDetail]:
+        """
+        Retreves current task.
+        """
+        if self.printer_data.status.print_info.task_id:
+            self.get_printer_task_detail([self.printer_data.status.print_info.task_id])
+
+            return self.printer_data.print_history
+
+        return []
+
+    def get_current_print_thumbnail(self) -> str | None:
+        """
+        Asynchronously returns the thumbnail URL of the current print task, or None if unavailable.
+
+        Returns:
+            str | None: The thumbnail URL of the current print task, or None if no task is active or no thumbnail exists.
+        """
+        print_history = self.get_printer_current_task()
+        if print_history:
+            return print_history[0].thumbnail
+
+        return None
+
+    async def async_get_printer_current_task(self) -> list[PrintHistoryDetail]:
         """
         Retreves current task.
         """
@@ -129,14 +153,14 @@ class ElegooPrinterClient:
 
         return []
 
-    async def get_current_print_thumbnail(self) -> str | None:
+    async def async_get_current_print_thumbnail(self) -> str | None:
         """
         Asynchronously returns the thumbnail URL of the current print task, or None if unavailable.
 
         Returns:
             str | None: The thumbnail URL of the current print task, or None if no task is active or no thumbnail exists.
         """
-        print_history = await self.get_printer_current_task()
+        print_history = await self.async_get_printer_current_task()
         if print_history:
             return print_history[0].thumbnail
 
@@ -385,7 +409,7 @@ class ElegooPrinterClient:
             if inner_data:
                 data_data = inner_data.get("Data", {})
                 cmd: int = inner_data.get("Cmd", 0)
-                if cmd == 320:
+                if cmd == 320 | 321:
                     self._print_history_handler(data_data)
                 elif cmd == 386:
                     self._print_video_handler(data_data)

@@ -116,7 +116,7 @@ class ElegooPrinterApiClient:
         Returns:
             str | None: The thumbnail image if available, or None if there is no active print job or thumbnail.
         """
-        return await self._elegoo_printer.get_current_print_thumbnail()
+        return await self._elegoo_printer.async_get_current_print_thumbnail()
 
     async def async_get_current_task(self) -> list[PrintHistoryDetail] | None:
         """
@@ -125,7 +125,16 @@ class ElegooPrinterApiClient:
         Returns:
             A list of PrintHistoryDetail objects representing the current print task, or None if no task is active.
         """
-        return await self._elegoo_printer.get_printer_current_task()
+        return await self._elegoo_printer.async_get_printer_current_task()
+
+    async def async_get_print_history(self) -> list[PrintHistoryDetail] | None:
+        """
+        Asynchronously retrieves the print history from the printer.
+
+        Returns:
+            A list of PrintHistoryDetail objects representing the print history, or None if no history is available.
+        """
+        return self._elegoo_printer.get_printer_historical_tasks()
 
     async def reconnect(self) -> bool:
         """

@@ -328,8 +328,6 @@ PRINTER_IMAGES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         key="cover_image",
         name="Cover Image",
         value_fn=lambda _thumbnail: _thumbnail,
-        available_fn=lambda _printer: _printer.get_current_print_thumbnail()
-        is not None,
     ),
 )
 
