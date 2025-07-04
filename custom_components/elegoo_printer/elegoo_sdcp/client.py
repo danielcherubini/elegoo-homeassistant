@@ -11,7 +11,8 @@ from typing import Any
 
 import websocket
 
-from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
+from custom_components.elegoo_printer.elegoo_sdcp.models.video import \
+    ElegooVideo
 
 from .const import DEBUG, LOGGER
 from .models.attributes import PrinterAttributes
@@ -169,7 +170,7 @@ class ElegooPrinterClient:
         """
         if (task := self.get_printer_current_task()) and task.thumbnail:
             return task.thumbnail
-        elif (task := self.get_printer_current_task()) and task.thumbnail:
+        elif (task := self.get_printer_last_task()) and task.thumbnail:
             return task.thumbnail
         return None
 
