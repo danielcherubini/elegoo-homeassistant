@@ -394,7 +394,7 @@ PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (
         name="Resume Print",
         action_fn=lambda _elegoo_printer_client: _elegoo_printer_client.print_resume(),
         icon="mdi:play",
-        available_fn=lambda _elegoo_printer_client: _elegoo_printer_client.printer_data.status.current_status
+        available_fn=lambda _elegoo_printer_client: _elegoo_printer_client.printer_data.status.print_info.status
         == ElegooPrintStatus.PAUSED,
     ),
     ElegooPrinterButtonEntityDescription(
@@ -402,11 +402,9 @@ PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (
         name="Stop Print",
         action_fn=lambda _elegoo_printer_client: _elegoo_printer_client.print_stop(),
         icon="mdi:stop",
-        available_fn=lambda _elegoo_printer_client: (
-            _elegoo_printer_client.printer_data.status.current_status
-            == ElegooMachineStatus.PRINTING
-            or _elegoo_printer_client.printer_data.status.current_status
-            == ElegooPrintStatus.PAUSED
-        ),
+        available_fn=lambda _elegoo_printer_client: _elegoo_printer_client.printer_data.status.current_status
+        in (ElegooMachineStatus.PRINTING,)
+        or _elegoo_printer_client.printer_data.status.print_info.status
+        == ElegooPrintStatus.PAUSED,
     ),
 )
