@@ -232,6 +232,24 @@ class ElegooPrinterClient:
         """
         self._send_printer_cmd(403, light_status.to_dict())
 
+    def print_pause(self) -> None:
+        """
+        Pause the current print.
+        """
+        self._send_printer_cmd(129, {})
+
+    def print_stop(self) -> None:
+        """
+        Stop the current print.
+        """
+        self._send_printer_cmd(130, {})
+
+    def print_resume(self) -> None:
+        """
+        Resume/continue the current print.
+        """
+        self._send_printer_cmd(131, {})
+
     def _send_printer_cmd(self, cmd: int, data: dict[str, Any] | None = None) -> None:
         """
         Send a JSON command to the printer via the WebSocket connection.

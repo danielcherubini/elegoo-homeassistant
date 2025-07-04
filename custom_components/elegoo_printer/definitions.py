@@ -5,12 +5,17 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from homeassistant.components.light import LightEntityDescription
+from homeassistant.components.button import ButtonEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfTemperature, UnitOfTime
 from homeassistant.helpers.typing import StateType
 
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import ElegooVideoStatus
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+    ElegooMachineStatus,
+    ElegooPrintStatus,
+    ElegooVideoStatus,
+)
 
 
 @dataclass
@@ -42,6 +47,14 @@ class ElegooPrinterLightEntityDescription(
     exists_fn: Callable[..., bool] = lambda _: True
     extra_attributes: Callable[..., dict] = lambda _: {}
     icon_fn: Callable[..., str] = lambda _: "mdi:lightbulb"
+
+
+@dataclass
+class ElegooPrinterButtonEntityDescription(ButtonEntityDescription):
+    """Button entity description for Elegoo Printers."""
+
+    action_fn: Callable[..., None] = lambda _: None
+    available_fn: Callable[..., bool] = lambda self: self.coordinator.data
 
 
 PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
@@ -364,5 +377,34 @@ PRINTER_FDM_LIGHTS: tuple[ElegooPrinterLightEntityDescription, ...] = (
         name="Chamber Light",
         value_fn=lambda _light_status: _light_status.second_light,
         available_fn=lambda _light_status: _light_status.second_light is not None,
+    ),
+)
+
+PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (
+    ElegooPrinterButtonEntityDescription(
+        key="pause_print",
+        name="Pause Print",
+        action_fn=lambda _elegoo_printer_client: _elegoo_printer_client.print_pause(),
+        icon="mdi:pause",
+        available_fn=lambda _elegoo_printer_client: _elegoo_printer_client.printer_data.status.current_status
+        == ElegooMachineStatus.PRINTING,
+    ),
+    ElegooPrinterButtonEntityDescription(
+        key="resume_print",
+        name="Resume Print",
+        action_fn=lambda _elegoo_printer_client: _elegoo_printer_client.print_resume(),
+        icon="mdi:play",
+        available_fn=lambda _elegoo_printer_client: _elegoo_printer_client.printer_data.status.print_info.status
+        == ElegooPrintStatus.PAUSED,
+    ),
+    ElegooPrinterButtonEntityDescription(
+        key="stop_print",
+        name="Stop Print",
+        action_fn=lambda _elegoo_printer_client: _elegoo_printer_client.print_stop(),
+        icon="mdi:stop",
+        available_fn=lambda _elegoo_printer_client: _elegoo_printer_client.printer_data.status.current_status
+        in (ElegooMachineStatus.PRINTING,)
+        or _elegoo_printer_client.printer_data.status.print_info.status
+        == ElegooPrintStatus.PAUSED,
     ),
 )
