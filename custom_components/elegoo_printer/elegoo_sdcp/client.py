@@ -169,8 +169,6 @@ class ElegooPrinterClient:
         """
         if (task := self.get_printer_current_task()) and task.thumbnail:
             return task.thumbnail
-        elif (task := self.get_printer_last_task()) and task.thumbnail:
-            return task.thumbnail
         return None
 
     async def async_get_printer_current_task(self) -> PrintHistoryDetail | None:
@@ -222,8 +220,7 @@ class ElegooPrinterClient:
         """
         if (task := await self.async_get_printer_current_task()) and task.thumbnail:
             return task.thumbnail
-        elif (task := await self.async_get_printer_last_task()) and task.thumbnail:
-            return task.thumbnail
+
         return None
 
     def set_light_status(self, light_status: LightStatus) -> None:

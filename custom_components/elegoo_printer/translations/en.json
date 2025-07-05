@@ -25,14 +25,14 @@
         "description": "If you need help with the configuration have a look here: https://github.com/danielcherubini/elegoo-homeassistant",
         "data": {
           "ip_address": "Printer IP Address",
-          "proxy_enabled": "Enable the proxy server (restart after changing this)"
+          "proxy_enabled": "Enable the proxy server"
         }
       },
       "manual_options": {
         "title": "Printer Options",
         "description": "Configure additional options for your selected printer.",
         "data": {
-          "proxy_enabled": "Enable the proxy server (restart after changing this)"
+          "proxy_enabled": "Enable the proxy server"
         }
       }
     },
