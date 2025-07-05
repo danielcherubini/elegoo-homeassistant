@@ -11,6 +11,10 @@ from typing import Any
 
 import websocket
 
+from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
+    ElegooPrinterConnectionError,
+    ElegooPrinterNotConnectedError,
+)
 from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
 
 from .const import DEBUG, LOGGER
@@ -23,18 +27,6 @@ DISCOVERY_TIMEOUT = 5
 DISCOVERY_PORT = 3000
 DEFAULT_PORT = 54780
 WEBSOCKET_PORT = 3030
-
-
-class ElegooPrinterConnectionError(Exception):
-    """Exception to indicate a connection error with the Elegoo printer."""
-
-    pass
-
-
-class ElegooPrinterNotConnectedError(Exception):
-    """Exception to indicate that the Elegoo printer is not connected."""
-
-    pass
 
 
 class ElegooPrinterClient:
@@ -145,14 +137,15 @@ class ElegooPrinterClient:
         Retreves last task.
         """
         if self.printer_data.print_history:
+
+            def sort_key(tid: str) -> int:
+                task = self.printer_data.print_history.get(tid)
+                return task.end_time or 0 if task else 0
+
             # Get task with the latest begin_time or end_time
             last_task_id = max(
                 self.printer_data.print_history.keys(),
-                key=lambda tid: (
-                    self.printer_data.print_history[tid].end_time or 0
-                    if self.printer_data.print_history[tid]
-                    else 0
-                ),
+                key=sort_key,
             )
             task = self.printer_data.print_history.get(last_task_id)
             if task is None:
@@ -197,14 +190,15 @@ class ElegooPrinterClient:
         Retreves last task.
         """
         if self.printer_data.print_history:
+
+            def sort_key(tid: str) -> int:
+                task = self.printer_data.print_history.get(tid)
+                return task.end_time or 0 if task else 0
+
             # Get task with the latest begin_time or end_time
             last_task_id = max(
                 self.printer_data.print_history.keys(),
-                key=lambda tid: (
-                    self.printer_data.print_history[tid].end_time or 0
-                    if self.printer_data.print_history[tid]
-                    else 0
-                ),
+                key=sort_key,
             )
             task = self.printer_data.print_history.get(last_task_id)
             if task is None:
