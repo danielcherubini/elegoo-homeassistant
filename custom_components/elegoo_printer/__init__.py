@@ -11,12 +11,14 @@ from datetime import timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from homeassistant.const import Platform
+from homeassistant.const import CONF_IP_ADDRESS, Platform
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.loader import async_get_loaded_integration
 
+from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+
 from .api import ElegooPrinterApiClient
-from .const import DOMAIN, LOGGER
+from .const import CONF_PROXY_ENABLED, DOMAIN, LOGGER
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
 
@@ -99,3 +101,42 @@ async def async_reload_entry(
 ) -> None:
     """Reload config entry."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_migrate_entry(
+    hass: HomeAssistant, config_entry: ElegooPrinterConfigEntry
+) -> bool:
+    """Migrate old entry."""
+
+    if config_entry.version == 1:
+        # Migrating data by removing printer and re-adding it
+        config = {
+            **(config_entry.data or {}),
+            **(config_entry.options or {}),
+        }
+        ip_address = config[CONF_IP_ADDRESS]
+        proxy_enabled = config[CONF_PROXY_ENABLED]
+        if ip_address is None:
+            LOGGER.error("config migration failed, ip address is null")
+
+        LOGGER.debug(
+            "Migrating from version %s with ip_address: %s and proxy: %s",
+            config_entry.version,
+            ip_address,
+            proxy_enabled,
+        )
+        client = ElegooPrinterClient(ip_address=ip_address, logger=LOGGER)
+        printer = client.discover_printer(broadcast_address=ip_address)
+        if printer:
+            new_data = {}
+            printer[0].proxy_enabled = proxy_enabled
+            new_data = printer[0].to_dict()
+
+            hass.config_entries.async_update_entry(
+                config_entry, data=new_data, version=2
+            )
+            LOGGER.debug("Migration to version 2 successful")
+        else:
+            LOGGER.error("Config migration failed, no printer found")
+
+    return True

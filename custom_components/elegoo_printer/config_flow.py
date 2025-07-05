@@ -145,8 +145,8 @@ async def _async_validate_input(
 class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Elegoo."""
 
-    VERSION = 1
-    MINOR_VERSION = 3
+    VERSION = 2
+    MINOR_VERSION = 0
 
     def __init__(self) -> None:
         """
