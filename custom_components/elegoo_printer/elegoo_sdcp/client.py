@@ -162,20 +162,21 @@ class ElegooPrinterClient:
 
     def get_current_print_thumbnail(self) -> str | None:
         """
-        Returns the thumbnail URL of the current print task, or None if unavailable.
+        Return the thumbnail URL of the current print task, or None if no thumbnail is available.
 
         Returns:
-            str | None: The thumbnail URL of the current print task, or None if no task is active or no thumbnail exists.
+            str | None: The URL of the current print task's thumbnail image, or None if there is no active task or thumbnail.
         """
         if (task := self.get_printer_current_task()) and task.thumbnail:
-            return task.thumbnail
-        elif (task := self.get_printer_last_task()) and task.thumbnail:
             return task.thumbnail
         return None
 
     async def async_get_printer_current_task(self) -> PrintHistoryDetail | None:
         """
-        Retreves current task.
+        Asynchronously retrieves the current print task details from the printer.
+
+        Returns:
+            PrintHistoryDetail | None: The details of the current print task if available, otherwise None.
         """
         if self.printer_data.status.print_info.task_id:
             task_id = self.printer_data.status.print_info.task_id
@@ -215,23 +216,22 @@ class ElegooPrinterClient:
 
     async def async_get_current_print_thumbnail(self) -> str | None:
         """
-        Asynchronously returns the thumbnail URL of the current print task, or None if unavailable.
+        Asynchronously retrieves the thumbnail URL of the current print task.
 
         Returns:
-            str | None: The thumbnail URL of the current print task, or None if no task is active or no thumbnail exists.
+            str | None: The thumbnail URL if the current print task has one; otherwise, None.
         """
         if (task := await self.async_get_printer_current_task()) and task.thumbnail:
             return task.thumbnail
-        elif (task := await self.async_get_printer_last_task()) and task.thumbnail:
-            return task.thumbnail
+
         return None
 
     def set_light_status(self, light_status: LightStatus) -> None:
         """
-        Set the printer's light status using the provided LightStatus configuration.
+        Set the printer's light status to the specified configuration.
 
         Parameters:
-            light_status (LightStatus): The desired light status to apply to the printer.
+                light_status (LightStatus): The light status configuration to apply.
         """
         self._send_printer_cmd(403, light_status.to_dict())
 
