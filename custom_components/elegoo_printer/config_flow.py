@@ -39,11 +39,11 @@ OPTIONS_SCHEMA = vol.Schema(
 )
 
 
-class ElegooPrinterClientGeneralError(Exception):
+class ElegooConfigFlowGeneralError(Exception):
     """Exception For Elegoo Printer."""
 
 
-class ElegooPrinterConnectionError(Exception):
+class ElegooConfigFlowConnectionError(Exception):
     """Exception For Elegoo Printer."""
 
 
@@ -61,10 +61,10 @@ async def _async_test_connection(
         Printer: The validated Printer object if the connection is successful.
 
     Raises:
-        ElegooPrinterClientGeneralError: If the connection to the printer fails.
+        ElegooConfigFlowGeneralError: If the connection to the printer fails.
     """
     if printer_object.ip_address is None:
-        raise ElegooPrinterClientGeneralError(
+        raise ElegooConfigFlowGeneralError(
             "IP address is required to connect to the printer"
         )
     elegoo_printer = ElegooPrinterClient(
@@ -81,7 +81,7 @@ async def _async_test_connection(
         printer_object, printer_object.proxy_enabled
     ):
         return printer_object
-    raise ElegooPrinterConnectionError(
+    raise ElegooConfigFlowConnectionError(
         f"Failed to connect to printer {printer_object.name} at {printer_object.ip_address}"
     )
 
@@ -128,10 +128,10 @@ async def _async_validate_input(
             # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled
             validated_printer = await _async_test_connection(printer_object, user_input)
             return {"printer": validated_printer, "errors": None}
-        except ElegooPrinterConnectionError as exception:
+        except ElegooConfigFlowConnectionError as exception:
             LOGGER.error("Config Flow: Connection error: %s", exception)
             _errors["base"] = "connection"
-        except ElegooPrinterClientGeneralError as exception:
+        except ElegooConfigFlowGeneralError as exception:
             LOGGER.error("Config Flow: No printer found: %s", exception)
             _errors["base"] = "validation_no_printer_found"
         except PlatformNotReady as exception:
@@ -311,10 +311,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     title=validated_printer.name or "Elegoo Printer",
                     data=validated_printer.to_dict(),
                 )
-            except ElegooPrinterConnectionError as exception:
+            except ElegooConfigFlowConnectionError as exception:
                 LOGGER.error("Connection error: %s", exception)
                 _errors["base"] = "connection"
-            except ElegooPrinterClientGeneralError as exception:
+            except ElegooConfigFlowGeneralError as exception:
                 LOGGER.error("No printer found: %s", exception)
                 _errors["base"] = "manual_options_no_printer_found"
             except PlatformNotReady as exception:
@@ -407,10 +407,10 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                     title=tested_printer.name,
                     data=tested_printer.to_dict(),
                 )
-            except ElegooPrinterConnectionError as exception:
+            except ElegooConfigFlowConnectionError as exception:
                 LOGGER.error("Connection error: %s", exception)
                 _errors["base"] = "connection"
-            except ElegooPrinterClientGeneralError as exception:
+            except ElegooConfigFlowGeneralError as exception:
                 LOGGER.error("No printer found: %s", exception)
                 _errors["base"] = "init_no_printer_found"
             except PlatformNotReady as exception:
