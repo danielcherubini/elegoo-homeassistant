@@ -163,7 +163,7 @@ class ElegooPrinterClient:
     def get_current_print_thumbnail(self) -> str | None:
         """
         Return the thumbnail URL of the current print task, or None if no thumbnail is available.
-        
+
         Returns:
             str | None: The URL of the current print task's thumbnail image, or None if there is no active task or thumbnail.
         """
@@ -174,7 +174,7 @@ class ElegooPrinterClient:
     async def async_get_printer_current_task(self) -> PrintHistoryDetail | None:
         """
         Asynchronously retrieves the current print task details from the printer.
-        
+
         Returns:
             PrintHistoryDetail | None: The details of the current print task if available, otherwise None.
         """
@@ -217,7 +217,7 @@ class ElegooPrinterClient:
     async def async_get_current_print_thumbnail(self) -> str | None:
         """
         Asynchronously retrieves the thumbnail URL of the current print task.
-        
+
         Returns:
             str | None: The thumbnail URL if the current print task has one; otherwise, None.
         """
@@ -229,9 +229,9 @@ class ElegooPrinterClient:
     def set_light_status(self, light_status: LightStatus) -> None:
         """
         Set the printer's light status to the specified configuration.
-        
+
         Parameters:
-        	light_status (LightStatus): The light status configuration to apply.
+                light_status (LightStatus): The light status configuration to apply.
         """
         self._send_printer_cmd(403, light_status.to_dict())
 

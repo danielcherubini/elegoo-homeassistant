@@ -40,11 +40,11 @@ OPTIONS_SCHEMA = vol.Schema(
 
 
 class ElegooConfigFlowGeneralError(Exception):
-    """Exception For Elegoo Printer."""
+    """Exception raised for general configuration flow errors."""
 
 
 class ElegooConfigFlowConnectionError(Exception):
-    """Exception For Elegoo Printer."""
+    """Exception raised when connection to printer fails during configuration."""
 
 
 async def _async_test_connection(
@@ -52,11 +52,11 @@ async def _async_test_connection(
 ) -> Printer:
     """
     Attempt to connect to an Elegoo printer using the provided Printer object and user input.
-    
+
     Raises:
         ElegooConfigFlowGeneralError: If the printer's IP address is missing.
         ElegooConfigFlowConnectionError: If the connection to the printer fails.
-    
+
     Returns:
         Printer: The validated Printer object if the connection is successful.
     """
@@ -88,10 +88,10 @@ async def _async_validate_input(
 ) -> dict:
     """
     Asynchronously validates user input for Elegoo printer configuration, matching a discovered printer or locating one by IP address, and verifies connectivity.
-    
+
     Parameters:
         user_input (dict): Configuration data that may include a printer ID or IP address.
-    
+
     Returns:
         dict: Contains the validated printer object under the "printer" key (or None if validation fails), and error details under the "errors" key.
     """
@@ -183,9 +183,9 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.ConfigFlowResult:
         """
         Handle the step for selecting a discovered Elegoo printer or choosing manual IP entry during configuration.
-        
+
         If user input is provided, processes the selection and either advances to manual IP entry or presents options for the selected printer. If no input is provided, displays a form listing discovered printers with IP addresses and an option to enter an IP manually.
-        
+
         Returns:
             The result of the configuration flow step, advancing to the next step or displaying the selection form with any errors.
         """
@@ -283,7 +283,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.ConfigFlowResult:
         """
         Handle the configuration of additional options, such as enabling the proxy, for a discovered Elegoo printer.
-        
+
         If user input is provided and a printer is selected, validates the updated configuration and creates a config entry upon successful connection. If validation fails or no input is provided, displays a form to set the proxy enabled option, defaulting to the current printer setting.
         """
         _errors = {}
@@ -375,7 +375,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
     ) -> config_entries.ConfigFlowResult:
         """
         Display and manage the options form for an existing Elegoo printer configuration.
-        
+
         Allows users to update printer settings such as IP address and proxy usage. Validates the updated configuration by testing connectivity to the printer before saving changes. If validation fails, displays relevant error messages on the form.
         """
         _errors = {}
