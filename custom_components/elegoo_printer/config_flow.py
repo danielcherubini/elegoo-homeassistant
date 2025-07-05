@@ -51,17 +51,14 @@ async def _async_test_connection(
     printer_object: Printer, user_input: Dict[str, Any]
 ) -> Printer:
     """
-    Asynchronously attempts to connect to an Elegoo printer using the given Printer object and user input configuration.
-
-    Parameters:
-        printer_object (Printer): The printer to connect to.
-        user_input (dict): Configuration options for the connection.
-
+    Attempt to connect to an Elegoo printer using the provided Printer object and user input.
+    
+    Raises:
+        ElegooConfigFlowGeneralError: If the printer's IP address is missing.
+        ElegooConfigFlowConnectionError: If the connection to the printer fails.
+    
     Returns:
         Printer: The validated Printer object if the connection is successful.
-
-    Raises:
-        ElegooConfigFlowGeneralError: If the connection to the printer fails.
     """
     if printer_object.ip_address is None:
         raise ElegooConfigFlowGeneralError(
@@ -90,14 +87,13 @@ async def _async_validate_input(
     user_input: dict[str, Any], discovered_printers: list[Printer] | None = None
 ) -> dict:
     """
-    Asynchronously validates user input for Elegoo printer configuration, attempting to match a discovered printer or locate one by IP address, and verifies connectivity.
-
+    Asynchronously validates user input for Elegoo printer configuration, matching a discovered printer or locating one by IP address, and verifies connectivity.
+    
     Parameters:
-        user_input (dict): User-provided configuration data, which may include a printer ID or IP address.
-        discovered_printers (list[Printer] | None): Optional list of previously discovered Printer objects.
-
+        user_input (dict): Configuration data that may include a printer ID or IP address.
+    
     Returns:
-        dict: A dictionary containing the validated printer object under the "printer" key (or None if validation fails), and any error details under the "errors" key.
+        dict: Contains the validated printer object under the "printer" key (or None if validation fails), and error details under the "errors" key.
     """
     _errors = {}
     printer_object: Printer | None = None
@@ -186,17 +182,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
         """
-        Handle the configuration flow step for selecting a discovered Elegoo printer or opting for manual IP entry.
-
-        If user input is provided, processes the selection:
-        - If "manual_ip" is chosen, advances to manual IP entry.
-        - If a discovered printer is selected, proceeds to options configuration for that printer.
-        - If the selection is invalid, displays an error.
-
-        If no input is provided, displays a form listing discovered printers and an option to enter an IP address manually.
-
+        Handle the step for selecting a discovered Elegoo printer or choosing manual IP entry during configuration.
+        
+        If user input is provided, processes the selection and either advances to manual IP entry or presents options for the selected printer. If no input is provided, displays a form listing discovered printers with IP addresses and an option to enter an IP manually.
+        
         Returns:
-            The result of the configuration flow step, either advancing to the next step or displaying the selection form with any errors.
+            The result of the configuration flow step, advancing to the next step or displaying the selection form with any errors.
         """
         _errors = {}
 
@@ -291,9 +282,9 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
         """
-        Handle the configuration of additional options, such as proxy enabling, for a discovered Elegoo printer.
-
-        If user input is provided and a printer is selected, validates the combined configuration and creates a config entry upon success. Otherwise, displays a form to set the proxy enabled option, defaulting to the current printer setting.
+        Handle the configuration of additional options, such as enabling the proxy, for a discovered Elegoo printer.
+        
+        If user input is provided and a printer is selected, validates the updated configuration and creates a config entry upon successful connection. If validation fails or no input is provided, displays a form to set the proxy enabled option, defaulting to the current printer setting.
         """
         _errors = {}
         if user_input is not None and self.selected_printer:
@@ -383,9 +374,9 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """
-        Manage the options for the Elegoo printer.
-
-        Handles displaying and saving updated configuration options.
+        Display and manage the options form for an existing Elegoo printer configuration.
+        
+        Allows users to update printer settings such as IP address and proxy usage. Validates the updated configuration by testing connectivity to the printer before saving changes. If validation fails, displays relevant error messages on the form.
         """
         _errors = {}
         # Create a dictionary of the current settings by merging data and options.
