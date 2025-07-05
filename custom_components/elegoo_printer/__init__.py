@@ -107,36 +107,42 @@ async def async_migrate_entry(
     hass: HomeAssistant, config_entry: ElegooPrinterConfigEntry
 ) -> bool:
     """Migrate old entry."""
-
     if config_entry.version == 1:
-        # Migrating data by removing printer and re-adding it
-        config = {
-            **(config_entry.data or {}),
-            **(config_entry.options or {}),
-        }
-        ip_address = config[CONF_IP_ADDRESS]
-        proxy_enabled = config[CONF_PROXY_ENABLED]
-        if ip_address is None:
-            LOGGER.error("config migration failed, ip address is null")
+        try:
+            # Migrating data by removing printer and re-adding it
+            config = {
+                **(config_entry.data or {}),
+                **(config_entry.options or {}),
+            }
+            ip_address = config.get(CONF_IP_ADDRESS)
+            proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
+            if ip_address is None:
+                LOGGER.error("Config migration failed, IP address is null")
+                return False
 
-        LOGGER.debug(
-            "Migrating from version %s with ip_address: %s and proxy: %s",
-            config_entry.version,
-            ip_address,
-            proxy_enabled,
-        )
-        client = ElegooPrinterClient(ip_address=ip_address, logger=LOGGER)
-        printer = client.discover_printer(broadcast_address=ip_address)
-        if printer:
-            new_data = {}
-            printer[0].proxy_enabled = proxy_enabled
-            new_data = printer[0].to_dict()
-
-            hass.config_entries.async_update_entry(
-                config_entry, data=new_data, version=2
+            LOGGER.debug(
+                "Migrating from version %s with ip_address: %s and proxy: %s",
+                config_entry.version,
+                ip_address,
+                proxy_enabled,
             )
-            LOGGER.debug("Migration to version 2 successful")
-        else:
-            LOGGER.error("Config migration failed, no printer found")
+            client = ElegooPrinterClient(ip_address=ip_address, logger=LOGGER)
+            printer = await hass.async_add_executor_job(
+                client.discover_printer, ip_address
+            )
+            if printer and len(printer) > 0:
+                printer[0].proxy_enabled = proxy_enabled
+                new_data = printer[0].to_dict()
+
+                hass.config_entries.async_update_entry(
+                    config_entry, data=new_data, version=2
+                )
+                LOGGER.debug("Migration to version 2 successful")
+            else:
+                LOGGER.error("Config migration failed, no printer found")
+                return False
+        except Exception as e:
+            LOGGER.error(f"Error migrating config entry: {e}")
+            return False
 
     return True
