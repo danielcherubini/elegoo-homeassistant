@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.const import UnitOfTime
 
+from .const import LOGGER
 from .definitions import (
     PRINTER_ATTRIBUTES_COMMON,
     PRINTER_ATTRIBUTES_RESIN,
@@ -40,61 +41,29 @@ async def async_setup_entry(
     Adds sensor entities for printer statuses and attributes based on the printer type, ensuring each entity is updated before being added to Home Assistant.
     """
     coordinator: ElegooDataUpdateCoordinator = entry.runtime_data.coordinator
-    printer_type = coordinator.config_entry.runtime_data.client._printer.printer_type
-    for entity_description in PRINTER_STATUS_COMMON:
-        async_add_entities(
-            [
-                ElegooPrinterSensor(
-                    coordinator=coordinator,
-                    entity_description=entity_description,
-                )
-            ],
-            update_before_add=True,
-        )
-    for entity_description in PRINTER_ATTRIBUTES_COMMON:
-        async_add_entities(
-            [
-                ElegooPrinterSensor(
-                    coordinator=coordinator,
-                    entity_description=entity_description,
-                )
-            ],
-            update_before_add=True,
-        )
+    printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
+
+    sensors: list[ElegooPrinterSensorEntityDescription] = []
+    sensors.extend(PRINTER_STATUS_COMMON)
+    sensors.extend(PRINTER_ATTRIBUTES_COMMON)
 
     if printer_type == PrinterType.FDM:
-        for entity_description in PRINTER_STATUS_FDM:
-            async_add_entities(
-                [
-                    ElegooPrinterSensor(
-                        coordinator=coordinator,
-                        entity_description=entity_description,
-                    )
-                ],
-                update_before_add=True,
-            )
+        sensors.extend(PRINTER_STATUS_FDM)
     elif printer_type == PrinterType.RESIN:
-        for entity_description in PRINTER_STATUS_RESIN:
-            async_add_entities(
-                [
-                    ElegooPrinterSensor(
-                        coordinator=coordinator,
-                        entity_description=entity_description,
-                    )
-                ],
-                update_before_add=True,
-            )
+        sensors.extend(PRINTER_STATUS_RESIN)
+        sensors.extend(PRINTER_ATTRIBUTES_RESIN)
 
-        for entity_description in PRINTER_ATTRIBUTES_RESIN:
-            async_add_entities(
-                [
-                    ElegooPrinterSensor(
-                        coordinator=coordinator,
-                        entity_description=entity_description,
-                    )
-                ],
-                update_before_add=True,
+    LOGGER.debug(f"Adding {len(sensors)} sensor entities")
+    async_add_entities(
+        [
+            ElegooPrinterSensor(
+                coordinator=coordinator,
+                entity_description=entity_description,
             )
+            for entity_description in sensors
+        ],
+        update_before_add=True,
+    )
 
 
 class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
@@ -115,9 +84,8 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         self._attr_unique_id = coordinator.generate_unique_id(
             self.entity_description.key
         )
-        printer_type = (
-            coordinator.config_entry.runtime_data.client._printer.printer_type
-        )
+        self.printer_data = coordinator.config_entry.runtime_data.api.printer_data
+        printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
 
         """This block fixes the issues with the Centurai Carbon"""
         if (
@@ -138,9 +106,9 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
     @property
     def native_value(self) -> datetime | StateType:
         """Return the state of the sensor."""
-        return self.entity_description.value_fn(self)
+        return self.entity_description.value_fn(self.printer_data)
 
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self.entity_description.available_fn(self)
+        return self.entity_description.available_fn(self.printer_data)

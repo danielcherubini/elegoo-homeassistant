@@ -4,15 +4,15 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.elegoo_printer.coordinator import ElegooDataUpdateCoordinator
 from custom_components.elegoo_printer.data import ElegooPrinterConfigEntry
-from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
-    PrinterType,
-)
-from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 from custom_components.elegoo_printer.definitions import (
-    ElegooPrinterButtonEntityDescription,
     PRINTER_FDM_BUTTONS,
+    ElegooPrinterButtonEntityDescription,
 )
+from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
+from custom_components.elegoo_printer.entity import ElegooPrinterEntity
+
+from .const import LOGGER
 
 
 async def async_setup_entry(
@@ -26,10 +26,11 @@ async def async_setup_entry(
     Creates and adds a button entity for pausing the current print job if the connected printer is identified as an FDM model.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
-    printer_type = coordinator.config_entry.runtime_data.client._printer.printer_type
+    printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
 
     # Check if the printer supports print controls before adding entities
     if printer_type == PrinterType.FDM:
+        LOGGER.debug(f"Adding {len(PRINTER_FDM_BUTTONS)} button entities")
         for description in PRINTER_FDM_BUTTONS:
             async_add_entities(
                 [ElegooSimpleButton(coordinator, description)], update_before_add=True
@@ -52,7 +53,7 @@ class ElegooSimpleButton(ElegooPrinterEntity, ButtonEntity):
         super().__init__(coordinator)
         self.entity_description = description
         self._elegoo_printer_client: ElegooPrinterClient = (
-            coordinator.config_entry.runtime_data.client._elegoo_printer
+            coordinator.config_entry.runtime_data.api.client
         )
         # Set a unique ID and a friendly name for the entity
         self._attr_unique_id = coordinator.generate_unique_id(

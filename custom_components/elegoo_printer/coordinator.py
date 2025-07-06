@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from custom_components.elegoo_printer.const import LOGGER
-from custom_components.elegoo_printer.elegoo_sdcp.client import (
+from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
 )
@@ -36,25 +36,29 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             UpdateFailed: If a connection or operating system error prevents data retrieval.
         """
         try:
-            await self.config_entry.runtime_data.client.async_get_attributes()
-            await self.config_entry.runtime_data.client.async_get_status()
-            await self.config_entry.runtime_data.client.async_get_print_history()
-            if self.update_interval is not timedelta(seconds=2):
+            await self.config_entry.runtime_data.api.async_get_attributes()
+            await self.config_entry.runtime_data.api.async_get_status()
+            await self.config_entry.runtime_data.api.async_get_print_history()
+            if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
-            return self.config_entry.runtime_data.client.printer_data
+            return self.config_entry.runtime_data.api.printer_data
         except ElegooPrinterConnectionError as e:
-            if self.update_interval is not timedelta(seconds=30):
+            if self.update_interval != timedelta(seconds=30):
                 self.update_interval = timedelta(seconds=30)
             LOGGER.info("Elegoo printer is not connected: %s", e)
             raise UpdateFailed("Elegoo printer is not connected") from e
         except ElegooPrinterNotConnectedError:
-            connected = await self.config_entry.runtime_data.client.reconnect()
+            connected = await self.config_entry.runtime_data.api.reconnect()
             if connected:
                 LOGGER.info("Elegoo printer reconnected successfully.")
                 self.update_interval = timedelta(seconds=2)
         except OSError as e:
-            LOGGER.warning(f"OSError while communicating with Elegoo printer: {e}")
-            raise UpdateFailed("Unexpected Error") from e
+            LOGGER.warning(
+                "OSError while communicating with Elegoo printer: [Errno %s] %s",
+                e.errno,
+                e.strerror,
+            )
+            raise UpdateFailed(f"Unexpected Error: {e.strerror}") from e
 
     def generate_unique_id(self, key: str) -> str:
         """

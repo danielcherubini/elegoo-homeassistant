@@ -16,6 +16,7 @@ from custom_components.elegoo_printer.definitions import (
 )
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
+from .const import LOGGER
 from .definitions import PRINTER_IMAGES
 
 if TYPE_CHECKING:
@@ -37,6 +38,7 @@ async def async_setup_entry(
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
 
+    LOGGER.debug(f"Adding {len(PRINTER_IMAGES)} image entities")
     for image in PRINTER_IMAGES:
         async_add_entities(
             [CoverImage(hass, coordinator, image)],
@@ -72,7 +74,7 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
     def available(self) -> bool:
         """Return True if entity is available."""
         return (
-            self.coordinator.config_entry.runtime_data.client._elegoo_printer.get_current_print_thumbnail()
+            self.coordinator.config_entry.runtime_data.api.client.get_current_print_thumbnail()
             is not None
         )
 
@@ -83,7 +85,7 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
             and self.entity_description.value_fn is not None
         ):
             _printer_client: ElegooPrinterApiClient = (
-                self.coordinator.config_entry.runtime_data.client
+                self.coordinator.config_entry.runtime_data.api
             )
             thumbnail = await _printer_client.async_get_current_thumbnail()
             image_url = self.entity_description.value_fn(thumbnail)

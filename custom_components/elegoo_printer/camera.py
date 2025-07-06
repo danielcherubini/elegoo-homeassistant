@@ -29,14 +29,14 @@ async def async_setup_entry(
     Adds camera entities for FDM-type printers and enables the printer's video stream.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
-    printer_type = coordinator.config_entry.runtime_data.client._printer.printer_type
+    printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
 
     for camera in PRINTER_MJPEG_CAMERAS:
         if printer_type == PrinterType.FDM:
             async_add_entities([ElegooMjpegCamera(hass, coordinator, camera)])
 
     printer_client: ElegooPrinterClient = (
-        coordinator.config_entry.runtime_data.client._elegoo_printer
+        coordinator.config_entry.runtime_data.api.client
     )
     printer_client.set_printer_video_stream(toggle=True)
 
@@ -66,7 +66,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         ElegooPrinterEntity.__init__(self, coordinator)
         self.entity_description = description
         self._printer_client: ElegooPrinterClient = (
-            coordinator.config_entry.runtime_data.client._elegoo_printer
+            coordinator.config_entry.runtime_data.api.client
         )
 
     @property

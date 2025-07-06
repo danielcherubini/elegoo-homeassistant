@@ -2,7 +2,7 @@
 
 import json
 from types import MappingProxyType
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from custom_components.elegoo_printer.const import CONF_PROXY_ENABLED
 from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
@@ -162,7 +162,7 @@ class PrinterData:
     status: PrinterStatus
     attributes: PrinterAttributes
     printer: Printer
-    print_history: List[PrintHistoryDetail]
+    print_history: dict[str, PrintHistoryDetail | None]
     video: ElegooVideo
 
     def __init__(
