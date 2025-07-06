@@ -6,6 +6,10 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Dict
 
 import voluptuous as vol
+from custom_components.elegoo_sdcp.exceptions import (
+    ElegooConfigFlowConnectionError,
+    ElegooConfigFlowGeneralError,
+)
 from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.core import callback
@@ -37,14 +41,6 @@ OPTIONS_SCHEMA = vol.Schema(
         ),
     },
 )
-
-
-class ElegooConfigFlowGeneralError(Exception):
-    """Exception raised for general configuration flow errors."""
-
-
-class ElegooConfigFlowConnectionError(Exception):
-    """Exception raised when connection to printer fails during configuration."""
 
 
 async def _async_test_connection(
