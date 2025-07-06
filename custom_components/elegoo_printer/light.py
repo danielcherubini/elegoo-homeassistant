@@ -16,6 +16,11 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterTyp
 from custom_components.elegoo_printer.elegoo_sdcp.models.status import LightStatus
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
+from .const import LOGGER
+
+
+from .const import LOGGER
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -32,6 +37,7 @@ async def async_setup_entry(
 
     # Check if the printer supports lights before adding entities
     if printer_type == PrinterType.FDM:
+        LOGGER.debug(f"Adding {len(PRINTER_FDM_LIGHTS)} light entities")
         for light in PRINTER_FDM_LIGHTS:
             async_add_entities(
                 [ElegooLight(coordinator, light)], update_before_add=True

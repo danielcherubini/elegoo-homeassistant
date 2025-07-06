@@ -15,6 +15,10 @@ class ElegooConfigFlowConnectionError(ElegooSDCPError):
     """Exception raised when connection to printer fails during configuration."""
 
 
+class ElegooPrinterConfigurationError(ElegooSDCPError):
+    """Exception raised when printer configuration fails."""
+
+
 class ElegooPrinterConnectionError(ElegooSDCPError):
     """Exception to indicate a connection error with the Elegoo printer."""
 

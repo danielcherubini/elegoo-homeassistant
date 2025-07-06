@@ -16,6 +16,7 @@ from custom_components.elegoo_printer.definitions import (
 )
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
+from .const import LOGGER
 from .definitions import PRINTER_IMAGES
 
 if TYPE_CHECKING:
@@ -37,6 +38,7 @@ async def async_setup_entry(
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
 
+    LOGGER.debug(f"Adding {len(PRINTER_IMAGES)} image entities")
     for image in PRINTER_IMAGES:
         async_add_entities(
             [CoverImage(hass, coordinator, image)],

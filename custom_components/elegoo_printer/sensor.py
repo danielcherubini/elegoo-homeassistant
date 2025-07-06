@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.const import UnitOfTime
 
+from .const import LOGGER
 from .definitions import (
     PRINTER_ATTRIBUTES_COMMON,
     PRINTER_ATTRIBUTES_RESIN,
@@ -41,60 +42,28 @@ async def async_setup_entry(
     """
     coordinator: ElegooDataUpdateCoordinator = entry.runtime_data.coordinator
     printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
-    for entity_description in PRINTER_STATUS_COMMON:
-        async_add_entities(
-            [
-                ElegooPrinterSensor(
-                    coordinator=coordinator,
-                    entity_description=entity_description,
-                )
-            ],
-            update_before_add=True,
-        )
-    for entity_description in PRINTER_ATTRIBUTES_COMMON:
-        async_add_entities(
-            [
-                ElegooPrinterSensor(
-                    coordinator=coordinator,
-                    entity_description=entity_description,
-                )
-            ],
-            update_before_add=True,
-        )
+
+    sensors: list[ElegooPrinterSensorEntityDescription] = []
+    sensors.extend(PRINTER_STATUS_COMMON)
+    sensors.extend(PRINTER_ATTRIBUTES_COMMON)
 
     if printer_type == PrinterType.FDM:
-        for entity_description in PRINTER_STATUS_FDM:
-            async_add_entities(
-                [
-                    ElegooPrinterSensor(
-                        coordinator=coordinator,
-                        entity_description=entity_description,
-                    )
-                ],
-                update_before_add=True,
-            )
+        sensors.extend(PRINTER_STATUS_FDM)
     elif printer_type == PrinterType.RESIN:
-        for entity_description in PRINTER_STATUS_RESIN:
-            async_add_entities(
-                [
-                    ElegooPrinterSensor(
-                        coordinator=coordinator,
-                        entity_description=entity_description,
-                    )
-                ],
-                update_before_add=True,
-            )
+        sensors.extend(PRINTER_STATUS_RESIN)
+        sensors.extend(PRINTER_ATTRIBUTES_RESIN)
 
-        for entity_description in PRINTER_ATTRIBUTES_RESIN:
-            async_add_entities(
-                [
-                    ElegooPrinterSensor(
-                        coordinator=coordinator,
-                        entity_description=entity_description,
-                    )
-                ],
-                update_before_add=True,
+    LOGGER.debug(f"Adding {len(sensors)} sensor entities")
+    async_add_entities(
+        [
+            ElegooPrinterSensor(
+                coordinator=coordinator,
+                entity_description=entity_description,
             )
+            for entity_description in sensors
+        ],
+        update_before_add=True,
+    )
 
 
 class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):

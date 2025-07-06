@@ -4,15 +4,15 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.elegoo_printer.coordinator import ElegooDataUpdateCoordinator
 from custom_components.elegoo_printer.data import ElegooPrinterConfigEntry
-from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
-    PrinterType,
-)
-from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 from custom_components.elegoo_printer.definitions import (
-    ElegooPrinterButtonEntityDescription,
     PRINTER_FDM_BUTTONS,
+    ElegooPrinterButtonEntityDescription,
 )
+from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
+from custom_components.elegoo_printer.entity import ElegooPrinterEntity
+
+from .const import LOGGER
 
 
 async def async_setup_entry(
@@ -30,6 +30,7 @@ async def async_setup_entry(
 
     # Check if the printer supports print controls before adding entities
     if printer_type == PrinterType.FDM:
+        LOGGER.debug(f"Adding {len(PRINTER_FDM_BUTTONS)} button entities")
         for description in PRINTER_FDM_BUTTONS:
             async_add_entities(
                 [ElegooSimpleButton(coordinator, description)], update_before_add=True

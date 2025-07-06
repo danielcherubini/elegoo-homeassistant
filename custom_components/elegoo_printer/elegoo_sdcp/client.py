@@ -12,6 +12,7 @@ from typing import Any
 import websocket
 
 from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
+    ElegooPrinterConfigurationError,
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
 )
@@ -39,7 +40,7 @@ class ElegooPrinterClient:
 
     def __init__(
         self,
-        ip_address: str,
+        ip_address: str | None,
         logger: Any = LOGGER,
         config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
@@ -52,6 +53,8 @@ class ElegooPrinterClient:
 
         Initializes internal state, including printer data models, websocket references, and logging.
         """
+        if ip_address is None:
+            raise ElegooPrinterConfigurationError("No IP address")
         self.ip_address: str = ip_address
         self.printer_websocket: websocket.WebSocketApp | None = None
         self.config = config
@@ -410,12 +413,14 @@ class ElegooPrinterClient:
 
         def ws_connected_handler(name: str) -> None:
             """
-            Logs a message indicating a successful client connection to the specified proxy target.
+            Logs a message indicating a successful client connection to the specified target.
 
             Parameters:
-                name (str): The name or identifier of the proxy target to which the client connected.
+                name (str): The name or identifier of the target to which the client connected.
             """
-            self.logger.info(f"Client successfully connected via proxy to: {name}")
+            self.logger.info(
+                f"Client successfully connected to: {name}, via proxy: {proxy_enabled}"
+            )
 
         def on_close(
             ws,  # noqa: ANN001, ARG001
@@ -428,7 +433,7 @@ class ElegooPrinterClient:
             Resets the internal websocket reference and logs the closure event with the provided status code and message.
             """
             self.logger.debug(
-                f"Connection to {self.printer.name} (via proxy) closed: {close_msg} ({close_status_code})"
+                f"Connection to {self.printer.name} closed: {close_msg} ({close_status_code})"
             )
             self.printer_websocket = None
 
@@ -436,9 +441,7 @@ class ElegooPrinterClient:
             """
             Handles websocket errors by logging the error and clearing the printer websocket reference.
             """
-            self.logger.error(
-                f"Connection to {self.printer.name} (via proxy) error: {error}"
-            )
+            self.logger.error(f"Connection to {self.printer.name} error: {error}")
             self.printer_websocket = None
 
         ws = websocket.WebSocketApp(

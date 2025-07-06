@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 class ElegooPrinterApiClient:
     """Sample API Client."""
 
-    _ip_address: str
+    _ip_address: str | None
     client: ElegooPrinterClient
     _logger: Logger
     printer: Printer
@@ -56,9 +56,11 @@ class ElegooPrinterApiClient:
         logger: Logger,
     ) -> ElegooPrinterApiClient:
         """
-        Asynchronously creates and initializes an ElegooPrinterApiClient instance from the provided configuration.
+        Asynchronously creates and initializes an ElegooPrinterApiClient instance.
 
-        This method parses the configuration to construct a Printer object, optionally sets up a proxy server, and attempts to connect to the printer. Returns the initialized API client instance regardless of connection success.
+        This method parses the configuration to construct a Printer object, optionally
+        sets up a proxy server, and attempts to connect to the printer. It returns an
+        initialized client instance; the connection status should be checked separately.
         """
         printer = Printer.from_dict(dict(config))
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
