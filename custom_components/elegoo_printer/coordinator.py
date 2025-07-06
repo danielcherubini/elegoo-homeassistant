@@ -41,6 +41,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             await self.config_entry.runtime_data.client.async_get_print_history()
             if self.update_interval is not timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
+            return self.config_entry.runtime_data.client.printer_data
         except ElegooPrinterConnectionError as e:
             if self.update_interval is not timedelta(seconds=30):
                 self.update_interval = timedelta(seconds=30)
@@ -54,8 +55,6 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         except OSError as e:
             LOGGER.warning(f"OSError while communicating with Elegoo printer: {e}")
             raise UpdateFailed("Unexpected Error") from e
-
-        return self.config_entry.runtime_data.client.printer_data
 
     def generate_unique_id(self, key: str) -> str:
         """
