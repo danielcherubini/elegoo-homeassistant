@@ -20,6 +20,6 @@ type ElegooPrinterConfigEntry = ConfigEntry[ElegooPrinterData]
 class ElegooPrinterData:
     """Data for the Elegoo integration."""
 
-    client: ElegooPrinterApiClient
+    api: ElegooPrinterApiClient
     coordinator: ElegooDataUpdateCoordinator
     integration: Integration

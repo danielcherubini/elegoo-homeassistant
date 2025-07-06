@@ -28,7 +28,7 @@ async def async_setup_entry(
     Creates and adds a light entity for each supported FDM light type if the connected printer is identified as an FDM model.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
-    printer_type = coordinator.config_entry.runtime_data.client._printer.printer_type
+    printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
 
     # Check if the printer supports lights before adding entities
     if printer_type == PrinterType.FDM:
@@ -54,7 +54,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         super().__init__(coordinator)
         self.entity_description = description
         self._elegoo_printer_client: ElegooPrinterClient = (
-            coordinator.config_entry.runtime_data.client._elegoo_printer
+            coordinator.config_entry.runtime_data.api.client
         )
         # Set a unique ID and a friendly name for the entity
         self._attr_unique_id = coordinator.generate_unique_id(
