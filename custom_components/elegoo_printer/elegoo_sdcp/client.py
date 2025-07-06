@@ -54,7 +54,9 @@ class ElegooPrinterClient:
         Initializes internal state, including printer data models, websocket references, and logging.
         """
         if ip_address is None:
-            raise ElegooPrinterConfigurationError("No IP address")
+            raise ElegooPrinterConfigurationError(
+                "IP address is required but not provided"
+            )
         self.ip_address: str = ip_address
         self.printer_websocket: websocket.WebSocketApp | None = None
         self.config = config
