@@ -36,19 +36,19 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             UpdateFailed: If a connection or operating system error prevents data retrieval.
         """
         try:
-            await self.config_entry.runtime_data.client.async_get_attributes()
-            await self.config_entry.runtime_data.client.async_get_status()
-            await self.config_entry.runtime_data.client.async_get_print_history()
+            await self.config_entry.runtime_data.api.async_get_attributes()
+            await self.config_entry.runtime_data.api.async_get_status()
+            await self.config_entry.runtime_data.api.async_get_print_history()
             if self.update_interval is not timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
-            return self.config_entry.runtime_data.client.printer_data
+            return self.config_entry.runtime_data.api.printer_data
         except ElegooPrinterConnectionError as e:
             if self.update_interval is not timedelta(seconds=30):
                 self.update_interval = timedelta(seconds=30)
             LOGGER.info("Elegoo printer is not connected: %s", e)
             raise UpdateFailed("Elegoo printer is not connected") from e
         except ElegooPrinterNotConnectedError:
-            connected = await self.config_entry.runtime_data.client.reconnect()
+            connected = await self.config_entry.runtime_data.api.reconnect()
             if connected:
                 LOGGER.info("Elegoo printer reconnected successfully.")
                 self.update_interval = timedelta(seconds=2)

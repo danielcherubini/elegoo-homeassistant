@@ -6,10 +6,6 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Dict
 
 import voluptuous as vol
-from custom_components.elegoo_sdcp.exceptions import (
-    ElegooConfigFlowConnectionError,
-    ElegooConfigFlowGeneralError,
-)
 from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.core import callback
@@ -18,6 +14,10 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.selector import SelectOptionDict
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
+    ElegooConfigFlowConnectionError,
+    ElegooConfigFlowGeneralError,
+)
 
 from .const import CONF_PROXY_ENABLED, DOMAIN, LOGGER
 from .elegoo_sdcp.models.printer import Printer

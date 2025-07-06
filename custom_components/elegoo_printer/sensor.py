@@ -40,7 +40,7 @@ async def async_setup_entry(
     Adds sensor entities for printer statuses and attributes based on the printer type, ensuring each entity is updated before being added to Home Assistant.
     """
     coordinator: ElegooDataUpdateCoordinator = entry.runtime_data.coordinator
-    printer_type = coordinator.config_entry.runtime_data.client._printer.printer_type
+    printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
     for entity_description in PRINTER_STATUS_COMMON:
         async_add_entities(
             [
@@ -115,9 +115,8 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         self._attr_unique_id = coordinator.generate_unique_id(
             self.entity_description.key
         )
-        printer_type = (
-            coordinator.config_entry.runtime_data.client._printer.printer_type
-        )
+        self.printer_data = coordinator.config_entry.runtime_data.api.printer_data
+        printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
 
         """This block fixes the issues with the Centurai Carbon"""
         if (
@@ -138,9 +137,9 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
     @property
     def native_value(self) -> datetime | StateType:
         """Return the state of the sensor."""
-        return self.entity_description.value_fn(self)
+        return self.entity_description.value_fn(self.printer_data)
 
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self.entity_description.available_fn(self)
+        return self.entity_description.available_fn(self.printer_data)
