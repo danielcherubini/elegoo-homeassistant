@@ -353,7 +353,7 @@ PRINTER_IMAGES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="cover_image",
         name="Cover Image",
-        value_fn=lambda _thumbnail: _thumbnail,
+        value_fn=lambda thumbnail: thumbnail,
     ),
 )
 
