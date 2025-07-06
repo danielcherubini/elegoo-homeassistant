@@ -19,9 +19,6 @@ from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 from .const import LOGGER
 
 
-from .const import LOGGER
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ElegooPrinterConfigEntry,
