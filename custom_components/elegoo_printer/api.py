@@ -76,13 +76,6 @@ class ElegooPrinterApiClient:
         logger.debug("CONFIGURATION %s", config)
         self = ElegooPrinterApiClient(printer, config=config, logger=logger, hass=hass)
 
-        elegoo_printer = ElegooPrinterClient(
-            printer.ip_address,
-            config=config,
-            logger=logger,
-            session=async_get_clientsession(hass),
-        )
-
         if printer.proxy_enabled:
             logger.debug("Proxy server is enabled, attempting to create proxy server.")
             try:
@@ -102,12 +95,9 @@ class ElegooPrinterApiClient:
         )
 
         try:
-            connected = await elegoo_printer.connect_printer(
-                printer, proxy_server_enabled
-            )
+            connected = await self.client.connect_printer(printer, proxy_server_enabled)
             if connected:
                 logger.info("Polling Started")
-                self.client = elegoo_printer
             else:
                 raise ConfigEntryNotReady(
                     f"Could not connect to printer at {printer.ip_address}, proxy_enabled: {proxy_server_enabled}"
