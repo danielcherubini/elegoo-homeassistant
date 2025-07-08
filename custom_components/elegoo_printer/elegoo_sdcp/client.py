@@ -465,7 +465,6 @@ class ElegooPrinterClient:
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     self._parse_response(msg.data)
                 elif msg.type == aiohttp.WSMsgType.ERROR:
-
                     error_str = f"WebSocket connection error: {self.printer_websocket.exception()}"
                     self.logger.info(error_str)
                     raise ElegooPrinterConnectionError(error_str)
