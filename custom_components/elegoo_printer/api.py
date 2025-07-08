@@ -91,22 +91,27 @@ class ElegooPrinterApiClient:
             printer.proxy_enabled,
         )
 
-        connected = await elegoo_printer.connect_printer(printer, proxy_server_enabled)
-        if connected:
-            logger.info("Polling Started")
-            self.client = elegoo_printer
-        else:
-            raise ConfigEntryNotReady(
-                f"Could not connect to printer at {printer.ip_address}, proxy_enabled: {proxy_server_enabled}"
+        try:
+            connected = await elegoo_printer.connect_printer(
+                printer, proxy_server_enabled
             )
+            if connected:
+                logger.info("Polling Started")
+                self.client = elegoo_printer
+            else:
+                raise ConfigEntryNotReady(
+                    f"Could not connect to printer at {printer.ip_address}, proxy_enabled: {proxy_server_enabled}"
+                )
+        except Exception as e:
+            raise ConfigEntryNotReady from e
 
         return self
 
-    def disconnect(self) -> None:
+    def elegoo_disconnect(self) -> None:
         """Disconnect from the printer by closing the WebSocket connection."""
         self.client.disconnect()
 
-    def stop_proxy(self) -> None:
+    def elegoo_stop_proxy(self) -> None:
         """Stops the proxy server if it is running."""
         if self.server:
             self.server.stop()
