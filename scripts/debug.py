@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 
+import aiohttp
 from loguru import logger
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
@@ -29,7 +30,9 @@ async def main() -> None:
     """
     stop_event = asyncio.Event()
     try:
-        elegoo_printer = ElegooPrinterClient(ip_address=PRINTER_IP, logger=logger)
+        elegoo_printer = ElegooPrinterClient(
+            ip_address=PRINTER_IP, session=aiohttp.ClientSession(), logger=logger
+        )
         printer = elegoo_printer.discover_printer(PRINTER_IP)
         if printer:
             logger.debug(f"PrinterType: {printer[0].printer_type}")
