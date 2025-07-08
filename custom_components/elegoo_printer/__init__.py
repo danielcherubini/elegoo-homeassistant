@@ -90,9 +90,13 @@ async def async_unload_entry(
     entry: ElegooPrinterConfigEntry,
 ) -> bool:
     """Handle removal of an entry."""
-    if client := entry.runtime_data.api:
-        client.stop_proxy()
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        if client := entry.runtime_data.api:
+            await hass.async_add_executor_job(client.disconnect)
+            await hass.async_add_executor_job(client.stop_proxy)
+
+    return unload_ok
 
 
 async def async_reload_entry(

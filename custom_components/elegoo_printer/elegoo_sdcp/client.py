@@ -63,6 +63,21 @@ class ElegooPrinterClient:
         self.printer: Printer = Printer.from_dict(dict(config))
         self.printer_data = PrinterData()
         self.logger = logger
+        self._is_connected: bool = False
+        self._websocket_thread: Thread | None = None
+
+    @property
+    def is_connected(self) -> bool:
+        """Return true if the client is connected to the printer."""
+        return self._is_connected
+
+    def disconnect(self) -> None:
+        """Disconnect from the printer."""
+        self.logger.info("Closing connection to printer")
+        if self.printer_websocket:
+            self.printer_websocket.close()
+            self.printer_websocket = None
+        self._is_connected = False
 
     def get_printer_status(self) -> PrinterData:
         """
@@ -261,6 +276,10 @@ class ElegooPrinterClient:
             ElegooPrinterConnectionError: If a WebSocket error or timeout occurs during sending.
             OSError: If an operating system error occurs while sending the command.
         """
+        if not self.is_connected:
+            raise ElegooPrinterNotConnectedError(
+                "Printer not connected, cannot send command."
+            )
         ts = int(time.time())
         data = data or {}
         payload = {
@@ -281,17 +300,20 @@ class ElegooPrinterClient:
             try:
                 self.printer_websocket.send(json.dumps(payload))
             except websocket.WebSocketTimeoutException as e:
+                self._is_connected = False
                 self.logger.info("WebSocket timeout error during send")
                 raise ElegooPrinterConnectionError("WebSocket timeout") from e
             except (
                 websocket.WebSocketConnectionClosedException,
                 websocket.WebSocketException,
             ) as e:
+                self._is_connected = False
                 self.logger.info("WebSocket connection closed error")
                 raise ElegooPrinterConnectionError from e
             except (
                 OSError
             ):  # Catch potential OS errors like Broken Pipe, Connection Refused
+                self._is_connected = False
                 self.logger.info("Operating System error during send")
                 raise  # Re-raise OS errors
         else:
@@ -396,6 +418,10 @@ class ElegooPrinterClient:
         Returns:
             bool: True if the connection to the printer via the proxy was successful, False otherwise.
         """
+        if self.is_connected:
+            self.logger.debug("Already connected")
+            return True
+
         self.printer = printer
         self.printer.proxy_enabled = proxy_enabled
         self.logger.debug(
@@ -413,16 +439,14 @@ class ElegooPrinterClient:
             """
             self._parse_response(msg)
 
-        def ws_connected_handler(name: str) -> None:
+        def ws_connected_handler(ws, *args) -> None:  # noqa: ANN001, ARG001
             """
             Logs a message indicating a successful client connection to the specified target.
-
-            Parameters:
-                name (str): The name or identifier of the target to which the client connected.
             """
             self.logger.info(
-                f"Client successfully connected to: {name}, via proxy: {proxy_enabled}"
+                f"Client successfully connected to: {self.printer.name}, via proxy: {proxy_enabled}"
             )
+            self._is_connected = True
 
         def on_close(
             ws,  # noqa: ANN001, ARG001
@@ -438,6 +462,7 @@ class ElegooPrinterClient:
                 f"Connection to {self.printer.name} closed: {close_msg} ({close_status_code})"
             )
             self.printer_websocket = None
+            self._is_connected = False
 
         def on_error(ws, error) -> None:  # noqa: ANN001, ARG001
             """
@@ -445,25 +470,29 @@ class ElegooPrinterClient:
             """
             self.logger.error(f"Connection to {self.printer.name} error: {error}")
             self.printer_websocket = None
+            self._is_connected = False
+
+        if self.printer_websocket:
+            self.disconnect()
 
         ws = websocket.WebSocketApp(
             url,
             on_message=ws_msg_handler,
-            on_open=ws_connected_handler(self.printer.name),
+            on_open=ws_connected_handler,
             on_close=on_close,
             on_error=on_error,
         )
         self.printer_websocket = ws
 
         # Run the client's websocket connection in its own thread.
-        thread = Thread(target=ws.run_forever, kwargs={"reconnect": 1}, daemon=True)
-        thread.start()
+        self._websocket_thread = Thread(target=ws.run_forever, daemon=True)
+        self._websocket_thread.start()
 
         # Wait for the connection to be established.
         start_time = time.monotonic()
         timeout = 5
         while time.monotonic() - start_time < timeout:
-            if ws.sock and ws.sock.connected:
+            if self.is_connected:
                 await asyncio.sleep(2)  # Allow time for initial messages if any.
                 self.logger.info(
                     f"Verified WebSocket connection to {self.printer.name}."
@@ -473,7 +502,7 @@ class ElegooPrinterClient:
         self.logger.warning(
             f"Failed to connect WebSocket to {self.printer.name} within timeout."
         )
-        self.printer_websocket = None
+        self.disconnect()
         return False
 
     def _parse_response(self, response: str) -> None:

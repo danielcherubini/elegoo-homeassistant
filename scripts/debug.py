@@ -9,6 +9,11 @@ from loguru import logger
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG
 
+# Add project root to the Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, project_root)
+
+
 LOG_LEVEL = "DEBUG"
 PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.212")
 

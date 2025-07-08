@@ -5,6 +5,8 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.exceptions import ConfigEntryNotReady
+
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
     PrintHistoryDetail,
@@ -93,9 +95,18 @@ class ElegooPrinterApiClient:
         if connected:
             logger.info("Polling Started")
             self.client = elegoo_printer
+        else:
+            raise ConfigEntryNotReady(
+                f"Could not connect to printer at {printer.ip_address}, proxy_enabled: {proxy_server_enabled}"
+            )
+
         return self
 
-    def stop_proxy(self):
+    def disconnect(self) -> None:
+        """Disconnect from the printer by closing the WebSocket connection."""
+        self.client.disconnect()
+
+    def stop_proxy(self) -> None:
         """Stops the proxy server if it is running."""
         if self.server:
             self.server.stop()
