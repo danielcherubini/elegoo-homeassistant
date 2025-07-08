@@ -10,7 +10,7 @@ from types import MappingProxyType
 from typing import Any
 
 import aiohttp
-from aiohttp import ClientWebSocketResponse, WSMsgType
+from aiohttp import ClientWebSocketResponse
 from aiohttp.client import ClientWSTimeout
 
 from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
