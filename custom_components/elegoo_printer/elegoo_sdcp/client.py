@@ -6,11 +6,12 @@ import logging
 import os
 import socket
 import time
-from threading import Thread
 from types import MappingProxyType
 from typing import Any
 
-import websocket
+import aiohttp
+from aiohttp import ClientWebSocketResponse
+from aiohttp.client_ws import ClientWSTimeout
 
 from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
     ElegooPrinterConfigurationError,
@@ -44,6 +45,7 @@ class ElegooPrinterClient:
     def __init__(
         self,
         ip_address: str | None,
+        session: aiohttp.ClientSession,
         logger: Any = LOGGER,
         config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
@@ -61,50 +63,57 @@ class ElegooPrinterClient:
                 "IP address is required but not provided"
             )
         self.ip_address: str = ip_address
-        self.printer_websocket: websocket.WebSocketApp | None = None
+        self.printer_websocket: ClientWebSocketResponse | None = None
         self.config = config
         self.printer: Printer = Printer.from_dict(dict(config))
         self.printer_data = PrinterData()
         self.logger = logger
         self._is_connected: bool = False
-        self._websocket_thread: Thread | None = None
+        self._listener_task: asyncio.Task | None = None
+        self._session: aiohttp.ClientSession = session
 
     @property
     def is_connected(self) -> bool:
         """Return true if the client is connected to the printer."""
-        return self._is_connected
+        return (
+            self._is_connected
+            and self.printer_websocket is not None
+            and not self.printer_websocket.closed
+        )
 
-    def disconnect(self) -> None:
+    async def disconnect(self) -> None:
         """Disconnect from the printer."""
         self.logger.info("Closing connection to printer")
-        if self.printer_websocket:
-            self.printer_websocket.close()
-            self.printer_websocket = None
+        if self._listener_task:
+            self._listener_task.cancel()
+            self._listener_task = None
+        if self.printer_websocket and not self.printer_websocket.closed:
+            await self.printer_websocket.close()
         self._is_connected = False
 
-    def get_printer_status(self) -> PrinterData:
+    async def get_printer_status(self) -> PrinterData:
         """
         Retrieve the current status of the printer.
 
         Returns:
             PrinterData: The latest printer status information.
         """
-        self._send_printer_cmd(0)
+        await self._send_printer_cmd(0)
         return self.printer_data
 
-    def get_printer_attributes(self) -> PrinterData:
+    async def get_printer_attributes(self) -> PrinterData:
         """Retreves the printer attributes."""
-        self._send_printer_cmd(1)
+        await self._send_printer_cmd(1)
         return self.printer_data
 
-    def set_printer_video_stream(self, *, toggle: bool) -> None:
+    async def set_printer_video_stream(self, *, toggle: bool) -> None:
         """
         Enable or disable the printer's video stream.
 
         Parameters:
                 toggle (bool): If True, enables the video stream; if False, disables it.
         """
-        self._send_printer_cmd(386, {"Enable": int(toggle)})
+        await self._send_printer_cmd(386, {"Enable": int(toggle)})
 
     async def get_printer_video(self, toggle: bool = False) -> ElegooVideo:
         """
@@ -116,7 +125,7 @@ class ElegooPrinterClient:
         Returns:
             ElegooVideo: The current video stream information from the printer.
         """
-        self.set_printer_video_stream(toggle=toggle)
+        await self.set_printer_video_stream(toggle=toggle)
         await asyncio.sleep(2)
         return self.printer_data.video
 
@@ -126,18 +135,20 @@ class ElegooPrinterClient:
         """
         Asynchronously requests the list of historical print tasks from the printer.
         """
-        self._send_printer_cmd(320)
+        await self._send_printer_cmd(320)
         await asyncio.sleep(2)  # Give the printer time to respond
         return self.printer_data.print_history
 
-    def get_printer_task_detail(self, id_list: list[str]) -> PrintHistoryDetail | None:
+    async def get_printer_task_detail(
+        self, id_list: list[str]
+    ) -> PrintHistoryDetail | None:
         """
         Retrieves historical tasks from the printer.
         """
         for task_id in id_list:
             if task_id in self.printer_data.print_history:
                 if self.printer_data.print_history[task_id] is None:
-                    self._send_printer_cmd(321, data={"Id": [task_id]})
+                    await self._send_printer_cmd(321, data={"Id": [task_id]})
                 else:
                     return self.printer_data.print_history[task_id]
         return None
@@ -151,7 +162,7 @@ class ElegooPrinterClient:
             if task_id in self.printer_data.print_history:
                 return self.printer_data.print_history[task_id]
             else:
-                self.get_printer_task_detail([task_id])
+                asyncio.create_task(self.get_printer_task_detail([task_id]))
                 return None
         return None
 
@@ -172,7 +183,7 @@ class ElegooPrinterClient:
             )
             task = self.printer_data.print_history.get(last_task_id)
             if task is None:
-                self.get_printer_task_detail([last_task_id])
+                asyncio.create_task(self.get_printer_task_detail([last_task_id]))
             return task
         return None
 
@@ -204,7 +215,7 @@ class ElegooPrinterClient:
             ):
                 return self.printer_data.print_history[task_id]
             else:
-                self.get_printer_task_detail([task_id])
+                await self.get_printer_task_detail([task_id])
                 await asyncio.sleep(2)  # Give the printer time to respond
                 if task_id in self.printer_data.print_history:
                     return self.printer_data.print_history[task_id]
@@ -227,7 +238,7 @@ class ElegooPrinterClient:
             )
             task = self.printer_data.print_history.get(last_task_id)
             if task is None:
-                self.get_printer_task_detail([last_task_id])
+                await self.get_printer_task_detail([last_task_id])
                 await asyncio.sleep(2)  # Give the printer time to respond
                 return self.printer_data.print_history.get(last_task_id)
             return task
@@ -246,34 +257,36 @@ class ElegooPrinterClient:
 
         return None
 
-    def set_light_status(self, light_status: LightStatus) -> None:
+    async def set_light_status(self, light_status: LightStatus) -> None:
         """
         Set the printer's light status to the specified configuration.
 
         Parameters:
                 light_status (LightStatus): The light status configuration to apply.
         """
-        self._send_printer_cmd(403, light_status.to_dict())
+        await self._send_printer_cmd(403, light_status.to_dict())
 
-    def print_pause(self) -> None:
+    async def print_pause(self) -> None:
         """
         Pause the current print.
         """
-        self._send_printer_cmd(129, {})
+        await self._send_printer_cmd(129, {})
 
-    def print_stop(self) -> None:
+    async def print_stop(self) -> None:
         """
         Stop the current print.
         """
-        self._send_printer_cmd(130, {})
+        await self._send_printer_cmd(130, {})
 
-    def print_resume(self) -> None:
+    async def print_resume(self) -> None:
         """
         Resume/continue the current print.
         """
-        self._send_printer_cmd(131, {})
+        await self._send_printer_cmd(131, {})
 
-    def _send_printer_cmd(self, cmd: int, data: dict[str, Any] | None = None) -> None:
+    async def _send_printer_cmd(
+        self, cmd: int, data: dict[str, Any] | None = None
+    ) -> None:
         """
         Send a JSON command to the printer via the WebSocket connection.
 
@@ -304,24 +317,15 @@ class ElegooPrinterClient:
             self.logger.debug(f"printer << \n{json.dumps(payload, indent=4)}")
         if self.printer_websocket:
             try:
-                self.printer_websocket.send(json.dumps(payload))
-            except websocket.WebSocketTimeoutException as e:
-                self._is_connected = False
-                self.logger.info("WebSocket timeout error during send")
-                raise ElegooPrinterConnectionError("WebSocket timeout") from e
+                await self.printer_websocket.send_str(json.dumps(payload))
             except (
-                websocket.WebSocketConnectionClosedException,
-                websocket.WebSocketException,
+                OSError,
+                asyncio.TimeoutError,
+                aiohttp.ClientError,
             ) as e:
                 self._is_connected = False
                 self.logger.info("WebSocket connection closed error")
                 raise ElegooPrinterConnectionError from e
-            except (
-                OSError
-            ):  # Catch potential OS errors like Broken Pipe, Connection Refused
-                self._is_connected = False
-                self.logger.info("Operating System error during send")
-                raise  # Re-raise OS errors
         else:
             raise ElegooPrinterNotConnectedError("Not connected")
 
@@ -417,103 +421,62 @@ class ElegooPrinterClient:
 
     async def connect_printer(self, printer: Printer, proxy_enabled: bool) -> bool:
         """
-        Establish an asynchronous connection to the Elegoo printer via a local WebSocket proxy.
-
-        If a local proxy server is not running, starts one that connects to the remote printer, enabling multiple local clients to share a single printer connection. Discovers the printer or proxy, then connects to its WebSocket interface. Waits for the connection to be established or times out.
-
-        Returns:
-            bool: True if the connection to the printer via the proxy was successful, False otherwise.
+        Establish an asynchronous connection to the Elegoo printer.
         """
         if self.is_connected:
             self.logger.debug("Already connected")
             return True
+
+        await self.disconnect()
 
         self.printer = printer
         self.printer.proxy_enabled = proxy_enabled
         self.logger.debug(
             f"Connecting to printer: {self.printer.name} at {self.printer.ip_address} proxy_enabled: {proxy_enabled}"
         )
-        # Connect this client to the discovered printer/proxy's WebSocket.
         url = f"ws://{self.printer.ip_address}:{WEBSOCKET_PORT}/websocket"
         self.logger.info(f"Client connecting to WebSocket at: {url}")
 
-        def ws_msg_handler(ws, msg: str) -> None:  # noqa: ANN001, ARG001
-            """
-            Handles incoming websocket messages by parsing the response and routing it to the appropriate handler.
-            """
-            self._parse_response(msg)
-
-        def ws_connected_handler(ws, *args) -> None:  # noqa: ANN001, ARG001
-            """
-            Logs a message indicating a successful client connection to the specified target.
-            """
+        try:
+            timeout = ClientWSTimeout()
+            self.printer_websocket = await self._session.ws_connect(
+                url, timeout=timeout, heartbeat=20
+            )
+            self._is_connected = True
+            self._listener_task = asyncio.create_task(self._ws_listener())
             self.logger.info(
                 f"Client successfully connected to: {self.printer.name}, via proxy: {proxy_enabled}"
             )
-            self._is_connected = True
-
-        def on_close(
-            ws,  # noqa: ANN001, ARG001
-            close_status_code: str,
-            close_msg: str,
-        ) -> None:
-            """
-            Handles the event when the websocket connection to the printer is closed.
-
-            Resets the internal websocket reference and logs the closure event with the provided status code and message.
-            """
-            self.logger.debug(
-                f"Connection to {self.printer.name} closed: {close_msg} ({close_status_code})"
+            return True
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            self.logger.warning(
+                f"Failed to connect WebSocket to {self.printer.name}: {e}"
             )
-            self.printer_websocket = None
+            await self.disconnect()
+            return False
+
+    async def _ws_listener(self) -> None:
+        """Listen for messages on the WebSocket and handle them."""
+        if not self.printer_websocket:
+            return
+
+        try:
+            async for msg in self.printer_websocket:
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    self._parse_response(msg.data)
+                elif msg.type == aiohttp.WSMsgType.ERROR:
+
+                    error_str = f"WebSocket connection error: {self.printer_websocket.exception()}"
+                    self.logger.info(error_str)
+                    raise ElegooPrinterConnectionError(error_str)
+        except asyncio.CancelledError:
+            self.logger.debug("WebSocket listener cancelled.")
+        except Exception as e:
+            self.logger.error(f"WebSocket listener exception: {e}")
+            raise ElegooPrinterConnectionError from e
+        finally:
             self._is_connected = False
-
-        def on_error(ws, error) -> None:  # noqa: ANN001, ARG001
-            """
-            Handles websocket errors by logging the error and clearing the printer websocket reference.
-            """
-            error_str = f"Connection to {self.printer.name} error: {error}"
-            self.logger.debug(error_str)
-            self.disconnect()
-            raise ElegooPrinterConnectionError(error_str)
-
-        if self.printer_websocket:
-            self.disconnect()
-
-        ws = websocket.WebSocketApp(
-            url,
-            on_message=ws_msg_handler,
-            on_open=ws_connected_handler,
-            on_close=on_close,
-            on_error=on_error,
-        )
-
-        self.printer_websocket = ws
-
-        # Run the client's websocket connection in its own thread.
-        self._websocket_thread = Thread(
-            target=ws.run_forever,
-            kwargs={"ping_interval": 20, "ping_timeout": 10},
-            daemon=True,
-        )
-        self._websocket_thread.start()
-
-        # Wait for the connection to be established.
-        start_time = time.monotonic()
-        timeout = 5
-        while time.monotonic() - start_time < timeout:
-            if self.is_connected:
-                await asyncio.sleep(2)  # Allow time for initial messages if any.
-                self.logger.info(
-                    f"Verified WebSocket connection to {self.printer.name}."
-                )
-                return True
-
-        self.logger.warning(
-            f"Failed to connect WebSocket to {self.printer.name} within timeout."
-        )
-        self.disconnect()
-        return False
+            self.logger.info("WebSocket listener stopped.")
 
     def _parse_response(self, response: str) -> None:
         """

@@ -38,7 +38,7 @@ async def async_setup_entry(
     printer_client: ElegooPrinterClient = (
         coordinator.config_entry.runtime_data.api.client
     )
-    printer_client.set_printer_video_stream(toggle=True)
+    await printer_client.set_printer_video_stream(toggle=True)
 
 
 class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):

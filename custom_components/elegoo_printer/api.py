@@ -5,7 +5,9 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
@@ -36,6 +38,7 @@ class ElegooPrinterApiClient:
         printer: Printer,
         config: MappingProxyType[str, Any],
         logger: Logger,
+        hass: HomeAssistant,
     ) -> None:
         """
         Initialize the ElegooPrinterApiClient with a Printer object, configuration, and logger.
@@ -47,7 +50,10 @@ class ElegooPrinterApiClient:
         self._logger = logger
         self.printer = printer
         self.client = ElegooPrinterClient(
-            printer.ip_address, config=config, logger=logger
+            printer.ip_address,
+            config=config,
+            logger=logger,
+            session=async_get_clientsession(hass),
         )
         self.server: ElegooPrinterServer | None = None
 
@@ -56,6 +62,7 @@ class ElegooPrinterApiClient:
         cls,
         config: MappingProxyType[str, Any],
         logger: Logger,
+        hass: HomeAssistant,
     ) -> ElegooPrinterApiClient:
         """
         Asynchronously creates and initializes an ElegooPrinterApiClient instance.
@@ -67,10 +74,13 @@ class ElegooPrinterApiClient:
         printer = Printer.from_dict(dict(config))
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
         logger.debug("CONFIGURATION %s", config)
-        self = ElegooPrinterApiClient(printer, config=config, logger=logger)
+        self = ElegooPrinterApiClient(printer, config=config, logger=logger, hass=hass)
 
         elegoo_printer = ElegooPrinterClient(
-            printer.ip_address, config=config, logger=logger
+            printer.ip_address,
+            config=config,
+            logger=logger,
+            session=async_get_clientsession(hass),
         )
 
         if printer.proxy_enabled:
@@ -107,9 +117,9 @@ class ElegooPrinterApiClient:
 
         return self
 
-    def elegoo_disconnect(self) -> None:
+    async def elegoo_disconnect(self) -> None:
         """Disconnect from the printer by closing the WebSocket connection."""
-        self.client.disconnect()
+        await self.client.disconnect()
 
     def elegoo_stop_proxy(self) -> None:
         """Stops the proxy server if it is running."""
@@ -124,7 +134,7 @@ class ElegooPrinterApiClient:
             PrinterData: The latest status data of the printer.
         """
 
-        self.printer_data = self.client.get_printer_status()
+        self.printer_data = await self.client.get_printer_status()
         return self.printer_data
 
     async def async_get_attributes(self) -> PrinterData:
@@ -134,7 +144,7 @@ class ElegooPrinterApiClient:
         Returns:
             PrinterData: The latest attribute information for the printer.
         """
-        self.printer_data = self.client.get_printer_attributes()
+        self.printer_data = await self.client.get_printer_attributes()
         return self.printer_data
 
     def is_thumbnail_available(self) -> bool:
