@@ -49,12 +49,14 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             LOGGER.info("Elegoo printer is not connected: %s", e)
             raise UpdateFailed("Elegoo printer is not connected") from e
         except ElegooPrinterNotConnectedError as e:
+            if self.update_interval != timedelta(seconds=30):
+                self.update_interval = timedelta(seconds=30)
             connected = await self.config_entry.runtime_data.api.reconnect()
             if connected:
                 LOGGER.info("Elegoo printer reconnected successfully.")
                 self.update_interval = timedelta(seconds=2)
             else:
-                raise ConfigEntryNotReady from e
+                raise UpdateFailed("Elegoo Printer is Offline") from e
         except OSError as e:
             LOGGER.warning(
                 "OSError while communicating with Elegoo printer: [Errno %s] %s",
