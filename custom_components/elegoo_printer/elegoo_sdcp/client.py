@@ -10,8 +10,8 @@ from types import MappingProxyType
 from typing import Any
 
 import aiohttp
-from aiohttp import ClientWebSocketResponse
-from aiohttp.client_ws import ClientWSTimeout
+from aiohttp import ClientWebSocketResponse, WSMsgType
+from aiohttp.client import ClientWSTimeout
 
 from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
     ElegooPrinterConfigurationError,
@@ -71,6 +71,7 @@ class ElegooPrinterClient:
         self._is_connected: bool = False
         self._listener_task: asyncio.Task | None = None
         self._session: aiohttp.ClientSession = session
+        self._background_tasks: set[asyncio.Task] = set()
 
     @property
     def is_connected(self) -> bool:
@@ -162,7 +163,9 @@ class ElegooPrinterClient:
             if task_id in self.printer_data.print_history:
                 return self.printer_data.print_history[task_id]
             else:
-                asyncio.create_task(self.get_printer_task_detail([task_id]))
+                task = asyncio.create_task(self.get_printer_task_detail([task_id]))
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
                 return None
         return None
 
@@ -181,10 +184,14 @@ class ElegooPrinterClient:
                 self.printer_data.print_history.keys(),
                 key=sort_key,
             )
-            task = self.printer_data.print_history.get(last_task_id)
-            if task is None:
-                asyncio.create_task(self.get_printer_task_detail([last_task_id]))
-            return task
+            task_data = self.printer_data.print_history.get(last_task_id)
+            if task_data is None:
+                task = asyncio.create_task(
+                    self.get_printer_task_detail([last_task_id])
+                )
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
+            return task_data
         return None
 
     def get_current_print_thumbnail(self) -> str | None:
