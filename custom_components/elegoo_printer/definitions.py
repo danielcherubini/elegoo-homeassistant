@@ -19,6 +19,11 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
 )
 
 
+async def _async_noop() -> None:
+    """Async no-op function"""
+    pass
+
+
 @dataclass
 class ElegooPrinterSensorEntityDescriptionMixin:
     """Mixin for required keys."""
@@ -54,7 +59,7 @@ class ElegooPrinterLightEntityDescription(
 class ElegooPrinterButtonEntityDescription(ButtonEntityDescription):
     """Button entity description for Elegoo Printers."""
 
-    action_fn: Callable[..., Coroutine[Any, Any, None]] = lambda _: None
+    action_fn: Callable[..., Coroutine[Any, Any, None]] = lambda _: _async_noop()
     available_fn: Callable[..., bool] = lambda printer_data: printer_data
 
 
