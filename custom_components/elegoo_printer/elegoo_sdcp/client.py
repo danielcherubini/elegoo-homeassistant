@@ -186,9 +186,7 @@ class ElegooPrinterClient:
             )
             task_data = self.printer_data.print_history.get(last_task_id)
             if task_data is None:
-                task = asyncio.create_task(
-                    self.get_printer_task_detail([last_task_id])
-                )
+                task = asyncio.create_task(self.get_printer_task_detail([last_task_id]))
                 self._background_tasks.add(task)
                 task.add_done_callback(self._background_tasks.discard)
             return task_data
