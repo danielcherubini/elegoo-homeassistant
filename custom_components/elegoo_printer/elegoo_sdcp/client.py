@@ -310,7 +310,9 @@ class ElegooPrinterClient:
                 self._is_connected = False
                 self.logger.info("WebSocket connection closed error")
                 raise ElegooPrinterConnectionError from e
-            except OSError:  # Catch potential OS errors like Broken Pipe, Connection Refused
+            except (
+                OSError
+            ):  # Catch potential OS errors like Broken Pipe, Connection Refused
                 self._is_connected = False
                 self.logger.info("Operating System error during send")
                 raise  # Re-raise OS errors
