@@ -437,8 +437,6 @@ class ElegooPrinterClient:
         url = f"ws://{self.printer.ip_address}:{WEBSOCKET_PORT}/websocket"
         self.logger.info(f"Client connecting to WebSocket at: {url}")
 
-        websocket.setdefaulttimeout(5)
-
         def ws_msg_handler(ws, msg: str) -> None:  # noqa: ANN001, ARG001
             """
             Handles incoming websocket messages by parsing the response and routing it to the appropriate handler.
