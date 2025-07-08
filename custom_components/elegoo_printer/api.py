@@ -137,6 +137,15 @@ class ElegooPrinterApiClient:
         self.printer_data = self.client.get_printer_attributes()
         return self.printer_data
 
+    def is_thumbnail_available(self) -> bool:
+        """
+        Checks if the current print job's thumbnail image exists and returns a bool.
+
+        Returns:
+            bool: True if thumbnail image is available, or False otherwise.
+        """
+        return self.client.get_current_print_thumbnail() is not None
+
     async def async_get_current_thumbnail(self) -> str | None:
         """
         Asynchronously retrieves the current print job's thumbnail image as a string.
