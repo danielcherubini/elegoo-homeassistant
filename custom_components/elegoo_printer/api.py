@@ -102,11 +102,11 @@ class ElegooPrinterApiClient:
 
         return self
 
-    def disconnect(self):
-        """Disconnects from the printer"""
+    def disconnect(self) -> None:
+        """Disconnect from the printer by closing the WebSocket connection."""
         self.client.disconnect()
 
-    def stop_proxy(self):
+    def stop_proxy(self) -> None:
         """Stops the proxy server if it is running."""
         if self.server:
             self.server.stop()
