@@ -472,9 +472,10 @@ class ElegooPrinterClient:
             """
             Handles websocket errors by logging the error and clearing the printer websocket reference.
             """
-            self.logger.debug(f"Connection to {self.printer.name} error: {error}")
-            self.printer_websocket = None
-            self._is_connected = False
+            error_str = f"Connection to {self.printer.name} error: {error}"
+            self.logger.debug(error_str)
+            self.disconnect()
+            raise ElegooPrinterConnectionError(error_str)
 
         if self.printer_websocket:
             self.disconnect()
@@ -486,10 +487,15 @@ class ElegooPrinterClient:
             on_close=on_close,
             on_error=on_error,
         )
+
         self.printer_websocket = ws
 
         # Run the client's websocket connection in its own thread.
-        self._websocket_thread = Thread(target=ws.run_forever, daemon=True)
+        self._websocket_thread = Thread(
+            target=ws.run_forever,
+            kwargs={"ping_interval": 20, "ping_timeout": 10},
+            daemon=True,
+        )
         self._websocket_thread.start()
 
         # Wait for the connection to be established.
