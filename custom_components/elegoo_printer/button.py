@@ -67,7 +67,7 @@ class ElegooSimpleButton(ElegooPrinterEntity, ButtonEntity):
 
         Calls the printer's action function and requests a state refresh.
         """
-        self.entity_description.action_fn(self._elegoo_printer_client)
+        await self.entity_description.action_fn(self._elegoo_printer_client)
         await self.coordinator.async_request_refresh()
 
     @property

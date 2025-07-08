@@ -1,8 +1,9 @@
 """Definitions for the Elegoo Printer Integration."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from homeassistant.components.button import ButtonEntityDescription
 from homeassistant.components.light import LightEntityDescription
@@ -53,7 +54,7 @@ class ElegooPrinterLightEntityDescription(
 class ElegooPrinterButtonEntityDescription(ButtonEntityDescription):
     """Button entity description for Elegoo Printers."""
 
-    action_fn: Callable[..., None] = lambda _: None
+    action_fn: Callable[..., Coroutine[Any, Any, None]] = lambda _: None
     available_fn: Callable[..., bool] = lambda printer_data: printer_data
 
 
