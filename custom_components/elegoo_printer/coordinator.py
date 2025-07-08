@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from custom_components.elegoo_printer.const import LOGGER
@@ -47,11 +48,13 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                 self.update_interval = timedelta(seconds=30)
             LOGGER.info("Elegoo printer is not connected: %s", e)
             raise UpdateFailed("Elegoo printer is not connected") from e
-        except ElegooPrinterNotConnectedError:
+        except ElegooPrinterNotConnectedError as e:
             connected = await self.config_entry.runtime_data.api.reconnect()
             if connected:
                 LOGGER.info("Elegoo printer reconnected successfully.")
                 self.update_interval = timedelta(seconds=2)
+            else:
+                raise ConfigEntryNotReady from e
         except OSError as e:
             LOGGER.warning(
                 "OSError while communicating with Elegoo printer: [Errno %s] %s",
