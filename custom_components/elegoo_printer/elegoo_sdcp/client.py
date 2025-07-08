@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import socket
 import time
@@ -23,6 +24,8 @@ from .models.attributes import PrinterAttributes
 from .models.print_history_detail import PrintHistoryDetail
 from .models.printer import Printer, PrinterData
 from .models.status import LightStatus, PrinterStatus
+
+logging.getLogger("websocket").setLevel(logging.CRITICAL)
 
 DISCOVERY_TIMEOUT = 5
 DISCOVERY_PORT = 3000
@@ -431,7 +434,7 @@ class ElegooPrinterClient:
         url = f"ws://{self.printer.ip_address}:{WEBSOCKET_PORT}/websocket"
         self.logger.info(f"Client connecting to WebSocket at: {url}")
 
-        websocket.setdefaulttimeout(1)
+        websocket.setdefaulttimeout(5)
 
         def ws_msg_handler(ws, msg: str) -> None:  # noqa: ANN001, ARG001
             """
@@ -468,7 +471,7 @@ class ElegooPrinterClient:
             """
             Handles websocket errors by logging the error and clearing the printer websocket reference.
             """
-            self.logger.error(f"Connection to {self.printer.name} error: {error}")
+            self.logger.debug(f"Connection to {self.printer.name} error: {error}")
             self.printer_websocket = None
             self._is_connected = False
 
