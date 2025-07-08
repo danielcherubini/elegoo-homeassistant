@@ -93,7 +93,7 @@ async def async_unload_entry(
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         if client := entry.runtime_data.api:
-            if client.printer.proxy_enabled:
+            if client.printer and client.printer.proxy_enabled:
                 client.elegoo_stop_proxy()
 
     return unload_ok
