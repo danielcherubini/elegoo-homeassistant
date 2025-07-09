@@ -9,7 +9,6 @@ from custom_components.elegoo_printer.definitions import (
     ElegooPrinterButtonEntityDescription,
 )
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 from .const import LOGGER
@@ -26,15 +25,12 @@ async def async_setup_entry(
     Creates and adds a button entity for pausing the current print job if the connected printer is identified as an FDM model.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
-    printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
 
-    # Check if the printer supports print controls before adding entities
-    if printer_type == PrinterType.FDM:
-        LOGGER.debug(f"Adding {len(PRINTER_FDM_BUTTONS)} button entities")
-        for description in PRINTER_FDM_BUTTONS:
-            async_add_entities(
-                [ElegooSimpleButton(coordinator, description)], update_before_add=True
-            )
+    LOGGER.debug(f"Adding {len(PRINTER_FDM_BUTTONS)} button entities")
+    for description in PRINTER_FDM_BUTTONS:
+        async_add_entities(
+            [ElegooSimpleButton(coordinator, description)], update_before_add=True
+        )
 
 
 class ElegooSimpleButton(ElegooPrinterEntity, ButtonEntity):
@@ -51,7 +47,7 @@ class ElegooSimpleButton(ElegooPrinterEntity, ButtonEntity):
         Configures the entity's unique ID, display name, and icon.
         """
         super().__init__(coordinator)
-        self.entity_description = description
+        self.entity_description: ElegooPrinterButtonEntityDescription = description
         self._elegoo_printer_client: ElegooPrinterClient = (
             coordinator.config_entry.runtime_data.api.client
         )
@@ -67,7 +63,7 @@ class ElegooSimpleButton(ElegooPrinterEntity, ButtonEntity):
 
         Calls the printer's action function and requests a state refresh.
         """
-        self.entity_description.action_fn(self._elegoo_printer_client)
+        await self.entity_description.action_fn(self._elegoo_printer_client)
         await self.coordinator.async_request_refresh()
 
     @property

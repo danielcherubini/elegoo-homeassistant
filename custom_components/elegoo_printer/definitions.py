@@ -1,8 +1,9 @@
 """Definitions for the Elegoo Printer Integration."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from homeassistant.components.button import ButtonEntityDescription
 from homeassistant.components.light import LightEntityDescription
@@ -16,6 +17,11 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
     ElegooPrintStatus,
     ElegooVideoStatus,
 )
+
+
+async def _async_noop() -> None:
+    """Async no-op function"""
+    pass
 
 
 @dataclass
@@ -53,7 +59,7 @@ class ElegooPrinterLightEntityDescription(
 class ElegooPrinterButtonEntityDescription(ButtonEntityDescription):
     """Button entity description for Elegoo Printers."""
 
-    action_fn: Callable[..., None] = lambda _: None
+    action_fn: Callable[..., Coroutine[Any, Any, None]] = lambda _: _async_noop()
     available_fn: Callable[..., bool] = lambda printer_data: printer_data
 
 
@@ -376,11 +382,27 @@ PRINTER_FDM_LIGHTS: tuple[ElegooPrinterLightEntityDescription, ...] = (
     ),
 )
 
+
+async def _pause_print_action(client):
+    """Pause print action."""
+    return await client.print_pause()
+
+
+async def _resume_print_action(client):
+    """Resume print action."""
+    return await client.print_resume()
+
+
+async def _stop_print_action(client):
+    """Stop print action."""
+    return await client.print_stop()
+
+
 PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (
     ElegooPrinterButtonEntityDescription(
         key="pause_print",
         name="Pause Print",
-        action_fn=lambda client: client.print_pause(),
+        action_fn=_pause_print_action,
         icon="mdi:pause",
         available_fn=lambda client: client.printer_data.status.current_status
         == ElegooMachineStatus.PRINTING,
@@ -388,7 +410,7 @@ PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (
     ElegooPrinterButtonEntityDescription(
         key="resume_print",
         name="Resume Print",
-        action_fn=lambda client: client.print_resume(),
+        action_fn=_resume_print_action,
         icon="mdi:play",
         available_fn=lambda client: client.printer_data.status.print_info.status
         == ElegooPrintStatus.PAUSED,
@@ -396,7 +418,7 @@ PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (
     ElegooPrinterButtonEntityDescription(
         key="stop_print",
         name="Stop Print",
-        action_fn=lambda client: client.print_stop(),
+        action_fn=_stop_print_action,
         icon="mdi:stop",
         available_fn=lambda client: client.printer_data.status.current_status
         in [ElegooMachineStatus.PRINTING]

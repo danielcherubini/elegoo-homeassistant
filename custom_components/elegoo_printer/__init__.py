@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.const import CONF_IP_ADDRESS, Platform
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_loaded_integration
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
@@ -65,6 +66,7 @@ async def async_setup_entry(
     client = await ElegooPrinterApiClient.async_create(
         config=MappingProxyType(config),
         logger=LOGGER,
+        hass=hass,
     )
 
     if client is None:
@@ -131,7 +133,11 @@ async def async_migrate_entry(
                 ip_address,
                 proxy_enabled,
             )
-            client = ElegooPrinterClient(ip_address=ip_address, logger=LOGGER)
+            client = ElegooPrinterClient(
+                ip_address=ip_address,
+                logger=LOGGER,
+                session=async_get_clientsession(hass),
+            )
             printer = await hass.async_add_executor_job(
                 client.discover_printer, ip_address
             )
