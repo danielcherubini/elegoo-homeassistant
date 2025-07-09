@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING, Any, Dict
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import selector
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import SelectOptionDict
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
@@ -44,7 +45,7 @@ OPTIONS_SCHEMA = vol.Schema(
 
 
 async def _async_test_connection(
-    printer_object: Printer, user_input: Dict[str, Any]
+    hass: HomeAssistant, printer_object: Printer, user_input: Dict[str, Any]
 ) -> Printer:
     """
     Attempt to connect to an Elegoo printer using the provided Printer object and user input.
@@ -60,9 +61,14 @@ async def _async_test_connection(
         raise ElegooConfigFlowGeneralError(
             "IP address is required to connect to the printer"
         )
+
     elegoo_printer = ElegooPrinterClient(
-        printer_object.ip_address, config=MappingProxyType(user_input), logger=LOGGER
+        printer_object.ip_address,
+        config=MappingProxyType(user_input),
+        logger=LOGGER,
+        session=async_get_clientsession(hass),
     )
+
     printer_object.proxy_enabled = user_input.get(CONF_PROXY_ENABLED, False)
     LOGGER.debug(
         "Connecting to printer: %s at %s with proxy enabled: %s",
@@ -80,7 +86,9 @@ async def _async_test_connection(
 
 
 async def _async_validate_input(
-    user_input: dict[str, Any], discovered_printers: list[Printer] | None = None
+    hass: HomeAssistant,
+    user_input: dict[str, Any],
+    discovered_printers: list[Printer] | None = None,
 ) -> dict:
     """
     Asynchronously validates user input for Elegoo printer configuration, matching a discovered printer or locating one by IP address, and verifies connectivity.
@@ -107,18 +115,22 @@ async def _async_validate_input(
         # Manual IP entry
         ip_address = user_input[CONF_IP_ADDRESS]
         elegoo_printer = ElegooPrinterClient(
-            ip_address, config=MappingProxyType(user_input), logger=LOGGER
+            ip_address,
+            config=MappingProxyType(user_input),
+            logger=LOGGER,
+            session=async_get_clientsession(hass),
         )
         printers = elegoo_printer.discover_printer(ip_address)
         if printers:
             printer_object = printers[0]
         else:
             _errors["base"] = "no_printer_found"
-
     if printer_object:
         try:
             # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled
-            validated_printer = await _async_test_connection(printer_object, user_input)
+            validated_printer = await _async_test_connection(
+                hass, printer_object, user_input
+            )
             return {"printer": validated_printer, "errors": None}
         except ElegooConfigFlowConnectionError as exception:
             LOGGER.error("Config Flow: Connection error: %s", exception)
@@ -162,7 +174,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         # Initiate discovery
         elegoo_printer_client = ElegooPrinterClient(
-            "0.0.0.0", logger=LOGGER
+            "0.0.0.0", logger=LOGGER, session=async_get_clientsession(self.hass)
         )  # IP doesn't matter for discovery
         self.discovered_printers = await self.hass.async_add_executor_job(
             elegoo_printer_client.discover_printer
@@ -255,7 +267,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         _errors = {}
         if user_input is not None:
-            validation_result = await _async_validate_input(user_input)
+            validation_result = await _async_validate_input(self.hass, user_input)
             _errors = validation_result["errors"]
             printer_object: Printer = validation_result["printer"]
 
@@ -289,7 +301,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled
                 validated_printer = await _async_test_connection(
-                    printer_to_validate, user_input
+                    self.hass, printer_to_validate, user_input
                 )
                 await self.async_set_unique_id(unique_id=validated_printer.id)
                 self._abort_if_unique_id_configured()
@@ -387,7 +399,9 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             printer = Printer.from_dict(current_settings)
             LOGGER.debug(printer.to_dict())
             try:
-                tested_printer = await _async_test_connection(printer, user_input)
+                tested_printer = await _async_test_connection(
+                    self.hass, printer, user_input
+                )
                 tested_printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
                 LOGGER.debug("Tested printer: %s", tested_printer.to_dict())
                 return self.async_create_entry(
