@@ -13,6 +13,9 @@ from PIL import Image
 from custom_components.elegoo_printer.definitions import (
     ElegooPrinterSensorEntityDescription,
 )
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+    ElegooMachineStatus,
+)
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 from .const import LOGGER
@@ -73,7 +76,9 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return self.api.is_thumbnail_available()
+        return (
+            self.api.printer_data.status.current_status == ElegooMachineStatus.PRINTING
+        )
 
     async def async_image(self) -> bytes | None:
         """Return bytes of an image."""

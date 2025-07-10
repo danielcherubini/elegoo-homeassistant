@@ -32,6 +32,7 @@ class ElegooPrinterApiClient:
     _logger: Logger
     printer: Printer
     printer_data: PrinterData
+    hass: HomeAssistant
 
     def __init__(
         self,
@@ -56,6 +57,7 @@ class ElegooPrinterApiClient:
             session=async_get_clientsession(hass),
         )
         self.server: ElegooPrinterServer | None = None
+        self.hass: HomeAssistant = hass
 
     @classmethod
     async def async_create(
@@ -137,14 +139,15 @@ class ElegooPrinterApiClient:
         self.printer_data = await self.client.get_printer_attributes()
         return self.printer_data
 
-    def is_thumbnail_available(self) -> bool:
+    async def async_is_thumbnail_available(self) -> bool:
         """
         Checks if the current print job's thumbnail image exists and returns a bool.
 
         Returns:
             bool: True if thumbnail image is available, or False otherwise.
         """
-        thumbnail = self.client.get_current_print_thumbnail()
+
+        thumbnail = await self.client.async_get_current_print_thumbnail()
         return thumbnail is not None
 
     async def async_get_current_thumbnail(self) -> str | None:
