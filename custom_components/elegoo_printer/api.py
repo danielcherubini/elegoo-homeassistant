@@ -145,8 +145,7 @@ class ElegooPrinterApiClient:
             bool: True if thumbnail image is available, or False otherwise.
         """
         thumbnail = self.client.get_current_print_thumbnail()
-        previous_thumbnail = self.client.get_printer_last_task()
-        return thumbnail is not None or previous_thumbnail is not None
+        return thumbnail is not None
 
     async def async_get_current_thumbnail(self) -> str | None:
         """
