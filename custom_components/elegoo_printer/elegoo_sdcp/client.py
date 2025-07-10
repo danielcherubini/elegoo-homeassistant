@@ -256,10 +256,6 @@ class ElegooPrinterClient:
         task = await self.async_get_printer_current_task()
         if task:
             return task.thumbnail
-        else:
-            previous_task = await self.async_get_printer_last_task()
-            if previous_task:
-                return previous_task.thumbnail
 
         return None
 
