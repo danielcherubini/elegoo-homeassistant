@@ -73,7 +73,8 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return self.client.get_current_print_thumbnail() is not None
+        # return self.client.get_current_print_thumbnail() is not None
+        return True
 
     async def async_image(self) -> bytes | None:
         """Return bytes of an image."""
