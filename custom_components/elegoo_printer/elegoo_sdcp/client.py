@@ -214,16 +214,13 @@ class ElegooPrinterClient:
         """
         if self.printer_data.status.print_info.task_id:
             task_id = self.printer_data.status.print_info.task_id
-            if (
-                task_id in self.printer_data.print_history
-                and self.printer_data.print_history[task_id] is not None
-            ):
-                return self.printer_data.print_history[task_id]
+            current_task = self.printer_data.print_history.get(task_id)
+            if current_task:
+                return current_task
             else:
                 await self.get_printer_task_detail([task_id])
                 await asyncio.sleep(2)  # Give the printer time to respond
-                if task_id in self.printer_data.print_history:
-                    return self.printer_data.print_history[task_id]
+                return self.printer_data.print_history.get(task_id)
         return None
 
     async def async_get_printer_last_task(self) -> PrintHistoryDetail | None:
@@ -259,6 +256,10 @@ class ElegooPrinterClient:
         task = await self.async_get_printer_current_task()
         if task:
             return task.thumbnail
+        else:
+            previous_task = await self.async_get_printer_last_task()
+            if previous_task:
+                return previous_task.thumbnail
 
         return None
 

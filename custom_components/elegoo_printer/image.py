@@ -68,13 +68,12 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         unique_id = coordinator.generate_unique_id(self.entity_description.key)
         self._attr_unique_id = unique_id
         self._attr_image_last_updated = dt_util.now()
-        self.client = coordinator.config_entry.runtime_data.api.client
+        self.api = coordinator.config_entry.runtime_data.api
 
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        # return self.client.get_current_print_thumbnail() is not None
-        return True
+        return self.api.is_thumbnail_available()
 
     async def async_image(self) -> bytes | None:
         """Return bytes of an image."""
@@ -82,7 +81,7 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
             hasattr(self, "entity_description")
             and self.entity_description.value_fn is not None
         ):
-            thumbnail = await self.client.async_get_current_print_thumbnail()
+            thumbnail = await self.api.async_get_current_thumbnail()
             image_url = self.entity_description.value_fn(thumbnail)
             if image_url != self.image_url:
                 self._cached_image = None
