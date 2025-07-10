@@ -55,7 +55,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         Configures the entity's unique ID, display name, and supported color modes based on whether it represents an RGB or on/off light.
         """
         super().__init__(coordinator)
-        self.entity_description = description
+        self.entity_description: ElegooPrinterLightEntityDescription = description
         self._elegoo_printer_client: ElegooPrinterClient = (
             coordinator.config_entry.runtime_data.api.client
         )
@@ -64,7 +64,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
             self.entity_description.key
         )
         self._attr_name = f"{description.name}"
-        # Configure color modes based on what this entity represents (from its description)
+
         self._attr_supported_color_modes = {ColorMode.ONOFF}
         self._attr_color_mode = ColorMode.ONOFF
 
@@ -94,7 +94,8 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         """
         light_status = self.light_status
         light_status.second_light = True
-        self._elegoo_printer_client.set_light_status(light_status)
+        light_status.rgb_light = [255, 255, 255]
+        await self._elegoo_printer_client.set_light_status(light_status)
 
         await self.coordinator.async_request_refresh()
 
@@ -106,7 +107,8 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         """
         light_status = self.light_status
         light_status.second_light = False
-        self._elegoo_printer_client.set_light_status(light_status)
+        light_status.rgb_light = [0, 0, 0]
+        await self._elegoo_printer_client.set_light_status(light_status)
 
         await self.coordinator.async_request_refresh()
 
