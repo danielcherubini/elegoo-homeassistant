@@ -220,9 +220,11 @@ class ElegooPrinterClient:
         if self.printer_data.status.print_info.task_id:
             task_id = self.printer_data.status.print_info.task_id
             current_task = self.printer_data.print_history.get(task_id)
+            self.logger.debug(f"current_task: {current_task}")
             if current_task is not None:
                 return current_task
             else:
+                self.logger.debug("Getting printer task from api")
                 await self.get_printer_task_detail([task_id])
                 await asyncio.sleep(2)  # Give the printer time to respond
                 return self.printer_data.print_history.get(task_id)
