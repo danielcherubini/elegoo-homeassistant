@@ -228,6 +228,8 @@ class ElegooPrinterClient:
                 await self.get_printer_task_detail([task_id])
                 await asyncio.sleep(2)  # Give the printer time to respond
                 return self.printer_data.print_history.get(task_id)
+
+        self.logger.debug("No task id found")
         return None
 
     async def async_get_printer_last_task(self) -> PrintHistoryDetail | None:
