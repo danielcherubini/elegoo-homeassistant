@@ -260,9 +260,10 @@ class ElegooPrinterClient:
         Returns:
             str | None: The thumbnail URL if the current print task has one; otherwise, None.
         """
-        task = await self.async_get_printer_current_task()
-        if task:
+        if task := await self.async_get_printer_current_task():
             return task.thumbnail
+        elif last_task := await self.async_get_printer_last_task():
+            return last_task.thumbnail
 
         return None
 
