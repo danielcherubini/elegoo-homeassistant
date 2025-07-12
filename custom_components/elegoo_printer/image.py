@@ -74,13 +74,9 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
 
     async def async_image(self) -> bytes | None:
         """Return bytes of an image."""
-        LOGGER.debug("Fetching new image from printer")
         task = await self.api.async_get_task(include_last_task=False)
-        LOGGER.debug(f"Task: {task}")
         if task and task.thumbnail != self.image_url:
-            LOGGER.debug("New thumbnail found")
             if thumbnail_image := await self.api.async_get_thumbnail_image(task=task):
-                LOGGER.debug("Thumbnail image found")
                 self._attr_image_last_updated = thumbnail_image.get_last_update_time()
                 self._cached_image = thumbnail_image.get_image()
                 self.image_url = task.thumbnail
@@ -88,10 +84,8 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
                 return thumbnail_image.get_bytes()
 
         elif self._cached_image:
-            LOGGER.debug("Returning cached image")
             return self._cached_image.content
 
-        LOGGER.debug("No new image found")
         return None
 
     @property
