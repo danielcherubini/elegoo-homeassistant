@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.image import ImageEntity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
+from loguru import logger
 from propcache.api import cached_property
 
 from custom_components.elegoo_printer.definitions import (
@@ -77,14 +78,20 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         task = await self.api.async_get_task(include_last_task=False)
         if task and task.thumbnail != self.image_url:
             if thumnail_image := await self.api.async_get_thumbnail_image(task=task):
+
+                logger.debug(
+                    f"Image got thumbnail {thumnail_image.get_last_update_time()}"
+                )
                 self._attr_image_last_updated = thumnail_image.get_last_update_time()
                 self._cached_image = thumnail_image.get_image()
                 self.image_url = task.thumbnail
                 return thumnail_image.get_bytes()
 
         elif self._cached_image:
+            logger.debug("cached image")
             return self._cached_image.content
 
+        logger.debug("No image")
         return None
 
     @cached_property
@@ -98,6 +105,5 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         if not super().available:
             return False
         return (
-            self.api.printer_data.status.print_info.status
-            == ElegooMachineStatus.PRINTING
+            self.api.printer_data.status.current_status == ElegooMachineStatus.PRINTING
         )
