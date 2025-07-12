@@ -3,9 +3,9 @@ import http.server
 import json
 import os
 import random
+import signal
 import socket
 import socketserver
-import threading
 import time
 import uuid
 
@@ -13,7 +13,7 @@ import websockets
 
 # Server configuration
 HOST = "0.0.0.0"
-HTTP_PORT = 8002
+HTTP_PORT = 8000
 WS_PORT = 3030
 UDP_PORT = 3000
 MAINBOARD_ID = "000000000001d354"
@@ -248,7 +248,6 @@ async def handler(websocket):
                 await websocket.send("pong")
                 continue
 
-            print(f"Received message: {message}")
             try:
                 data = json.loads(message)
                 if data.get("Topic", "").startswith("sdcp/request"):
@@ -321,45 +320,61 @@ async def handle_request(websocket, request):
         await websocket.send(json.dumps(response))
 
 
-def udp_server():
+async def udp_server(stop_event):
+    loop = asyncio.get_running_loop()
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.settimeout(1)
         s.bind((HOST, UDP_PORT))
         print(f"UDP server listening on {HOST}:{UDP_PORT}")
-        while True:
-            data, addr = s.recvfrom(1024)
-            if data == b"M99999":
-                print(f"Received discovery request from {addr}")
-                response = {
-                    "Id": str(uuid.uuid4()),
-                    "Data": {
-                        "Name": printer_attributes["Name"],
-                        "MachineName": printer_attributes["MachineName"],
-                        "BrandName": printer_attributes["BrandName"],
-                        "MainboardIP": PRINTER_IP,
-                        "MainboardID": MAINBOARD_ID,
-                        "ProtocolVersion": printer_attributes["ProtocolVersion"],
-                        "FirmwareVersion": printer_attributes["FirmwareVersion"],
-                    },
-                }
-                s.sendto(json.dumps(response).encode("utf-8"), addr)
+        while not stop_event.is_set():
+            try:
+                data, addr = await loop.run_in_executor(None, s.recvfrom, 1024)
+                if data == b"M99999":
+                    print(f"Received discovery request from {addr}")
+                    response = {
+                        "Id": str(uuid.uuid4()),
+                        "Data": {
+                            "Name": printer_attributes["Name"],
+                            "MachineName": printer_attributes["MachineName"],
+                            "BrandName": printer_attributes["BrandName"],
+                            "MainboardIP": PRINTER_IP,
+                            "MainboardID": MAINBOARD_ID,
+                            "ProtocolVersion": printer_attributes["ProtocolVersion"],
+                            "FirmwareVersion": printer_attributes["FirmwareVersion"],
+                        },
+                    }
+                    s.sendto(json.dumps(response).encode("utf-8"), addr)
+            except socket.timeout:
+                continue
+    print("UDP server shut down.")
 
 
-def http_server():
+async def http_server(stop_event):
     # Change to the script's directory to serve files from there
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     handler = http.server.SimpleHTTPRequestHandler
+    loop = asyncio.get_running_loop()
     with socketserver.TCPServer(("", HTTP_PORT), handler) as httpd:
         print(f"HTTP server listening on {HOST}:{HTTP_PORT}")
-        httpd.serve_forever()
+        httpd.timeout = 1
+        while not stop_event.is_set():
+            await loop.run_in_executor(None, httpd.handle_request)
+    print("HTTP server shut down.")
 
 
 async def main():
-    # Start UDP and HTTP servers in separate threads
-    udp_thread = threading.Thread(target=udp_server, daemon=True)
-    udp_thread.start()
-    http_thread = threading.Thread(target=http_server, daemon=True)
-    http_thread.start()
+    stop_event = asyncio.Event()
+
+    loop = asyncio.get_running_loop()
+
+    # Set up signal handlers
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, stop_event.set)
+
+    # Start UDP and HTTP servers in separate tasks
+    udp_task = asyncio.create_task(udp_server(stop_event))
+    http_task = asyncio.create_task(http_server(stop_event))
 
     # Grab the first task from history to be the "current" print
     first_task_id = next(iter(print_history))
@@ -378,11 +393,22 @@ async def main():
     printer_status["PrintInfo"]["CurrentTicks"] = 1000
 
     # Start WebSocket server
-    async with websockets.serve(handler, HOST, WS_PORT) as server:
-        print(f"WebSocket server started on {HOST}:{WS_PORT}")
-        # Simulate printing progress in the background
-        asyncio.create_task(simulate_printing())
-        await asyncio.Future()  # run forever
+    server = await websockets.serve(handler, HOST, WS_PORT)
+    print(f"WebSocket server started on {HOST}:{WS_PORT}")
+    # Simulate printing progress in the background
+    simulation_task = asyncio.create_task(simulate_printing())
+
+    # Wait for the stop event
+    await stop_event.wait()
+
+    # Cleanly shut down all tasks
+    simulation_task.cancel()
+    server.close()
+    await server.wait_closed()
+    print("WebSocket server shut down.")
+    await udp_task
+    await http_task
+    print("All servers shut down gracefully.")
 
 
 if __name__ == "__main__":
