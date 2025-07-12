@@ -64,7 +64,6 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         super().__init__(coordinator)
         ImageEntity.__init__(self, hass=hass)
         self.coordinator = coordinator
-        self._attr_content_type = "image/bmp"
         self._image_filename = None
         self.entity_description = description
         unique_id = coordinator.generate_unique_id(self.entity_description.key)
@@ -92,7 +91,7 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         """Image content type."""
         return "image/png"
 
-    @cached_property
+    @property
     def available(self) -> bool:
         """Return if entity is not available"""
         if not super().available:
