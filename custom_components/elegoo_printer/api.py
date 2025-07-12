@@ -184,6 +184,7 @@ class ElegooPrinterApiClient:
                 response = await self._hass_client.get(
                     task.thumbnail, timeout=10, follow_redirects=True
                 )
+                response.raise_for_status()
                 with PILImage.open(BytesIO(response.content)) as img:
                     with BytesIO() as output:
                         rgb_img = img.convert("RGB")
@@ -196,7 +197,7 @@ class ElegooPrinterApiClient:
                         )
                         return thumbnail_image
             except Exception as e:
-                LOGGER.debug(f"Error fetching thumbnail: {e}")
+                LOGGER.error("Error fetching thumbnail: %s", e)
                 return None
 
         return None
