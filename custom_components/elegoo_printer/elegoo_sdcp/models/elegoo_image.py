@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from datetime import datetime
+from io import BytesIO
 
+from PIL import Image as PILImage
 from homeassistant.components.image import Image
 
 
@@ -25,4 +27,9 @@ class ElegooImage:
         return self._image_last_updated
 
     def get_image(self) -> Image:
-        return Image("image/png", self._bytes)
+        with PILImage.open(BytesIO(self._bytes)) as img:
+            with BytesIO() as output:
+                rgb_img = img.convert("RGB")
+                rgb_img.save(output, format="JPEG")
+                jpg_bytes = output.getvalue()
+        return Image("image/jpeg", jpg_bytes)

@@ -181,7 +181,7 @@ class ElegooPrinterApiClient:
             response = await self._hass_client.get(
                 task.thumbnail, timeout=10, follow_redirects=True
             )
-            response.headers["content-type"] = "image/bmp"
+            response.headers["Content-Type"] = "image/bmp"
             thumbnail_image = ElegooImage(
                 url=task.thumbnail,
                 bytes=response.content,

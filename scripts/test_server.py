@@ -358,6 +358,11 @@ async def http_server(stop_event):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=script_dir, **kwargs)
 
+        def send_header(self, keyword, value):
+            if keyword.lower() == "content-type":
+                return
+            super().send_header(keyword, value)
+
     handler = CustomHTTPHandler
     loop = asyncio.get_running_loop()
     with socketserver.TCPServer(("", HTTP_PORT), handler) as httpd:

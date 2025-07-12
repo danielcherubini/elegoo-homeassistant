@@ -569,7 +569,7 @@ wheels = [
 
 [[package]]
 name = "elegoo-printer"
-version = "1.4.6b4"
+version = "1.4.6b5"
 source = { virtual = "." }
 dependencies = [
     { name = "colorlog" },
