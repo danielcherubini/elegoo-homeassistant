@@ -147,13 +147,13 @@ class ElegooPrinterClient:
         Retrieves historical tasks from the printer.
         """
         for task_id in id_list:
-            if task_id in self.printer_data.print_history:
-                if self.printer_data.print_history.get(task_id) is None:
-                    await self._send_printer_cmd(321, data={"Id": [task_id]})
-                    await asyncio.sleep(2)
-                    return self.printer_data.print_history.get(task_id)
-                else:
-                    return self.printer_data.print_history.get(task_id)
+            if task := self.printer_data.print_history.get(task_id):
+                return task
+            else:
+                await self._send_printer_cmd(321, data={"Id": [task_id]})
+                await asyncio.sleep(2)
+                return self.printer_data.print_history.get(task_id)
+
         return None
 
     def get_printer_current_task(self) -> PrintHistoryDetail | None:
@@ -162,13 +162,16 @@ class ElegooPrinterClient:
         """
         if self.printer_data.status.print_info.task_id:
             task_id = self.printer_data.status.print_info.task_id
-            if task_id in self.printer_data.print_history:
-                return self.printer_data.print_history.get(task_id)
+            current_task = self.printer_data.print_history.get(task_id)
+            self.logger.debug(f"current_task: {current_task}")
+            if current_task is not None:
+                return current_task
             else:
+                self.logger.debug("Getting printer task from api")
                 task = asyncio.create_task(self.get_printer_task_detail([task_id]))
                 self._background_tasks.add(task)
                 task.add_done_callback(self._background_tasks.discard)
-                return None
+                return self.printer_data.print_history.get(task_id)
         return None
 
     def get_printer_last_task(self) -> PrintHistoryDetail | None:
@@ -214,15 +217,24 @@ class ElegooPrinterClient:
         Returns:
             PrintHistoryDetail | None: The details of the current print task if available, otherwise None.
         """
-        if self.printer_data.status.print_info.task_id:
-            task_id = self.printer_data.status.print_info.task_id
+        if task_id := self.printer_data.status.print_info.task_id:
+            LOGGER.debug(f"get_printer_current_task task_id: {task_id}")
             current_task = self.printer_data.print_history.get(task_id)
-            if current_task:
+            if current_task is not None:
+                LOGGER.debug("get_printer_current_task: got cached task")
                 return current_task
             else:
-                await self.get_printer_task_detail([task_id])
-                await asyncio.sleep(2)  # Give the printer time to respond
-                return self.printer_data.print_history.get(task_id)
+                LOGGER.debug("get_printer_current_task: getting task from api")
+                task = await self.get_printer_task_detail([task_id])
+                if task:
+                    LOGGER.debug(
+                        f"get_printer_current_task: task from the api: {task.task_id}"
+                    )
+
+                else:
+                    LOGGER.debug("get_printer_current_task: NO TASK FROM THE API")
+                return task
+
         return None
 
     async def async_get_printer_last_task(self) -> PrintHistoryDetail | None:
@@ -255,9 +267,10 @@ class ElegooPrinterClient:
         Returns:
             str | None: The thumbnail URL if the current print task has one; otherwise, None.
         """
-        task = await self.async_get_printer_current_task()
-        if task:
+        if task := await self.async_get_printer_current_task():
             return task.thumbnail
+        elif last_task := await self.async_get_printer_last_task():
+            return last_task.thumbnail
 
         return None
 

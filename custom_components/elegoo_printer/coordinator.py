@@ -39,6 +39,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             await self.config_entry.runtime_data.api.async_get_attributes()
             await self.config_entry.runtime_data.api.async_get_status()
             await self.config_entry.runtime_data.api.async_get_print_history()
+            await self.config_entry.runtime_data.api.async_get_current_task()
             if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
             return self.config_entry.runtime_data.api.printer_data

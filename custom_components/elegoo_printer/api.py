@@ -2,21 +2,25 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.httpx_client import get_async_client
+from PIL import Image as PILImage
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+from custom_components.elegoo_printer.elegoo_sdcp.models.elegoo_image import ElegooImage
 from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
 from custom_components.elegoo_printer.elegoo_sdcp.models.printer import Printer
 from custom_components.elegoo_printer.elegoo_sdcp.server import ElegooPrinterServer
 
-from .const import CONF_PROXY_ENABLED
+from .const import CONF_PROXY_ENABLED, LOGGER
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -32,6 +36,7 @@ class ElegooPrinterApiClient:
     _logger: Logger
     printer: Printer
     printer_data: PrinterData
+    hass: HomeAssistant
 
     def __init__(
         self,
@@ -49,6 +54,7 @@ class ElegooPrinterApiClient:
         self._proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
         self._logger = logger
         self.printer = printer
+        self._hass_client = get_async_client(hass)
         self.client = ElegooPrinterClient(
             printer.ip_address,
             config=config,
@@ -56,6 +62,7 @@ class ElegooPrinterApiClient:
             session=async_get_clientsession(hass),
         )
         self.server: ElegooPrinterServer | None = None
+        self.hass: HomeAssistant = hass
 
     @classmethod
     async def async_create(
@@ -137,24 +144,95 @@ class ElegooPrinterApiClient:
         self.printer_data = await self.client.get_printer_attributes()
         return self.printer_data
 
-    def is_thumbnail_available(self) -> bool:
+    async def async_is_thumbnail_available(self) -> bool:
         """
         Checks if the current print job's thumbnail image exists and returns a bool.
 
         Returns:
             bool: True if thumbnail image is available, or False otherwise.
         """
-        thumbnail = self.client.get_current_print_thumbnail()
+
+        thumbnail = await self.client.async_get_current_print_thumbnail()
         return thumbnail is not None
 
-    async def async_get_current_thumbnail(self) -> str | None:
+    async def async_get_thumbnail_url(
+        self, include_history: bool = False
+    ) -> str | None:
         """
         Asynchronously retrieves the current print job's thumbnail image as a string.
 
         Returns:
             str | None: The thumbnail image if available, or None if there is no active print job or thumbnail.
         """
-        return await self.client.async_get_current_print_thumbnail()
+        if task := await self.async_get_task(include_last_task=include_history):
+            return task.thumbnail
+        return None
+
+    async def async_get_thumbnail_image(
+        self, task: PrintHistoryDetail | None = None
+    ) -> ElegooImage | None:
+        """
+        Asynchronously retrieves the current print job's thumbnail image as Image.
+
+        Returns:
+            Image | None: The thumbnail image if available, or None if there is no active print job or thumbnail.
+        """
+        if task is None:
+            LOGGER.debug("get_thumbnail no task, getting task")
+            task = await self.async_get_task(include_last_task=False)
+
+        LOGGER.debug(
+            f"get_thumbnail got begin_time: {task.begin_time} url: {task.thumbnail}"
+        )
+        if task and task.thumbnail and task.begin_time is not None:
+            LOGGER.debug("get_thumbnail getting thumbnail from url")
+            try:
+                response = await self._hass_client.get(
+                    task.thumbnail, timeout=10, follow_redirects=True
+                )
+                response.raise_for_status()
+                LOGGER.debug("get_thumbnail response status: %s", response.status_code)
+                with PILImage.open(BytesIO(response.content)) as img:
+                    with BytesIO() as output:
+                        rgb_img = img.convert("RGB")
+                        rgb_img.save(output, format="JPEG")
+                        jpg_bytes = output.getvalue()
+                        LOGGER.debug("get_thumbnail converted image to jpg")
+                        thumbnail_image = ElegooImage(
+                            url=task.thumbnail,
+                            bytes=jpg_bytes,
+                            last_updated_timestamp=task.begin_time,
+                        )
+                        return thumbnail_image
+            except Exception as e:
+                LOGGER.error("Error fetching thumbnail: %s", e)
+                return None
+
+        LOGGER.debug("No task found")
+        return None
+
+    async def async_get_thumbnail_bytes(self) -> bytes | None:
+        """
+        Asynchronously retrieves the current print job's thumbnail image as bytes.
+
+        Returns:
+            bytes | None: The thumbnail image if available, or None if there is no active print job or thumbnail.
+        """
+        if thumbnail_image := await self.async_get_thumbnail_image():
+            return thumbnail_image.get_bytes()
+
+        return None
+
+    async def async_get_task(
+        self, include_last_task: bool
+    ) -> PrintHistoryDetail | None:
+        if current_task := await self.client.async_get_printer_current_task():
+            return current_task
+        elif include_last_task:
+            if last_task := await self.client.async_get_printer_last_task():
+                return last_task
+
+        return None
 
     async def async_get_current_task(self) -> PrintHistoryDetail | None:
         """

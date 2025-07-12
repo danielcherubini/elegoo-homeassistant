@@ -4,17 +4,11 @@ import asyncio
 import os
 import sys
 
-# Add project root to the Python path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, project_root)
+import aiohttp
+from loguru import logger
 
-import aiohttp  # noqa: E402
-from loguru import logger  # noqa: E402
-
-from custom_components.elegoo_printer.elegoo_sdcp.client import (  # noqa: E402
-    ElegooPrinterClient,
-)
-from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG  # noqa: E402
+from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG
 
 LOG_LEVEL = "DEBUG"
 PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.212")
@@ -54,9 +48,14 @@ async def main() -> None:
                 if connected:
                     logger.debug("Polling Started")
                     await asyncio.sleep(2)
+                    task = await elegoo_printer.async_get_printer_current_task()
+                    await elegoo_printer.async_get_printer_historical_tasks()
                     # elegoo_printer.get_printer_attributes()
                     while not stop_event.is_set():  # noqa: ASYNC110
-                        await elegoo_printer.get_printer_status()
+                        # await elegoo_printer.get_printer_status()
+                        task = await elegoo_printer.async_get_printer_last_task()
+                        if task is not None:
+                            logger.debug(task.thumbnail)
                         await asyncio.sleep(2)
             else:
                 logger.exception("No printers discovered.")

@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-import io
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from homeassistant.components.image import ImageEntity
+from homeassistant.components.image import Image, ImageEntity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.util import dt as dt_util
-from PIL import Image
 
 from custom_components.elegoo_printer.definitions import (
     ElegooPrinterSensorEntityDescription,
+)
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+    ElegooMachineStatus,
 )
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
@@ -62,62 +63,36 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         super().__init__(coordinator)
         ImageEntity.__init__(self, hass=hass)
         self.coordinator = coordinator
-        self._attr_content_type = "image/bmp"
         self._image_filename = None
+        self.image_url = None
+        self._cached_image: Image | None = None
         self.entity_description = description
         unique_id = coordinator.generate_unique_id(self.entity_description.key)
         self._attr_unique_id = unique_id
-        self._attr_image_last_updated = dt_util.now()
+        self._attr_image_last_updated: datetime | None = None
         self.api = coordinator.config_entry.runtime_data.api
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self.api.is_thumbnail_available()
 
     async def async_image(self) -> bytes | None:
         """Return bytes of an image."""
-        if (
-            hasattr(self, "entity_description")
-            and self.entity_description.value_fn is not None
-        ):
-            thumbnail = await self.api.async_get_current_thumbnail()
-            image_url = self.entity_description.value_fn(thumbnail)
-            if image_url != self.image_url:
-                self._cached_image = None
-                self._attr_image_url = image_url
-                self._attr_image_last_updated = dt_util.now()
+        task = await self.api.async_get_task(include_last_task=False)
+        if task and task.thumbnail != self.image_url:
+            if thumbnail_image := await self.api.async_get_thumbnail_image(task=task):
+                self._attr_image_last_updated = thumbnail_image.get_last_update_time()
+                self._cached_image = thumbnail_image.get_image()
+                self.image_url = task.thumbnail
+                self._attr_content_type = "image/jpg"
+                return thumbnail_image.get_bytes()
 
-        return await super().async_image()
+        elif self._cached_image:
+            return self._cached_image.content
 
-    async def _fetch_url(self, url: str):
-        """Fetch a URL.
+        return None
 
-        Chitubox provides 'text/plain' as content type
-        so this is a hack to provide a correct image content type
-        to Home Assistant.
-        """
-
-        response = await super()._fetch_url(url)
-        if response:
-            response.headers["content-type"] = "image/bmp"
-
-        return response
-
-    async def _async_load_image_from_url(self, url: str):
-        """Load an image by url
-
-        Chitubox thumbnail is bitmap, which is no longer/not supported
-        by many browsers. This converts the bitmap into png, which is
-        widely supported."
-        """
-
-        image = await super()._async_load_image_from_url(url)
-        if image is not None:
-            new_image = Image.open(io.BytesIO(image.content))
-            buffer = io.BytesIO()
-            new_image.save(buffer, "PNG")
-            image.content = buffer.getvalue()
-            image.content_type = "image/png"
-
-        return image
+    @property
+    def available(self) -> bool:
+        """Return if entity is not available"""
+        if not super().available:
+            return False
+        return (
+            self.api.printer_data.status.current_status == ElegooMachineStatus.PRINTING
+        )
