@@ -29,7 +29,7 @@ async def main() -> None:
             elegoo_printer = ElegooPrinterClient(
                 ip_address=PRINTER_IP, session=session, logger=logger
             )
-            printer = elegoo_printer.discover_printer()
+            printer = elegoo_printer.discover_printer(PRINTER_IP)
             if printer:
                 logger.debug(f"PrinterType: {printer[0].printer_type}")
                 logger.debug(f"Model Reported from Printer: {printer[0].model}")
@@ -49,11 +49,13 @@ async def main() -> None:
                     logger.debug("Polling Started")
                     await asyncio.sleep(2)
                     task = await elegoo_printer.async_get_printer_current_task()
+                    await elegoo_printer.async_get_printer_historical_tasks()
                     # elegoo_printer.get_printer_attributes()
                     while not stop_event.is_set():  # noqa: ASYNC110
                         # await elegoo_printer.get_printer_status()
-                        task = await elegoo_printer.async_get_printer_current_task()
-                        logger.debug(task.task_id)
+                        task = await elegoo_printer.async_get_printer_last_task()
+                        if task is not None:
+                            logger.debug(task.thumbnail)
                         await asyncio.sleep(2)
             else:
                 logger.exception("No printers discovered.")

@@ -360,7 +360,7 @@ async def http_server(stop_event):
 
         def send_header(self, keyword, value):
             if keyword.lower() == "content-type":
-                return
+                value = "text/plain; charset=utf-8"
             super().send_header(keyword, value)
 
     handler = CustomHTTPHandler

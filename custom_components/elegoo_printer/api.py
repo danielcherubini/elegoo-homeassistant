@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -9,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.httpx_client import get_async_client
+from PIL import Image as PILImage
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.models.elegoo_image import ElegooImage
@@ -18,7 +20,7 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail im
 from custom_components.elegoo_printer.elegoo_sdcp.models.printer import Printer
 from custom_components.elegoo_printer.elegoo_sdcp.server import ElegooPrinterServer
 
-from .const import CONF_PROXY_ENABLED
+from .const import CONF_PROXY_ENABLED, LOGGER
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -178,16 +180,24 @@ class ElegooPrinterApiClient:
         if task is None:
             task = await self.async_get_task(include_last_task=True)
         if task and task.thumbnail and task.begin_time is not None:
-            response = await self._hass_client.get(
-                task.thumbnail, timeout=10, follow_redirects=True
-            )
-            response.headers["Content-Type"] = "image/bmp"
-            thumbnail_image = ElegooImage(
-                url=task.thumbnail,
-                bytes=response.content,
-                last_updated_timestamp=task.begin_time,
-            )
-            return thumbnail_image
+            try:
+                response = await self._hass_client.get(
+                    task.thumbnail, timeout=10, follow_redirects=True
+                )
+                with PILImage.open(BytesIO(response.content)) as img:
+                    with BytesIO() as output:
+                        rgb_img = img.convert("RGB")
+                        rgb_img.save(output, format="JPEG")
+                        jpg_bytes = output.getvalue()
+                        thumbnail_image = ElegooImage(
+                            url=task.thumbnail,
+                            bytes=jpg_bytes,
+                            last_updated_timestamp=task.begin_time,
+                        )
+                        return thumbnail_image
+            except Exception as e:
+                LOGGER.debug(f"Error fetching thumbnail: {e}")
+                return None
 
         return None
 
@@ -203,15 +213,16 @@ class ElegooPrinterApiClient:
 
         return None
 
-    async def async_get_task(self, include_last_task) -> PrintHistoryDetail | None:
-        task: PrintHistoryDetail | None = None
+    async def async_get_task(
+        self, include_last_task: bool
+    ) -> PrintHistoryDetail | None:
         if current_task := await self.client.async_get_printer_current_task():
-            task = current_task
+            return current_task
         elif include_last_task:
             if last_task := await self.client.async_get_printer_last_task():
-                task = last_task
+                return last_task
 
-        return task
+        return None
 
     async def async_get_current_task(self) -> PrintHistoryDetail | None:
         """
