@@ -351,9 +351,14 @@ async def udp_server(stop_event):
 
 
 async def http_server(stop_event):
-    # Change to the script's directory to serve files from there
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    handler = http.server.SimpleHTTPRequestHandler
+    # Serve files from the script's directory without changing cwd
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    class CustomHTTPHandler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=script_dir, **kwargs)
+
+    handler = CustomHTTPHandler
     loop = asyncio.get_running_loop()
     with socketserver.TCPServer(("", HTTP_PORT), handler) as httpd:
         print(f"HTTP server listening on {HOST}:{HTTP_PORT}")

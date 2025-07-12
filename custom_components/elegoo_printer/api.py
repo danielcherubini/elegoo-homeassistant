@@ -207,7 +207,7 @@ class ElegooPrinterApiClient:
         task: PrintHistoryDetail | None = None
         if current_task := await self.client.async_get_printer_current_task():
             task = current_task
-        if include_last_task:
+        elif include_last_task:
             if last_task := await self.client.async_get_printer_last_task():
                 task = last_task
 
