@@ -11,9 +11,9 @@ sys.path.insert(0, project_root)
 import aiohttp  # noqa: E402
 from loguru import logger  # noqa: E402
 
-from custom_components.elegoo_printer.elegoo_sdcp.client import (  # noqa: E402
+from custom_components.elegoo_printer.elegoo_sdcp.client import (
     ElegooPrinterClient,
-)
+)  # noqa: E402
 from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG  # noqa: E402
 
 LOG_LEVEL = "DEBUG"
