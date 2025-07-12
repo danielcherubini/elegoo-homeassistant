@@ -25,4 +25,4 @@ class ElegooImage:
         return self._image_last_updated
 
     def get_image(self) -> Image:
-        return Image("image/png", self._bytes)
+        return Image("image/jpg", self._bytes)
