@@ -76,11 +76,11 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         """Return bytes of an image."""
         task = await self.api.async_get_task(include_last_task=False)
         if task and task.thumbnail != self.image_url:
-            if thumnail_image := await self.api.async_get_thumbnail_image(task=task):
-                self._attr_image_last_updated = thumnail_image.get_last_update_time()
-                self._cached_image = thumnail_image.get_image()
+            if thumbnail_image := await self.api.async_get_thumbnail_image(task=task):
+                self._attr_image_last_updated = thumbnail_image.get_last_update_time()
+                self._cached_image = thumbnail_image.get_image()
                 self.image_url = task.thumbnail
-                return thumnail_image.get_bytes()
+                return thumbnail_image.get_bytes()
 
         elif self._cached_image:
             return self._cached_image.content
