@@ -58,6 +58,11 @@ devcontainer:
 	@echo "--> Running start script inside devcontainer..."
 	@devcontainer exec --workspace-folder . ./scripts/start
 
+# Runs the test server for development and testing.
+test-server:
+	@echo "--> Starting the test server..."
+	@VIRTUAL_ENV=$(VENV) uv run --active $(PYTHON) scripts/test_server.py
+
 # --- LINTING AND FORMATTING ---
 # Formats the code using Ruff.
 format:
@@ -101,6 +106,7 @@ help:
 	@echo "  start                Run the application in the virtual environment."
 	@echo "  debug                Run the application in debug mode."
 	@echo "  devcontainer         Run the application within a devcontainer."
+	@echo "  test-server          Run the test server for development."
 	@echo "  format               Format code using Ruff."
 	@echo "  lint                 Check for linting errors using Ruff."
 	@echo "  fix                  Fixes any issues it finds."

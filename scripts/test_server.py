@@ -1,0 +1,308 @@
+import asyncio
+import json
+import random
+import socket
+import threading
+import time
+import uuid
+
+import websockets
+
+# Server configuration
+HOST = "0.0.0.0"
+WS_PORT = 3030
+UDP_PORT = 3000
+MAINBOARD_ID = "000000000001d354"
+PRINTER_IP = "127.0.0.1"
+
+
+# Printer state
+print_history = {}
+printer_attributes = {
+    "Name": "Centauri Carbon Test",
+    "MachineName": "Centauri Carbon",
+    "BrandName": "Centauri",
+    "ProtocolVersion": "V3.0.0",
+    "FirmwareVersion": "V1.0.0",
+    "XYZsize": "300x300x400",
+    "MainboardIP": PRINTER_IP,
+    "MainboardID": MAINBOARD_ID,
+    "NumberOfVideoStreamConnected": 0,
+    "MaximumVideoStreamAllowed": 1,
+    "NumberOfCloudSDCPServicesConnected": 0,
+    "MaximumCloudSDCPSercicesAllowed": 1,
+    "NetworkStatus": "wlan",
+    "MainboardMAC": "00:11:22:33:44:55",
+    "UsbDiskStatus": 1,
+    "Capabilities": ["FILE_TRANSFER", "PRINT_CONTROL", "VIDEO_STREAM"],
+    "SupportFileType": ["GCODE"],
+    "DevicesStatus": {
+        "ZMotorStatus": 1,
+        "YMotorStatus": 1,
+        "XMotorStatus": 1,
+        "ExtruderMotorStatus": 1,
+        "RelaseFilmState": 1,
+    },
+    "CameraStatus": 1,
+    "RemainingMemory": 5 * 1024 * 1024 * 1024,  # 5GB
+    "SDCPStatus": 1,
+}
+
+printer_status = {
+    "CurrentStatus": 0,  # Idle
+    "PreviousStatus": 0,
+    "TempOfNozzle": 25,
+    "TempTargetNozzle": 0,
+    "TempOfHotbed": 25,
+    "TempTargetHotbed": 0,
+    "TempOfBox": 25,
+    "TempTargetBox": 0,
+    "CurrenCoord": "0.0,0.0,0.0",
+    "CurrentFanSpeed": {
+        "ModelFan": 0,
+        "ModeFan": 0,
+        "AuxiliaryFan": 0,
+        "BoxFan": 0,
+    },
+    "LightStatus": {"SecondLight": 0},
+    "RgbLight": [255, 255, 255],
+    "ZOffset": 0.0,
+    "PrintSpeed": 100,
+    "PrintInfo": {
+        "Status": 0,
+        "CurrentLayer": 0,
+        "TotalLayer": 0,
+        "CurrentTicks": 0,
+        "TotalTicks": 0,
+        "Filename": "",
+        "ErrorNumber": 0,
+        "TaskId": "",
+        "PrintSpeed": 100,
+    },
+}
+
+connected_clients = set()
+
+
+def get_timestamp():
+    return int(time.time())
+
+
+def create_response(request_data, data):
+    return {
+        "Id": str(uuid.uuid4()),
+        "Data": {
+            "Cmd": request_data["Data"]["Cmd"],
+            "Data": data,
+            "RequestID": request_data["Data"]["RequestID"],
+            "MainboardID": MAINBOARD_ID,
+            "TimeStamp": get_timestamp(),
+        },
+        "Topic": f"sdcp/response/{MAINBOARD_ID}",
+    }
+
+
+def create_push_message(topic, data):
+    return {
+        "Id": str(uuid.uuid4()),
+        "Data": data,
+        "Topic": topic,
+    }
+
+
+async def send_status_update(websocket):
+    status_data = {
+        "Status": printer_status,
+        "MainboardID": MAINBOARD_ID,
+        "TimeStamp": get_timestamp(),
+        "Topic": f"sdcp/status/{MAINBOARD_ID}",
+    }
+    print(f"Sending status update: {json.dumps(status_data)}")
+    await websocket.send(json.dumps(status_data))
+
+
+async def send_attributes_update(websocket):
+    attributes_data = {
+        "Attributes": printer_attributes,
+        "MainboardID": MAINBOARD_ID,
+        "TimeStamp": get_timestamp(),
+        "Topic": f"sdcp/attributes/{MAINBOARD_ID}",
+    }
+    print(f"Sending attributes update: {json.dumps(attributes_data)}")
+    await websocket.send(json.dumps(attributes_data))
+
+
+async def broadcast_status_update():
+    for client in connected_clients:
+        await send_status_update(client)
+
+
+async def simulate_printing():
+    print("Starting print simulation")
+    pi = printer_status["PrintInfo"]
+    while (
+        pi["CurrentLayer"] < pi["TotalLayer"] and printer_status["CurrentStatus"] == 1
+    ):
+        await asyncio.sleep(5)
+        pi["CurrentLayer"] += 1
+        pi["CurrentTicks"] += random.randint(10, 20)
+        printer_status["CurrenCoord"] = (
+            f"{random.uniform(0, 300):.1f},{random.uniform(0, 300):.1f},{pi['CurrentLayer'] * 0.2:.2f}"
+        )
+        await broadcast_status_update()
+
+    if printer_status["CurrentStatus"] == 1:
+        print("Print simulation finished")
+        printer_status["CurrentStatus"] = 0  # Idle
+        printer_status["PrintInfo"]["Status"] = 9  # Complete
+        task_id = printer_status["PrintInfo"]["TaskId"]
+        print_history[task_id] = {
+            "TaskId": task_id,
+            "TaskName": printer_status["PrintInfo"]["Filename"],
+            "BeginTime": get_timestamp() - printer_status["PrintInfo"]["TotalTicks"],
+            "EndTime": get_timestamp(),
+            "TaskStatus": 9,
+        }
+        await broadcast_status_update()
+
+
+async def handler(websocket):
+    print(f"Client connected from {websocket.remote_address}")
+    connected_clients.add(websocket)
+    try:
+        # On connect, send initial status and attributes
+        await send_attributes_update(websocket)
+        await send_status_update(websocket)
+
+        async for message in websocket:
+            if message == "ping":
+                await websocket.send("pong")
+                continue
+
+            print(f"Received message: {message}")
+            try:
+                data = json.loads(message)
+                if data.get("Topic", "").startswith("sdcp/request"):
+                    await handle_request(websocket, data)
+            except json.JSONDecodeError:
+                print(f"Invalid JSON received: {message}")
+            except Exception as e:
+                print(f"Error processing message: {e}")
+
+    except websockets.exceptions.ConnectionClosed:
+        print(f"Client disconnected: {websocket.remote_address}")
+    finally:
+        connected_clients.remove(websocket)
+
+
+async def handle_request(websocket, request):
+    if "Data" not in request:
+        print(f"Invalid request: {request}")
+        return
+    cmd = request["Data"]["Cmd"]
+    print(f"Handling command: {cmd}")
+
+    if cmd == 0:  # Request Status Refresh
+        response = create_response(request, {"Ack": 0})
+        await websocket.send(json.dumps(response))
+        await send_status_update(websocket)
+    elif cmd == 1:  # Request Attributes
+        response = create_response(request, {"Ack": 0})
+        await websocket.send(json.dumps(response))
+        await send_attributes_update(websocket)
+    elif cmd == 128:  # Start Print
+        filename = request["Data"]["Data"]["Filename"]
+        print(f"Starting print for file: {filename}")
+        printer_status["CurrentStatus"] = 1  # Printing
+        printer_status["PrintInfo"]["Status"] = 1  # Homing
+        printer_status["PrintInfo"]["Filename"] = filename
+        printer_status["PrintInfo"]["TaskId"] = str(uuid.uuid4())
+        printer_status["PrintInfo"]["TotalLayer"] = random.randint(100, 1000)
+        printer_status["PrintInfo"]["TotalTicks"] = printer_status["PrintInfo"][
+            "TotalLayer"
+        ] * random.randint(10, 20)
+        response = create_response(request, {"Ack": 0})
+        await websocket.send(json.dumps(response))
+        # Simulate printing progress
+        asyncio.create_task(simulate_printing())
+    elif cmd == 130:  # Stop Print
+        print("Stopping print")
+        printer_status["CurrentStatus"] = 0  # Idle
+        printer_status["PrintInfo"]["Status"] = 8  # Stopped
+        response = create_response(request, {"Ack": 0})
+        await websocket.send(json.dumps(response))
+    elif cmd == 320:  # Request History Task List
+        response = create_response(request, {"HistoryData": list(print_history.keys())})
+        await websocket.send(json.dumps(response))
+    elif cmd == 321:  # Request History Task Detail Information
+        task_ids = request["Data"]["Data"]["Id"]
+        history_details = [
+            print_history[task_id] for task_id in task_ids if task_id in print_history
+        ]
+        response = create_response(request, {"HistoryDetailList": history_details})
+        await websocket.send(json.dumps(response))
+    elif cmd == 322:  # Delete History Task
+        task_ids = request["Data"]["Data"]["Id"]
+        for task_id in task_ids:
+            if task_id in print_history:
+                del print_history[task_id]
+        response = create_response(request, {"Ack": 0})
+        await websocket.send(json.dumps(response))
+    else:
+        print(f"Unknown command: {cmd}")
+        response = create_response(request, {"Ack": 1})  # Generic error
+        await websocket.send(json.dumps(response))
+
+
+def udp_server():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((HOST, UDP_PORT))
+        print(f"UDP server listening on {HOST}:{UDP_PORT}")
+        while True:
+            data, addr = s.recvfrom(1024)
+            if data == b"M99999":
+                print(f"Received discovery request from {addr}")
+                response = {
+                    "Id": str(uuid.uuid4()),
+                    "Data": {
+                        "Name": printer_attributes["Name"],
+                        "MachineName": printer_attributes["MachineName"],
+                        "BrandName": printer_attributes["BrandName"],
+                        "MainboardIP": PRINTER_IP,
+                        "MainboardID": MAINBOARD_ID,
+                        "ProtocolVersion": printer_attributes["ProtocolVersion"],
+                        "FirmwareVersion": printer_attributes["FirmwareVersion"],
+                    },
+                }
+                s.sendto(json.dumps(response).encode("utf-8"), addr)
+
+
+async def main():
+    # Start UDP server in a separate thread
+    udp_thread = threading.Thread(target=udp_server, daemon=True)
+    udp_thread.start()
+
+    # Set initial printing status
+    printer_status["CurrentStatus"] = 1  # 1 = Printing
+    printer_status["PrintInfo"]["Status"] = 3  # 3 = Exposuring
+    printer_status["PrintInfo"]["Filename"] = "startup_print.gcode"
+    printer_status["PrintInfo"]["TaskId"] = str(uuid.uuid4())
+    printer_status["PrintInfo"]["TotalLayer"] = 500
+    printer_status["PrintInfo"]["CurrentLayer"] = 100
+    printer_status["PrintInfo"]["TotalTicks"] = 5000
+    printer_status["PrintInfo"]["CurrentTicks"] = 1000
+
+    # Start WebSocket server
+    async with websockets.serve(handler, HOST, WS_PORT) as server:
+        print(f"WebSocket server started on {HOST}:{WS_PORT}")
+        # Simulate printing progress in the background
+        asyncio.create_task(simulate_printing())
+        await asyncio.Future()  # run forever
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Server shutting down.")
