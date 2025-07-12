@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from homeassistant.components.image import ImageEntity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.util import dt as dt_util
 from propcache.api import cached_property
 
 from custom_components.elegoo_printer.definitions import (
@@ -65,10 +65,12 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         ImageEntity.__init__(self, hass=hass)
         self.coordinator = coordinator
         self._image_filename = None
+        self.image_url = None
+        self._cached_image = None
         self.entity_description = description
         unique_id = coordinator.generate_unique_id(self.entity_description.key)
         self._attr_unique_id = unique_id
-        self._attr_image_last_updated = dt_util.now()
+        self._attr_image_last_updated: datetime | None = None
         self.api = coordinator.config_entry.runtime_data.api
 
     async def async_image(self) -> bytes | None:
