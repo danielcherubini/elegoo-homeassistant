@@ -119,6 +119,6 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
 
         If the entity description provides an availability function, uses it with the current light status; otherwise, falls back to the base class availability check.
         """
-        if self.entity_description.available_fn is not None:
-            return self.entity_description.available_fn(self.light_status)
-        return super().available
+        if not super().available:
+            return False
+        return self.entity_description.available_fn(self.light_status)

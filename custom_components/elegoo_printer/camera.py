@@ -95,11 +95,6 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
         If the entity description specifies an availability function, this function is used to determine availability based on the printer's video data. Otherwise, falls back to the default availability check.
         """
-        if (
-            hasattr(self, "entity_description")
-            and self.entity_description.available_fn is not None
-        ):
-            return self.entity_description.available_fn(
-                self._printer_client.printer_data.video
-            )
-        return super().available
+        return super().available and self.entity_description.available_fn(
+            self._printer_client.printer_data.video
+        )
