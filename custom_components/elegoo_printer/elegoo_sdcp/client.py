@@ -14,10 +14,11 @@ from aiohttp import ClientWebSocketResponse
 from aiohttp.client import ClientWSTimeout
 
 from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
-    ElegooPrinterConfigurationError, ElegooPrinterConnectionError,
-    ElegooPrinterNotConnectedError)
-from custom_components.elegoo_printer.elegoo_sdcp.models.video import \
-    ElegooVideo
+    ElegooPrinterConfigurationError,
+    ElegooPrinterConnectionError,
+    ElegooPrinterNotConnectedError,
+)
+from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
 
 from .const import DEBUG, LOGGER
 from .models.attributes import PrinterAttributes
