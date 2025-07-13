@@ -13,10 +13,21 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
     ElegooVideoStatus,
     PrinterType,
 )
+from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 from .coordinator import ElegooDataUpdateCoordinator
 
+
+def normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
+    """
+    Checks if video_object.video_url starts with 'http://' and adds it if missing.
+    Modifies the video_object in place.
+    """
+    if not video_object.video_url.startswith("http://"):
+        video_object.video_url = "http://" + video_object.video_url
+
+    return video_object
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -93,7 +104,8 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
                 LOGGER.debug(
                     f"stream_source: Proxy is disabled using printer video url: {video.video_url}"
                 )
-                self._mjpeg_url = video.video_url
+
+                self._mjpeg_url = normalize_video_url(video).video_url 
 
         else:
             LOGGER.error(f"stream_source: Failed to get video stream: {video.status}")
