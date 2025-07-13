@@ -29,6 +29,7 @@ def normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
 
     return video_object
 
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ElegooPrinterConfigEntry,
@@ -105,7 +106,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
                     f"stream_source: Proxy is disabled using printer video url: {video.video_url}"
                 )
 
-                self._mjpeg_url = normalize_video_url(video).video_url 
+                self._mjpeg_url = normalize_video_url(video).video_url
 
         else:
             LOGGER.error(f"stream_source: Failed to get video stream: {video.status}")
