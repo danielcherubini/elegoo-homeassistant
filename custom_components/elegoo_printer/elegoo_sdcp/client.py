@@ -14,11 +14,10 @@ from aiohttp import ClientWebSocketResponse
 from aiohttp.client import ClientWSTimeout
 
 from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
-    ElegooPrinterConfigurationError,
-    ElegooPrinterConnectionError,
-    ElegooPrinterNotConnectedError,
-)
-from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
+    ElegooPrinterConfigurationError, ElegooPrinterConnectionError,
+    ElegooPrinterNotConnectedError)
+from custom_components.elegoo_printer.elegoo_sdcp.models.video import \
+    ElegooVideo
 
 from .const import DEBUG, LOGGER
 from .models.attributes import PrinterAttributes
@@ -128,6 +127,7 @@ class ElegooPrinterClient:
         """
         await self.set_printer_video_stream(toggle=toggle)
         await asyncio.sleep(2)
+        self.logger.debug(f"Sending printer video: {self.printer_data.video.to_dict()}")
         return self.printer_data.video
 
     async def async_get_printer_historical_tasks(

@@ -210,7 +210,7 @@ async def send_history_detail(websocket, request_data):
 
 
 async def send_video_stream(websocket, request_data):
-    response_data = {"Ack": 0, "VideoUrl": f"http://{PRINTER_IP}:{MJPEG_PORT}"}
+    response_data = {"Ack": 0, "VideoUrl": f"http://{PRINTER_IP}:{MJPEG_PORT}/video"}
     response = create_response(request_data, response_data)
     await websocket.send(json.dumps(response))
 
