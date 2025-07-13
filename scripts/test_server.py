@@ -422,7 +422,7 @@ async def mjpeg_server(stop_event):
         allow_reuse_address = True
         daemon_threads = True
 
-    loop = asyncio.get_running_loop()
+    asyncio.get_running_loop()
     server_address = (HOST, MJPEG_PORT)
     httpd = ThreadingTCPServer(server_address, MJPEGServerHandler)
 
