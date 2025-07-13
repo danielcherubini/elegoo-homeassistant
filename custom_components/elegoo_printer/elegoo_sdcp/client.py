@@ -128,6 +128,7 @@ class ElegooPrinterClient:
         """
         await self.set_printer_video_stream(toggle=toggle)
         await asyncio.sleep(2)
+        self.logger.debug(f"Sending printer video: {self.printer_data.video.to_dict()}")
         return self.printer_data.video
 
     async def async_get_printer_historical_tasks(

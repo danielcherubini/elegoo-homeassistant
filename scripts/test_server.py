@@ -6,6 +6,7 @@ import random
 import signal
 import socket
 import socketserver
+import threading
 import time
 import uuid
 
@@ -16,6 +17,7 @@ HOST = "0.0.0.0"
 HTTP_PORT = 8000
 WS_PORT = 3030
 UDP_PORT = 3000
+MJPEG_PORT = 3031
 MAINBOARD_ID = "000000000001d354"
 PRINTER_IP = "127.0.0.1"
 
@@ -207,6 +209,12 @@ async def send_history_detail(websocket, request_data):
     await websocket.send(json.dumps(response))
 
 
+async def send_video_stream(websocket, request_data):
+    response_data = {"Ack": 0, "VideoUrl": f"http://{PRINTER_IP}:{MJPEG_PORT}/video"}
+    response = create_response(request_data, response_data)
+    await websocket.send(json.dumps(response))
+
+
 async def simulate_printing():
     print("Starting print simulation")
     pi = printer_status["PrintInfo"]
@@ -314,6 +322,11 @@ async def handle_request(websocket, request):
                 del print_history[task_id]
         response = create_response(request, {"Ack": 0})
         await websocket.send(json.dumps(response))
+    elif cmd == 386:
+        print("Request for custom command 386")
+        response = create_response(request, {"Ack": 0})
+        await websocket.send(json.dumps(response))
+        await send_video_stream(websocket, request)
     else:
         print(f"Unknown command: {cmd}")
         response = create_response(request, {"Ack": 1})  # Generic error
@@ -373,6 +386,63 @@ async def http_server(stop_event):
     print("HTTP server shut down.")
 
 
+class MJPEGServerHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header(
+            "Content-type", "multipart/x-mixed-replace; boundary=--jpgboundary"
+        )
+        self.end_headers()
+        images = ["thumb1.jpg", "thumb2.jpg", "thumb3.jpg"]
+        img_dir = os.path.dirname(os.path.abspath(__file__))
+        while True:
+            try:
+                for image_name in images:
+                    image_path = os.path.join(img_dir, image_name)
+                    if not os.path.exists(image_path):
+                        print(f"Image not found: {image_path}")
+                        continue
+                    with open(image_path, "rb") as f:
+                        img = f.read()
+                    self.wfile.write(b"--jpgboundary\r\n")
+                    self.send_header("Content-type", "image/jpeg")
+                    self.send_header("Content-length", str(len(img)))
+                    self.end_headers()
+                    self.wfile.write(img)
+                    self.wfile.write(b"\r\n")
+                    time.sleep(0.5)
+            except (BrokenPipeError, ConnectionResetError):
+                print("Client disconnected from MJPEG stream.")
+                break
+        return
+
+
+async def mjpeg_server(stop_event):
+    class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    asyncio.get_running_loop()
+    server_address = (HOST, MJPEG_PORT)
+    httpd = ThreadingTCPServer(server_address, MJPEGServerHandler)
+
+    server_thread = threading.Thread(target=httpd.serve_forever)
+    server_thread.daemon = True
+    server_thread.start()
+    print(f"MJPEG server listening on {HOST}:{MJPEG_PORT}")
+
+    # Wait for the stop event in a non-blocking way
+    while not stop_event.is_set():
+        await asyncio.sleep(0.1)
+
+    # When stop event is set, shut down the server
+    print("Shutting down MJPEG server...")
+    httpd.shutdown()
+    httpd.server_close()
+    server_thread.join()  # wait for thread to finish
+    print("MJPEG server shut down.")
+
+
 async def main():
     stop_event = asyncio.Event()
 
@@ -382,9 +452,10 @@ async def main():
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop_event.set)
 
-    # Start UDP and HTTP servers in separate tasks
+    # Start UDP, HTTP and MJPEG servers in separate tasks
     udp_task = asyncio.create_task(udp_server(stop_event))
     http_task = asyncio.create_task(http_server(stop_event))
+    mjpeg_task = asyncio.create_task(mjpeg_server(stop_event))
 
     # Grab the first task from history to be the "current" print
     first_task_id = next(iter(print_history))
@@ -418,6 +489,7 @@ async def main():
     print("WebSocket server shut down.")
     await udp_task
     await http_task
+    await mjpeg_task
     print("All servers shut down gracefully.")
 
 
