@@ -82,4 +82,4 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         if not machine_name or machine_name == "":
             return machine_id + "_" + key
 
-        return machine_name.replace(" ", "_").lower() + "_" + key
+        return machine_name.replace(" ", "_").lower() + "_" + machine_id + "_" + key
