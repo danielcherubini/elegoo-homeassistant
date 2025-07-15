@@ -39,7 +39,6 @@ PLATFORMS: list[Platform] = [
 ]
 
 
-
 # https://developers.home-assistant.io/docs/config_entries_index/#setting-up-an-entry
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -162,6 +161,7 @@ async def async_migrate_entry(
 
     return True
 
+
 async def async_migrate_unique_ids(
     hass: HomeAssistant, entry: ElegooPrinterConfigEntry
 ) -> None:
@@ -199,4 +199,3 @@ async def async_migrate_unique_ids(
         return None
 
     await er.async_migrate_entries(hass, entry.entry_id, async_migrate_callback)
-
