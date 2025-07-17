@@ -52,7 +52,6 @@ async def async_setup_entry(
     Returns:
         bool: True if the integration is set up successfully.
     """
-    await async_migrate_unique_ids(hass, entry)
     coordinator = ElegooDataUpdateCoordinator(
         hass=hass,
         logger=LOGGER,
@@ -158,6 +157,10 @@ async def async_migrate_entry(
         except Exception as e:
             LOGGER.error(f"Error migrating config entry: {e}")
             return False
+
+    if config_entry.version == 2:
+        await async_migrate_unique_ids(hass, config_entry)
+        return True
 
     return True
 
