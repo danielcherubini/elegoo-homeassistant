@@ -272,10 +272,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             printer_object: Printer = validation_result["printer"]
 
             if not _errors:
-                await self.async_set_unique_id(unique_id=f"{printer_object.name}_{printer_object.id}")
+                await self.async_set_unique_id(unique_id=printer_object.id)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=f"{printer_object.name}_{printer_object.id}" or "Elegoo Printer",
+                    title=printer_object.name or "Elegoo Printer",
                     data=printer_object.to_dict(),
                 )
 
@@ -303,11 +303,11 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 validated_printer = await _async_test_connection(
                     self.hass, printer_to_validate, user_input
                 )
-                await self.async_set_unique_id(unique_id=f"{validated_printer.name}_{validated_printer.id}")
+                await self.async_set_unique_id(unique_id=validated_printer.id)
                 self._abort_if_unique_id_configured()
                 validated_printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
                 return self.async_create_entry(
-                    title=f"{validated_printer.name}_{validated_printer.id}" or "Elegoo Printer",
+                    title=validated_printer.name or "Elegoo Printer",
                     data=validated_printer.to_dict(),
                 )
             except ElegooConfigFlowConnectionError as exception:
