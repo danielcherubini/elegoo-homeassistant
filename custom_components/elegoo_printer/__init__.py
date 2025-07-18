@@ -185,13 +185,13 @@ async def async_migrate_unique_ids(
     ) -> dict[str, Any] | None:
         """Migrate a single entity entry."""
         # old: {machine_name}_{key}
-        # new: {machine_name}_{machine_id}_{key}
+        # new: {machine_id}_{key}
         if (
             entity_entry.unique_id.startswith(sanitized_machine_name)
             and machine_id not in entity_entry.unique_id
         ):
             new_unique_id = entity_entry.unique_id.replace(
-                sanitized_machine_name, f"{sanitized_machine_name}_{machine_id}"
+                sanitized_machine_name, machine_id
             )
             LOGGER.debug(
                 "Migrating unique_id from %s to %s",
