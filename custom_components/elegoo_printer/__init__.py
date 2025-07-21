@@ -9,10 +9,12 @@ from __future__ import annotations
 
 from datetime import timedelta
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.const import CONF_IP_ADDRESS, Platform
+from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_loaded_integration
 
@@ -156,4 +158,49 @@ async def async_migrate_entry(
             LOGGER.error(f"Error migrating config entry: {e}")
             return False
 
+    if config_entry.version == 2:
+        await async_migrate_unique_ids(hass, config_entry)
+        hass.config_entries.async_update_entry(config_entry, version=3)
+        LOGGER.debug("Migration to version 3 successful")
+        return True
+
     return True
+
+
+async def async_migrate_unique_ids(
+    hass: HomeAssistant, entry: ElegooPrinterConfigEntry
+) -> None:
+    """Migrate entity unique IDs."""
+    LOGGER.debug("Checking if unique ID migration is needed")
+    machine_id = entry.data.get("id")
+    machine_name = entry.data.get("name")
+
+    if not machine_name:
+        LOGGER.debug("No machine name, skipping migration")
+        return
+
+    sanitized_machine_name = machine_name.replace(" ", "_").lower()
+
+    @callback
+    def async_migrate_callback(
+        entity_entry: er.RegistryEntry,
+    ) -> dict[str, Any] | None:
+        """Migrate a single entity entry."""
+        # old: {machine_name}_{key}
+        # new: {machine_id}_{key}
+        if (
+            entity_entry.unique_id.startswith(sanitized_machine_name)
+            and machine_id not in entity_entry.unique_id
+        ):
+            new_unique_id = entity_entry.unique_id.replace(
+                sanitized_machine_name, machine_id
+            )
+            LOGGER.debug(
+                "Migrating unique_id from %s to %s",
+                entity_entry.unique_id,
+                new_unique_id,
+            )
+            return {"new_unique_id": new_unique_id}
+        return None
+
+    await er.async_migrate_entries(hass, entry.entry_id, async_migrate_callback)
