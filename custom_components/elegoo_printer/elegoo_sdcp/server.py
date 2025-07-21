@@ -340,9 +340,22 @@ class ElegooPrinterServer:
         remote_ws_url = (
             f"ws://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
         )
+        # Filter headers to avoid proxying unnecessary or problematic ones
+        # that can cause "400 Bad Request: Header value is too long"
+        allowed_headers = {
+            "Sec-WebSocket-Version",
+            "Sec-WebSocket-Key",
+            *"Sec-WebSocket-Protocol",
+            "Upgrade",
+            "Connection",
+        }
+        filtered_headers = {
+            k: v for k, v in request.headers.items() if k in allowed_headers
+        }
+
         try:
             async with self.session.ws_connect(
-                remote_ws_url, headers=request.headers
+                remote_ws_url, headers=filtered_headers
             ) as remote_ws:
                 self.logger.info(
                     f"Proxy connected to remote printer WebSocket at {self.printer.ip_address}"
