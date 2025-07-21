@@ -345,7 +345,7 @@ class ElegooPrinterServer:
         allowed_headers = {
             "Sec-WebSocket-Version",
             "Sec-WebSocket-Key",
-*           "Sec-WebSocket-Protocol",
+            *"Sec-WebSocket-Protocol",
             "Upgrade",
             "Connection",
         }
