@@ -160,6 +160,8 @@ async def async_migrate_entry(
 
     if config_entry.version == 2:
         await async_migrate_unique_ids(hass, config_entry)
+        hass.config_entries.async_update_entry(config_entry, version=3)
+        LOGGER.debug("Migration to version 3 successful")
         return True
 
     return True
