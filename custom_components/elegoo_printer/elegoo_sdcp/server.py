@@ -371,20 +371,26 @@ class ElegooPrinterServer:
                         dest: The destination WebSocket connection to send messages to.
                         direction: A string label used for logging the direction of message forwarding.
                     """
-                    async for msg in source:
-                        if msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
-                            (
-                                await dest.send_bytes(msg.data)
-                                if msg.type == WSMsgType.BINARY
-                                else await dest.send_str(msg.data)
-                            )
-                        elif msg.type == WSMsgType.CLOSE:
-                            break
-                        elif msg.type == WSMsgType.ERROR:
-                            self.logger.error(
-                                f"WebSocket error in {direction}: {source.exception()}"
-                            )
-                            break
+                    try:
+                        async for msg in source:
+                            if msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
+                                (
+                                    await dest.send_bytes(msg.data)
+                                    if msg.type == WSMsgType.BINARY
+                                    else await dest.send_str(msg.data)
+                                )
+                            elif msg.type == WSMsgType.CLOSE:
+                                break
+                            elif msg.type == WSMsgType.ERROR:
+                                self.logger.error(
+                                    f"WebSocket error in {direction}: {source.exception()}"
+                                )
+                                break
+                    except aiohttp.ClientConnectionResetError:
+                        self.logger.debug(
+                            f"WebSocket connection reset by peer in {direction}."
+                        )
+                        raise
 
                 # Create tasks to run the forwarding coroutines concurrently
                 to_printer = asyncio.create_task(
@@ -397,6 +403,11 @@ class ElegooPrinterServer:
                 done, pending = await asyncio.wait(
                     [to_printer, to_client], return_when=asyncio.FIRST_COMPLETED
                 )
+
+                for task in done:
+                    if task.exception():
+                        raise task.exception()
+
                 for task in pending:
                     task.cancel()
 
