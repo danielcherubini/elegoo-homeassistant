@@ -6,8 +6,8 @@ from custom_components.elegoo_printer.const import (
     CONF_PROXY_ENABLED,
     LOGGER,
     PROXY_HOST,
-    PROXY_VIDEO_ENDPOINT,
-    PROXY_VIDEO_PORT,
+    VIDEO_ENDPOINT,
+    VIDEO_PORT,
 )
 from custom_components.elegoo_printer.data import ElegooPrinterConfigEntry
 from custom_components.elegoo_printer.definitions import (
@@ -87,7 +87,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         MjpegCamera.__init__(
             self,
             name=f"{description.name}",
-            mjpeg_url=f"http://{PROXY_HOST}:{PROXY_VIDEO_PORT}/{PROXY_VIDEO_ENDPOINT}",
+            mjpeg_url=f"http://{PROXY_HOST}:{VIDEO_PORT}/{VIDEO_ENDPOINT}",
             still_image_url=None,  # This camera does not have a separate still image URL
             unique_id=coordinator.generate_unique_id(description.key),
         )
@@ -119,9 +119,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             LOGGER.debug("stream_source: Video is OK, getting stream source")
             if self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False):
                 LOGGER.debug("stream_source: Proxy is enabled using local video")
-                self._mjpeg_url = (
-                    f"http://{PROXY_HOST}:{PROXY_VIDEO_PORT}/{PROXY_VIDEO_ENDPOINT}"
-                )
+                self._mjpeg_url = f"http://{PROXY_HOST}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"
             else:
                 LOGGER.debug(
                     f"stream_source: Proxy is disabled using printer video url: {video.video_url}"
