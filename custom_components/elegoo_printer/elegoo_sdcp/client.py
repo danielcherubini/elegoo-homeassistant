@@ -13,6 +13,13 @@ import aiohttp
 from aiohttp import ClientWebSocketResponse
 from aiohttp.client import ClientWSTimeout
 
+from custom_components.elegoo_printer.const import (
+    DEFAULT_BROADCAST_ADDRESS,
+    DEFAULT_FALLBACK_IP,
+    DISCOVERY_MESSAGE,
+    DISCOVERY_PORT,
+    WEBSOCKET_PORT,
+)
 from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
     ElegooPrinterConfigurationError,
     ElegooPrinterConnectionError,
@@ -29,14 +36,11 @@ from .models.status import LightStatus, PrinterStatus
 logging.getLogger("websocket").setLevel(logging.CRITICAL)
 
 DISCOVERY_TIMEOUT = 5
-DISCOVERY_PORT = 3000
 DEFAULT_PORT = 54780
-WEBSOCKET_PORT = 3030
 
 
 class ElegooPrinterClient:
-    """
-    Client for interacting with an Elegoo printer.
+    """Client for interacting with an Elegoo printer.
 
     Uses the SDCP Protocol (https://github.com/cbd-tech/SDCP-Smart-Device-Control-Protocol-V3.0.0).
     Includes a local websocket proxy to allow multiple local clients to communicate with one printer.
@@ -49,14 +53,13 @@ class ElegooPrinterClient:
         logger: Any = LOGGER,
         config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
-        """
-        Initialize an ElegooPrinterClient for communicating with an Elegoo 3D printer.
+        """Initialize an ElegooPrinterClient for communicating with an Elegoo 3D printer.
 
-        Parameters:
-            ip_address (str): The IP address of the target printer.
-            config (Dict, optional): A Dictionary containing the config for the printer
-
-        Initializes internal state, including printer data models, websocket references, and logging.
+        Args:
+            ip_address: The IP address of the target printer.
+            session: The aiohttp client session.
+            logger: The logger to use.
+            config: A dictionary containing the config for the printer.
         """
         if ip_address is None:
             raise ElegooPrinterConfigurationError(
@@ -93,11 +96,10 @@ class ElegooPrinterClient:
         self._is_connected = False
 
     async def get_printer_status(self) -> PrinterData:
-        """
-        Retrieve the current status of the printer.
+        """Retrieve the current status of the printer.
 
         Returns:
-            PrinterData: The latest printer status information.
+            The latest printer status information.
         """
         await self._send_printer_cmd(0)
         return self.printer_data
@@ -108,23 +110,21 @@ class ElegooPrinterClient:
         return self.printer_data
 
     async def set_printer_video_stream(self, *, toggle: bool) -> None:
-        """
-        Enable or disable the printer's video stream.
+        """Enable or disable the printer's video stream.
 
-        Parameters:
-                toggle (bool): If True, enables the video stream; if False, disables it.
+        Args:
+            toggle: If True, enables the video stream; if False, disables it.
         """
         await self._send_printer_cmd(386, {"Enable": int(toggle)})
 
     async def get_printer_video(self, toggle: bool = False) -> ElegooVideo:
-        """
-        Toggle the printer's video stream and retrieve the current video stream information.
+        """Toggle the printer's video stream and retrieve the current video stream information.
 
-        Parameters:
-            toggle (bool): If True, enables the video stream; if False, disables it.
+        Args:
+            toggle: If True, enables the video stream; if False, disables it.
 
         Returns:
-            ElegooVideo: The current video stream information from the printer.
+            The current video stream information from the printer.
         """
         await self.set_printer_video_stream(toggle=toggle)
         await asyncio.sleep(2)
@@ -134,9 +134,7 @@ class ElegooPrinterClient:
     async def async_get_printer_historical_tasks(
         self,
     ) -> dict[str, PrintHistoryDetail | None] | None:
-        """
-        Asynchronously requests the list of historical print tasks from the printer.
-        """
+        """Asynchronously requests the list of historical print tasks from the printer."""
         await self._send_printer_cmd(320)
         await asyncio.sleep(2)  # Give the printer time to respond
         return self.printer_data.print_history
@@ -144,9 +142,7 @@ class ElegooPrinterClient:
     async def get_printer_task_detail(
         self, id_list: list[str]
     ) -> PrintHistoryDetail | None:
-        """
-        Retrieves historical tasks from the printer.
-        """
+        """Retrieves historical tasks from the printer."""
         for task_id in id_list:
             if task := self.printer_data.print_history.get(task_id):
                 return task
@@ -158,9 +154,7 @@ class ElegooPrinterClient:
         return None
 
     def get_printer_current_task(self) -> PrintHistoryDetail | None:
-        """
-        Retreves current task.
-        """
+        """Retreves current task."""
         if self.printer_data.status.print_info.task_id:
             task_id = self.printer_data.status.print_info.task_id
             current_task = self.printer_data.print_history.get(task_id)
@@ -176,9 +170,7 @@ class ElegooPrinterClient:
         return None
 
     def get_printer_last_task(self) -> PrintHistoryDetail | None:
-        """
-        Retreves last task.
-        """
+        """Retreves last task."""
         if self.printer_data.print_history:
 
             def sort_key(tid: str) -> int:
@@ -199,11 +191,10 @@ class ElegooPrinterClient:
         return None
 
     def get_current_print_thumbnail(self) -> str | None:
-        """
-        Return the thumbnail URL of the current print task, or None if no thumbnail is available.
+        """Return the thumbnail URL of the current print task, or None if no thumbnail is available.
 
         Returns:
-            str | None: The URL of the current print task's thumbnail image, or None if there is no active task or thumbnail.
+            The URL of the current print task's thumbnail image, or None if there is no active task or thumbnail.
         """
 
         task = self.get_printer_current_task()
@@ -212,11 +203,10 @@ class ElegooPrinterClient:
         return None
 
     async def async_get_printer_current_task(self) -> PrintHistoryDetail | None:
-        """
-        Asynchronously retrieves the current print task details from the printer.
+        """Asynchronously retrieves the current print task details from the printer.
 
         Returns:
-            PrintHistoryDetail | None: The details of the current print task if available, otherwise None.
+            The details of the current print task if available, otherwise None.
         """
         if task_id := self.printer_data.status.print_info.task_id:
             LOGGER.debug(f"get_printer_current_task task_id: {task_id}")
@@ -239,9 +229,7 @@ class ElegooPrinterClient:
         return None
 
     async def async_get_printer_last_task(self) -> PrintHistoryDetail | None:
-        """
-        Retreves last task.
-        """
+        """Retreves last task."""
         if self.printer_data.print_history:
 
             def sort_key(tid: str) -> int:
@@ -262,11 +250,10 @@ class ElegooPrinterClient:
         return None
 
     async def async_get_current_print_thumbnail(self) -> str | None:
-        """
-        Asynchronously retrieves the thumbnail URL of the current print task.
+        """Asynchronously retrieves the thumbnail URL of the current print task.
 
         Returns:
-            str | None: The thumbnail URL if the current print task has one; otherwise, None.
+            The thumbnail URL if the current print task has one; otherwise, None.
         """
         if task := await self.async_get_printer_current_task():
             return task.thumbnail
@@ -276,37 +263,33 @@ class ElegooPrinterClient:
         return None
 
     async def set_light_status(self, light_status: LightStatus) -> None:
-        """
-        Set the printer's light status to the specified configuration.
+        """Set the printer's light status to the specified configuration.
 
-        Parameters:
-                light_status (LightStatus): The light status configuration to apply.
+        Args:
+            light_status: The light status configuration to apply.
         """
         await self._send_printer_cmd(403, light_status.to_dict())
 
     async def print_pause(self) -> None:
-        """
-        Pause the current print.
-        """
+        """Pause the current print."""
         await self._send_printer_cmd(129, {})
 
     async def print_stop(self) -> None:
-        """
-        Stop the current print.
-        """
+        """Stop the current print."""
         await self._send_printer_cmd(130, {})
 
     async def print_resume(self) -> None:
-        """
-        Resume/continue the current print.
-        """
+        """Resume/continue the current print."""
         await self._send_printer_cmd(131, {})
 
     async def _send_printer_cmd(
         self, cmd: int, data: dict[str, Any] | None = None
     ) -> None:
-        """
-        Send a JSON command to the printer via the WebSocket connection.
+        """Send a JSON command to the printer via the WebSocket connection.
+
+        Args:
+            cmd: The command to send.
+            data: The data to send with the command.
 
         Raises:
             ElegooPrinterNotConnectedError: If the printer is not connected.
@@ -347,21 +330,24 @@ class ElegooPrinterClient:
         else:
             raise ElegooPrinterNotConnectedError("Not connected")
 
-    def discover_printer(self, broadcast_address: str = "<broadcast>") -> list[Printer]:
-        """
-        Broadcasts a UDP discovery message to locate Elegoo printers or proxies on the local network.
+    def discover_printer(
+        self, broadcast_address: str = DEFAULT_BROADCAST_ADDRESS
+    ) -> list[Printer]:
+        """Broadcasts a UDP discovery message to locate Elegoo printers or proxies on the local network.
 
-        Sends a discovery request and collects responses within a timeout period, returning a list of discovered printers. If no printers are found or a socket error occurs, returns an empty list.
+        Sends a discovery request and collects responses within a timeout period,
+        returning a list of discovered printers. If no printers are found or a
+        socket error occurs, returns an empty list.
 
-        Parameters:
-            broadcast_address (str): The network address to send the discovery message to. Defaults to "<broadcast>".
+        Args:
+            broadcast_address: The network address to send the discovery message to.
 
         Returns:
-            list[Printer]: List of discovered printers, or an empty list if none are found.
+            A list of discovered printers, or an empty list if none are found.
         """
         discovered_printers: list[Printer] = []
         self.logger.info("Broadcasting for printer/proxy discovery...")
-        msg = b"M99999"
+        msg = DISCOVERY_MESSAGE.encode()
         with socket.socket(
             socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
         ) as sock:
@@ -400,25 +386,31 @@ class ElegooPrinterClient:
         return filtered_printers
 
     def get_local_ip(self) -> str:
-        """
-        Determine the local IP address used for outbound communication to the printer.
+        """Determine the local IP address used for outbound communication to the printer.
 
         Returns:
-            str: The local IP address, or "127.0.0.1" if detection fails.
+            The local IP address, or "127.0.0.1" if detection fails.
         """
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 # Doesn't have to be reachable
-                s.connect((self.ip_address or "8.8.8.8", 1))
+                s.connect((self.ip_address or DEFAULT_FALLBACK_IP, 1))
                 return s.getsockname()[0]
         except Exception:
             return "127.0.0.1"
 
     def _save_discovered_printer(self, data: bytes) -> Printer | None:
-        """
-        Parse discovery response bytes and create a Printer object if valid.
+        """Parse discovery response bytes and create a Printer object if valid.
 
-        Attempts to decode the provided bytes as a UTF-8 string and instantiate a Printer object using the decoded information. Returns the Printer object if successful, or None if decoding or instantiation fails.
+        Attempts to decode the provided bytes as a UTF-8 string and instantiate a
+        Printer object using the decoded information. Returns the Printer object if
+        successful, or None if decoding or instantiation fails.
+
+        Args:
+            data: The discovery response data.
+
+        Returns:
+            A Printer object if the data is valid, otherwise None.
         """
         try:
             printer_info = data.decode("utf-8")
@@ -438,9 +430,7 @@ class ElegooPrinterClient:
         return None
 
     async def connect_printer(self, printer: Printer, proxy_enabled: bool) -> bool:
-        """
-        Establish an asynchronous connection to the Elegoo printer.
-        """
+        """Establish an asynchronous connection to the Elegoo printer."""
         if self.is_connected:
             self.logger.debug("Already connected")
             return True
@@ -496,10 +486,14 @@ class ElegooPrinterClient:
             self.logger.info("WebSocket listener stopped.")
 
     def _parse_response(self, response: str) -> None:
-        """
-        Parse and route an incoming JSON response message from the printer.
+        """Parse and route an incoming JSON response message from the printer.
 
-        Attempts to decode the response as JSON and dispatches it to the appropriate handler based on the message topic. Logs unknown topics, missing topics, and JSON decoding errors.
+        Attempts to decode the response as JSON and dispatches it to the appropriate
+        handler based on the message topic. Logs unknown topics, missing topics, and
+        JSON decoding errors.
+
+        Args:
+            response: The JSON response message to parse.
         """
         try:
             data = json.loads(response)
@@ -527,10 +521,13 @@ class ElegooPrinterClient:
             self.logger.exception("Invalid JSON received")
 
     def _response_handler(self, data: dict[str, Any]) -> None:
-        """
-        Handles response messages by dispatching to the appropriate handler based on the command type.
+        """Handles response messages by dispatching to the appropriate handler based on the command type.
 
-        Routes print history and video stream response data to their respective handlers according to the command ID in the response.
+        Routes print history and video stream response data to their respective
+        handlers according to the command ID in the response.
+
+        Args:
+            data: The response data.
         """
         if DEBUG:
             self.logger.debug(f"response >> \n{json.dumps(data, indent=5)}")
@@ -549,11 +546,10 @@ class ElegooPrinterClient:
             self.logger.exception("Invalid JSON")
 
     def _status_handler(self, data: dict[str, Any]) -> None:
-        """
-        Parses and updates the printer's status information from the provided data.
+        """Parses and updates the printer's status information from the provided data.
 
-        Parameters:
-            data (dict): Dictionary containing the printer status information in JSON-compatible format.
+        Args:
+            data: Dictionary containing the printer status information in JSON-compatible format.
         """
         if DEBUG:
             self.logger.debug(f"status >> \n{json.dumps(data, indent=5)}")
@@ -561,11 +557,10 @@ class ElegooPrinterClient:
         self.printer_data.status = printer_status
 
     def _attributes_handler(self, data: dict[str, Any]) -> None:
-        """
-        Parses and updates the printer's attribute data from a JSON dictionary.
+        """Parses and updates the printer's attribute data from a JSON dictionary.
 
-        Parameters:
-            data (dict): Dictionary containing printer attribute information.
+        Args:
+            data: Dictionary containing printer attribute information.
         """
         if DEBUG:
             self.logger.debug(f"attributes >> \n{json.dumps(data, indent=5)}")
@@ -573,9 +568,7 @@ class ElegooPrinterClient:
         self.printer_data.attributes = printer_attributes
 
     def _print_history_handler(self, data_data: dict[str, Any]) -> None:
-        """
-        Parses and updates the printer's print history details from the provided data.
-        """
+        """Parses and updates the printer's print history details from the provided data."""
         history_data_list = data_data.get("HistoryData")
         if history_data_list:
             for task_id in history_data_list:
@@ -583,10 +576,13 @@ class ElegooPrinterClient:
                     self.printer_data.print_history[task_id] = None
 
     def _print_history_detail_handler(self, data_data: dict[str, Any]) -> None:
-        """
-        Parses and updates the printer's print history details from the provided data.
+        """Parses and updates the printer's print history details from the provided data.
 
-        If a list of print history details is present in the input, updates the printer data with a list of `PrintHistoryDetail` objects.
+        If a list of print history details is present in the input, updates the
+        printer data with a list of `PrintHistoryDetail` objects.
+
+        Args:
+            data_data: The data containing the print history details.
         """
         history_data_list = data_data.get("HistoryDetailList")
         if history_data_list:
@@ -596,10 +592,9 @@ class ElegooPrinterClient:
                     self.printer_data.print_history[detail.task_id] = detail
 
     def _print_video_handler(self, data_data: dict[str, Any]) -> None:
-        """
-        Parse video stream data and update the printer's video attribute.
+        """Parse video stream data and update the printer's video attribute.
 
-        Parameters:
-            data_data (dict[str, Any]): Dictionary containing video stream information.
+        Args:
+            data_data: Dictionary containing video stream information.
         """
         self.printer_data.video = ElegooVideo(data_data)

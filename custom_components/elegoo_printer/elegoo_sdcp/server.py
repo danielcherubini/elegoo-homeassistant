@@ -11,13 +11,18 @@ import aiohttp
 from aiohttp import ClientSession, WSMsgType, web
 from homeassistant.exceptions import ConfigEntryNotReady
 
+from custom_components.elegoo_printer.const import (
+    DEFAULT_FALLBACK_IP,
+    DISCOVERY_MESSAGE,
+    DISCOVERY_PORT,
+    PROXY_HOST,
+    VIDEO_PORT,
+    WEBSOCKET_PORT,
+)
+
 from .models.printer import Printer
 
-LOCALHOST = "127.0.0.1"
 INADDR_ANY = "0.0.0.0"
-DISCOVERY_PORT = 3000
-WEBSOCKET_PORT = 3030
-VIDEO_PORT = 3031
 
 
 class ElegooPrinterServer:
@@ -143,10 +148,10 @@ class ElegooPrinterServer:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 # Doesn't have to be reachable
-                s.connect((self.printer.ip_address or "8.8.8.8", 1))
+                s.connect((self.printer.ip_address or DEFAULT_FALLBACK_IP, 1))
                 return s.getsockname()[0]
         except Exception:
-            return LOCALHOST
+            return PROXY_HOST
 
     def _start_servers_in_thread(self):
         """
@@ -542,7 +547,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         If the received datagram matches the discovery command ("M99999"), sends a JSON response containing printer identification
         and version information to the sender.
         """
-        if data.decode() == "M99999":
+        if data.decode() == DISCOVERY_MESSAGE:
             self.logger.debug(f"Discovery request received from {addr}, responding.")
             response_payload = {
                 "Id": getattr(self.printer, "connection", os.urandom(8).hex()),
