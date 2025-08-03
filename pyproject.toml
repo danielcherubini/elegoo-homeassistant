@@ -12,6 +12,7 @@ dependencies = [
     "websocket-client>=1.8.0",
     "websockets>=15.0.1",
     "paho-mqtt>=2.1.0",
+    "trio>=0.1.0",
 ]
 
 [dependency-groups]
