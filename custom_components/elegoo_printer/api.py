@@ -263,8 +263,9 @@ class ElegooPrinterApiClient:
         """
         printer = self.client.printer
         if self._proxy_server_enabled:
-            server = ElegooPrinterServer(printer, logger=self._logger)
-            printer = server.get_printer()
+            self.server.stop()
+            self.server = ElegooPrinterServer(printer, logger=self._logger)
+            printer = self.server.get_printer()
 
         self._logger.debug(
             "Reconnecting to printer: %s proxy_enabled %s",

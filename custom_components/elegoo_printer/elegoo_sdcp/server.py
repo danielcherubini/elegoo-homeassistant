@@ -11,13 +11,18 @@ import aiohttp
 from aiohttp import ClientSession, WSMsgType, web
 from homeassistant.exceptions import ConfigEntryNotReady
 
+from custom_components.elegoo_printer.const import (
+    DEFAULT_FALLBACK_IP,
+    DISCOVERY_MESSAGE,
+    DISCOVERY_PORT,
+    PROXY_HOST,
+    VIDEO_PORT,
+    WEBSOCKET_PORT,
+)
+
 from .models.printer import Printer
 
-LOCALHOST = "127.0.0.1"
 INADDR_ANY = "0.0.0.0"
-DISCOVERY_PORT = 3000
-WEBSOCKET_PORT = 3030
-VIDEO_PORT = 3031
 
 
 class ElegooPrinterServer:
@@ -143,10 +148,10 @@ class ElegooPrinterServer:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 # Doesn't have to be reachable
-                s.connect((self.printer.ip_address or "8.8.8.8", 1))
+                s.connect((self.printer.ip_address or DEFAULT_FALLBACK_IP, 1))
                 return s.getsockname()[0]
         except Exception:
-            return LOCALHOST
+            return PROXY_HOST
 
     def _start_servers_in_thread(self):
         """
@@ -340,9 +345,22 @@ class ElegooPrinterServer:
         remote_ws_url = (
             f"ws://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
         )
+        # Filter headers to avoid proxying unnecessary or problematic ones
+        # that can cause "400 Bad Request: Header value is too long"
+        allowed_headers = {
+            "Sec-WebSocket-Version",
+            "Sec-WebSocket-Key",
+            *"Sec-WebSocket-Protocol",
+            "Upgrade",
+            "Connection",
+        }
+        filtered_headers = {
+            k: v for k, v in request.headers.items() if k in allowed_headers
+        }
+
         try:
             async with self.session.ws_connect(
-                remote_ws_url, headers=request.headers
+                remote_ws_url, headers=filtered_headers
             ) as remote_ws:
                 self.logger.info(
                     f"Proxy connected to remote printer WebSocket at {self.printer.ip_address}"
@@ -358,20 +376,26 @@ class ElegooPrinterServer:
                         dest: The destination WebSocket connection to send messages to.
                         direction: A string label used for logging the direction of message forwarding.
                     """
-                    async for msg in source:
-                        if msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
-                            (
-                                await dest.send_bytes(msg.data)
-                                if msg.type == WSMsgType.BINARY
-                                else await dest.send_str(msg.data)
-                            )
-                        elif msg.type == WSMsgType.CLOSE:
-                            break
-                        elif msg.type == WSMsgType.ERROR:
-                            self.logger.error(
-                                f"WebSocket error in {direction}: {source.exception()}"
-                            )
-                            break
+                    try:
+                        async for msg in source:
+                            if msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
+                                (
+                                    await dest.send_bytes(msg.data)
+                                    if msg.type == WSMsgType.BINARY
+                                    else await dest.send_str(msg.data)
+                                )
+                            elif msg.type == WSMsgType.CLOSE:
+                                break
+                            elif msg.type == WSMsgType.ERROR:
+                                self.logger.error(
+                                    f"WebSocket error in {direction}: {source.exception()}"
+                                )
+                                break
+                    except aiohttp.ClientConnectionResetError:
+                        self.logger.debug(
+                            f"WebSocket connection reset by peer in {direction}."
+                        )
+                        raise
 
                 # Create tasks to run the forwarding coroutines concurrently
                 to_printer = asyncio.create_task(
@@ -384,6 +408,11 @@ class ElegooPrinterServer:
                 done, pending = await asyncio.wait(
                     [to_printer, to_client], return_when=asyncio.FIRST_COMPLETED
                 )
+
+                for task in done:
+                    if task.exception():
+                        raise task.exception()
+
                 for task in pending:
                     task.cancel()
 
@@ -518,7 +547,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         If the received datagram matches the discovery command ("M99999"), sends a JSON response containing printer identification
         and version information to the sender.
         """
-        if data.decode() == "M99999":
+        if data.decode() == DISCOVERY_MESSAGE:
             self.logger.debug(f"Discovery request received from {addr}, responding.")
             response_payload = {
                 "Id": getattr(self.printer, "connection", os.urandom(8).hex()),
