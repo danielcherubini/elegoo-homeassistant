@@ -9,7 +9,7 @@ DOMAIN = "elegoo_printer"
 ATTRIBUTION = "Data provided by https://github.com/danielcherubini/elegoo-homeassistant"
 
 # Ports
-WEBSOCKET_PORT = 8888
+WEBSOCKET_PORT = 3030
 DISCOVERY_PORT = 3000
 VIDEO_PORT = 3031
 
