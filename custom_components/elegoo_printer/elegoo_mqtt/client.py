@@ -7,8 +7,8 @@ from typing import Any, Callable, Optional
 import anyio
 import paho.mqtt.client as mqtt
 
+from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG
 from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
-    ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
 )
 from custom_components.elegoo_printer.models.print_history_detail import (
@@ -52,32 +52,36 @@ class ElegooMqttClient:
             self.logger.info("Connected to MQTT Broker!")
             # Subscribe to topics
             if self.printer.id:
-                self.client.subscribe(f"/sdcp/status/{self.printer.id}")
-                self.client.subscribe(f"/sdcp/attributes/{self.printer.id}")
-                self.client.subscribe(f"/sdcp/response/{self.printer.id}")
+                self.client.subscribe(f"sdcp/status/{self.printer.id}")
+                self.client.subscribe(f"sdcp/attributes/{self.printer.id}")
+                self.client.subscribe(f"sdcp/response/{self.printer.id}")
         else:
             self.logger.error(f"Failed to connect, return code {rc}\n")
 
     def on_message(self, client, userdata, msg):
         """Handle incoming MQTT messages."""
-        self.logger.info(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
+        if DEBUG:
+            self.logger.debug(
+                f"Received `{msg.payload.decode()}` from `{msg.topic}` topic"
+            )
         self.printer_data.update_from_websocket(msg.payload.decode())
 
     def set_on_message(self, callback: Callable[[str, str], None]) -> None:
         """Set the callback for incoming messages."""
         self._on_message_callback = callback
 
-    async def connect(self) -> None:
+    async def connect(self) -> bool:
         """Connect to the MQTT broker."""
         try:
             await anyio.to_thread.run_sync(
                 self.client.connect, self.ip_address, self.port
             )
             self.client.loop_start()
+            await asyncio.sleep(1)
+            return self.is_connected
         except Exception as e:
-            raise ElegooPrinterConnectionError(
-                f"Failed to connect to MQTT broker: {e}"
-            ) from e
+            self.logger.error(f"Failed to connect to MQTT broker: {e}")
+            return False
 
     async def disconnect(self) -> None:
         """Disconnect from the MQTT broker."""
@@ -299,7 +303,8 @@ class ElegooMqttClient:
             },
             "Topic": f"sdcp/request/{self.printer.id}",
         }
-        self.logger.debug(f"printer << \n{json.dumps(payload, indent=4)}")
+        if DEBUG:
+            self.logger.debug(f"printer << \n{json.dumps(payload, indent=4)}")
 
         topic = f"sdcp/request/{self.printer.id}"
         self.client.publish(topic, json.dumps(payload))

@@ -14,6 +14,7 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import SelectOptionDict
 
+from custom_components.elegoo_printer.elegoo_mqtt.client import ElegooMqttClient
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
     ElegooConfigFlowConnectionError,
@@ -21,7 +22,8 @@ from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
 )
 
 from .const import CONF_PROXY_ENABLED, DOMAIN, LOGGER
-from .models.printer import Printer
+from .models.printer import Printer, PrinterData
+from .models.protocol import ProtocolType
 
 if TYPE_CHECKING:
     pass
@@ -47,43 +49,50 @@ OPTIONS_SCHEMA = vol.Schema(
 async def _async_test_connection(
     hass: HomeAssistant, printer_object: Printer, user_input: Dict[str, Any]
 ) -> Printer:
-    """Attempt to connect to an Elegoo printer.
-
-    Args:
-        hass: The Home Assistant instance.
-        printer_object: The printer object to test.
-        user_input: The user input data.
-
-    Returns:
-        The validated Printer object if the connection is successful.
-
-    Raises:
-        ElegooConfigFlowGeneralError: If the printer's IP address is missing.
-        ElegooConfigFlowConnectionError: If the connection to the printer fails.
-    """
+    """Attempt to connect to an Elegoo printer."""
     if printer_object.ip_address is None:
         raise ElegooConfigFlowGeneralError(
             "IP address is required to connect to the printer"
         )
 
-    elegoo_printer = ElegooPrinterClient(
-        printer_object.ip_address,
-        config=MappingProxyType(user_input),
-        logger=LOGGER,
-        session=async_get_clientsession(hass),
-    )
+    client: ElegooMqttClient | ElegooPrinterClient | None = None
+    mqtt_server: ElegooMqttServer | None = None
+    try:
+        if printer_object.protocol_type == ProtocolType.MQTT:
+            mqtt_server = ElegooMqttServer(printer_object.ip_address)
+            await mqtt_server.start()
+            client = ElegooMqttClient(
+                printer_object.ip_address,
+                printer=printer_object,
+                printer_data=PrinterData(),
+                logger=LOGGER,
+            )
+        else:
+            client = ElegooPrinterClient(
+                printer_object.ip_address,
+                config=MappingProxyType(user_input),
+                logger=LOGGER,
+                session=async_get_clientsession(hass),
+            )
 
-    printer_object.proxy_enabled = user_input.get(CONF_PROXY_ENABLED, False)
-    LOGGER.debug(
-        "Connecting to printer: %s at %s with proxy enabled: %s",
-        printer_object.name,
-        printer_object.ip_address,
-        printer_object.proxy_enabled,
-    )
-    if await elegoo_printer.connect_printer(
-        printer_object, printer_object.proxy_enabled
-    ):
-        return printer_object
+        printer_object.proxy_enabled = user_input.get(CONF_PROXY_ENABLED, False)
+        LOGGER.debug(
+            "Connecting to printer: %s at %s with proxy enabled: %s",
+            printer_object.name,
+            printer_object.ip_address,
+            printer_object.proxy_enabled,
+        )
+        if await client.connect():
+            return printer_object
+    except Exception as e:
+        LOGGER.error(f"Connection test failed: {e}")
+        # Fall through to raise the connection error
+    finally:
+        if client:
+            await client.disconnect()
+        if mqtt_server:
+            await mqtt_server.stop()
+
     raise ElegooConfigFlowConnectionError(
         f"Failed to connect to printer {printer_object.name} at {printer_object.ip_address}"
     )

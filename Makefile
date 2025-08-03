@@ -63,6 +63,16 @@ test-server:
 	@echo "--> Starting the test server..."
 	@VIRTUAL_ENV=$(VENV) uv run --active $(PYTHON) scripts/test_server.py
 
+# Runs the MQTT test server
+mqtt:
+	@echo "--> Starting the MQTT test server..."
+	@VIRTUAL_ENV=$(VENV) uv run --active $(PYTHON) scripts/test_server.py --protocol mqtt
+
+# Runs the WebSocket test server
+websocket:
+	@echo "--> Starting the WebSocket test server..."
+	@VIRTUAL_ENV=$(VENV) uv run --active $(PYTHON) scripts/test_server.py --protocol websocket
+
 # --- LINTING AND FORMATTING ---
 # Formats the code using Ruff.
 format:
@@ -107,6 +117,8 @@ help:
 	@echo "  debug                Run the application in debug mode."
 	@echo "  devcontainer         Run the application within a devcontainer."
 	@echo "  test-server          Run the test server for development."
+	@echo "  mqtt                 Run the MQTT test server."
+	@echo "  websocket            Run the WebSocket test server."
 	@echo "  format               Format code using Ruff."
 	@echo "  lint                 Check for linting errors using Ruff."
 	@echo "  fix                  Fixes any issues it finds."

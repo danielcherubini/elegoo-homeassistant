@@ -9,8 +9,11 @@ import socketserver
 import threading
 import time
 import uuid
+import argparse
 
 import websockets
+from amqtt.broker import Broker
+from amqtt.client import MQTTClient
 
 # Server configuration
 HOST = "0.0.0.0"
@@ -18,6 +21,7 @@ HTTP_PORT = 8000
 WS_PORT = 3030
 UDP_PORT = 3000
 MJPEG_PORT = 3031
+MQTT_PORT = 1884
 MAINBOARD_ID = "000000000001d354"
 PRINTER_IP = "127.0.0.1"
 
@@ -74,7 +78,7 @@ printer_attributes = {
     "Name": "Centauri Carbon Test",
     "MachineName": "Centauri Carbon",
     "BrandName": "Centauri",
-    "ProtocolVersion": "V3.0.0",
+    "ProtocolVersion": "V1.0.0",
     "FirmwareVersion": "V1.0.0",
     "XYZsize": "300x300x400",
     "MainboardIP": PRINTER_IP,
@@ -162,7 +166,19 @@ def create_push_message(topic, data):
     }
 
 
-async def send_status_update(websocket):
+async def send_message(client, message):
+    """Send a message to the client, handling both websocket and MQTT."""
+    if isinstance(client, websockets.server.WebSocketServerProtocol):
+        await client.send(json.dumps(message))
+    elif isinstance(client, MQTTClient):
+        topic = message.get("Topic")
+        if not topic:
+            print(f"Error: No topic in message for MQTT client: {message}")
+            return
+        await client.publish(topic, json.dumps(message).encode("utf-8"))
+
+
+async def send_status_update(client):
     status_data = {
         "Status": printer_status,
         "MainboardID": MAINBOARD_ID,
@@ -170,20 +186,20 @@ async def send_status_update(websocket):
         "Topic": f"sdcp/status/{MAINBOARD_ID}",
     }
     print("Sending status update")
-    await websocket.send(json.dumps(status_data))
+    await send_message(client, status_data)
 
 
-async def send_attributes_update(websocket):
+async def send_attributes_update(client):
     attributes_data = {
         "Attributes": printer_attributes,
         "MainboardID": MAINBOARD_ID,
         "TimeStamp": get_timestamp(),
     }
     message = create_push_message(f"sdcp/attributes/{MAINBOARD_ID}", attributes_data)
-    await websocket.send(json.dumps(message))
+    await send_message(client, message)
 
 
-async def send_history_update(websocket):
+async def send_history_update(client):
     history_data = {
         "Ack": 0,
         "HistoryData": list(print_history.keys()),
@@ -196,23 +212,23 @@ async def send_history_update(websocket):
         "TimeStamp": get_timestamp(),
     }
     message = create_push_message(f"sdcp/response/{MAINBOARD_ID}", inner_message)
-    await websocket.send(json.dumps(message))
+    await send_message(client, message)
 
 
-async def send_history_detail(websocket, request_data):
+async def send_history_detail(client, request_data):
     task_ids = request_data["Data"]["Data"]["Id"]
     history_details = [
         print_history[task_id] for task_id in task_ids if task_id in print_history
     ]
     response_data = {"Ack": 0, "HistoryDetailList": history_details}
     response = create_response(request_data, response_data)
-    await websocket.send(json.dumps(response))
+    await send_message(client, response)
 
 
-async def send_video_stream(websocket, request_data):
+async def send_video_stream(client, request_data):
     response_data = {"Ack": 0, "VideoUrl": f"http://{PRINTER_IP}:{MJPEG_PORT}/video"}
     response = create_response(request_data, response_data)
-    await websocket.send(json.dumps(response))
+    await send_message(client, response)
 
 
 async def simulate_printing():
@@ -242,36 +258,36 @@ async def simulate_printing():
         }
 
 
-async def handler(websocket):
-    print(f"Client connected from {websocket.remote_address}")
-    connected_clients.add(websocket)
+async def handler(client):
+    print(f"Client connected from {client.remote_address}")
+    connected_clients.add(client)
     try:
         # On connect, send initial status and attributes
-        await send_attributes_update(websocket)
-        await send_status_update(websocket)
-        await send_history_update(websocket)
+        await send_attributes_update(client)
+        await send_status_update(client)
+        await send_history_update(client)
 
-        async for message in websocket:
+        async for message in client:
             if message == "ping":
-                await websocket.send("pong")
+                await client.send("pong")
                 continue
 
             try:
                 data = json.loads(message)
                 if data.get("Topic", "").startswith("sdcp/request"):
-                    await handle_request(websocket, data)
+                    await handle_request(client, data)
             except json.JSONDecodeError:
                 print(f"Invalid JSON received: {message}")
             except Exception as e:
                 print(f"Error processing message: {e}")
 
     except websockets.exceptions.ConnectionClosed:
-        print(f"Client disconnected: {websocket.remote_address}")
+        print(f"Client disconnected: {client.remote_address}")
     finally:
-        connected_clients.remove(websocket)
+        connected_clients.remove(client)
 
 
-async def handle_request(websocket, request):
+async def handle_request(client, request):
     if "Data" not in request:
         print(f"Invalid request: {request}")
         return
@@ -280,12 +296,12 @@ async def handle_request(websocket, request):
 
     if cmd == 0:  # Request Status Refresh
         response = create_response(request, {"Ack": 0})
-        await websocket.send(json.dumps(response))
-        await send_status_update(websocket)
+        await send_message(client, response)
+        await send_status_update(client)
     elif cmd == 1:  # Request Attributes
         response = create_response(request, {"Ack": 0})
-        await websocket.send(json.dumps(response))
-        await send_attributes_update(websocket)
+        await send_message(client, response)
+        await send_attributes_update(client)
     elif cmd == 128:  # Start Print
         filename = request["Data"]["Data"]["Filename"]
         print(f"Starting print for file: {filename}")
@@ -298,7 +314,7 @@ async def handle_request(websocket, request):
             "TotalLayer"
         ] * random.randint(10, 20)
         response = create_response(request, {"Ack": 0})
-        await websocket.send(json.dumps(response))
+        await send_message(client, response)
         # Simulate printing progress
         asyncio.create_task(simulate_printing())
     elif cmd == 130:  # Stop Print
@@ -306,31 +322,31 @@ async def handle_request(websocket, request):
         printer_status["CurrentStatus"] = [0]  # Idle
         printer_status["PrintInfo"]["Status"] = 8  # Stopped
         response = create_response(request, {"Ack": 0})
-        await websocket.send(json.dumps(response))
+        await send_message(client, response)
     elif cmd == 320:  # Request History Task List
         response = create_response(request, {"Ack": 0})
-        await websocket.send(json.dumps(response))
-        await send_history_update(websocket)
+        await send_message(client, response)
+        await send_history_update(client)
     elif cmd == 321:  # Request History Task Detail Information
         response = create_response(request, {"Ack": 0})
-        await websocket.send(json.dumps(response))
-        await send_history_detail(websocket, request)
+        await send_message(client, response)
+        await send_history_detail(client, request)
     elif cmd == 322:  # Delete History Task
         task_ids = request["Data"]["Data"]["Id"]
         for task_id in task_ids:
             if task_id in print_history:
                 del print_history[task_id]
         response = create_response(request, {"Ack": 0})
-        await websocket.send(json.dumps(response))
+        await send_message(client, response)
     elif cmd == 386:
         print("Request for custom command 386")
         response = create_response(request, {"Ack": 0})
-        await websocket.send(json.dumps(response))
-        await send_video_stream(websocket, request)
+        await send_message(client, response)
+        await send_video_stream(client, request)
     else:
         print(f"Unknown command: {cmd}")
         response = create_response(request, {"Ack": 1})  # Generic error
-        await websocket.send(json.dumps(response))
+        await send_message(client, response)
 
 
 async def udp_server(stop_event):
@@ -443,7 +459,49 @@ async def mjpeg_server(stop_event):
     print("MJPEG server shut down.")
 
 
+async def mqtt_broker(stop_event):
+    broker = Broker()
+    await broker.start()
+    print(f"MQTT broker started on {HOST}:{MQTT_PORT}")
+    await stop_event.wait()
+    await broker.shutdown()
+    print("MQTT broker shut down.")
+
+
+async def mqtt_client(stop_event):
+    client = MQTTClient()
+    await client.connect(f"mqtt://{HOST}:{MQTT_PORT}/")
+    await client.subscribe([(f"sdcp/request/{MAINBOARD_ID}", 0)])
+    print("MQTT client connected and subscribed")
+    # On connect, send initial status and attributes
+    await send_attributes_update(client)
+    await send_status_update(client)
+    await send_history_update(client)
+    while not stop_event.is_set():
+        try:
+            message = await client.deliver_message()
+            packet = message.publish_packet
+            data = json.loads(packet.payload.data)
+            await handle_request(client, data)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"MQTT client error: {e}")
+    await client.disconnect()
+    print("MQTT client shut down.")
+
+
 async def main():
+    parser = argparse.ArgumentParser(description="Elegoo Printer Test Server")
+    parser.add_argument(
+        "--protocol",
+        type=str,
+        choices=["websocket", "mqtt"],
+        default="websocket",
+        help="Protocol to use for the test server",
+    )
+    args = parser.parse_args()
+
     stop_event = asyncio.Event()
 
     loop = asyncio.get_running_loop()
@@ -473,20 +531,32 @@ async def main():
     ) * 1000
     printer_status["PrintInfo"]["CurrentTicks"] = 1000
 
-    # Start WebSocket server
-    server = await websockets.serve(handler, HOST, WS_PORT)
-    print(f"WebSocket server started on {HOST}:{WS_PORT}")
-    # Simulate printing progress in the background
-    simulation_task = asyncio.create_task(simulate_printing())
+    if args.protocol == "websocket":
+        # Start WebSocket server
+        server = await websockets.serve(handler, HOST, WS_PORT)
+        print(f"WebSocket server started on {HOST}:{WS_PORT}")
+        # Simulate printing progress in the background
+        simulation_task = asyncio.create_task(simulate_printing())
 
-    # Wait for the stop event
-    await stop_event.wait()
+        # Wait for the stop event
+        await stop_event.wait()
 
-    # Cleanly shut down all tasks
-    simulation_task.cancel()
-    server.close()
-    await server.wait_closed()
-    print("WebSocket server shut down.")
+        # Cleanly shut down all tasks
+        simulation_task.cancel()
+        server.close()
+        await server.wait_closed()
+        print("WebSocket server shut down.")
+    else:
+        # Start MQTT broker and client
+        broker_task = asyncio.create_task(mqtt_broker(stop_event))
+        client_task = asyncio.create_task(mqtt_client(stop_event))
+        simulation_task = asyncio.create_task(simulate_printing())
+
+        await stop_event.wait()
+        simulation_task.cancel()
+        broker_task.cancel()
+        client_task.cancel()
+
     await udp_task
     await http_task
     await mjpeg_task

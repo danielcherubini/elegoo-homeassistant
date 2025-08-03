@@ -424,6 +424,10 @@ class ElegooPrinterClient:
 
         return None
 
+    async def connect(self) -> bool:
+        """Establish an asynchronous connection to the Elegoo printer."""
+        return await self.connect_printer(self.printer, self.printer.proxy_enabled)
+
     async def connect_printer(self, printer: Printer, proxy_enabled: bool) -> bool:
         """Establish an asynchronous connection to the Elegoo printer."""
         if self.is_connected:
