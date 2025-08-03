@@ -23,7 +23,7 @@ async def test_connect_success():
         )
 
         # The connect method should now return True
-        result = await client.connect()
+        await client.connect()
         client.on_connect(None, None, None, 0)
         assert client.is_connected
 
