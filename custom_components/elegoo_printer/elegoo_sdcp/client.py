@@ -457,9 +457,7 @@ class ElegooPrinterClient:
             )
             return True
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            self.logger.warning(
-                f"Failed to connect WebSocket to {self.printer.name}: {e}"
-            )
+            self.logger.info(f"Failed to connect WebSocket to {self.printer.name}: {e}")
             await self.disconnect()
             return False
 
