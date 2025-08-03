@@ -15,6 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import SelectOptionDict
 
 from custom_components.elegoo_printer.elegoo_mqtt.client import ElegooMqttClient
+from custom_components.elegoo_printer.elegoo_mqtt.server import ElegooMqttServer
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
     ElegooConfigFlowConnectionError,

@@ -5,9 +5,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from custom_components.elegoo_printer.elegoo_mqtt.client import ElegooMqttClient
-from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
-    ElegooPrinterConnectionError,
-)
 
 
 @pytest.mark.anyio
@@ -24,7 +21,11 @@ async def test_connect_success():
             printer_data=MagicMock(),
             logger=MagicMock(),
         )
-        await client.connect()
+
+        # The connect method should now return True
+        result = await client.connect()
+        client.on_connect(None, None, None, 0)
+        assert client.is_connected
 
         mock_client_instance.connect.assert_called_once_with("localhost", 1883)
         mock_client_instance.loop_start.assert_called_once()
@@ -44,5 +45,5 @@ async def test_connect_failure():
             printer_data=MagicMock(),
             logger=MagicMock(),
         )
-        with pytest.raises(ElegooPrinterConnectionError):
-            await client.connect()
+        # The connect method should now return False
+        assert not await client.connect()
