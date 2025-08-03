@@ -25,13 +25,11 @@ from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
-
+from ..models.video import ElegooVideo
 from .const import DEBUG, LOGGER
-from .models.attributes import PrinterAttributes
-from .models.print_history_detail import PrintHistoryDetail
-from .models.printer import Printer, PrinterData
-from .models.status import LightStatus, PrinterStatus
+from ..models.print_history_detail import PrintHistoryDetail
+from ..models.printer import Printer, PrinterData
+from ..models.status import LightStatus
 
 logging.getLogger("websocket").setLevel(logging.CRITICAL)
 
@@ -40,11 +38,7 @@ DEFAULT_PORT = 54780
 
 
 class ElegooPrinterClient:
-    """Client for interacting with an Elegoo printer.
-
-    Uses the SDCP Protocol (https://github.com/cbd-tech/SDCP-Smart-Device-Control-Protocol-V3.0.0).
-    Includes a local websocket proxy to allow multiple local clients to communicate with one printer.
-    """
+    """Client for interacting with an Elegoo printer."""
 
     def __init__(
         self,
@@ -285,7 +279,7 @@ class ElegooPrinterClient:
     async def _send_printer_cmd(
         self, cmd: int, data: dict[str, Any] | None = None
     ) -> None:
-        """Send a JSON command to the printer via the WebSocket connection.
+        """Send a JSON command to the printer.
 
         Args:
             cmd: The command to send.
@@ -316,6 +310,7 @@ class ElegooPrinterClient:
         }
         if DEBUG:
             self.logger.debug(f"printer << \n{json.dumps(payload, indent=4)}")
+
         if self.printer_websocket:
             try:
                 await self.printer_websocket.send_str(json.dumps(payload))
@@ -440,8 +435,13 @@ class ElegooPrinterClient:
         self.printer = printer
         self.printer.proxy_enabled = proxy_enabled
         self.logger.debug(
-            f"Connecting to printer: {self.printer.name} at {self.printer.ip_address} proxy_enabled: {proxy_enabled}"
+            f"Connecting to printer: {self.printer.name} at {self.printer.ip_address} with protocol {self.printer.protocol_type}"
         )
+
+        return await self._connect_sdcp(proxy_enabled)
+
+    async def _connect_sdcp(self, proxy_enabled: bool) -> bool:
+        """Establish an asynchronous connection to the Elegoo printer via SDCP."""
         url = f"ws://{self.printer.ip_address}:{WEBSOCKET_PORT}/websocket"
         self.logger.info(f"Client connecting to WebSocket at: {url}")
 
@@ -476,7 +476,8 @@ class ElegooPrinterClient:
         try:
             async for msg in self.printer_websocket:
                 if msg.type == aiohttp.WSMsgType.TEXT:
-                    self._parse_response(msg.data)
+                    # Pass the raw data to the API client for processing
+                    self.printer_data.update_from_websocket(msg.data)
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     error_str = f"WebSocket connection error: {self.printer_websocket.exception()}"
                     self.logger.info(error_str)
@@ -489,117 +490,3 @@ class ElegooPrinterClient:
         finally:
             self._is_connected = False
             self.logger.info("WebSocket listener stopped.")
-
-    def _parse_response(self, response: str) -> None:
-        """Parse and route an incoming JSON response message from the printer.
-
-        Attempts to decode the response as JSON and dispatches it to the appropriate
-        handler based on the message topic. Logs unknown topics, missing topics, and
-        JSON decoding errors.
-
-        Args:
-            response: The JSON response message to parse.
-        """
-        try:
-            data = json.loads(response)
-            topic = data.get("Topic")
-            if topic:
-                match topic.split("/")[1]:
-                    case "response":
-                        self._response_handler(data)
-                    case "status":
-                        self._status_handler(data)
-                    case "attributes":
-                        self._attributes_handler(data)
-                    case "notice":
-                        self.logger.debug(f"notice >> \n{json.dumps(data, indent=5)}")
-                    case "error":
-                        self.logger.debug(f"error >> \n{json.dumps(data, indent=5)}")
-                    case _:
-                        self.logger.debug("--- UNKNOWN MESSAGE ---")
-                        self.logger.debug(data)
-                        self.logger.debug("--- UNKNOWN MESSAGE ---")
-            else:
-                self.logger.warning("Received message without 'Topic'")
-                self.logger.debug(f"Message content: {response}")
-        except json.JSONDecodeError:
-            self.logger.exception("Invalid JSON received")
-
-    def _response_handler(self, data: dict[str, Any]) -> None:
-        """Handles response messages by dispatching to the appropriate handler based on the command type.
-
-        Routes print history and video stream response data to their respective
-        handlers according to the command ID in the response.
-
-        Args:
-            data: The response data.
-        """
-        if DEBUG:
-            self.logger.debug(f"response >> \n{json.dumps(data, indent=5)}")
-        try:
-            inner_data = data.get("Data")
-            if inner_data:
-                data_data = inner_data.get("Data", {})
-                cmd: int = inner_data.get("Cmd", 0)
-                if cmd == 320:
-                    self._print_history_handler(data_data)
-                elif cmd == 321:
-                    self._print_history_detail_handler(data_data)
-                elif cmd == 386:
-                    self._print_video_handler(data_data)
-        except json.JSONDecodeError:
-            self.logger.exception("Invalid JSON")
-
-    def _status_handler(self, data: dict[str, Any]) -> None:
-        """Parses and updates the printer's status information from the provided data.
-
-        Args:
-            data: Dictionary containing the printer status information in JSON-compatible format.
-        """
-        if DEBUG:
-            self.logger.debug(f"status >> \n{json.dumps(data, indent=5)}")
-        printer_status = PrinterStatus.from_json(json.dumps(data))
-        self.printer_data.status = printer_status
-
-    def _attributes_handler(self, data: dict[str, Any]) -> None:
-        """Parses and updates the printer's attribute data from a JSON dictionary.
-
-        Args:
-            data: Dictionary containing printer attribute information.
-        """
-        if DEBUG:
-            self.logger.debug(f"attributes >> \n{json.dumps(data, indent=5)}")
-        printer_attributes = PrinterAttributes.from_json(json.dumps(data))
-        self.printer_data.attributes = printer_attributes
-
-    def _print_history_handler(self, data_data: dict[str, Any]) -> None:
-        """Parses and updates the printer's print history details from the provided data."""
-        history_data_list = data_data.get("HistoryData")
-        if history_data_list:
-            for task_id in history_data_list:
-                if task_id not in self.printer_data.print_history:
-                    self.printer_data.print_history[task_id] = None
-
-    def _print_history_detail_handler(self, data_data: dict[str, Any]) -> None:
-        """Parses and updates the printer's print history details from the provided data.
-
-        If a list of print history details is present in the input, updates the
-        printer data with a list of `PrintHistoryDetail` objects.
-
-        Args:
-            data_data: The data containing the print history details.
-        """
-        history_data_list = data_data.get("HistoryDetailList")
-        if history_data_list:
-            for history_data in history_data_list:
-                detail = PrintHistoryDetail(history_data)
-                if detail.task_id is not None:
-                    self.printer_data.print_history[detail.task_id] = detail
-
-    def _print_video_handler(self, data_data: dict[str, Any]) -> None:
-        """Parse video stream data and update the printer's video attribute.
-
-        Args:
-            data_data: Dictionary containing video stream information.
-        """
-        self.printer_data.video = ElegooVideo(data_data)

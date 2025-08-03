@@ -12,8 +12,8 @@ from custom_components.elegoo_printer.definitions import (
     ElegooPrinterLightEntityDescription,
 )
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
-from custom_components.elegoo_printer.elegoo_sdcp.models.status import LightStatus
+from custom_components.elegoo_printer.models.enums import PrinterType
+from custom_components.elegoo_printer.models.status import LightStatus
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 from .const import LOGGER

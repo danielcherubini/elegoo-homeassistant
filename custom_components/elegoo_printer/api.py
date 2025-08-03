@@ -12,12 +12,15 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.httpx_client import get_async_client
 from PIL import Image as PILImage
 
+from custom_components.elegoo_printer.elegoo_mqtt.client import ElegooMqttClient
+from custom_components.elegoo_printer.elegoo_mqtt.server import ElegooMqttServer
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from custom_components.elegoo_printer.elegoo_sdcp.models.elegoo_image import ElegooImage
-from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
+from custom_components.elegoo_printer.models.elegoo_image import ElegooImage
+from custom_components.elegoo_printer.models.print_history_detail import (
     PrintHistoryDetail,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.models.printer import Printer
+from custom_components.elegoo_printer.models.printer import Printer, PrinterData
+from custom_components.elegoo_printer.models.protocol import ProtocolType
 from custom_components.elegoo_printer.elegoo_sdcp.server import ElegooPrinterServer
 
 from .const import CONF_PROXY_ENABLED, LOGGER
@@ -25,14 +28,11 @@ from .const import CONF_PROXY_ENABLED, LOGGER
 if TYPE_CHECKING:
     from logging import Logger
 
-    from custom_components.elegoo_printer.elegoo_sdcp.models.printer import PrinterData
-
 
 class ElegooPrinterApiClient:
     """Sample API Client."""
 
     _ip_address: str | None
-    client: ElegooPrinterClient
     _logger: Logger
     printer: Printer
     printer_data: PrinterData
@@ -44,6 +44,7 @@ class ElegooPrinterApiClient:
         config: MappingProxyType[str, Any],
         logger: Logger,
         hass: HomeAssistant,
+        client: ElegooMqttClient | ElegooPrinterClient,
     ) -> None:
         """
         Initialize the ElegooPrinterApiClient with a Printer object, configuration, and logger.
@@ -55,13 +56,9 @@ class ElegooPrinterApiClient:
         self._logger = logger
         self.printer = printer
         self._hass_client = get_async_client(hass)
-        self.client = ElegooPrinterClient(
-            printer.ip_address,
-            config=config,
-            logger=logger,
-            session=async_get_clientsession(hass),
-        )
+        self.client = client
         self.server: ElegooPrinterServer | None = None
+        self.mqtt_server: ElegooMqttServer | None = None
         self.hass: HomeAssistant = hass
 
     @classmethod
@@ -70,7 +67,7 @@ class ElegooPrinterApiClient:
         config: MappingProxyType[str, Any],
         logger: Logger,
         hass: HomeAssistant,
-    ) -> ElegooPrinterApiClient:
+    ) -> "ElegooPrinterApiClient":
         """
         Asynchronously creates and initializes an ElegooPrinterApiClient instance.
 
@@ -81,7 +78,30 @@ class ElegooPrinterApiClient:
         printer = Printer.from_dict(dict(config))
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
         logger.debug("CONFIGURATION %s", config)
-        self = ElegooPrinterApiClient(printer, config=config, logger=logger, hass=hass)
+
+        if printer.protocol_type == ProtocolType.MQTT:
+            logger.debug("MQTT printer, starting MQTT server.")
+            mqtt_server = ElegooMqttServer(printer.ip_address)
+            await mqtt_server.start()
+            client = ElegooMqttClient(
+                printer.ip_address,
+                printer=printer,
+                printer_data=PrinterData(),
+                logger=logger,
+            )
+        else:
+            client = ElegooPrinterClient(
+                printer.ip_address,
+                config=config,
+                logger=logger,
+                session=async_get_clientsession(hass),
+            )
+
+        self = ElegooPrinterApiClient(
+            printer, config=config, logger=logger, hass=hass, client=client
+        )
+        if printer.protocol_type == ProtocolType.MQTT:
+            self.mqtt_server = mqtt_server
 
         if printer.proxy_enabled:
             logger.debug("Proxy server is enabled, attempting to create proxy server.")
@@ -102,7 +122,7 @@ class ElegooPrinterApiClient:
         )
 
         try:
-            connected = await self.client.connect_printer(printer, proxy_server_enabled)
+            connected = await self.client.connect()
             if connected:
                 logger.info("Polling Started")
             else:
@@ -117,6 +137,8 @@ class ElegooPrinterApiClient:
     async def elegoo_disconnect(self) -> None:
         """Disconnect from the printer by closing the WebSocket connection."""
         await self.client.disconnect()
+        if self.mqtt_server:
+            await self.mqtt_server.stop()
 
     def elegoo_stop_proxy(self) -> None:
         """Stops the proxy server if it is running."""

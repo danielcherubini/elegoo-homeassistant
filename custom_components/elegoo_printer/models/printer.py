@@ -4,13 +4,14 @@ import json
 from types import MappingProxyType
 from typing import Any, Dict, Optional
 
-from custom_components.elegoo_printer.const import CONF_PROXY_ENABLED
-from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
+from ..const import CONF_PROXY_ENABLED
+from .video import ElegooVideo
 
 from .attributes import PrinterAttributes
 from .enums import PrinterType
 from .print_history_detail import PrintHistoryDetail
 from .status import PrinterStatus
+from .protocol import ProtocolType
 
 
 class Printer:
@@ -58,6 +59,7 @@ class Printer:
     firmware: Optional[str]
     id: Optional[str]
     printer_type: Optional[PrinterType]
+    protocol_type: Optional[ProtocolType]
     proxy_enabled: bool
 
     def __init__(
@@ -80,6 +82,7 @@ class Printer:
             self.firmware = None
             self.id = None
             self.printer_type = None
+            self.protocol_type = None
         else:
             try:
                 j: Dict[str, Any] = json.loads(json_string)  # Decode the JSON string
@@ -95,6 +98,10 @@ class Printer:
                 self.firmware = data_dict.get("FirmwareVersion")
                 self.id = data_dict.get("MainboardID")
                 self.printer_type = PrinterType.from_model(self.model)
+                if self.protocol and self.protocol.startswith("V1"):
+                    self.protocol_type = ProtocolType.MQTT
+                else:
+                    self.protocol_type = ProtocolType.SDCP
             except json.JSONDecodeError:
                 # Handle the error appropriately (e.g., log it, raise an exception)
                 self.connection = None
@@ -106,6 +113,7 @@ class Printer:
                 self.firmware = None
                 self.id = None
                 self.printer_type = None
+                self.protocol_type = None
 
         # Initialize config-based attributes for all instances
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
@@ -129,6 +137,7 @@ class Printer:
             "firmware": self.firmware,
             "id": self.id,
             "printer_type": self.printer_type.value if self.printer_type else None,
+            "protocol_type": self.protocol_type.value if self.protocol_type else None,
             "proxy_enabled": self.proxy_enabled,
         }
 
@@ -152,6 +161,13 @@ class Printer:
         printer.firmware = data_dict.get("FirmwareVersion", data_dict.get("firmware"))
         printer.id = data_dict.get("MainboardID", data_dict.get("id"))
         printer.printer_type = PrinterType.from_model(printer.model)
+        protocol_type_str = data_dict.get("protocol_type")
+        if protocol_type_str:
+            printer.protocol_type = ProtocolType(protocol_type_str)
+        elif printer.protocol and printer.protocol.startswith("V1"):
+            printer.protocol_type = ProtocolType.MQTT
+        else:
+            printer.protocol_type = ProtocolType.SDCP
         printer.proxy_enabled = data_dict.get(CONF_PROXY_ENABLED, False)
         return printer
 
@@ -182,3 +198,111 @@ class PrinterData:
         self.printer: Printer = printer or Printer()
         self.print_history: dict[str, PrintHistoryDetail | None] = print_history or {}
         self.video: ElegooVideo = ElegooVideo()
+
+    def update_from_websocket(self, response: str) -> None:
+        """Parse and route an incoming JSON response message from the printer.
+
+        Attempts to decode the response as JSON and dispatches it to the appropriate
+        handler based on the message topic. Logs unknown topics, missing topics, and
+        JSON decoding errors.
+
+        Args:
+            response: The JSON response message to parse.
+        """
+        try:
+            data = json.loads(response)
+            topic = data.get("Topic")
+            if topic:
+                match topic.split("/")[1]:
+                    case "response":
+                        self._response_handler(data)
+                    case "status":
+                        self._status_handler(data)
+                    case "attributes":
+                        self._attributes_handler(data)
+                    case "notice":
+                        pass  # self.logger.debug(f"notice >> \n{json.dumps(data, indent=5)}")
+                    case "error":
+                        pass  # self.logger.debug(f"error >> \n{json.dumps(data, indent=5)}")
+                    case _:
+                        pass  # self.logger.debug("--- UNKNOWN MESSAGE ---")
+                        # self.logger.debug(data)
+                        # self.logger.debug("--- UNKNOWN MESSAGE ---")
+            else:
+                pass  # self.logger.warning("Received message without 'Topic'")
+                # self.logger.debug(f"Message content: {response}")
+        except json.JSONDecodeError:
+            pass  # self.logger.exception("Invalid JSON received")
+
+    def _response_handler(self, data: dict[str, Any]) -> None:
+        """Handles response messages by dispatching to the appropriate handler based on the command type.
+
+        Routes print history and video stream response data to their respective
+        handlers according to the command ID in the response.
+
+        Args:
+            data: The response data.
+        """
+        try:
+            inner_data = data.get("Data")
+            if inner_data:
+                data_data = inner_data.get("Data", {})
+                cmd: int = inner_data.get("Cmd", 0)
+                if cmd == 320:
+                    self._print_history_handler(data_data)
+                elif cmd == 321:
+                    self._print_history_detail_handler(data_data)
+                elif cmd == 386:
+                    self._print_video_handler(data_data)
+        except json.JSONDecodeError:
+            pass  # self.logger.exception("Invalid JSON")
+
+    def _status_handler(self, data: dict[str, Any]) -> None:
+        """Parses and updates the printer's status information from the provided data.
+
+        Args:
+            data: Dictionary containing the printer status information in JSON-compatible format.
+        """
+        printer_status = PrinterStatus.from_json(json.dumps(data))
+        self.status = printer_status
+
+    def _attributes_handler(self, data: dict[str, Any]) -> None:
+        """Parses and updates the printer's attribute data from a JSON dictionary.
+
+        Args:
+            data: Dictionary containing printer attribute information.
+        """
+        printer_attributes = PrinterAttributes.from_json(json.dumps(data))
+        self.attributes = printer_attributes
+
+    def _print_history_handler(self, data_data: dict[str, Any]) -> None:
+        """Parses and updates the printer's print history details from the provided data."""
+        history_data_list = data_data.get("HistoryData")
+        if history_data_list:
+            for task_id in history_data_list:
+                if task_id not in self.print_history:
+                    self.print_history[task_id] = None
+
+    def _print_history_detail_handler(self, data_data: dict[str, Any]) -> None:
+        """Parses and updates the printer's print history details from the provided data.
+
+        If a list of print history details is present in the input, updates the
+        printer data with a list of `PrintHistoryDetail` objects.
+
+        Args:
+            data_data: The data containing the print history details.
+        """
+        history_data_list = data_data.get("HistoryDetailList")
+        if history_data_list:
+            for history_data in history_data_list:
+                detail = PrintHistoryDetail(history_data)
+                if detail.task_id is not None:
+                    self.print_history[detail.task_id] = detail
+
+    def _print_video_handler(self, data_data: dict[str, Any]) -> None:
+        """Parse video stream data and update the printer's video attribute.
+
+        Args:
+            data_data: Dictionary containing video stream information.
+        """
+        self.video = ElegooVideo(data_data)

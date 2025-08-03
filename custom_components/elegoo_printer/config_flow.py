@@ -21,7 +21,7 @@ from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
 )
 
 from .const import CONF_PROXY_ENABLED, DOMAIN, LOGGER
-from .elegoo_sdcp.models.printer import Printer
+from .models.printer import Printer
 
 if TYPE_CHECKING:
     pass
