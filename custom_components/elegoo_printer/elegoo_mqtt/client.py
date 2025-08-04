@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import time
+from types import MappingProxyType
 from typing import Any, Callable, Optional
 
 import anyio
@@ -27,9 +28,8 @@ class ElegooMqttClient:
     def __init__(
         self,
         ip_address: str,
-        printer: Printer,
-        printer_data: PrinterData,
         logger: Any,
+        config: MappingProxyType[str, Any] = MappingProxyType({}),
         port: int = DEFAULT_MQTT_PORT,
     ) -> None:
         """Initialize an ElegooMqttClient."""
@@ -40,8 +40,9 @@ class ElegooMqttClient:
         self.client.on_message = self.on_message
         self._is_connected = False
         self._on_message_callback: Optional[Callable[[str, str], None]] = None
-        self.printer = printer
-        self.printer_data = printer_data
+        self.config = config
+        self.printer = Printer.from_dict(dict(config))
+        self.printer_data = PrinterData()
         self.logger = logger
         self._background_tasks: set[asyncio.Task] = set()
 

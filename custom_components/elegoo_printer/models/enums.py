@@ -298,4 +298,3 @@ class ProtocolType(Enum):
 
     SDCP = "sdcp"
     MQTT = "mqtt"
-

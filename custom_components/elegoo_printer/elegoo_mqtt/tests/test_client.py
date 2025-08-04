@@ -17,8 +17,7 @@ async def test_connect_success():
 
         client = ElegooMqttClient(
             "localhost",
-            printer=MagicMock(),
-            printer_data=MagicMock(),
+            config={"ip_address": "localhost"},
             logger=MagicMock(),
         )
 
@@ -41,8 +40,7 @@ async def test_connect_failure():
 
         client = ElegooMqttClient(
             "localhost",
-            printer=MagicMock(),
-            printer_data=MagicMock(),
+            config={"ip_address": "localhost"},
             logger=MagicMock(),
         )
         # The connect method should now return False

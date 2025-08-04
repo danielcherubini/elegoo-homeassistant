@@ -23,8 +23,8 @@ from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
 )
 
 from .const import CONF_PROXY_ENABLED, DOMAIN, LOGGER
-from .models.printer import Printer, PrinterData
-from .models.protocol import ProtocolType
+from .models.enums import ProtocolType
+from .models.printer import Printer
 
 if TYPE_CHECKING:
     pass
@@ -64,8 +64,7 @@ async def _async_test_connection(
             await mqtt_server.start()
             client = ElegooMqttClient(
                 printer_object.ip_address,
-                printer=printer_object,
-                printer_data=PrinterData(),
+                config=MappingProxyType(user_input),
                 logger=LOGGER,
             )
         else:
@@ -197,7 +196,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         # Initiate discovery
         elegoo_printer_client = ElegooPrinterClient(
-            "0.0.0.0", logger=LOGGER, session=async_get_clientsession(self.hass)
+            "0.0.0.0",  # ip_address
+            async_get_clientsession(self.hass),  # session
+            config=MappingProxyType({}),  # config
+            logger=LOGGER,
         )  # IP doesn't matter for discovery
         self.discovered_printers = await self.hass.async_add_executor_job(
             elegoo_printer_client.discover_printer

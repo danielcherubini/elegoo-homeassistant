@@ -312,4 +312,6 @@ class PrinterData:
         Args:
             data_data: Dictionary containing video stream information.
         """
+        LOGGER.debug(f"_print_video_handler: Received data_data: {data_data}")
         self.video = ElegooVideo(data_data)
+        LOGGER.debug(f"_print_video_handler: Updated video object: {self.video.to_dict()}")

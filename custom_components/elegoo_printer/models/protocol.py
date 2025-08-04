@@ -14,4 +14,3 @@ class ElegooClient(Protocol):
     async def set_light_status(self, light_status: LightStatus) -> None:
         """Set the printer's light status."""
         ...
-

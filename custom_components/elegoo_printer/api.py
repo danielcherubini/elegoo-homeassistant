@@ -15,13 +15,13 @@ from PIL import Image as PILImage
 from custom_components.elegoo_printer.elegoo_mqtt.client import ElegooMqttClient
 from custom_components.elegoo_printer.elegoo_mqtt.server import ElegooMqttServer
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+from custom_components.elegoo_printer.elegoo_sdcp.server import ElegooPrinterServer
 from custom_components.elegoo_printer.models.elegoo_image import ElegooImage
+from custom_components.elegoo_printer.models.enums import ProtocolType
 from custom_components.elegoo_printer.models.print_history_detail import (
     PrintHistoryDetail,
 )
 from custom_components.elegoo_printer.models.printer import Printer, PrinterData
-from custom_components.elegoo_printer.models.enums import ProtocolType
-from custom_components.elegoo_printer.elegoo_sdcp.server import ElegooPrinterServer
 
 from .const import CONF_PROXY_ENABLED, LOGGER
 
@@ -91,15 +91,13 @@ class ElegooPrinterApiClient:
                 ) from e
             client = ElegooMqttClient(
                 printer.ip_address,
-                printer=printer,
-                printer_data=PrinterData(logger=logger),
+                config=config,
                 logger=logger,
             )
         else:
             client = ElegooPrinterClient(
                 printer.ip_address,
-                printer=printer,
-                printer_data=PrinterData(),
+                config=config,
                 logger=logger,
                 session=async_get_clientsession(hass),
             )
