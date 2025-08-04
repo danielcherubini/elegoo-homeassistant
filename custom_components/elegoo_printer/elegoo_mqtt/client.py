@@ -85,8 +85,8 @@ class ElegooMqttClient:
 
     async def disconnect(self) -> None:
         """Disconnect from the MQTT broker."""
-        self.client.loop_stop()
-        self.client.disconnect()
+        await anyio.to_thread.run_sync(self.client.loop_stop)
+        await anyio.to_thread.run_sync(self.client.disconnect)
         self._is_connected = False
 
     @property
@@ -307,4 +307,11 @@ class ElegooMqttClient:
             self.logger.debug(f"printer << \n{json.dumps(payload, indent=4)}")
 
         topic = f"sdcp/request/{self.printer.id}"
-        self.client.publish(topic, json.dumps(payload))
+        try:
+            mqtt_result = self.client.publish(topic, json.dumps(payload))
+            if mqtt_result.rc != mqtt.MQTT_ERR_SUCCESS:
+                self.logger.error(
+                    f"Failed to publish message to {topic}, result code: {mqtt_result.rc}"
+                )
+        except Exception as e:
+            self.logger.error(f"Exception while publishing message to {topic}: {e}")

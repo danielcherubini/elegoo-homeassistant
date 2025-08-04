@@ -20,7 +20,7 @@ from custom_components.elegoo_printer.models.print_history_detail import (
     PrintHistoryDetail,
 )
 from custom_components.elegoo_printer.models.printer import Printer, PrinterData
-from custom_components.elegoo_printer.models.protocol import ProtocolType
+from custom_components.elegoo_printer.models.enums import ProtocolType
 from custom_components.elegoo_printer.elegoo_sdcp.server import ElegooPrinterServer
 
 from .const import CONF_PROXY_ENABLED, LOGGER
@@ -82,17 +82,24 @@ class ElegooPrinterApiClient:
         if printer.protocol_type == ProtocolType.MQTT:
             logger.debug("MQTT printer, starting MQTT server.")
             mqtt_server = ElegooMqttServer(printer.ip_address)
-            await mqtt_server.start()
+            try:
+                await mqtt_server.start()
+            except Exception as e:
+                logger.error("Failed to start MQTT server: %s", e)
+                raise ConfigEntryNotReady(
+                    f"Failed to start MQTT server for {printer.ip_address}"
+                ) from e
             client = ElegooMqttClient(
                 printer.ip_address,
                 printer=printer,
-                printer_data=PrinterData(),
+                printer_data=PrinterData(logger=logger),
                 logger=logger,
             )
         else:
             client = ElegooPrinterClient(
                 printer.ip_address,
-                config=config,
+                printer=printer,
+                printer_data=PrinterData(),
                 logger=logger,
                 session=async_get_clientsession(hass),
             )

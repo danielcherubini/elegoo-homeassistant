@@ -6,7 +6,6 @@ import logging
 import os
 import socket
 import time
-from types import MappingProxyType
 from typing import Any
 
 import aiohttp
@@ -44,16 +43,18 @@ class ElegooPrinterClient:
         self,
         ip_address: str | None,
         session: aiohttp.ClientSession,
+        printer: Printer,
+        printer_data: PrinterData,
         logger: Any = LOGGER,
-        config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
         """Initialize an ElegooPrinterClient for communicating with an Elegoo 3D printer.
 
         Args:
             ip_address: The IP address of the target printer.
             session: The aiohttp client session.
+            printer: The printer object.
+            printer_data: The printer data object.
             logger: The logger to use.
-            config: A dictionary containing the config for the printer.
         """
         if ip_address is None:
             raise ElegooPrinterConfigurationError(
@@ -61,9 +62,8 @@ class ElegooPrinterClient:
             )
         self.ip_address: str = ip_address
         self.printer_websocket: ClientWebSocketResponse | None = None
-        self.config = config
-        self.printer: Printer = Printer.from_dict(dict(config))
-        self.printer_data = PrinterData()
+        self.printer: Printer = printer
+        self.printer_data = printer_data
         self.logger = logger
         self._is_connected: bool = False
         self._listener_task: asyncio.Task | None = None

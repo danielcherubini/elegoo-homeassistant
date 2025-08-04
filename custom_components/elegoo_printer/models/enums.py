@@ -285,3 +285,17 @@ class PrinterType(Enum):
             return cls.RESIN
 
         return None
+
+
+class ProtocolType(Enum):
+    """
+    Represents the communication protocol used by the printer.
+
+    Attributes:
+        SDCP: Standard Elegoo SDCP protocol.
+        MQTT: MQTT protocol for newer printers.
+    """
+
+    SDCP = "sdcp"
+    MQTT = "mqtt"
+

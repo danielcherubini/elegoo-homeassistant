@@ -4,14 +4,14 @@ import json
 from types import MappingProxyType
 from typing import Any, Dict, Optional
 
-from ..const import CONF_PROXY_ENABLED
+from ..const import CONF_PROXY_ENABLED, LOGGER
 from .video import ElegooVideo
 
 from .attributes import PrinterAttributes
 from .enums import PrinterType
 from .print_history_detail import PrintHistoryDetail
 from .status import PrinterStatus
-from .protocol import ProtocolType
+from .enums import ProtocolType
 
 
 class Printer:
@@ -98,7 +98,10 @@ class Printer:
                 self.firmware = data_dict.get("FirmwareVersion")
                 self.id = data_dict.get("MainboardID")
                 self.printer_type = PrinterType.from_model(self.model)
-                if self.protocol and self.protocol.startswith("V1"):
+                protocol_type_str = data_dict.get("protocol_type")
+                if protocol_type_str:
+                    self.protocol_type = ProtocolType(protocol_type_str)
+                elif self.protocol and self.protocol.startswith("V1"):
                     self.protocol_type = ProtocolType.MQTT
                 else:
                     self.protocol_type = ProtocolType.SDCP
@@ -213,26 +216,30 @@ class PrinterData:
             data = json.loads(response)
             topic = data.get("Topic")
             if topic:
-                match topic.split("/")[1]:
-                    case "response":
-                        self._response_handler(data)
-                    case "status":
-                        self._status_handler(data)
-                    case "attributes":
-                        self._attributes_handler(data)
-                    case "notice":
-                        pass  # self.logger.debug(f"notice >> \n{json.dumps(data, indent=5)}")
-                    case "error":
-                        pass  # self.logger.debug(f"error >> \n{json.dumps(data, indent=5)}")
-                    case _:
-                        pass  # self.logger.debug("--- UNKNOWN MESSAGE ---")
-                        # self.logger.debug(data)
-                        # self.logger.debug("--- UNKNOWN MESSAGE ---")
+                topic_parts = topic.split("/")
+                if len(topic_parts) > 1:
+                    match topic_parts[1]:
+                        case "response":
+                            self._response_handler(data)
+                        case "status":
+                            self._status_handler(data)
+                        case "attributes":
+                            self._attributes_handler(data)
+                        case "notice":
+                            LOGGER.debug(f"notice >> \n{json.dumps(data, indent=5)}")
+                        case "error":
+                            LOGGER.error(f"error >> \n{json.dumps(data, indent=5)}")
+                        case _:
+                            LOGGER.warning("--- UNKNOWN MESSAGE ---")
+                            LOGGER.debug(data)
+                            LOGGER.warning("--- UNKNOWN MESSAGE ---")
+                else:
+                    LOGGER.warning(f"Received message with malformed topic: {topic}")
             else:
-                pass  # self.logger.warning("Received message without 'Topic'")
-                # self.logger.debug(f"Message content: {response}")
-        except json.JSONDecodeError:
-            pass  # self.logger.exception("Invalid JSON received")
+                LOGGER.warning("Received message without 'Topic'")
+                LOGGER.debug(f"Message content: {response}")
+        except json.JSONDecodeError as e:
+            LOGGER.exception(f"Invalid JSON received: {e}")
 
     def _response_handler(self, data: dict[str, Any]) -> None:
         """Handles response messages by dispatching to the appropriate handler based on the command type.

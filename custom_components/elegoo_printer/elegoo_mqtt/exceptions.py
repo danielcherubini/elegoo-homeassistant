@@ -7,7 +7,7 @@ class ElegooMqttError(Exception):
     pass
 
 
-class ElegooMqttConnectionError(ElegooMqttError):
+class ElegooPrinterConnectionError(ElegooMqttError):
     """Exception raised when connection to printer fails."""
 
     pass

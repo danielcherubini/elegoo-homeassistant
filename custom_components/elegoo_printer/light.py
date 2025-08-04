@@ -11,7 +11,7 @@ from custom_components.elegoo_printer.definitions import (
     PRINTER_FDM_LIGHTS,
     ElegooPrinterLightEntityDescription,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+from custom_components.elegoo_printer.models.protocol import ElegooClient
 from custom_components.elegoo_printer.models.enums import PrinterType
 from custom_components.elegoo_printer.models.status import LightStatus
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
@@ -56,7 +56,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         """
         super().__init__(coordinator)
         self.entity_description: ElegooPrinterLightEntityDescription = description
-        self._elegoo_printer_client: ElegooPrinterClient = (
+        self._elegoo_printer_client: ElegooClient = (
             coordinator.config_entry.runtime_data.api.client
         )
         # Set a unique ID and a friendly name for the entity
