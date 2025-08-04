@@ -20,7 +20,7 @@ from custom_components.elegoo_printer.const import (
     WEBSOCKET_PORT,
 )
 
-from .models.printer import Printer
+from ..models.printer import Printer
 
 INADDR_ANY = "0.0.0.0"
 

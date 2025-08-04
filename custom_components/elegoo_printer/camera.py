@@ -15,11 +15,11 @@ from custom_components.elegoo_printer.definitions import (
     ElegooPrinterSensorEntityDescription,
 )
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+from custom_components.elegoo_printer.models.enums import (
     ElegooVideoStatus,
     PrinterType,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
+from custom_components.elegoo_printer.models.video import ElegooVideo
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 from .coordinator import ElegooDataUpdateCoordinator
@@ -31,6 +31,9 @@ def normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
     Args:
         video_object: The video object to normalize.
     """
+    if not video_object.video_url:
+        return video_object
+
     if not video_object.video_url.startswith("http://"):
         video_object.video_url = "http://" + video_object.video_url
 
@@ -126,6 +129,8 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
                 )
 
                 self._mjpeg_url = normalize_video_url(video).video_url
+                if not self._mjpeg_url:
+                    LOGGER.warning("stream_source: Normalized video URL is empty, not updating MJPEG URL.")
 
         else:
             LOGGER.error(f"stream_source: Failed to get video stream: {video.status}")

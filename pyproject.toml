@@ -4,12 +4,15 @@ version = "1.4.11"
 requires-python = ">=3.13"
 description = "Home Assistant Addon for Elegoo Printers"
 dependencies = [
+    "amqtt>=0.10.0",
     "colorlog>=6.9.0",
     "homeassistant>=2025.3.2",
     "loguru>=0.7.3",
     "ruff>=0.9.10",
     "websocket-client>=1.8.0",
     "websockets>=15.0.1",
+    "paho-mqtt>=2.1.0",
+    "trio>=0.1.0",
 ]
 
 [dependency-groups]
@@ -40,4 +43,6 @@ max-complexity = 25
 pythonpath = [
   "."
 ]
+anyio_backend = "asyncio"
+
 
