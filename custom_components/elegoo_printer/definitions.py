@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from homeassistant.components.button import ButtonEntityDescription
+from homeassistant.components.fan import FanEntityDescription, FanEntityFeature
 from homeassistant.components.light import LightEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
@@ -33,7 +34,7 @@ class ElegooPrinterSensorEntityDescriptionMixin:
 
 @dataclass
 class ElegooPrinterSensorEntityDescription(
-    SensorEntityDescription, ElegooPrinterSensorEntityDescriptionMixin
+    ElegooPrinterSensorEntityDescriptionMixin, SensorEntityDescription
 ):
     """Sensor entity description for Elegoo Printers."""
 
@@ -45,7 +46,7 @@ class ElegooPrinterSensorEntityDescription(
 
 @dataclass
 class ElegooPrinterLightEntityDescription(
-    LightEntityDescription, ElegooPrinterSensorEntityDescriptionMixin
+    ElegooPrinterSensorEntityDescriptionMixin, LightEntityDescription
 ):
     """Light entity description for Elegoo Printers."""
 
@@ -61,6 +62,21 @@ class ElegooPrinterButtonEntityDescription(ButtonEntityDescription):
 
     action_fn: Callable[..., Coroutine[Any, Any, None]] = lambda _: _async_noop()
     available_fn: Callable[..., bool] = lambda printer_data: printer_data
+
+
+@dataclass
+class ElegooPrinterFanEntityDescription(
+    ElegooPrinterSensorEntityDescriptionMixin,
+    FanEntityDescription,
+):
+    """Fan entity description for Elegoo Printers."""
+
+    available_fn: Callable[..., bool] = lambda printer_data: printer_data
+    exists_fn: Callable[..., bool] = lambda _: True
+    extra_attributes: Callable[..., dict] = lambda _: {}
+    icon_fn: Callable[..., str] = lambda _: "mdi:fan"
+    percentage_fn: Callable[..., int | None] = lambda _: None
+    supported_features: FanEntityFeature = FanEntityFeature(0)
 
 
 PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
@@ -423,5 +439,40 @@ PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (
         available_fn=lambda client: client.printer_data.status.current_status
         in [ElegooMachineStatus.PRINTING]
         or client.printer_data.status.print_info.status == ElegooPrintStatus.PAUSED,
+    ),
+)
+
+FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
+    ElegooPrinterFanEntityDescription(
+        key="model_fan",
+        name="Model Fan",
+        icon="mdi:fan",
+        supported_features=FanEntityFeature.SET_SPEED
+        | FanEntityFeature.TURN_ON
+        | FanEntityFeature.TURN_OFF,
+        value_fn=lambda printer_data: printer_data.status.current_fan_speed.model_fan
+        > 0,
+        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.model_fan,
+    ),
+    ElegooPrinterFanEntityDescription(
+        key="auxiliary_fan",
+        name="Auxiliary Fan",
+        icon="mdi:fan",
+        supported_features=FanEntityFeature.SET_SPEED
+        | FanEntityFeature.TURN_ON
+        | FanEntityFeature.TURN_OFF,
+        value_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan
+        > 0,
+        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan,
+    ),
+    ElegooPrinterFanEntityDescription(
+        key="box_fan",
+        name="Enclosure Fan",
+        icon="mdi:fan",
+        supported_features=FanEntityFeature.SET_SPEED
+        | FanEntityFeature.TURN_ON
+        | FanEntityFeature.TURN_OFF,
+        value_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan > 0,
+        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan,
     ),
 )

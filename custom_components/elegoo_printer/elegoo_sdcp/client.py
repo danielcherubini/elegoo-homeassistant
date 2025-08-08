@@ -29,6 +29,7 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVide
 
 from .const import DEBUG, LOGGER
 from .models.attributes import PrinterAttributes
+from .models.enums import ElegooFan
 from .models.print_history_detail import PrintHistoryDetail
 from .models.printer import Printer, PrinterData
 from .models.status import LightStatus, PrinterStatus
@@ -282,6 +283,15 @@ class ElegooPrinterClient:
         """Resume/continue the current print."""
         await self._send_printer_cmd(131, {})
 
+    async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
+        """Set the speed of a fan.
+
+        percentage: 0–100
+        """
+        pct = max(0, min(100, int(percentage)))
+        data = {"TargetFanSpeed": {fan.value: pct}}
+        await self._send_printer_cmd(403, data)
+
     async def _send_printer_cmd(
         self, cmd: int, data: dict[str, Any] | None = None
     ) -> None:
@@ -457,8 +467,13 @@ class ElegooPrinterClient:
             )
             return True
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            self.logger.warning(
+            self.logger.debug(
                 f"Failed to connect WebSocket to {self.printer.name}: {e}"
+            )
+            self.logger.info(
+                "Will retry connecting to printer '%s' …",
+                self.printer.name,
+                exc_info=DEBUG,
             )
             await self.disconnect()
             return False
