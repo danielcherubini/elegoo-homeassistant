@@ -243,6 +243,34 @@ class ErrorStatusReason(Enum):
             return None
 
 
+class ElegooFan(Enum):
+    """
+    Represents the different fan names in the Elegoo printer API.
+
+    Attributes:
+        MODEL_FAN: The fan that cools the model.
+        AUXILIARY_FAN: The auxiliary fan.
+        BOX_FAN: The fan that cools the enclosure.
+    """
+
+    MODEL_FAN = "ModelFan"
+    AUXILIARY_FAN = "AuxiliaryFan"
+    BOX_FAN = "BoxFan"
+
+    @classmethod
+    def from_key(cls, key: str) -> Optional["ElegooFan"] | None:
+        """Convert a key to the corresponding ElegooFan enum member.
+
+        Returns:
+            ElegooFan: The matching enum member if the key is valid, otherwise None.
+        """
+        pascal_case_string = key.replace("_", " ").title().replace(" ", "")
+        for fan_name in cls:
+            if fan_name.value == pascal_case_string:
+                return fan_name
+        return None
+
+
 class PrinterType(Enum):
     """
     Represents the type of printer.

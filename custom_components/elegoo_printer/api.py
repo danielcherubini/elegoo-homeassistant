@@ -14,6 +14,7 @@ from PIL import Image as PILImage
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.models.elegoo_image import ElegooImage
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import ElegooFan
 from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
@@ -273,3 +274,7 @@ class ElegooPrinterApiClient:
             self._proxy_server_enabled,
         )
         return await self.client.connect_printer(printer, self._proxy_server_enabled)
+
+    async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
+        """Set the speed of a fan."""
+        await self.client.set_fan_speed(percentage, fan)
