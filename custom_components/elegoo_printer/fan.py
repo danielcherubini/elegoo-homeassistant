@@ -8,7 +8,10 @@ from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import ElegooFan
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+    ElegooFan,
+    PrinterType,
+)
 
 from .definitions import FANS, ElegooPrinterFanEntityDescription
 from .entity import ElegooPrinterEntity
@@ -25,9 +28,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Elegoo printer fan entities."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities(
-        ElegooPrinterFan(coordinator, description) for description in FANS
-    )
+    printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
+
+    if printer_type == PrinterType.FDM:
+        async_add_entities(
+            ElegooPrinterFan(coordinator, description) for description in FANS
+        )
 
 
 class ElegooPrinterFan(ElegooPrinterEntity, FanEntity):
