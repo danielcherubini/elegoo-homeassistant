@@ -14,7 +14,6 @@ from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfTemperature, Uni
 from homeassistant.helpers.typing import StateType
 
 from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
-    ElegooFan,
     ElegooMachineStatus,
     ElegooPrintStatus,
     ElegooVideoStatus,
@@ -454,7 +453,6 @@ FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
         value_fn=lambda printer_data: printer_data.status.current_fan_speed.model_fan
         > 0,
         percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.model_fan,
-        fan_enum=ElegooFan.MODEL_FAN,
     ),
     ElegooPrinterFanEntityDescription(
         key="auxiliary_fan",
@@ -466,7 +464,6 @@ FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
         value_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan
         > 0,
         percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan,
-        fan_enum=ElegooFan.AUXILIARY_FAN,
     ),
     ElegooPrinterFanEntityDescription(
         key="box_fan",
@@ -477,6 +474,5 @@ FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
         | FanEntityFeature.TURN_OFF,
         value_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan > 0,
         percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan,
-        fan_enum=ElegooFan.BOX_FAN,
     ),
 )

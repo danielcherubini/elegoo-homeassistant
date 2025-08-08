@@ -291,6 +291,8 @@ class ElegooPrinterClient:
         pct = max(0, min(100, int(percentage)))
         data = {"TargetFanSpeed": {fan.value: pct}}
         await self._send_printer_cmd(403, data)
+        await self.get_printer_status()
+        await asyncio.sleep(2)
 
     async def _send_printer_cmd(
         self, cmd: int, data: dict[str, Any] | None = None
