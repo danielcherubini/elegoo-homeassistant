@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.const import CONF_IP_ADDRESS, Platform
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import async_get_loaded_integration
 
@@ -171,16 +171,34 @@ async def async_migrate_entry(
 async def async_migrate_unique_ids(
     hass: HomeAssistant, entry: ElegooPrinterConfigEntry
 ) -> None:
-    """Migrate entity unique IDs."""
+    """Migrate entity unique IDs and re-parent entities to the correct device."""
     LOGGER.debug("Checking if unique ID migration is needed")
     machine_id = entry.data.get("id")
     machine_name = entry.data.get("name")
+    LOGGER.debug("Migration - machine_id: %s, machine_name: %s", machine_id, machine_name)
 
     if not machine_name:
         LOGGER.debug("No machine name, skipping migration")
         return
 
     sanitized_machine_name = machine_name.replace(" ", "_").lower()
+
+    # Get the device associated with the current config entry (which should now have the new machine_id)
+    dev_reg = dr.async_get(hass)
+    # Find the device associated with this config entry.
+    # The config entry's unique_id should now be the machine_id after migration to version 2.
+    # We need to find the device that has this config_entry_id.
+    # There might be multiple devices if the migration created a new one.
+    # We want the one that has the new machine_id as an identifier.
+    new_device_entry = None
+    for device_entry in dev_reg.devices.values():
+        if entry.entry_id in device_entry.config_entries:
+            # Check if the device has the new machine_id as an identifier
+            if (DOMAIN, machine_id) in device_entry.identifiers:
+                new_device_entry = device_entry
+                break
+
+    new_device_id = new_device_entry.id if new_device_entry else None
 
     @callback
     def async_migrate_callback(
@@ -196,12 +214,71 @@ async def async_migrate_unique_ids(
             new_unique_id = entity_entry.unique_id.replace(
                 sanitized_machine_name, machine_id
             )
+            # Replace any remaining occurrences of the old sanitized machine name
+            # in case it appeared multiple times in the unique ID (e.g., for proxy entities)
+            new_unique_id = new_unique_id.replace(sanitized_machine_name, machine_id)
+
             LOGGER.debug(
                 "Migrating unique_id from %s to %s",
                 entity_entry.unique_id,
                 new_unique_id,
             )
-            return {"new_unique_id": new_unique_id}
+
+            # Prepare update data for entity
+            update_data = {"new_unique_id": new_unique_id}
+
+            # If a new device ID is available, and the entity is not already linked to it,
+            # update the device_id
+            if new_device_id and entity_entry.device_id != new_device_id:
+                LOGGER.debug(
+                    "Re-parenting entity %s from device %s to %s",
+                    entity_entry.entity_id,
+                    entity_entry.device_id,
+                    new_device_id,
+                )
+                update_data["new_device_id"] = new_device_id
+            return update_data
         return None
 
+    # Perform the unique ID and device_id migration
     await er.async_migrate_entries(hass, entry.entry_id, async_migrate_callback)
+
+    # After migration, check for and remove any remaining old entities
+    entity_registry = er.async_get(hass)
+    entities_to_remove = []
+    for entity_entry in list(entity_registry.entities.values()):
+        if (
+            entity_entry.config_entry_id == entry.entry_id
+            and entity_entry.unique_id.startswith(sanitized_machine_name)
+            and machine_id not in entity_entry.unique_id
+        ):
+            LOGGER.debug(
+                "Found old entity to remove: %s (unique_id: %s)",
+                entity_entry.entity_id,
+                entity_entry.unique_id,
+            )
+            entities_to_remove.append(entity_entry.entity_id)
+
+    for entity_id in entities_to_remove:
+        LOGGER.debug("Removing old entity: %s", entity_id)
+        entity_registry.async_remove(entity_id)
+
+    # Finally, remove any old devices that are no longer associated with any entities
+    # This is a more aggressive cleanup, but necessary if the migration leaves orphaned devices.
+    # We need to find devices that are linked to this config entry but do not have the new machine_id as an identifier.
+    devices_to_remove = []
+    for device_entry in dev_reg.devices.values():
+        if entry.entry_id in device_entry.config_entries and (DOMAIN, machine_id) not in device_entry.identifiers:
+            # Check if this device has any entities still linked to it.
+            # If not, it's an orphaned device from the old config.
+            if not any(e.device_id == device_entry.id for e in entity_registry.entities.values()):
+                LOGGER.debug(
+                    "Found old device to remove: %s (identifiers: %s)",
+                    device_entry.id,
+                    device_entry.identifiers,
+                )
+                devices_to_remove.append(device_entry.id)
+
+    for device_id in devices_to_remove:
+        LOGGER.debug("Removing old device: %s", device_id)
+        dev_reg.async_remove_device(device_id)
