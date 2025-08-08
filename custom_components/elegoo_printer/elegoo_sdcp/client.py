@@ -284,8 +284,12 @@ class ElegooPrinterClient:
         await self._send_printer_cmd(131, {})
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
-        """Set the speed of a fan."""
-        data = {"TargetFanSpeed": {fan.value: percentage}}
+        """Set the speed of a fan.
+
+        percentage: 0–100
+        """
+        pct = max(0, min(100, int(percentage)))
+        data = {"TargetFanSpeed": {fan.value: pct}}
         await self._send_printer_cmd(403, data)
 
     async def _send_printer_cmd(

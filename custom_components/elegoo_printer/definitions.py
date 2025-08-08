@@ -34,13 +34,6 @@ class ElegooPrinterSensorEntityDescriptionMixin:
 
 
 @dataclass
-class ElegooPrinterFanEntityDescriptionMixin:
-    """Mixin for required keys."""
-
-    fan_enum: ElegooFan
-
-
-@dataclass
 class ElegooPrinterSensorEntityDescription(
     ElegooPrinterSensorEntityDescriptionMixin, SensorEntityDescription
 ):
@@ -75,7 +68,6 @@ class ElegooPrinterButtonEntityDescription(ButtonEntityDescription):
 @dataclass
 class ElegooPrinterFanEntityDescription(
     ElegooPrinterSensorEntityDescriptionMixin,
-    ElegooPrinterFanEntityDescriptionMixin,
     FanEntityDescription,
 ):
     """Fan entity description for Elegoo Printers."""
@@ -85,7 +77,7 @@ class ElegooPrinterFanEntityDescription(
     extra_attributes: Callable[..., dict] = lambda _: {}
     icon_fn: Callable[..., str] = lambda _: "mdi:fan"
     percentage_fn: Callable[..., int | None] = lambda _: None
-    supported_features: Callable[..., str] = lambda _: ""
+    supported_features: FanEntityFeature = FanEntityFeature(0)
 
 
 PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (

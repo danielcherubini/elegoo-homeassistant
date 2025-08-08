@@ -265,7 +265,6 @@ class ElegooFan(Enum):
             ElegooFan: The matching enum member if the key is valid, otherwise None.
         """
         pascal_case_string = key.replace("_", " ").title().replace(" ", "")
-        print(pascal_case_string)
         for fan_name in cls:
             if fan_name.value == pascal_case_string:
                 return fan_name
