@@ -29,6 +29,7 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVide
 
 from .const import DEBUG, LOGGER
 from .models.attributes import PrinterAttributes
+from .models.enums import ElegooFan
 from .models.print_history_detail import PrintHistoryDetail
 from .models.printer import Printer, PrinterData
 from .models.status import LightStatus, PrinterStatus
@@ -281,6 +282,11 @@ class ElegooPrinterClient:
     async def print_resume(self) -> None:
         """Resume/continue the current print."""
         await self._send_printer_cmd(131, {})
+
+    async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
+        """Set the speed of a fan."""
+        data = {"TargetFanSpeed": {fan.value: percentage}}
+        await self._send_printer_cmd(403, data)
 
     async def _send_printer_cmd(
         self, cmd: int, data: dict[str, Any] | None = None
