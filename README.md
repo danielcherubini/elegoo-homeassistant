@@ -70,6 +70,23 @@ This integration is actively being developed. Future updates may include:
 
 Stay tuned for updates and feel free to contribute with feature requests and bug reports!
 
+## Automation Blueprints
+
+This integration includes a blueprint to send notifications to your mobile device with the progress of your prints.
+
+[![Open your Home Assistant instance and import the blueprint.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/danielcherubini/elegoo-homeassistant/blob/main/blueprints/automation/elegoo_printer/elegoo_printer_progress.yaml)
+
+### Blueprint: Elegoo Printer Progress Notification
+
+This blueprint sends notifications to your mobile device with the progress of your prints. You can configure the following:
+
+- **Percent Complete Sensor:** The sensor that tracks the print progress.
+- **Notification Device:** The mobile device to send notifications to.
+- **Notification Frequency:** How often to send notifications (e.g., every 5% of progress).
+- **Printer Camera:** The camera entity for your printer.
+- **Dashboard URL (Optional):** A URL to open when the notification is clicked.
+- **Notification Group (Optional):** A unique name for the notification group, channel, and tag.
+
 ## Support and Contributions
 
 For any issues or feature requests, please [open an issue](https://github.com/danielcherubini/elegoo-homeassistant/issues) on the GitHub repository. Contributions are welcome!
