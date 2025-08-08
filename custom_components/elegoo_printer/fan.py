@@ -67,12 +67,14 @@ class ElegooPrinterFan(ElegooPrinterEntity, FanEntity):
         await self.coordinator.config_entry.runtime_data.api.set_fan_speed(
             percentage, ElegooFan.from_key(self.entity_description.key)
         )
+        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the fan off."""
         await self.coordinator.config_entry.runtime_data.api.set_fan_speed(
             0, ElegooFan.from_key(self.entity_description.key)
         )
+        await self.coordinator.async_request_refresh()
 
     @property
     def supported_features(self) -> FanEntityFeature:
@@ -109,6 +111,7 @@ class ElegooPrinterFan(ElegooPrinterEntity, FanEntity):
         await self.coordinator.config_entry.runtime_data.api.set_fan_speed(
             percentage, ElegooFan.from_key(self.entity_description.key)
         )
+        await self.coordinator.async_request_refresh()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set the preset mode of the fan."""
