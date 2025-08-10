@@ -1,6 +1,5 @@
-
 blueprint:
-  name: Elegoo Printer Progress Notification
+  name: Elegoo Printer Progress Notification (v2)
   description: Sends a notification with the progress of an Elegoo printer.
   author: Daniel Cherubini
   homeassistant:
@@ -10,6 +9,13 @@ blueprint:
     percent_complete_sensor:
       name: Percent Complete Sensor
       description: The printer's percent complete sensor.
+      selector:
+        entity:
+          domain: sensor
+          integration: elegoo_printer
+    remaining_print_time_entity:
+      name: Remaining Print Time Sensor
+      description: The printer's remaining print time sensor.
       selector:
         entity:
           domain: sensor
@@ -52,6 +58,7 @@ max_exceeded: silent
 
 variables:
   percent_complete_entity: !input percent_complete_sensor
+  remaining_print_time_entity: !input remaining_print_time_entity
   elegoo_printer_device: "{{ device_id(percent_complete_entity) }}"
   notify_device: !input notify_device
   percentage_divisor: !input percentage_divisor
@@ -61,9 +68,6 @@ variables:
   file_name_entity: >-
     {{ device_entities(elegoo_printer_device) | select('search', '_file_name') |
     first }}
-  remaining_print_time_entity: >-
-    {{ device_entities(elegoo_printer_device) | select('search',
-    '_remaining_print_time') | first }}
 
 trigger:
   - platform: state
@@ -91,7 +95,7 @@ action:
             message: "{{ states(file_name_entity) }}"
             data:
               chronometer: true
-              when: "{{ (states(remaining_print_time_entity)|float * 60)|int }}"
+              when: "{{ (states(remaining_print_time_entity)|float(0) * 60)|int }}"
               when_relative: true
               progress: "{{ states(percent_complete_entity)|int }}"
               progress_max: 100
