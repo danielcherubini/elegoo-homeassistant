@@ -60,13 +60,28 @@ These sensors are specific to resin printers.
 
 Currently, this integration needs the IP Address of your printer. In the future, it will automatically discover it on your network. When you add the integration, it will ask for your printer's IP Address.
 
+## 🛰️ Local Proxy Server
+
+This integration includes an optional local proxy server that allows multiple clients (e.g., slicers, monitoring tools, other devices) to communicate with your Elegoo printer simultaneously.
+
+### The Problem It Solves
+
+Printers like the Elegoo Centauri Carbon have a built-in limit of 4 simultaneous connections. Since the video stream consumes one of these connections by itself, users can easily hit this limit, resulting in "connection limit reached" errors from other applications.
+
+The proxy server solves this by acting as a single gateway. It routes all commands, file uploads, and the video stream through just one stable connection to the printer, effectively bypassing the limit and preventing connection conflicts.
+
+### How to Enable It
+
+You can enable the proxy server during the initial setup of the integration or at any time afterward by clicking **"Configure"** on the integration card in Home Assistant.
+
+For more details, use cases, and to join the community conversation about this feature, please see our post on GitHub Discussions.
+
+➡️ **[Read more and join the discussion here](https://github.com/danielcherubini/elegoo-homeassistant/discussions/185)**
+
 ## Future Updates
 
 This integration is actively being developed. Future updates may include:
-
-- **Live Video Support:** Direct integration of the printer's video feed.
-- **Control Features:** The ability to start, stop, and pause prints directly from Home Assistant.
-- **Expanded Model Support:** Compatibility with more Elegoo printer models as they are released.
+- **Expanded Model Support:** Compatibility with more older Elegoo printer models.
 
 Stay tuned for updates and feel free to contribute with feature requests and bug reports!
 
