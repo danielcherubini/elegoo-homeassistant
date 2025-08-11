@@ -383,14 +383,13 @@ class ElegooPrinterServer:
                                     await dest.send_bytes(msg.data)
                                     if msg.type == WSMsgType.BINARY
                                     else await dest.send_str(
-                                            msg.data.replace(
-                                                self.printer.ip_address,
-                                                self.get_local_ip()
-                                            ).replace(
-                                                f"{self.get_local_ip()}/",
-                                                f"{self.get_local_ip()}:{WEBSOCKET_PORT}/"
-                                            )
+                                        msg.data.replace(
+                                            self.printer.ip_address, self.get_local_ip()
+                                        ).replace(
+                                            f"{self.get_local_ip()}/",
+                                            f"{self.get_local_ip()}:{WEBSOCKET_PORT}/",
                                         )
+                                    )
                                 )
                             elif msg.type == WSMsgType.CLOSE:
                                 break
