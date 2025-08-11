@@ -292,6 +292,25 @@ class ElegooPrinterClient:
         data = {"TargetFanSpeed": {fan.value: pct}}
         await self._send_printer_cmd(403, data)
 
+    async def set_print_speed(self, percentage: int) -> None:
+        """Set the print speed.
+
+        percentage: 0–100
+        """
+        pct = max(0, min(0, int(percentage)))
+        data = {"PrintSpeedPct": pct}
+        await self._send_printer_cmd(403, data)
+
+    async def set_target_nozzle_temp(self, temperature: int) -> None:
+        """Set the target nozzle temperature."""
+        data = {"TempTargetNozzle": temperature}
+        await self._send_printer_cmd(403, data)
+
+    async def set_target_bed_temp(self, temperature: int) -> None:
+        """Set the target bed temperature."""
+        data = {"TempTargetHotbed": temperature}
+        await self._send_printer_cmd(403, data)
+
     async def _send_printer_cmd(
         self, cmd: int, data: dict[str, Any] | None = None
     ) -> None:

@@ -40,6 +40,8 @@ PLATFORMS: list[Platform] = [
     Platform.LIGHT,
     Platform.BUTTON,
     Platform.FAN,
+    Platform.SELECT,
+    Platform.NUMBER,
 ]
 
 
