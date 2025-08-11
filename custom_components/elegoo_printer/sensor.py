@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.const import UnitOfTime
 
 from .const import LOGGER
 from .definitions import (
@@ -84,6 +85,14 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
             self.entity_description.key
         )
         self.printer_data = coordinator.config_entry.runtime_data.api.printer_data
+        printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
+
+        """This block fixes the issues with the Centurai Carbon"""
+        if (
+            self.entity_description.device_class == SensorDeviceClass.DURATION
+            and printer_type == PrinterType.FDM
+        ):
+            self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
 
     @property
     def extra_state_attributes(self) -> dict:
