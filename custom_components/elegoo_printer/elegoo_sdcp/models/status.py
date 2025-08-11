@@ -137,10 +137,14 @@ class PrintInfo:
             return self.round_minute(future_datetime, 1)
         return None
 
-    def round_minute(self, date: datetime = None, round_to: int = 1):
-        """Round datetime object to minutes"""
+    def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
+        """ Round datetime object to minutes"""
         if not date:
             date = datetime.now(timezone.utc)
+
+        if not isinstance(round_to, int) or round_to <= 0:
+            raise ValueError("round_to must be a positive integer")
+
         date = date.replace(second=0, microsecond=0)
         delta = date.minute % round_to
         return date.replace(minute=date.minute - delta)
