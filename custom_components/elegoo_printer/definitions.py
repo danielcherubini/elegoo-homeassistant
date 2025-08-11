@@ -8,10 +8,10 @@ from typing import Any
 from homeassistant.components.button import ButtonEntityDescription
 from homeassistant.components.fan import FanEntityDescription, FanEntityFeature
 from homeassistant.components.light import LightEntityDescription
+from homeassistant.components.number import NumberEntityDescription, NumberMode
+from homeassistant.components.select import SelectEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
-from homeassistant.components.select import SelectEntityDescription
-from homeassistant.components.number import NumberEntityDescription
 from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfTemperature, UnitOfTime
 from homeassistant.helpers.typing import StateType
 
@@ -455,7 +455,7 @@ PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
         native_min_value=0,
         native_max_value=320,
         native_step=1,
-        mode="box",
+        mode=NumberMode.BOX,
         value_fn=lambda printer_data: printer_data.status.temp_target_nozzle,
         set_value_fn=lambda api, value: api.async_set_target_nozzle_temp(int(value)),
     ),
@@ -467,7 +467,7 @@ PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
         native_min_value=0,
         native_max_value=110,
         native_step=1,
-        mode="box",
+        mode=NumberMode.BOX,
         value_fn=lambda printer_data: printer_data.status.temp_target_hotbed,
         set_value_fn=lambda api, value: api.async_set_target_bed_temp(int(value)),
     ),
