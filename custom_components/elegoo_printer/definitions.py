@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.button import ButtonEntityDescription
@@ -156,10 +156,9 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="End Time",
         icon="mdi:clock",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda printer_data: datetime.now(timezone.utc)
-        + timedelta(milliseconds=printer_data.status.print_info.remaining_ticks),
-        available_fn=lambda printer_data: printer_data.status.print_info.remaining_ticks
-        > 0,
+        value_fn=lambda printer_data: printer_data.status.print_info.end_time,
+        available_fn=lambda printer_data: printer_data.status.print_info.end_time
+        is not None,
     ),
     ElegooPrinterSensorEntityDescription(
         key="total_layers",
