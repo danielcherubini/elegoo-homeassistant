@@ -11,6 +11,7 @@ from datetime import timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import CONF_IP_ADDRESS, Platform, UnitOfTime
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -168,7 +169,7 @@ async def async_migrate_entry(
             config_entry.entry_id
         )
         for entry in entries:
-            if entry.unique_id.endswith("_remaining_print_time"):
+            if entry.device_class == SensorDeviceClass.DURATION:
                 if entry.native_unit_of_measurement == UnitOfTime.SECONDS:
                     entity_registry.async_update_entity(
                         entry.entity_id,
