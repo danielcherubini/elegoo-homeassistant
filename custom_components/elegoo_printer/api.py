@@ -278,3 +278,15 @@ class ElegooPrinterApiClient:
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """Set the speed of a fan."""
         await self.client.set_fan_speed(percentage, fan)
+
+    async def async_set_print_speed(self, percentage: int) -> None:
+        """Set the print speed."""
+        await self.client.set_print_speed(percentage)
+
+    async def async_set_target_nozzle_temp(self, temperature: int) -> None:
+        """Set the target nozzle temperature."""
+        await self.client.set_target_nozzle_temp(temperature)
+
+    async def async_set_target_bed_temp(self, temperature: int) -> None:
+        """Set the target bed temperature."""
+        await self.client.set_target_bed_temp(temperature)

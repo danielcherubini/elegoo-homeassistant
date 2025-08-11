@@ -8,6 +8,8 @@ from typing import Any
 from homeassistant.components.button import ButtonEntityDescription
 from homeassistant.components.fan import FanEntityDescription, FanEntityFeature
 from homeassistant.components.light import LightEntityDescription
+from homeassistant.components.number import NumberEntityDescription, NumberMode
+from homeassistant.components.select import SelectEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfTemperature, UnitOfTime
@@ -79,6 +81,25 @@ class ElegooPrinterFanEntityDescription(
     supported_features: FanEntityFeature = FanEntityFeature(0)
 
 
+@dataclass(kw_only=True)
+class ElegooPrinterSelectEntityDescription(SelectEntityDescription):
+    """Select entity description for Elegoo Printers."""
+
+    options_map: dict[str, Any]
+    current_option_fn: Callable[..., str | None]
+    select_option_fn: Callable[..., Coroutine[Any, Any, None]]
+
+
+@dataclass(kw_only=True)
+class ElegooPrinterNumberEntityDescription(NumberEntityDescription):
+    """Number entity description for Elegoo Printers."""
+
+    value_fn: Callable[..., float | None]
+    set_value_fn: Callable[..., Coroutine[Any, Any, None]]
+
+
+PRINT_SPEED_PRESETS = {"Silent": 50, "Balanced": 100, "Sport": 130, "Ludicrous": 160}
+
 PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="video_stream_connected",
@@ -95,7 +116,6 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         value_fn=lambda printer_data: printer_data.attributes.max_video_stream_allowed,
     ),
 )
-
 
 PRINTER_ATTRIBUTES_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
@@ -227,7 +247,7 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="current_print_error_status_reason",
         translation_key="error_status_reason",
-        name="Error Status Reason",
+        name="Print Error Reason",
         icon="mdi:file",
         available_fn=lambda printer_data: printer_data
         and printer_data.print_history
@@ -404,6 +424,57 @@ PRINTER_FDM_LIGHTS: tuple[ElegooPrinterLightEntityDescription, ...] = (
         name="Chamber Light",
         value_fn=lambda light_status: light_status.second_light,
         available_fn=lambda light_status: light_status.second_light is not None,
+    ),
+)
+
+PRINTER_SELECT_TYPES: tuple[ElegooPrinterSelectEntityDescription, ...] = (
+    ElegooPrinterSelectEntityDescription(
+        key="print_speed",
+        name="Print Speed",
+        icon="mdi:speedometer",
+        options=list(PRINT_SPEED_PRESETS.keys()),
+        options_map=PRINT_SPEED_PRESETS,
+        current_option_fn=lambda printer_data: (
+            next(
+                (
+                    name
+                    for name, value in PRINT_SPEED_PRESETS.items()
+                    if printer_data.status.print_info
+                    and value == printer_data.status.print_info.print_speed_pct
+                ),
+                None,
+            )
+            if printer_data.status and printer_data.status.print_info
+            else None
+        ),
+        select_option_fn=lambda api, value: api.async_set_print_speed(value),
+    ),
+)
+
+PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
+    ElegooPrinterNumberEntityDescription(
+        key="target_nozzle_temp",
+        name="Target Nozzle Temp",
+        icon="mdi:thermometer",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        native_min_value=0,
+        native_max_value=320,
+        native_step=1,
+        mode=NumberMode.BOX,
+        value_fn=lambda printer_data: printer_data.status.temp_target_nozzle,
+        set_value_fn=lambda api, value: api.async_set_target_nozzle_temp(int(value)),
+    ),
+    ElegooPrinterNumberEntityDescription(
+        key="target_bed_temp",
+        name="Target Bed Temp",
+        icon="mdi:thermometer",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        native_min_value=0,
+        native_max_value=110,
+        native_step=1,
+        mode=NumberMode.BOX,
+        value_fn=lambda printer_data: printer_data.status.temp_target_hotbed,
+        set_value_fn=lambda api, value: api.async_set_target_bed_temp(int(value)),
     ),
 )
 
