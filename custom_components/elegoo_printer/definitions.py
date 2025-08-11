@@ -155,6 +155,7 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         key="end_time",
         name="End Time",
         icon="mdi:clock",
+        device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=lambda printer_data: printer_data.status.print_info.end_time,
         available_fn=lambda printer_data: printer_data.status.print_info.end_time
         is not None,
