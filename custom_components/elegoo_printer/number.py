@@ -1,4 +1,3 @@
-
 from homeassistant.components.number import NumberEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -39,7 +38,7 @@ class ElegooNumber(ElegooPrinterEntity, NumberEntity):
         super().__init__(coordinator)
         self.entity_description: ElegooPrinterNumberEntityDescription = description
 
-        self._api = None # Initialize _api to None
+        self._api = None  # Initialize _api to None
 
         self._attr_unique_id = coordinator.generate_unique_id(description.key)
         self._attr_name = description.name
@@ -62,9 +61,7 @@ class ElegooNumber(ElegooPrinterEntity, NumberEntity):
         Returns the current value.
         """
         if self._api and self._api.printer_data:
-            return self.entity_description.value_fn(
-                self._api.printer_data
-            )
+            return self.entity_description.value_fn(self._api.printer_data)
         return None
 
     async def async_set_native_value(self, value: float) -> None:

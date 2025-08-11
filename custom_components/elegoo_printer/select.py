@@ -42,7 +42,7 @@ class ElegooPrintSpeedSelect(ElegooPrinterEntity, SelectEntity):
         """
         super().__init__(coordinator)
         self.entity_description: ElegooPrinterSelectEntityDescription = description
-        self._api = None # Initialize _api to None
+        self._api = None  # Initialize _api to None
 
         self._attr_unique_id = coordinator.generate_unique_id(description.key)
         self._attr_name = description.name
@@ -61,9 +61,7 @@ class ElegooPrintSpeedSelect(ElegooPrinterEntity, SelectEntity):
         Returns the current selected option.
         """
         if self._api and self._api.printer_data:
-            return self.entity_description.current_option_fn(
-                self._api.printer_data
-            )
+            return self.entity_description.current_option_fn(self._api.printer_data)
         return None
 
     async def async_select_option(self, option: str):

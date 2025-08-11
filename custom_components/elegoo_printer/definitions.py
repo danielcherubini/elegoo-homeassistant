@@ -98,12 +98,7 @@ class ElegooPrinterNumberEntityDescription(NumberEntityDescription):
     set_value_fn: Callable[..., Coroutine[Any, Any, None]]
 
 
-PRINT_SPEED_PRESETS = {
-    "Silent": 50,
-    "Balanced": 100,
-    "Sport": 130,
-    "Ludicrous": 160
-}
+PRINT_SPEED_PRESETS = {"Silent": 50, "Balanced": 100, "Sport": 130, "Ludicrous": 160}
 
 PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
@@ -440,7 +435,12 @@ PRINTER_SELECT_TYPES: tuple[ElegooPrinterSelectEntityDescription, ...] = (
         options=list(PRINT_SPEED_PRESETS.keys()),
         options_map=PRINT_SPEED_PRESETS,
         current_option_fn=lambda printer_data: next(
-            (name for name, value in PRINT_SPEED_PRESETS.items() if value == printer_data.status.print_info.print_speed_pct), None
+            (
+                name
+                for name, value in PRINT_SPEED_PRESETS.items()
+                if value == printer_data.status.print_info.print_speed_pct
+            ),
+            None,
         ),
         select_option_fn=lambda api, value: api.async_set_print_speed(value),
     ),
