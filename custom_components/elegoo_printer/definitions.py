@@ -434,13 +434,18 @@ PRINTER_SELECT_TYPES: tuple[ElegooPrinterSelectEntityDescription, ...] = (
         icon="mdi:speedometer",
         options=list(PRINT_SPEED_PRESETS.keys()),
         options_map=PRINT_SPEED_PRESETS,
-        current_option_fn=lambda printer_data: next(
-            (
-                name
-                for name, value in PRINT_SPEED_PRESETS.items()
-                if value == printer_data.status.print_info.print_speed_pct
-            ),
-            None,
+        current_option_fn=lambda printer_data: (
+            next(
+                (
+                    name
+                    for name, value in PRINT_SPEED_PRESETS.items()
+                    if printer_data.status.print_info
+                    and value == printer_data.status.print_info.print_speed_pct
+                ),
+                None,
+            )
+            if printer_data.status and printer_data.status.print_info
+            else None
         ),
         select_option_fn=lambda api, value: api.async_set_print_speed(value),
     ),
