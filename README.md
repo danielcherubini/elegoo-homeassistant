@@ -95,7 +95,13 @@ The integration creates the following entities for your printer.
 
 | Entity | Description |
 | --- | --- |
-| `Camera` | Displays a live thumbnail of the current print. |
+| `Camera` | Displays a live video of the current print. |
+
+### Image
+
+| Entity | Description |
+| --- | --- |
+| `Thumbnail` | Displays a thumbnail of the current print. |
 
 ### Buttons
 
