@@ -11,9 +11,14 @@ from datetime import timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from homeassistant.const import CONF_IP_ADDRESS, Platform
+from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.const import CONF_IP_ADDRESS, Platform, UnitOfTime
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.entity_registry import (
+    EntityRegistry,
+    async_get,
+)
 from homeassistant.loader import async_get_loaded_integration
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
@@ -156,5 +161,21 @@ async def async_migrate_entry(
         except Exception as e:
             LOGGER.error(f"Error migrating config entry: {e}")
             return False
+
+    if config_entry.version == 2:
+        # Migrate to version 3: Update native_unit_of_measurement for remaining_print_time
+        entity_registry: EntityRegistry = async_get(hass)
+        entries = entity_registry.entities.get_entries_for_config_entry_id(
+            config_entry.entry_id
+        )
+        for entry in entries:
+            if entry.device_class == SensorDeviceClass.DURATION:
+                if entry.native_unit_of_measurement == UnitOfTime.SECONDS:
+                    entity_registry.async_update_entity(
+                        entry.entity_id,
+                        native_unit_of_measurement=UnitOfTime.MILLISECONDS,
+                    )
+        hass.config_entries.async_update_entry(config_entry, version=3)
+        LOGGER.debug("Migration to version 3 successful")
 
     return True

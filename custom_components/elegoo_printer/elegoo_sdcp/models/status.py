@@ -3,7 +3,7 @@
 import json
 from typing import Any, List
 
-from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus
+from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus, PrinterType
 
 
 class CurrentFanSpeed:
@@ -82,7 +82,11 @@ class PrintInfo:
         task_id (str): Current Task ID.
     """
 
-    def __init__(self, data: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        data: dict[str, Any] | None = None,
+        printer_type: PrinterType | None = None,
+    ) -> None:
         """
         Initialize a new PrintInfo object.
 
@@ -99,6 +103,9 @@ class PrintInfo:
         self.remaining_layers: int = self.total_layers - self.current_layer
         self.current_ticks: int = int(data.get("CurrentTicks", 0))
         self.total_ticks: int = int(data.get("TotalTicks", 0))
+        if printer_type == PrinterType.FDM:
+            self.current_ticks *= 1000
+            self.total_ticks *= 1000
         self.remaining_ticks: int = max(0, self.total_ticks - self.current_ticks)
         self.progress: int | None = data.get("Progress")
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
@@ -125,7 +132,11 @@ class PrinterStatus:
     Represents the status of a 3D printer.
     """
 
-    def __init__(self, data: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        data: dict[str, Any] | None = None,
+        printer_type: PrinterType | None = None,
+    ) -> None:
         """
         Initialize a new PrinterStatus object from a dictionary.
         """
@@ -165,10 +176,12 @@ class PrinterStatus:
         self.light_status = LightStatus(light_status_data)
 
         print_info_data = status.get("PrintInfo", {})
-        self.print_info: PrintInfo = PrintInfo(print_info_data)
+        self.print_info: PrintInfo = PrintInfo(print_info_data, printer_type)
 
     @classmethod
-    def from_json(cls, json_string: str) -> "PrinterStatus":
+    def from_json(
+        cls, json_string: str, printer_type: PrinterType | None = None
+    ) -> "PrinterStatus":
         """
         Create a PrinterStatus object from a JSON string.
         """
@@ -176,4 +189,4 @@ class PrinterStatus:
             data = json.loads(json_string)
         except json.JSONDecodeError:
             data = {}  # Or handle the error as needed
-        return cls(data)
+        return cls(data, printer_type)
