@@ -8,6 +8,9 @@ Bring your Elegoo 3D printers into Home Assistant! This integration allows you t
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=danielcherubini&repository=elegoo-homeassistant&category=Integration)
 
+<img width="2543" height="1485" alt="image" src="https://github.com/user-attachments/assets/d2010a5d-d9f2-473c-8c6c-60e64bb43f97" />
+
+
 ---
 
 ## ✨ Features
