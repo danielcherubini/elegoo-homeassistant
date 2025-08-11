@@ -57,6 +57,7 @@ The `Makefile` contains all the necessary commands for common development tasks.
 - Before committing any changes, please ensure that the code passes both the linter and the test suite.
 - Run `make fix` and `make test` to validate your changes.
 - Follow the existing code style and conventions.
+- **Always create a feature branch for new work. Do not commit directly to `main`**
 
 ## Logging
 
