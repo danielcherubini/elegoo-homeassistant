@@ -1,7 +1,6 @@
 """Models for the Elegoo printer."""
 
 import json
-from datetime import datetime, timedelta
 from typing import Any, List
 
 from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus, PrinterType
@@ -126,24 +125,6 @@ class PrintInfo:
             error_number_int
         )
         self.task_id: str | None = data.get("TaskId")
-
-    @property
-    def end_time(self) -> datetime | None:
-        """Calculate the estimated end time of the print job."""
-        if self.remaining_ticks > 0:
-            now = datetime.now()
-            total_seconds_remaining = self.remaining_ticks / 1000
-            future_datetime = now + timedelta(seconds=total_seconds_remaining)
-            return self.round_minute(future_datetime, 1)
-        return None
-
-    def round_minute(self, date: datetime = None, round_to: int = 1):
-        """Round datetime object to minutes"""
-        if not date:
-            date = datetime.now()
-        date = date.replace(second=0, microsecond=0)
-        delta = date.minute % round_to
-        return date.replace(minute=date.minute - delta)
 
 
 class PrinterStatus:
