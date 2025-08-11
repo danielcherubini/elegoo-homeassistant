@@ -568,7 +568,9 @@ class ElegooPrinterClient:
         """
         if DEBUG:
             self.logger.debug(f"status >> \n{json.dumps(data, indent=5)}")
-        printer_status = PrinterStatus.from_json(json.dumps(data))
+        printer_status = PrinterStatus.from_json(
+            json.dumps(data), self.printer.printer_type
+        )
         self.printer_data.status = printer_status
 
     def _attributes_handler(self, data: dict[str, Any]) -> None:
