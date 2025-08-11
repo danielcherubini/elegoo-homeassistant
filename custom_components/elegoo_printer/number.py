@@ -3,6 +3,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
+
 from .coordinator import ElegooDataUpdateCoordinator
 from .definitions import PRINTER_NUMBER_TYPES, ElegooPrinterNumberEntityDescription
 from .entity import ElegooPrinterEntity
@@ -17,11 +19,16 @@ async def async_setup_entry(
     Asynchronously sets up Elegoo printer number entities in Home Assistant.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
+    entities: list[ElegooNumber] = []
 
-    for description in PRINTER_NUMBER_TYPES:
-        async_add_entities(
-            [ElegooNumber(coordinator, description)], update_before_add=True
-        )
+    printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
+
+    if printer_type == PrinterType.FDM:
+        for description in PRINTER_NUMBER_TYPES:
+            entities.append(ElegooNumber(coordinator, description))
+
+    if entities:
+        async_add_entities(entities, update_before_add=True)
 
 
 class ElegooNumber(ElegooPrinterEntity, NumberEntity):
@@ -69,7 +76,7 @@ class ElegooNumber(ElegooPrinterEntity, NumberEntity):
         Asynchronously sets the value.
         """
         if self._api:
-            await self.entity_description.set_value_fn(self._api, value)
+            await self.entity_description.set_value_fn(self._api, int(value))
             if self._api.printer_data:
                 self.coordinator.async_set_updated_data(self._api.printer_data)
             self.async_write_ha_state()

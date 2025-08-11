@@ -457,7 +457,7 @@ PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
         native_step=1,
         mode="box",
         value_fn=lambda printer_data: printer_data.status.temp_target_nozzle,
-        set_value_fn=lambda api, value: api.async_set_target_nozzle_temp(value),
+        set_value_fn=lambda api, value: api.async_set_target_nozzle_temp(int(value)),
     ),
     ElegooPrinterNumberEntityDescription(
         key="target_bed_temp",
@@ -469,7 +469,7 @@ PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
         native_step=1,
         mode="box",
         value_fn=lambda printer_data: printer_data.status.temp_target_hotbed,
-        set_value_fn=lambda api, value: api.async_set_target_bed_temp(value),
+        set_value_fn=lambda api, value: api.async_set_target_bed_temp(int(value)),
     ),
 )
 
