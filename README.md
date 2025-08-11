@@ -143,6 +143,10 @@ The integration creates the following entities for your printer.
 
 This integration includes a blueprint to send notifications to your mobile device with the progress of your prints.
 
+<img width="400" height="auto" alt="image" src="https://github.com/user-attachments/assets/f131475a-6d12-44c6-8572-852f159d0045" />
+
+[Read more about it here](https://github.com/danielcherubini/elegoo-homeassistant/discussions/180)
+
 [![Open your Home Assistant instance and import the blueprint.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/danielcherubini/elegoo-homeassistant/blob/main/blueprints/automation/elegoo_printer/elegoo_printer_progress.yaml)
 
 ---
