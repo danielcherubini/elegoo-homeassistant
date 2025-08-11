@@ -107,6 +107,9 @@
           "nozzle_temp_sensor_offline": "Nozzle temperature sensor offline",
           "bed_temp_sensor_offline": "Bed temperature sensor offline"
         }
+      },
+      "end_time": {
+        "name": "End Time"
       }
     }
   }
