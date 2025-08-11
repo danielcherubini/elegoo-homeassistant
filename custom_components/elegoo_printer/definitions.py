@@ -158,6 +158,8 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=lambda printer_data: datetime.now(timezone.utc)
         + timedelta(milliseconds=printer_data.status.print_info.remaining_ticks),
+        available_fn=lambda printer_data: printer_data.status.print_info.remaining_ticks
+        > 0,
     ),
     ElegooPrinterSensorEntityDescription(
         key="total_layers",
