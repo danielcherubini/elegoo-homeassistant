@@ -17,6 +17,7 @@ Bring your Elegoo 3D printers into Home Assistant! This integration allows you t
 
 * **Broad Printer Support:** Compatible with a growing list of Elegoo resin and FDM printers.
 * **Comprehensive Sensor Data:** Exposes a wide range of printer attributes and real-time status sensors.
+* **Camera:** Monitor your print from anywhere.
 * **Live Print Thumbnails:** See an image of what you are currently printing directly in Home Assistant.
 * **Direct Printer Control:** Stop and pause prints, control temperatures, and adjust speeds.
 * **Local Proxy Server:** An optional built-in proxy to bypass printer connection limits, allowing multiple clients (slicers, monitoring tools) to connect simultaneously.
