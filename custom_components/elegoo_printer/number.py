@@ -77,6 +77,4 @@ class ElegooNumber(ElegooPrinterEntity, NumberEntity):
         """
         if self._api:
             await self.entity_description.set_value_fn(self._api, int(value))
-            if self._api.printer_data:
-                self.coordinator.async_set_updated_data(self._api.printer_data)
-            self.async_write_ha_state()
+            await self.coordinator.async_request_refresh()
