@@ -138,7 +138,7 @@ class PrintInfo:
         return None
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
-        """ Round datetime object to minutes"""
+        """Round datetime object to minutes"""
         if not date:
             date = datetime.now(timezone.utc)
 
