@@ -101,7 +101,7 @@ class PrintInfo:
         self.status: ElegooPrintStatus | None = ElegooPrintStatus.from_int(status_int)
         self.current_layer: int = data.get("CurrentLayer", 0)
         self.total_layers: int = data.get("TotalLayer", 0)
-        self.remaining_layers: int = self.total_layers - self.current_layer
+        self.remaining_layers: int = max(0, self.total_layers - self.current_layer)
         self.current_ticks: int = int(data.get("CurrentTicks", 0))
         self.total_ticks: int = int(data.get("TotalTicks", 0))
         if printer_type == PrinterType.FDM:
@@ -120,6 +120,12 @@ class PrintInfo:
                 )
             else:
                 self.percent_complete: int = 0
+
+        # Bug where printer sends 0 for percent and current layer if print finished
+        if self.status == ElegooPrintStatus.COMPLETE:
+            self.percent_complete = 100
+            self.current_layer = self.total_layers
+            self.remaining_layers = 0
         self.filename: str = data.get("Filename", "")
         error_number_int: int = data.get("ErrorNumber", 0)
         self.error_number: ElegooPrintError | None = ElegooPrintError.from_int(
