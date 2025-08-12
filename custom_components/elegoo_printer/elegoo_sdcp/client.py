@@ -588,7 +588,7 @@ class ElegooPrinterClient:
             data: Dictionary containing the printer status information in JSON-compatible format.
         """
         if DEBUG:
-            self.logger.debug(f"status >> \n{json.dumps(data, indent=5)}")
+            self.logger.info(f"status >> \n{json.dumps(data, indent=5)}")
         printer_status = PrinterStatus.from_json(
             json.dumps(data), self.printer.printer_type
         )
@@ -601,7 +601,7 @@ class ElegooPrinterClient:
             data: Dictionary containing printer attribute information.
         """
         if DEBUG:
-            self.logger.debug(f"attributes >> \n{json.dumps(data, indent=5)}")
+            self.logger.info(f"attributes >> \n{json.dumps(data, indent=5)}")
         printer_attributes = PrinterAttributes.from_json(json.dumps(data))
         self.printer_data.attributes = printer_attributes
 
