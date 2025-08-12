@@ -104,6 +104,9 @@ class PrintInfo:
         self.remaining_layers: int = self.total_layers - self.current_layer
         self.current_ticks: int = int(data.get("CurrentTicks", 0))
         self.total_ticks: int = int(data.get("TotalTicks", 0))
+        # Bug in CurrentTicks where it's greater than TotalTicks
+        if self.current_ticks > self.total_ticks:
+            self.current_ticks = self.total_ticks
         if printer_type == PrinterType.FDM:
             self.current_ticks *= 1000
             self.total_ticks *= 1000
