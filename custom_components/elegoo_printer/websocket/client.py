@@ -30,9 +30,14 @@ from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 from custom_components.elegoo_printer.sdcp.const import DEBUG, LOGGER
 from custom_components.elegoo_printer.sdcp.models.attributes import PrinterAttributes
 from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
-from custom_components.elegoo_printer.sdcp.models.print_history_detail import PrintHistoryDetail
+from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
+    PrintHistoryDetail,
+)
 from custom_components.elegoo_printer.sdcp.models.printer import Printer, PrinterData
-from custom_components.elegoo_printer.sdcp.models.status import LightStatus, PrinterStatus
+from custom_components.elegoo_printer.sdcp.models.status import (
+    LightStatus,
+    PrinterStatus,
+)
 
 logging.getLogger("websocket").setLevel(logging.CRITICAL)
 
