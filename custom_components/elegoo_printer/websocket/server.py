@@ -19,7 +19,6 @@ from custom_components.elegoo_printer.const import (
     VIDEO_PORT,
     WEBSOCKET_PORT,
 )
-
 from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 INADDR_ANY = "0.0.0.0"
@@ -350,7 +349,7 @@ class ElegooPrinterServer:
         allowed_headers = {
             "Sec-WebSocket-Version",
             "Sec-WebSocket-Key",
-            *"Sec-WebSocket-Protocol",
+            "Sec-WebSocket-Protocol",
             "Upgrade",
             "Connection",
         }

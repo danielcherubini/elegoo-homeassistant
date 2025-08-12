@@ -11,10 +11,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from custom_components.elegoo_printer.definitions import (
     ElegooPrinterSensorEntityDescription,
 )
+from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooMachineStatus,
 )
-from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 from .const import LOGGER
 from .definitions import PRINTER_IMAGES
@@ -80,7 +80,7 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
                 self._attr_image_last_updated = thumbnail_image.get_last_update_time()
                 self._cached_image = thumbnail_image.get_image()
                 self.image_url = task.thumbnail
-                self._attr_content_type = "image/jpg"
+                self._attr_content_type = "image/jpeg"
                 return thumbnail_image.get_bytes()
 
         elif self._cached_image:
