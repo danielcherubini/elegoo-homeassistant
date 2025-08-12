@@ -129,7 +129,9 @@ async def _async_validate_input(
             logger=LOGGER,
             session=async_get_clientsession(hass),
         )
-        printers = await hass.async_add_executor_job(elegoo_printer.discover_printer, ip_address)
+        printers = await hass.async_add_executor_job(
+            elegoo_printer.discover_printer, ip_address
+        )
         if printers:
             printer_object = printers[0]
         else:
