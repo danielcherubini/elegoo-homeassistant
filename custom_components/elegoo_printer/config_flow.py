@@ -14,7 +14,7 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import SelectOptionDict
 
-from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
+from .websocket.client import ElegooPrinterClient
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooConfigFlowConnectionError,
     ElegooConfigFlowGeneralError,
@@ -129,7 +129,7 @@ async def _async_validate_input(
             logger=LOGGER,
             session=async_get_clientsession(hass),
         )
-        printers = elegoo_printer.discover_printer(ip_address)
+        printers = await hass.async_add_executor_job(elegoo_printer.discover_printer, ip_address)
         if printers:
             printer_object = printers[0]
         else:

@@ -108,7 +108,7 @@ Here'''s a breakdown of the key files and directories in this repository and the
        * coordinator.py: Manages data updates and state synchronization between the printer and Home Assistant.
        * manifest.json: A required Home Assistant file providing metadata about the custom component (version, dependencies, etc.).
        * elegoo_mqtt/: Contains code for communicating with Elegoo printers via MQTT.
-       * elegoo_sdcp/: Contains code for communicating with Elegoo printers using their proprietary SDCP protocol.
+       * sdcp/: Contains code for processing Elegoo printer data.
            * client.py: The client implementation for the SDCP protocol.
            * models/: Python data models representing the data structures used in the SDCP protocol (e.g., printer status, print history).
        * translations/en.json: Contains English translations for the integration'''s user interface.
