@@ -20,19 +20,19 @@ from custom_components.elegoo_printer.const import (
     DISCOVERY_PORT,
     WEBSOCKET_PORT,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
+from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConfigurationError,
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
+from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
-from .const import DEBUG, LOGGER
-from .models.attributes import PrinterAttributes
-from .models.enums import ElegooFan
-from .models.print_history_detail import PrintHistoryDetail
-from .models.printer import Printer, PrinterData
-from .models.status import LightStatus, PrinterStatus
+from custom_components.elegoo_printer.sdcp.const import DEBUG, LOGGER
+from custom_components.elegoo_printer.sdcp.models.attributes import PrinterAttributes
+from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
+from custom_components.elegoo_printer.sdcp.models.print_history_detail import PrintHistoryDetail
+from custom_components.elegoo_printer.sdcp.models.printer import Printer, PrinterData
+from custom_components.elegoo_printer.sdcp.models.status import LightStatus, PrinterStatus
 
 logging.getLogger("websocket").setLevel(logging.CRITICAL)
 

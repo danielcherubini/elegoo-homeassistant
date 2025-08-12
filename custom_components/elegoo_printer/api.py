@@ -12,21 +12,21 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.httpx_client import get_async_client
 from PIL import Image as PILImage
 
-from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from custom_components.elegoo_printer.elegoo_sdcp.models.elegoo_image import ElegooImage
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import ElegooFan
-from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
+from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
+from custom_components.elegoo_printer.sdcp.models.elegoo_image import ElegooImage
+from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
+from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.models.printer import Printer
-from custom_components.elegoo_printer.elegoo_sdcp.server import ElegooPrinterServer
+from custom_components.elegoo_printer.sdcp.models.printer import Printer
+from custom_components.elegoo_printer.websocket.server import ElegooPrinterServer
 
 from .const import CONF_PROXY_ENABLED, LOGGER
 
 if TYPE_CHECKING:
     from logging import Logger
 
-    from custom_components.elegoo_printer.elegoo_sdcp.models.printer import PrinterData
+    from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
 
 
 class ElegooPrinterApiClient:

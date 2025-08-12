@@ -14,12 +14,12 @@ from custom_components.elegoo_printer.definitions import (
     PRINTER_MJPEG_CAMERAS,
     ElegooPrinterSensorEntityDescription,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
+from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooVideoStatus,
     PrinterType,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
+from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 from .coordinator import ElegooDataUpdateCoordinator

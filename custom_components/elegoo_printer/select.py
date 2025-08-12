@@ -3,7 +3,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
+from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
 
 from .coordinator import ElegooDataUpdateCoordinator
 from .definitions import PRINTER_SELECT_TYPES, ElegooPrinterSelectEntityDescription

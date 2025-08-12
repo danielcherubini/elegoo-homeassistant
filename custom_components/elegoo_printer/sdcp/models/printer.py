@@ -5,7 +5,7 @@ from types import MappingProxyType
 from typing import Any, Dict, Optional
 
 from custom_components.elegoo_printer.const import CONF_PROXY_ENABLED
-from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
+from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
 from .attributes import PrinterAttributes
 from .enums import PrinterType
