@@ -68,10 +68,8 @@ async def async_setup_entry(
         config_entry=entry,
     )
 
-    config = {
-        **(entry.data or {}),
-        **(entry.options or {}),
-    }
+    config = dict(entry.data)
+    config.update(entry.options)
 
     client = await ElegooPrinterApiClient.async_create(
         config=MappingProxyType(config),
@@ -127,10 +125,8 @@ async def async_migrate_entry(
     if config_entry.version == 1:
         try:
             # Migrating data by removing printer and re-adding it
-            config = {
-                **(config_entry.data or {}),
-                **(config_entry.options or {}),
-            }
+            config = dict(config_entry.data)
+            config.update(config_entry.options)
             ip_address = config.get(CONF_IP_ADDRESS)
             proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
             if ip_address is None:
@@ -174,10 +170,10 @@ async def async_migrate_entry(
         )
         for entry in entries:
             if entry.device_class == SensorDeviceClass.DURATION:
-                if entry.native_unit_of_measurement == UnitOfTime.SECONDS:
+                if entry.native_unit_of_measurement == UnitOfTime.SECONDS:  # type: ignore[attr-defined]
                     entity_registry.async_update_entity(
                         entry.entity_id,
-                        native_unit_of_measurement=UnitOfTime.MILLISECONDS,
+                        native_unit_of_measurement=UnitOfTime.MILLISECONDS,  # type: ignore[call-arg]
                     )
         hass.config_entries.async_update_entry(config_entry, version=3)
         LOGGER.debug("Migration to version 3 successful")
@@ -186,10 +182,8 @@ async def async_migrate_entry(
         LOGGER.debug("Migrating to version 4: updating unique IDs from 'name' to 'id'.")
         try:
             # --- 1. Get Old and New Identifiers ---
-            config = {
-                **(config_entry.data or {}),
-                **(config_entry.options or {}),
-            }
+            config = dict(config_entry.data)
+            config.update(config_entry.options)
             # Old ID was based on the 'name' field.
             old_identifier_name = config.get("name")
             # New stable ID is the 'id' field.

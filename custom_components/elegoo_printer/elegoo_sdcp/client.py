@@ -51,7 +51,7 @@ class ElegooPrinterClient:
         self,
         ip_address: str | None,
         session: aiohttp.ClientSession,
-        logger: Any = LOGGER,
+        logger: logging.Logger = LOGGER,
         config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
         """Initialize an ElegooPrinterClient for communicating with an Elegoo 3D printer.
@@ -363,7 +363,7 @@ class ElegooPrinterClient:
 
     def discover_printer(
         self, broadcast_address: str = DEFAULT_BROADCAST_ADDRESS
-    ) -> list[Printer]:
+    ) -> list[Printer] | None:
         """Broadcasts a UDP discovery message to locate Elegoo printers or proxies on the local network.
 
         Sends a discovery request and collects responses within a timeout period,
@@ -426,7 +426,7 @@ class ElegooPrinterClient:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 # Doesn't have to be reachable
                 s.connect((self.ip_address or DEFAULT_FALLBACK_IP, 1))
-                return s.getsockname()[0]
+                return str(s.getsockname()[0])
         except Exception:
             return "127.0.0.1"
 

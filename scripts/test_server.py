@@ -9,21 +9,23 @@ import socketserver
 import threading
 import time
 import uuid
+from typing import Any, Dict, Set
 
 import websockets
+from websockets.server import WebSocketServerProtocol  # type: ignore[attr-defined]
 
 # Server configuration
-HOST = "0.0.0.0"
-HTTP_PORT = 8000
-WS_PORT = 3030
-UDP_PORT = 3000
-MJPEG_PORT = 3031
-MAINBOARD_ID = "000000000001d354"
-PRINTER_IP = "127.0.0.1"
+HOST: str = "0.0.0.0"
+HTTP_PORT: int = 8000
+WS_PORT: int = 3030
+UDP_PORT: int = 3000
+MJPEG_PORT: int = 3031
+MAINBOARD_ID: str = "000000000001d354"
+PRINTER_IP: str = "127.0.0.1"
 
 
 # Printer state
-print_history = {
+print_history: Dict[str, Dict[str, Any]] = {
     "b9a8b8f8-8b8b-4b8b-8b8b-8b8b8b8b8b8b": {
         "TaskId": "b9a8b8f8-8b8b-4b8b-8b8b-8b8b8b8b8b8b",
         "TaskName": "test_print_1.gcode",
@@ -70,7 +72,7 @@ print_history = {
         "ErrorStatusReason": 1,
     },
 }
-printer_attributes = {
+printer_attributes: Dict[str, Any] = {
     "Name": "Centauri Carbon Test",
     "MachineName": "Centauri Carbon",
     "BrandName": "Centauri",
@@ -100,7 +102,7 @@ printer_attributes = {
     "SDCPStatus": 1,
 }
 
-printer_status = {
+printer_status: Dict[str, Any] = {
     "CurrentStatus": [0],  # Idle
     "PreviousStatus": 0,
     "TempOfNozzle": 25,
@@ -133,14 +135,16 @@ printer_status = {
     },
 }
 
-connected_clients = set()
+connected_clients: Set[WebSocketServerProtocol] = set()
 
 
-def get_timestamp():
+def get_timestamp() -> int:
     return int(time.time())
 
 
-def create_response(request_data, data):
+def create_response(
+    request_data: Dict[str, Any], data: Dict[str, Any]
+) -> Dict[str, Any]:
     return {
         "Id": str(uuid.uuid4()),
         "Data": {
@@ -154,7 +158,7 @@ def create_response(request_data, data):
     }
 
 
-def create_push_message(topic, data):
+def create_push_message(topic: str, data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "Id": str(uuid.uuid4()),
         "Data": data,
@@ -162,7 +166,7 @@ def create_push_message(topic, data):
     }
 
 
-async def send_status_update(websocket):
+async def send_status_update(websocket: WebSocketServerProtocol) -> None:
     status_data = {
         "Status": printer_status,
         "MainboardID": MAINBOARD_ID,
@@ -173,7 +177,7 @@ async def send_status_update(websocket):
     await websocket.send(json.dumps(status_data))
 
 
-async def send_attributes_update(websocket):
+async def send_attributes_update(websocket: WebSocketServerProtocol) -> None:
     attributes_data = {
         "Attributes": printer_attributes,
         "MainboardID": MAINBOARD_ID,
@@ -183,7 +187,7 @@ async def send_attributes_update(websocket):
     await websocket.send(json.dumps(message))
 
 
-async def send_history_update(websocket):
+async def send_history_update(websocket: WebSocketServerProtocol) -> None:
     history_data = {
         "Ack": 0,
         "HistoryData": list(print_history.keys()),
@@ -199,7 +203,9 @@ async def send_history_update(websocket):
     await websocket.send(json.dumps(message))
 
 
-async def send_history_detail(websocket, request_data):
+async def send_history_detail(
+    websocket: WebSocketServerProtocol, request_data: Dict[str, Any]
+) -> None:
     task_ids = request_data["Data"]["Data"]["Id"]
     history_details = [
         print_history[task_id] for task_id in task_ids if task_id in print_history
@@ -209,13 +215,15 @@ async def send_history_detail(websocket, request_data):
     await websocket.send(json.dumps(response))
 
 
-async def send_video_stream(websocket, request_data):
+async def send_video_stream(
+    websocket: WebSocketServerProtocol, request_data: Dict[str, Any]
+) -> None:
     response_data = {"Ack": 0, "VideoUrl": f"http://{PRINTER_IP}:{MJPEG_PORT}/video"}
     response = create_response(request_data, response_data)
     await websocket.send(json.dumps(response))
 
 
-async def simulate_printing():
+async def simulate_printing() -> None:
     print("Starting print simulation")
     pi = printer_status["PrintInfo"]
     while pi["CurrentLayer"] < pi["TotalLayer"] and printer_status["CurrentStatus"] == [
@@ -242,7 +250,7 @@ async def simulate_printing():
         }
 
 
-async def handler(websocket):
+async def handler(websocket: WebSocketServerProtocol) -> None:
     print(f"Client connected from {websocket.remote_address}")
     connected_clients.add(websocket)
     try:
@@ -271,7 +279,9 @@ async def handler(websocket):
         connected_clients.remove(websocket)
 
 
-async def handle_request(websocket, request):
+async def handle_request(
+    websocket: WebSocketServerProtocol, request: Dict[str, Any]
+) -> None:
     if "Data" not in request:
         print(f"Invalid request: {request}")
         return
@@ -333,7 +343,7 @@ async def handle_request(websocket, request):
         await websocket.send(json.dumps(response))
 
 
-async def udp_server(stop_event):
+async def udp_server(stop_event: asyncio.Event) -> None:
     loop = asyncio.get_running_loop()
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -363,15 +373,15 @@ async def udp_server(stop_event):
     print("UDP server shut down.")
 
 
-async def http_server(stop_event):
+async def http_server(stop_event: asyncio.Event) -> None:
     # Serve files from the script's directory without changing cwd
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
     class CustomHTTPHandler(http.server.SimpleHTTPRequestHandler):
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, directory=script_dir, **kwargs)
 
-        def send_header(self, keyword, value):
+        def send_header(self, keyword: str, value: str) -> None:
             if keyword.lower() == "content-type":
                 value = "text/plain; charset=utf-8"
             super().send_header(keyword, value)
@@ -387,7 +397,7 @@ async def http_server(stop_event):
 
 
 class MJPEGServerHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
+    def do_GET(self) -> None:
         self.send_response(200)
         self.send_header(
             "Content-type", "multipart/x-mixed-replace; boundary=--jpgboundary"
@@ -417,7 +427,7 @@ class MJPEGServerHandler(http.server.BaseHTTPRequestHandler):
         return
 
 
-async def mjpeg_server(stop_event):
+async def mjpeg_server(stop_event: asyncio.Event) -> None:
     class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         allow_reuse_address = True
         daemon_threads = True
@@ -443,7 +453,7 @@ async def mjpeg_server(stop_event):
     print("MJPEG server shut down.")
 
 
-async def main():
+async def main() -> None:
     stop_event = asyncio.Event()
 
     loop = asyncio.get_running_loop()
@@ -474,7 +484,7 @@ async def main():
     printer_status["PrintInfo"]["CurrentTicks"] = 1000
 
     # Start WebSocket server
-    server = await websockets.serve(handler, HOST, WS_PORT)
+    server = await websockets.serve(handler, HOST, WS_PORT)  # type: ignore[arg-type]
     print(f"WebSocket server started on {HOST}:{WS_PORT}")
     # Simulate printing progress in the background
     simulation_task = asyncio.create_task(simulate_printing())

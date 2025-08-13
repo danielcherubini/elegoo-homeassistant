@@ -53,7 +53,7 @@ class ElegooPrinterFan(ElegooPrinterEntity, FanEntity):
     @property
     def is_on(self) -> bool:
         """Return true if the fan is on."""
-        return self.entity_description.value_fn(self.printer_data)
+        return self.entity_description.value_fn(self.printer_data)  # type: ignore[attr-defined, no-any-return]
 
     async def async_turn_on(
         self,
@@ -64,27 +64,27 @@ class ElegooPrinterFan(ElegooPrinterEntity, FanEntity):
         """Turn the fan on."""
         if percentage is None:
             percentage = 100  # Default to 100% if no percentage is specified
-        await self.coordinator.config_entry.runtime_data.api.set_fan_speed(
-            percentage, ElegooFan.from_key(self.entity_description.key)
-        )
-        await self.coordinator.async_request_refresh()
+        if fan := ElegooFan.from_key(self.entity_description.key):
+            await self.coordinator.config_entry.runtime_data.api.set_fan_speed(
+                percentage, fan
+            )
+            await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the fan off."""
-        await self.coordinator.config_entry.runtime_data.api.set_fan_speed(
-            0, ElegooFan.from_key(self.entity_description.key)
-        )
-        await self.coordinator.async_request_refresh()
+        if fan := ElegooFan.from_key(self.entity_description.key):
+            await self.coordinator.config_entry.runtime_data.api.set_fan_speed(0, fan)
+            await self.coordinator.async_request_refresh()
 
     @property
     def supported_features(self) -> FanEntityFeature:
         """Return the list of supported features."""
-        return self.entity_description.supported_features
+        return self.entity_description.supported_features  # type: ignore[attr-defined, no-any-return]
 
     @property
     def percentage(self) -> int | None:
         """Return the current speed percentage."""
-        return self.entity_description.percentage_fn(self.printer_data)
+        return self.entity_description.percentage_fn(self.printer_data)  # type: ignore[attr-defined, no-any-return]
 
     @property
     def percentage_step(self) -> int:
@@ -108,10 +108,11 @@ class ElegooPrinterFan(ElegooPrinterEntity, FanEntity):
 
     async def async_set_percentage(self, percentage: int) -> None:
         """Set the speed of the fan."""
-        await self.coordinator.config_entry.runtime_data.api.set_fan_speed(
-            percentage, ElegooFan.from_key(self.entity_description.key)
-        )
-        await self.coordinator.async_request_refresh()
+        if fan := ElegooFan.from_key(self.entity_description.key):
+            await self.coordinator.config_entry.runtime_data.api.set_fan_speed(
+                percentage, fan
+            )
+            await self.coordinator.async_request_refresh()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set the preset mode of the fan."""

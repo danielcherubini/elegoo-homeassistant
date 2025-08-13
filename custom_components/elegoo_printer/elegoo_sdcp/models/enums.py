@@ -24,7 +24,7 @@ class ElegooMachineStatus(Enum):
     DEVICES_TESTING = 4
 
     @classmethod
-    def from_int(cls, status_int: int) -> Optional["ElegooMachineStatus"] | None:
+    def from_int(cls, status_int: int) -> Optional["ElegooMachineStatus"]:
         """
         Converts an integer to an ElegooMachineStatus enum member.
 
@@ -94,9 +94,10 @@ class ElegooPrintStatus(Enum):
     STOPPED = 8
     COMPLETE = 9
     FILE_CHECKING = 10
+    EXTRUDING = 13
 
     @classmethod
-    def from_int(cls, status_int: int) -> Optional["ElegooPrintStatus"] | None:
+    def from_int(cls, status_int: int) -> Optional["ElegooPrintStatus"]:
         """
         Converts an integer to an ElegooPrintStatus enum member.
 
@@ -136,7 +137,7 @@ class ElegooPrintError(Enum):
     UNKNOWN_MODEL = 5
 
     @classmethod
-    def from_int(cls, status_int: int) -> Optional["ElegooPrintError"] | None:
+    def from_int(cls, status_int: int) -> Optional["ElegooPrintError"]:
         """
         Convert an integer to the corresponding ElegooPrintError enum member.
 
@@ -167,7 +168,7 @@ class ElegooVideoStatus(Enum):
     UNKNOWN_ERROR = 3
 
     @classmethod
-    def from_int(cls, status_int: int) -> Optional["ElegooVideoStatus"] | None:
+    def from_int(cls, status_int: int) -> Optional["ElegooVideoStatus"]:
         """
         Convert an integer to the corresponding ElegooVideoStatus enum member.
 
@@ -258,7 +259,7 @@ class ElegooFan(Enum):
     BOX_FAN = "BoxFan"
 
     @classmethod
-    def from_key(cls, key: str) -> Optional["ElegooFan"] | None:
+    def from_key(cls, key: str) -> Optional["ElegooFan"]:
         """Convert a key to the corresponding ElegooFan enum member.
 
         Returns:

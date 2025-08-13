@@ -108,7 +108,7 @@ async def _async_validate_input(
         A dictionary containing the validated printer object under the "printer" key
         (or None if validation fails), and error details under the "errors" key.
     """
-    _errors = {}
+    _errors: dict[str, str] = {}
     printer_object: Printer | None = None
 
     if "printer_id" in user_input and discovered_printers:
@@ -189,9 +189,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         elegoo_printer_client = ElegooPrinterClient(
             "0.0.0.0", logger=LOGGER, session=async_get_clientsession(self.hass)
         )  # IP doesn't matter for discovery
-        self.discovered_printers = await self.hass.async_add_executor_job(
-            elegoo_printer_client.discover_printer
+        discovered = await self.hass.async_add_executor_job(
+            lambda: elegoo_printer_client.discover_printer()
         )
+        if discovered is None:
+            raise ElegooConfigFlowGeneralError("Discovery failed")
+        self.discovered_printers = discovered
 
         if self.discovered_printers:
             return await self.async_step_discover_printers()
@@ -216,7 +219,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             The result of the configuration flow step, advancing to the next step or
             displaying the selection form with any errors.
         """
-        _errors = {}
+        _errors: dict[str, str] = {}
 
         if user_input is not None:
             if user_input["selection"] == "manual_ip":
@@ -329,7 +332,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         Returns:
             The result of the configuration flow step.
         """
-        _errors = {}
+        _errors: dict[str, str] = {}
         if user_input is not None and self.selected_printer:
             printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
             printer_to_validate.proxy_enabled = user_input[CONF_PROXY_ENABLED]
@@ -427,13 +430,12 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         Returns:
             The result of the configuration flow step.
         """
-        _errors = {}
+        _errors: dict[str, str] = {}
         # Create a dictionary of the current settings by merging data and options.
         # This ensures the form is always populated with the current effective values.
-        current_settings = {
-            **(self.config_entry.data or {}),
-            **(self.config_entry.options or {}),
-        }
+        current_settings = dict(self.config_entry.data or {}) | dict(
+            self.config_entry.options or {}
+        )
         LOGGER.debug("data: %s", self.config_entry.data)
         LOGGER.debug("options: %s", self.config_entry.options)
         if user_input is not None:

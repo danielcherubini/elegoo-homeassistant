@@ -3,6 +3,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from custom_components.elegoo_printer.api import ElegooPrinterApiClient
 from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
 
 from .coordinator import ElegooDataUpdateCoordinator
@@ -45,15 +46,22 @@ class ElegooNumber(ElegooPrinterEntity, NumberEntity):
         super().__init__(coordinator)
         self.entity_description: ElegooPrinterNumberEntityDescription = description
 
-        self._api = None  # Initialize _api to None
+        self._api: ElegooPrinterApiClient | None = None
 
         self._attr_unique_id = coordinator.generate_unique_id(description.key)
-        self._attr_name = description.name
-        self._attr_native_min_value = description.native_min_value
-        self._attr_native_max_value = description.native_max_value
-        self._attr_native_step = description.native_step
-        self._attr_native_unit_of_measurement = description.native_unit_of_measurement
-        self._attr_mode = description.mode
+        self._attr_name = description.name  # type: ignore[assignment]
+        if description.native_min_value:
+            self._attr_native_min_value = description.native_min_value
+        if description.native_max_value:
+            self._attr_native_max_value = description.native_max_value
+        if description.native_step:
+            self._attr_native_step = description.native_step
+        if description.native_unit_of_measurement:
+            self._attr_native_unit_of_measurement = (
+                description.native_unit_of_measurement
+            )
+        if description.mode:
+            self._attr_mode = description.mode  # type: ignore[assignment]
 
     async def async_added_to_hass(self) -> None:
         """
@@ -63,7 +71,7 @@ class ElegooNumber(ElegooPrinterEntity, NumberEntity):
         self._api = self.coordinator.config_entry.runtime_data.api
 
     @property
-    def native_value(self):
+    def native_value(self) -> float | None:
         """
         Returns the current value.
         """

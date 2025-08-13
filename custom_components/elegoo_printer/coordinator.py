@@ -77,6 +77,6 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         Returns:
             str: The generated unique identifier.
         """
-        machine_id = self.config_entry.data["id"]
+        machine_id = str(self.config_entry.data["id"])
 
         return machine_id + "_" + key

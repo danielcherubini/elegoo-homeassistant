@@ -3,6 +3,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from custom_components.elegoo_printer.api import ElegooPrinterApiClient
 from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
 
 from .coordinator import ElegooDataUpdateCoordinator
@@ -42,11 +43,12 @@ class ElegooPrintSpeedSelect(ElegooPrinterEntity, SelectEntity):
         """
         super().__init__(coordinator)
         self.entity_description: ElegooPrinterSelectEntityDescription = description
-        self._api = None  # Initialize _api to None
+        self._api: ElegooPrinterApiClient | None = None
 
         self._attr_unique_id = coordinator.generate_unique_id(description.key)
-        self._attr_name = description.name
-        self._attr_options = description.options
+        self._attr_name = description.name  # type: ignore[assignment]
+        if description.options:
+            self._attr_options = description.options  # type: ignore[assignment]
 
     async def async_added_to_hass(self) -> None:
         """
@@ -56,7 +58,7 @@ class ElegooPrintSpeedSelect(ElegooPrinterEntity, SelectEntity):
         self._api = self.coordinator.config_entry.runtime_data.api
 
     @property
-    def current_option(self):
+    def current_option(self) -> str | None:
         """
         Returns the current selected option.
         """
@@ -64,7 +66,7 @@ class ElegooPrintSpeedSelect(ElegooPrinterEntity, SelectEntity):
             return self.entity_description.current_option_fn(self._api.printer_data)
         return None
 
-    async def async_select_option(self, option: str):
+    async def async_select_option(self, option: str) -> None:
         """
         Asynchronously selects an option.
         """
@@ -72,5 +74,5 @@ class ElegooPrintSpeedSelect(ElegooPrinterEntity, SelectEntity):
         if self._api:
             await self.entity_description.select_option_fn(self._api, value)
             if self._api.printer_data:
-                self.coordinator.async_set_updated_data(self._api.printer_data)
+                self.coordinator.async_set_updated_data(self._api.printer_data.__dict__)
             self.async_write_ha_state()

@@ -3,7 +3,7 @@
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.button import ButtonEntityDescription
 from homeassistant.components.fan import FanEntityDescription, FanEntityFeature
@@ -17,9 +17,13 @@ from homeassistant.helpers.typing import StateType
 
 from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
     ElegooMachineStatus,
+    ElegooPrintError,
     ElegooPrintStatus,
     ElegooVideoStatus,
 )
+
+if TYPE_CHECKING:
+    from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 
 
 async def _async_noop() -> None:
@@ -27,14 +31,14 @@ async def _async_noop() -> None:
     pass
 
 
-@dataclass
+@dataclass(frozen=True)
 class ElegooPrinterSensorEntityDescriptionMixin:
     """Mixin for required keys."""
 
     value_fn: Callable[..., datetime | StateType]
 
 
-@dataclass
+@dataclass(frozen=True)
 class ElegooPrinterSensorEntityDescription(
     ElegooPrinterSensorEntityDescriptionMixin, SensorEntityDescription
 ):
@@ -46,7 +50,7 @@ class ElegooPrinterSensorEntityDescription(
     icon_fn: Callable[..., str] = lambda _: "mdi:eye"
 
 
-@dataclass
+@dataclass(frozen=True)
 class ElegooPrinterLightEntityDescription(
     ElegooPrinterSensorEntityDescriptionMixin, LightEntityDescription
 ):
@@ -58,7 +62,7 @@ class ElegooPrinterLightEntityDescription(
     icon_fn: Callable[..., str] = lambda _: "mdi:lightbulb"
 
 
-@dataclass
+@dataclass(frozen=True)
 class ElegooPrinterButtonEntityDescription(ButtonEntityDescription):
     """Button entity description for Elegoo Printers."""
 
@@ -66,7 +70,7 @@ class ElegooPrinterButtonEntityDescription(ButtonEntityDescription):
     available_fn: Callable[..., bool] = lambda printer_data: printer_data
 
 
-@dataclass
+@dataclass(frozen=True)
 class ElegooPrinterFanEntityDescription(
     ElegooPrinterSensorEntityDescriptionMixin,
     FanEntityDescription,
@@ -81,7 +85,7 @@ class ElegooPrinterFanEntityDescription(
     supported_features: FanEntityFeature = FanEntityFeature(0)
 
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class ElegooPrinterSelectEntityDescription(SelectEntityDescription):
     """Select entity description for Elegoo Printers."""
 
@@ -90,7 +94,7 @@ class ElegooPrinterSelectEntityDescription(SelectEntityDescription):
     select_option_fn: Callable[..., Coroutine[Any, Any, None]]
 
 
-@dataclass(kw_only=True)
+@dataclass(kw_only=True, frozen=True)
 class ElegooPrinterNumberEntityDescription(NumberEntityDescription):
     """Number entity description for Elegoo Printers."""
 
@@ -222,6 +226,8 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         translation_key="current_status",
         name="Current Status",
         icon="mdi:file",
+        device_class=SensorDeviceClass.ENUM,
+        options=[status.name.lower() for status in ElegooMachineStatus],
         value_fn=lambda printer_data: printer_data.status.current_status.name.lower(),
         available_fn=lambda printer_data: printer_data.status.current_status
         is not None,
@@ -231,6 +237,8 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         translation_key="print_status",
         name="Print Status",
         icon="mdi:file",
+        device_class=SensorDeviceClass.ENUM,
+        options=[status.name.lower() for status in ElegooPrintStatus],
         value_fn=lambda printer_data: printer_data.status.print_info.status.name.lower(),
         available_fn=lambda printer_data: printer_data.status.print_info.status
         is not None,
@@ -240,6 +248,8 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         translation_key="print_error",
         name="Print Error",
         icon="mdi:file",
+        device_class=SensorDeviceClass.ENUM,
+        options=[status.name.lower() for status in ElegooPrintError],
         value_fn=lambda printer_data: printer_data.status.print_info.error_number.name.lower(),
         available_fn=lambda printer_data: printer_data.status.print_info.error_number
         is not None,
@@ -479,19 +489,19 @@ PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
 )
 
 
-async def _pause_print_action(client):
+async def _pause_print_action(client: "ElegooPrinterClient") -> None:
     """Pause print action."""
-    return await client.print_pause()
+    await client.print_pause()
 
 
-async def _resume_print_action(client):
+async def _resume_print_action(client: "ElegooPrinterClient") -> None:
     """Resume print action."""
-    return await client.print_resume()
+    await client.print_resume()
 
 
-async def _stop_print_action(client):
+async def _stop_print_action(client: "ElegooPrinterClient") -> None:
     """Stop print action."""
-    return await client.print_stop()
+    await client.print_stop()
 
 
 PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (

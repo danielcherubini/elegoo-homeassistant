@@ -1,11 +1,14 @@
 """Elegoo Printer Server and Proxy."""
 
+from __future__ import annotations
+
 import asyncio
 import json
+import logging
 import os
 import socket
 from threading import Event, Thread
-from typing import Any, List
+from typing import List
 
 import aiohttp
 from aiohttp import ClientSession, WSMsgType, web
@@ -32,7 +35,7 @@ class ElegooPrinterServer:
 
     _instances: List["ElegooPrinterServer"] = []
 
-    def __init__(self, printer: Printer, logger: Any):
+    def __init__(self, printer: Printer, logger: logging.Logger) -> None:
         """
         Initializes the Elegoo printer proxy server and starts HTTP/WebSocket, video, and UDP discovery proxy services in a background thread.
 
@@ -74,7 +77,7 @@ class ElegooPrinterServer:
             self.logger.info("Proxy server has started successfully.")
 
     @classmethod
-    def stop_all(cls):
+    def stop_all(cls: type[ElegooPrinterServer]) -> None:
         """Stops all running proxy server instances."""
         for instance in cls._instances:
             instance.stop()
@@ -103,7 +106,7 @@ class ElegooPrinterServer:
                 return False
         return True
 
-    def stop(self):
+    def stop(self) -> None:
         """
         Stops the proxy server and asynchronously cleans up all associated resources.
 
@@ -149,11 +152,11 @@ class ElegooPrinterServer:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 # Doesn't have to be reachable
                 s.connect((self.printer.ip_address or DEFAULT_FALLBACK_IP, 1))
-                return s.getsockname()[0]
+                return str(s.getsockname()[0])
         except Exception:
             return PROXY_HOST
 
-    def _start_servers_in_thread(self):
+    def _start_servers_in_thread(self) -> None:
         """
         Starts the HTTP/WebSocket, video, and UDP discovery proxy servers in a dedicated background thread with its own asyncio event loop.
 
@@ -167,7 +170,7 @@ class ElegooPrinterServer:
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
-        async def startup():
+        async def startup() -> None:
             """
             Asynchronously starts the HTTP/WebSocket proxy server, video proxy server, and UDP discovery server for the Elegoo printer proxy system.
 
@@ -222,18 +225,9 @@ class ElegooPrinterServer:
 
             # --- Start Discovery (UDP) Proxy Server ---
             try:
-
-                def discovery_factory():
-                    """
-                    Creates and returns a new DiscoveryProtocol instance configured with the current logger, printer, and local proxy IP address.
-                    """
-                    return DiscoveryProtocol(
-                        self.logger, self.printer, self.get_local_ip()
-                    )
-
                 if self.loop:
                     transport, _ = await self.loop.create_datagram_endpoint(
-                        discovery_factory, local_addr=(INADDR_ANY, DISCOVERY_PORT)
+                        self.discovery_factory, local_addr=(INADDR_ANY, DISCOVERY_PORT)
                     )
                     self.datagram_transport = transport
                     self.logger.info(
@@ -252,7 +246,7 @@ class ElegooPrinterServer:
             # Signal that startup is complete and successful
             self.startup_event.set()
 
-        async def cleanup():
+        async def cleanup() -> None:
             """
             Asynchronously closes the HTTP client session and cleans up all web application runners associated with the server.
             """
@@ -269,6 +263,12 @@ class ElegooPrinterServer:
         finally:
             self.loop.run_until_complete(cleanup())
             self.loop.close()
+
+    def discovery_factory(self) -> "DiscoveryProtocol":
+        """
+        Creates and returns a new DiscoveryProtocol instance configured with the current logger, printer, and local proxy IP address.
+        """
+        return DiscoveryProtocol(self.logger, self.printer, self.get_local_ip())
 
     async def _http_handler(self, request: web.Request) -> web.StreamResponse:
         """
@@ -367,7 +367,11 @@ class ElegooPrinterServer:
                 )
                 self._connection_failure_count = 0
 
-                async def forward(source, dest, direction):
+                async def forward(
+                    source: web.WebSocketResponse,
+                    dest: web.WebSocketResponse,
+                    direction: str,
+                ) -> None:
                     """
                     Forwards WebSocket messages from a source to a destination, handling both text and binary frames.
 
@@ -406,10 +410,10 @@ class ElegooPrinterServer:
 
                 # Create tasks to run the forwarding coroutines concurrently
                 to_printer = asyncio.create_task(
-                    forward(client_ws, remote_ws, "client-to-printer")
+                    forward(client_ws, remote_ws, "client-to-printer")  # type: ignore[arg-type]
                 )
                 to_client = asyncio.create_task(
-                    forward(remote_ws, client_ws, "printer-to-client")
+                    forward(remote_ws, client_ws, "printer-to-client")  # type: ignore[arg-type]
                 )
 
                 done, pending = await asyncio.wait(
@@ -417,8 +421,9 @@ class ElegooPrinterServer:
                 )
 
                 for task in done:
-                    if task.exception():
-                        raise task.exception()
+                    exc = task.exception()
+                    if exc:
+                        raise exc
 
                 for task in pending:
                     task.cancel()
@@ -439,7 +444,7 @@ class ElegooPrinterServer:
                 self.logger.info(
                     f"Connection failure {self._connection_failure_count}/3. Retrying..."
                 )
-        except Exception as e:
+        except BaseException as e:
             self.logger.error(f"WebSocket proxy error: {e}")
         finally:
             self.logger.info(f"WebSocket client disconnected from {request.remote}")
@@ -530,7 +535,7 @@ class ElegooPrinterServer:
 class DiscoveryProtocol(asyncio.DatagramProtocol):
     """Protocol to handle UDP discovery broadcasts by replying with printer info."""
 
-    def __init__(self, logger: Any, printer: Printer, proxy_ip: str):
+    def __init__(self, logger: logging.Logger, printer: Printer, proxy_ip: str) -> None:
         """
         Initialize the DiscoveryProtocol for handling UDP discovery requests.
 
@@ -542,12 +547,12 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         self.logger = logger
         self.printer = printer
         self.proxy_ip = proxy_ip
-        self.transport = None
+        self.transport: asyncio.BaseTransport | None = None
 
-    def connection_made(self, transport):
+    def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = transport
 
-    def datagram_received(self, data, addr):
+    def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
         """
         Handles incoming UDP datagrams for printer discovery requests.
 
@@ -570,7 +575,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
             }
             json_string = json.dumps(response_payload)
             if self.transport:
-                self.transport.sendto(json_string.encode(), addr)
+                self.transport.sendto(json_string.encode(), addr)  # type: ignore[attr-defined]
 
-    def error_received(self, exc):
+    def error_received(self, exc: Exception) -> None:
         self.logger.error(f"UDP Discovery Server Error: {exc}")

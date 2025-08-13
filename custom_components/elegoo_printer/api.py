@@ -182,32 +182,35 @@ class ElegooPrinterApiClient:
             LOGGER.debug("get_thumbnail no task, getting task")
             task = await self.async_get_task(include_last_task=False)
 
-        LOGGER.debug(
-            f"get_thumbnail got begin_time: {task.begin_time} url: {task.thumbnail}"
-        )
-        if task and task.thumbnail and task.begin_time is not None:
-            LOGGER.debug("get_thumbnail getting thumbnail from url")
-            try:
-                response = await self._hass_client.get(
-                    task.thumbnail, timeout=10, follow_redirects=True
-                )
-                response.raise_for_status()
-                LOGGER.debug("get_thumbnail response status: %s", response.status_code)
-                with PILImage.open(BytesIO(response.content)) as img:
-                    with BytesIO() as output:
-                        rgb_img = img.convert("RGB")
-                        rgb_img.save(output, format="JPEG")
-                        jpg_bytes = output.getvalue()
-                        LOGGER.debug("get_thumbnail converted image to jpg")
-                        thumbnail_image = ElegooImage(
-                            url=task.thumbnail,
-                            bytes=jpg_bytes,
-                            last_updated_timestamp=task.begin_time,
-                        )
-                        return thumbnail_image
-            except Exception as e:
-                LOGGER.error("Error fetching thumbnail: %s", e)
-                return None
+        if task:
+            LOGGER.debug(
+                f"get_thumbnail got begin_time: {task.begin_time} url: {task.thumbnail}"
+            )
+            if task and task.thumbnail and task.begin_time is not None:
+                LOGGER.debug("get_thumbnail getting thumbnail from url")
+                try:
+                    response = await self._hass_client.get(
+                        task.thumbnail, timeout=10, follow_redirects=True
+                    )
+                    response.raise_for_status()
+                    LOGGER.debug(
+                        "get_thumbnail response status: %s", response.status_code
+                    )
+                    with PILImage.open(BytesIO(response.content)) as img:
+                        with BytesIO() as output:
+                            rgb_img = img.convert("RGB")
+                            rgb_img.save(output, format="JPEG")
+                            jpg_bytes = output.getvalue()
+                            LOGGER.debug("get_thumbnail converted image to jpg")
+                            thumbnail_image = ElegooImage(
+                                url=task.thumbnail,
+                                bytes=jpg_bytes,
+                                last_updated_timestamp=task.begin_time,
+                            )
+                            return thumbnail_image
+                except Exception as e:
+                    LOGGER.error("Error fetching thumbnail: %s", e)
+                    return None
 
         LOGGER.debug("No task found")
         return None
@@ -263,7 +266,7 @@ class ElegooPrinterApiClient:
             bool: True if reconnection is successful, False otherwise.
         """
         printer = self.client.printer
-        if self._proxy_server_enabled:
+        if self._proxy_server_enabled and self.server:
             self.server.stop()
             self.server = ElegooPrinterServer(printer, logger=self._logger)
             printer = self.server.get_printer()

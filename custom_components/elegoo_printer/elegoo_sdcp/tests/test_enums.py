@@ -3,7 +3,7 @@
 from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
 
 
-def test_printer_type_from_model():
+def test_printer_type_from_model() -> None:
     """Test the from_model method of the PrinterType enum."""
     # Test FDM printers
     assert PrinterType.from_model("Centauri Carbon") == PrinterType.FDM

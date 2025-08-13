@@ -112,20 +112,19 @@ class PrintInfo:
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
 
         if self.progress is not None:
-            self.percent_complete: int = int(self.progress)
+            percent_complete = int(self.progress)
+        elif self.total_layers > 0:
+            percent_complete = int((self.current_layer / self.total_layers) * 100)
         else:
-            if self.total_layers > 0:
-                self.percent_complete: int = int(
-                    (self.current_layer / self.total_layers) * 100
-                )
-            else:
-                self.percent_complete: int = 0
+            percent_complete = 0
+        self.percent_complete: int = percent_complete
 
         # Bug where printer sends 0 for percent and current layer if print finished
         if self.status == ElegooPrintStatus.COMPLETE:
             self.percent_complete = 100
             self.current_layer = self.total_layers
             self.remaining_layers = 0
+
         self.filename: str = data.get("Filename", "")
         error_number_int: int = data.get("ErrorNumber", 0)
         self.error_number: ElegooPrintError | None = ElegooPrintError.from_int(

@@ -2,19 +2,17 @@
 
 import asyncio
 import os
-import sys
 
 import aiohttp
-from loguru import logger
+import logging
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG
 
 LOG_LEVEL = "INFO"
 PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.114")
 
-logger.remove()
-logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)
+logging.basicConfig(level=LOG_LEVEL)
+logger = logging.getLogger(__name__)
 
 
 async def main() -> None:

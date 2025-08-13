@@ -15,7 +15,16 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
+    "mypy>=1.11.0",
 ]
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+disallow_untyped_defs = true
+
 [tool.ruff]
 target-version = "py313"
 [lint]

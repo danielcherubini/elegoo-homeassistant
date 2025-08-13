@@ -84,7 +84,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
             True if the light is on, False if it is off, or None if the light status is unavailable.
         """
         # For the standard on/off light
-        return self.entity_description.value_fn(self.light_status)
+        return self.entity_description.value_fn(self.light_status)  # type: ignore[return-value]
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """

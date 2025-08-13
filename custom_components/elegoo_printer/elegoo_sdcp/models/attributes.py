@@ -1,5 +1,6 @@
 """Attributes models for Elegoo Printer."""
 
+import json
 from typing import Any
 
 
@@ -145,12 +146,10 @@ class PrinterAttributes:
             PrinterAttributes: A new PrinterAttributes object.
 
         """
-        import json
 
+        parsed_data: dict[str, Any]
         try:
-            data: dict[str, Any] = json.loads(json_string)
+            parsed_data = json.loads(json_string)
         except json.JSONDecodeError:
-            data: dict[
-                str, Any
-            ] = {}  # Return an empty object or handle the error as needed
-        return cls(data)
+            parsed_data = {}  # Return an empty object or handle the error as needed
+        return cls(parsed_data)

@@ -139,6 +139,6 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         used to determine availability based on the printer's video data. Otherwise,
         falls back to the default availability check.
         """
-        return super().available and self.entity_description.available_fn(
+        return super().available and self.entity_description.available_fn(  # type: ignore[attr-defined]
             self._printer_client.printer_data.video
         )
