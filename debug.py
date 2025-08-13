@@ -7,8 +7,8 @@ import sys
 import aiohttp
 from loguru import logger
 
-from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG
+from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
+from custom_components.elegoo_printer.sdcp.const import DEBUG
 
 LOG_LEVEL = "INFO"
 PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.114")

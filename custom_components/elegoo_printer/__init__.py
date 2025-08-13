@@ -21,7 +21,7 @@ from homeassistant.helpers.entity_registry import (
 )
 from homeassistant.loader import async_get_loaded_integration
 
-from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 from .api import ElegooPrinterApiClient
 from .const import CONF_PROXY_ENABLED, DOMAIN, LOGGER

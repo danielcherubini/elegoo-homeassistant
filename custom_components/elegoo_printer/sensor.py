@@ -15,7 +15,7 @@ from .definitions import (
     PRINTER_STATUS_RESIN,
     ElegooPrinterSensorEntityDescription,
 )
-from .elegoo_sdcp.models.enums import PrinterType
+from .sdcp.models.enums import PrinterType
 from .entity import ElegooPrinterEntity
 
 if TYPE_CHECKING:

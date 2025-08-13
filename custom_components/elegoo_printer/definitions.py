@@ -15,7 +15,7 @@ from homeassistant.components.sensor.const import SensorDeviceClass, SensorState
 from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfTemperature, UnitOfTime
 from homeassistant.helpers.typing import StateType
 
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooMachineStatus,
     ElegooPrintStatus,
     ElegooVideoStatus,

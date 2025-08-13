@@ -8,7 +8,7 @@ from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooFan,
     PrinterType,
 )

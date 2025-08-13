@@ -14,14 +14,13 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import SelectOptionDict
 
-from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
+from .const import CONF_PROXY_ENABLED, DOMAIN, LOGGER
+from .sdcp.exceptions import (
     ElegooConfigFlowConnectionError,
     ElegooConfigFlowGeneralError,
 )
-
-from .const import CONF_PROXY_ENABLED, DOMAIN, LOGGER
-from .elegoo_sdcp.models.printer import Printer
+from .sdcp.models.printer import Printer
+from .websocket.client import ElegooPrinterClient
 
 if TYPE_CHECKING:
     pass
@@ -129,7 +128,9 @@ async def _async_validate_input(
             logger=LOGGER,
             session=async_get_clientsession(hass),
         )
-        printers = elegoo_printer.discover_printer(ip_address)
+        printers = await hass.async_add_executor_job(
+            elegoo_printer.discover_printer, ip_address
+        )
         if printers:
             printer_object = printers[0]
         else:
