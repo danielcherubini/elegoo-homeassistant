@@ -8,23 +8,4 @@ logger:
   logs:
     custom_components.elegoo_printer: debug
 
-assist_pipeline:
-backup:
-config:
-conversation:
-dhcp:
-energy:
-history:
-homeassistant_alerts:
-cloud:
-image_upload:
-logbook:
-media_source:
-mobile_app:
-my:
-ssdp:
-stream:
-sun:
-usb:
-webhook:
-zeroconf:
+default_config:
