@@ -192,14 +192,20 @@ async def async_migrate_entry(
             }
             # Old ID was based on the 'name' field.
             old_identifier_name = config.get("name")
+            # New stable ID is the 'id' field.
+            new_identifier = config.get("id")
+
+            if not old_identifier_name or not new_identifier:
+                LOGGER.error(
+                    "Migration v3->v4 failed: 'name' or 'id' field is missing from config."
+                )
+                return False
+
             old_identifier_slug = old_identifier_name.lower().replace(" ", "_")
             LOGGER.debug(
                 "MIGRATION CHECK: Using old identifier prefix: '%s'",
                 old_identifier_slug,
             )
-
-            # New stable ID is the 'id' field.
-            new_identifier = config.get("id")
 
             if not old_identifier_slug or not new_identifier:
                 LOGGER.error(
