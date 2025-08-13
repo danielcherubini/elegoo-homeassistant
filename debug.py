@@ -10,8 +10,8 @@ from loguru import logger
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.const import DEBUG
 
-LOG_LEVEL = "DEBUG"
-PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.212")
+LOG_LEVEL = "INFO"
+PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.114")
 
 logger.remove()
 logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)
@@ -48,15 +48,19 @@ async def main() -> None:
                 if connected:
                     logger.debug("Polling Started")
                     await asyncio.sleep(2)
-                    task = await elegoo_printer.async_get_printer_current_task()
+                    await elegoo_printer.async_get_printer_current_task()
                     await elegoo_printer.async_get_printer_historical_tasks()
-                    # elegoo_printer.get_printer_attributes()
+                    # await elegoo_printer.get_printer_attributes()
                     while not stop_event.is_set():  # noqa: ASYNC110
-                        # await elegoo_printer.get_printer_status()
-                        task = await elegoo_printer.async_get_printer_last_task()
-                        if task is not None:
-                            logger.debug(task.thumbnail)
-                        await asyncio.sleep(2)
+                        printer_data = await elegoo_printer.get_printer_status()
+                        print_info = printer_data.status.print_info
+                        logger.info(
+                            f"remaining_ticks: {print_info.remaining_ticks} total_ticks: {print_info.total_ticks} current_ticks: {print_info.current_ticks}"
+                        )
+                        # task = await elegoo_printer.async_get_printer_last_task()
+                        # if task is not None:
+                        #     logger.debug(task.thumbnail)
+                        await asyncio.sleep(4)
             else:
                 logger.exception("No printers discovered.")
     except asyncio.CancelledError:

@@ -1,9 +1,10 @@
 """Models for the Elegoo printer."""
 
 import json
+from datetime import datetime, timedelta, timezone
 from typing import Any, List
 
-from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus
+from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus, PrinterType
 
 
 class CurrentFanSpeed:
@@ -82,7 +83,11 @@ class PrintInfo:
         task_id (str): Current Task ID.
     """
 
-    def __init__(self, data: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        data: dict[str, Any] | None = None,
+        printer_type: PrinterType | None = None,
+    ) -> None:
         """
         Initialize a new PrintInfo object.
 
@@ -96,9 +101,12 @@ class PrintInfo:
         self.status: ElegooPrintStatus | None = ElegooPrintStatus.from_int(status_int)
         self.current_layer: int = data.get("CurrentLayer", 0)
         self.total_layers: int = data.get("TotalLayer", 0)
-        self.remaining_layers: int = self.total_layers - self.current_layer
+        self.remaining_layers: int = max(0, self.total_layers - self.current_layer)
         self.current_ticks: int = int(data.get("CurrentTicks", 0))
         self.total_ticks: int = int(data.get("TotalTicks", 0))
+        if printer_type == PrinterType.FDM:
+            self.current_ticks *= 1000
+            self.total_ticks *= 1000
         self.remaining_ticks: int = max(0, self.total_ticks - self.current_ticks)
         self.progress: int | None = data.get("Progress")
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
@@ -112,6 +120,12 @@ class PrintInfo:
                 )
             else:
                 self.percent_complete: int = 0
+
+        # Bug where printer sends 0 for percent and current layer if print finished
+        if self.status == ElegooPrintStatus.COMPLETE:
+            self.percent_complete = 100
+            self.current_layer = self.total_layers
+            self.remaining_layers = 0
         self.filename: str = data.get("Filename", "")
         error_number_int: int = data.get("ErrorNumber", 0)
         self.error_number: ElegooPrintError | None = ElegooPrintError.from_int(
@@ -119,13 +133,39 @@ class PrintInfo:
         )
         self.task_id: str | None = data.get("TaskId")
 
+    @property
+    def end_time(self) -> datetime | None:
+        """Calculate the estimated end time of the print job."""
+        if self.remaining_ticks > 0:
+            now = datetime.now(timezone.utc)
+            total_seconds_remaining = self.remaining_ticks / 1000
+            future_datetime = now + timedelta(seconds=total_seconds_remaining)
+            return self.round_minute(future_datetime, 1)
+        return None
+
+    def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
+        """Round datetime object to minutes"""
+        if not date:
+            date = datetime.now(timezone.utc)
+
+        if not isinstance(round_to, int) or round_to <= 0:
+            raise ValueError("round_to must be a positive integer")
+
+        date = date.replace(second=0, microsecond=0)
+        delta = date.minute % round_to
+        return date.replace(minute=date.minute - delta)
+
 
 class PrinterStatus:
     """
     Represents the status of a 3D printer.
     """
 
-    def __init__(self, data: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        data: dict[str, Any] | None = None,
+        printer_type: PrinterType | None = None,
+    ) -> None:
         """
         Initialize a new PrinterStatus object from a dictionary.
         """
@@ -165,10 +205,12 @@ class PrinterStatus:
         self.light_status = LightStatus(light_status_data)
 
         print_info_data = status.get("PrintInfo", {})
-        self.print_info: PrintInfo = PrintInfo(print_info_data)
+        self.print_info: PrintInfo = PrintInfo(print_info_data, printer_type)
 
     @classmethod
-    def from_json(cls, json_string: str) -> "PrinterStatus":
+    def from_json(
+        cls, json_string: str, printer_type: PrinterType | None = None
+    ) -> "PrinterStatus":
         """
         Create a PrinterStatus object from a JSON string.
         """
@@ -176,4 +218,4 @@ class PrinterStatus:
             data = json.loads(json_string)
         except json.JSONDecodeError:
             data = {}  # Or handle the error as needed
-        return cls(data)
+        return cls(data, printer_type)

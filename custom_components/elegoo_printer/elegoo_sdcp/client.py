@@ -292,6 +292,27 @@ class ElegooPrinterClient:
         data = {"TargetFanSpeed": {fan.value: pct}}
         await self._send_printer_cmd(403, data)
 
+    async def set_print_speed(self, percentage: int) -> None:
+        """Set the print speed.
+
+        percentage: 0–160
+        """
+        pct = max(0, min(160, int(percentage)))
+        data = {"PrintSpeedPct": pct}
+        await self._send_printer_cmd(403, data)
+
+    async def set_target_nozzle_temp(self, temperature: int) -> None:
+        """Set the target nozzle temperature."""
+        clamped_temperature = max(0, min(320, int(temperature)))
+        data = {"TempTargetNozzle": clamped_temperature}
+        await self._send_printer_cmd(403, data)
+
+    async def set_target_bed_temp(self, temperature: int) -> None:
+        """Set the target bed temperature."""
+        clamped_temperature = max(0, min(110, int(temperature)))
+        data = {"TempTargetHotbed": clamped_temperature}
+        await self._send_printer_cmd(403, data)
+
     async def _send_printer_cmd(
         self, cmd: int, data: dict[str, Any] | None = None
     ) -> None:
@@ -567,8 +588,10 @@ class ElegooPrinterClient:
             data: Dictionary containing the printer status information in JSON-compatible format.
         """
         if DEBUG:
-            self.logger.debug(f"status >> \n{json.dumps(data, indent=5)}")
-        printer_status = PrinterStatus.from_json(json.dumps(data))
+            self.logger.info(f"status >> \n{json.dumps(data, indent=5)}")
+        printer_status = PrinterStatus.from_json(
+            json.dumps(data), self.printer.printer_type
+        )
         self.printer_data.status = printer_status
 
     def _attributes_handler(self, data: dict[str, Any]) -> None:
@@ -578,7 +601,7 @@ class ElegooPrinterClient:
             data: Dictionary containing printer attribute information.
         """
         if DEBUG:
-            self.logger.debug(f"attributes >> \n{json.dumps(data, indent=5)}")
+            self.logger.info(f"attributes >> \n{json.dumps(data, indent=5)}")
         printer_attributes = PrinterAttributes.from_json(json.dumps(data))
         self.printer_data.attributes = printer_attributes
 
