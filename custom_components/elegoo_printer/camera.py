@@ -121,12 +121,16 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         if not stream_url:
             return None
 
-        return await async_get_image(
-            self.hass,
-            stream_url,
-            width=width,
-            height=height,
-        )
+        try:
+            return await async_get_image(
+                self.hass,
+                stream_url,
+            )
+        except Exception as e:
+            LOGGER.error(
+                "Failed to get camera image via ffmpeg (ffmpeg may be missing): %s", e
+            )
+            return None
 
     @property
     def available(self) -> bool:
