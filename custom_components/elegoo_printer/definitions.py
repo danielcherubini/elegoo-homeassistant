@@ -428,6 +428,16 @@ PRINTER_MJPEG_CAMERAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
 )
 
+PRINTER_FFMPEG_CAMERAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+    ElegooPrinterSensorEntityDescription(
+        key="chamber_camera",
+        name="Chamber Camera",
+        value_fn=lambda camera_url: camera_url,
+        available_fn=lambda video: video.status is not None
+        and video.status == ElegooVideoStatus.SUCCESS,
+    ),
+)
+
 PRINTER_FDM_LIGHTS: tuple[ElegooPrinterLightEntityDescription, ...] = (
     ElegooPrinterLightEntityDescription(
         key="second_light",
