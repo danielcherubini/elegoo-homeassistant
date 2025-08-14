@@ -16,7 +16,9 @@ from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfTemperature, Uni
 from homeassistant.helpers.typing import StateType
 
 from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+    ElegooErrorStatusReason,
     ElegooMachineStatus,
+    ElegooPrintError,
     ElegooPrintStatus,
     ElegooVideoStatus,
 )
@@ -222,6 +224,8 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         translation_key="current_status",
         name="Current Status",
         icon="mdi:file",
+        device_class=SensorDeviceClass.ENUM,
+        options=[status.name.lower() for status in ElegooMachineStatus],
         value_fn=lambda printer_data: printer_data.status.current_status.name.lower(),
         available_fn=lambda printer_data: printer_data.status.current_status
         is not None,
@@ -231,6 +235,8 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         translation_key="print_status",
         name="Print Status",
         icon="mdi:file",
+        device_class=SensorDeviceClass.ENUM,
+        options=[status.name.lower() for status in ElegooPrintStatus],
         value_fn=lambda printer_data: printer_data.status.print_info.status.name.lower(),
         available_fn=lambda printer_data: printer_data.status.print_info.status
         is not None,
@@ -240,6 +246,8 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         translation_key="print_error",
         name="Print Error",
         icon="mdi:file",
+        device_class=SensorDeviceClass.ENUM,
+        options=[error.name.lower() for error in ElegooPrintError],
         value_fn=lambda printer_data: printer_data.status.print_info.error_number.name.lower(),
         available_fn=lambda printer_data: printer_data.status.print_info.error_number
         is not None,
@@ -249,6 +257,8 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         translation_key="error_status_reason",
         name="Print Error Reason",
         icon="mdi:file",
+        device_class=SensorDeviceClass.ENUM,
+        options=[reason.name.lower() for reason in ElegooErrorStatusReason],
         available_fn=lambda printer_data: printer_data
         and printer_data.print_history
         and printer_data.status.print_info.task_id in printer_data.print_history
