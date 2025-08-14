@@ -1,4 +1,4 @@
-from typing import Any
+from datetime import datetime, timedelta
 
 from homeassistant.components.camera import Camera
 from homeassistant.components.ffmpeg import async_get_image
@@ -85,24 +85,39 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         self.stream_options = {
             "extra_arguments": "-fflags nobuffer -flags low_delay",
         }
+        self._cached_video_url: str | None = None
+        self._cached_video_url_time: datetime | None = None
 
-    async def stream_source(self) -> str | None:
-        """Return the source of the stream."""
+    async def _get_stream_url(self) -> str | None:
+        """Get the stream URL, from cache if recent."""
+        if (
+            self._cached_video_url
+            and self._cached_video_url_time
+            and (datetime.now() - self._cached_video_url_time) < timedelta(seconds=5)
+        ):
+            return self._cached_video_url
+
         video = await self._printer_client.get_printer_video(toggle=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug(
                 f"stream_source: Video is OK, using printer video url: {video.video_url}"
             )
-            return video.video_url
+            self._cached_video_url = video.video_url
+            self._cached_video_url_time = datetime.now()
+            return self._cached_video_url
 
         LOGGER.error(f"stream_source: Failed to get video stream: {video.status}")
         return None
+
+    async def stream_source(self) -> str | None:
+        """Return the source of the stream."""
+        return await self._get_stream_url()
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
         """Return a still image response from the camera."""
-        stream_url = await self.stream_source()
+        stream_url = await self._get_stream_url()
         if not stream_url:
             return None
 
