@@ -131,7 +131,9 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
     @property
     def available(self) -> bool:
         """Return whether the camera entity is currently available."""
-        return ElegooPrinterEntity.available.fget(self) and self.entity_description.available_fn(
+        return ElegooPrinterEntity.available.fget(
+            self
+        ) and self.entity_description.available_fn(
             self._printer_client.printer_data.video
         )
 
