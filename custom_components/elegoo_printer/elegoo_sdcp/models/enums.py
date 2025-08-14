@@ -72,7 +72,7 @@ class ElegooPrintStatus(Enum):
         IDLE: The print job is idle and not actively printing.
         HOMING: The printer is resetting or homing its axes.
         DROPPING: The print platform is descending.
-        EXPOSURING: The printer is exposing the resin/material.
+        PRINTING: The printer is currently printing.
         LIFTING: The print platform is lifting.
         PAUSING: The printer is in the process of pausing the print job.
         PAUSED: The print job is currently paused.
@@ -80,13 +80,14 @@ class ElegooPrintStatus(Enum):
         STOPPED: The print job is stopped.
         COMPLETE: The print job has completed successfully.
         FILE_CHECKING: The printer is currently checking the print file.
+        LOADING: The printer is loading filament.
 
     """
 
     IDLE = 0
     HOMING = 1
     DROPPING = 2
-    EXPOSURING = 3
+    PRINTING = 3
     LIFTING = 4
     PAUSING = 5
     PAUSED = 6
@@ -94,7 +95,8 @@ class ElegooPrintStatus(Enum):
     STOPPED = 8
     COMPLETE = 9
     FILE_CHECKING = 10
-    EXTRUDING = 13
+    RECOVERY = 12
+    LOADING = 15
 
     @classmethod
     def from_int(cls, status_int: int) -> Optional["ElegooPrintStatus"] | None:
@@ -109,8 +111,12 @@ class ElegooPrintStatus(Enum):
             integer is not a valid status value.
 
         """  # noqa: D401
+        if status_int in [16, 18, 19, 20, 21]:
+            return cls.LOADING
+        if status_int == 13:
+            return cls.PRINTING
         try:
-            return cls(status_int)  # Use cls() to create enum members
+            return cls(status_int)
         except ValueError:
             return None
 

@@ -49,18 +49,19 @@
       "print_status": {
         "name": "Print Status",
         "state": {
-          "idle": "The print job is idle and not actively printing.",
-          "homing": "The printer is resetting or homing its axes.",
-          "dropping": "The print platform is descending.",
-          "exposuring": "The printer is exposing the resin/material.",
-          "lifting": "The print platform is lifting.",
-          "pausing": "The printer is in the process of pausing the print job.",
-          "paused": "The print job is currently paused.",
-          "stopping": "The printer is in the process of stopping the print job.",
-          "stopped": "The print job is stopped.",
-          "complete": "The print job has completed successfully.",
-          "file_checking": "The printer is currently checking the print file.",
-          "extruding": "The printer is extruding filament (printing)"
+          "idle": "Idle",
+          "homing": "Homing",
+          "dropping": "Dropping",
+          "printing": "Printing",
+          "lifting": "Lifting",
+          "pausing": "Pausing",
+          "paused": "Paused",
+          "stopping": "Stopping",
+          "stopped": "Stopped",
+          "complete": "Complete",
+          "file_checking": "Checking File",
+          "recovery": "Recovery",
+          "loading": "Loading"
         }
       },
       "current_status": {
@@ -68,9 +69,9 @@
         "state": {
           "idle": "Idle",
           "printing": "Printing",
-          "file_transferring": "File transferring",
-          "exposure_testing": "Exposure testing",
-          "devices_testing": "Devices testing"
+          "file_transferring": "File Transferring",
+          "exposure_testing": "Exposure Testing",
+          "devices_testing": "Device Testing"
         }
       },
       "print_error": {
