@@ -59,7 +59,8 @@
           "stopping": "The printer is in the process of stopping the print job.",
           "stopped": "The print job is stopped.",
           "complete": "The print job has completed successfully.",
-          "file_checking": "The printer is currently checking the print file."
+          "file_checking": "The printer is currently checking the print file.",
+          "extruding": "The printer is extruding filament (printing)"
         }
       },
       "current_status": {

@@ -94,6 +94,7 @@ class ElegooPrintStatus(Enum):
     STOPPED = 8
     COMPLETE = 9
     FILE_CHECKING = 10
+    EXTRUDING = 13
 
     @classmethod
     def from_int(cls, status_int: int) -> Optional["ElegooPrintStatus"] | None:
@@ -180,7 +181,7 @@ class ElegooVideoStatus(Enum):
             return None
 
 
-class ErrorStatusReason(Enum):
+class ElegooErrorStatusReason(Enum):
     """
     Represents the reason for a print job status or error.
 
@@ -230,12 +231,12 @@ class ErrorStatusReason(Enum):
     BED_TEMP_SENSOR_OFFLINE = 34
 
     @classmethod
-    def from_int(cls, status_int: int) -> Optional["ErrorStatusReason"]:
+    def from_int(cls, status_int: int) -> Optional["ElegooErrorStatusReason"]:
         """
-        Convert an integer to the corresponding ErrorStatusReason enum member.
+        Convert an integer to the corresponding ElegooErrorStatusReason enum member.
 
         Returns:
-            The matching ErrorStatusReason member if the integer is valid; otherwise, None.
+            The matching ElegooErrorStatusReason member if the integer is valid; otherwise, None.
         """
         try:
             return cls(status_int)
