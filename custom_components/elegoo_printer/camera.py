@@ -96,7 +96,8 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
             if (
                 self._cached_video_url
                 and self._cached_video_url_time
-                and (datetime.now() - self._cached_video_url_time) < timedelta(seconds=5)
+                and (datetime.now() - self._cached_video_url_time)
+                < timedelta(seconds=5)
             ):
                 return self._cached_video_url
 
