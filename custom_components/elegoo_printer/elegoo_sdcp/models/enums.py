@@ -310,7 +310,7 @@ class PrinterType(Enum):
             "Mars 5 Ultra",
             "Saturn 4",
             "Saturn 4 Ultra",
-            "Saturn 4 Ultra 16k",
+            "Saturn 4 Ultra 16K",
         ]
 
         if model in fdm_printers:

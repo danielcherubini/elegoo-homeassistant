@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta
 
 from homeassistant.components.camera import Camera
@@ -87,27 +88,29 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         }
         self._cached_video_url: str | None = None
         self._cached_video_url_time: datetime | None = None
+        self._url_lock = asyncio.Lock()
 
     async def _get_stream_url(self) -> str | None:
         """Get the stream URL, from cache if recent."""
-        if (
-            self._cached_video_url
-            and self._cached_video_url_time
-            and (datetime.now() - self._cached_video_url_time) < timedelta(seconds=5)
-        ):
-            return self._cached_video_url
+        async with self._url_lock:
+            if (
+                self._cached_video_url
+                and self._cached_video_url_time
+                and (datetime.now() - self._cached_video_url_time) < timedelta(seconds=5)
+            ):
+                return self._cached_video_url
 
-        video = await self._printer_client.get_printer_video(toggle=True)
-        if video.status and video.status == ElegooVideoStatus.SUCCESS:
-            LOGGER.debug(
-                f"stream_source: Video is OK, using printer video url: {video.video_url}"
-            )
-            self._cached_video_url = video.video_url
-            self._cached_video_url_time = datetime.now()
-            return self._cached_video_url
+            video = await self._printer_client.get_printer_video(toggle=True)
+            if video.status and video.status == ElegooVideoStatus.SUCCESS:
+                LOGGER.debug(
+                    f"stream_source: Video is OK, using printer video url: {video.video_url}"
+                )
+                self._cached_video_url = video.video_url
+                self._cached_video_url_time = datetime.now()
+                return self._cached_video_url
 
-        LOGGER.error(f"stream_source: Failed to get video stream: {video.status}")
-        return None
+            LOGGER.error(f"stream_source: Failed to get video stream: {video.status}")
+            return None
 
     async def stream_source(self) -> str | None:
         """Return the source of the stream."""
