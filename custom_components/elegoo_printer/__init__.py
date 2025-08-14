@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import CONF_IP_ADDRESS, Platform, UnitOfTime
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_registry import (
     EntityRegistry,
@@ -180,4 +182,101 @@ async def async_migrate_entry(
         hass.config_entries.async_update_entry(config_entry, version=3)
         LOGGER.debug("Migration to version 3 successful")
 
+    if config_entry.version == 3:
+        LOGGER.debug("Migrating to version 4: updating unique IDs from 'name' to 'id'.")
+        try:
+            # --- 1. Get Old and New Identifiers ---
+            config = {
+                **(config_entry.data or {}),
+                **(config_entry.options or {}),
+            }
+            # Old ID was based on the 'name' field.
+            old_identifier_name = config.get("name")
+            # New stable ID is the 'id' field.
+            new_identifier = config.get("id")
+
+            if not old_identifier_name or not new_identifier:
+                LOGGER.error(
+                    "Migration v3->v4 failed: 'name' or 'id' field is missing from config."
+                )
+                return False
+
+            old_identifier_slug = old_identifier_name.lower().replace(" ", "_")
+            LOGGER.debug(
+                "MIGRATION CHECK: Using old identifier prefix: '%s'",
+                old_identifier_slug,
+            )
+
+            if not old_identifier_slug or not new_identifier:
+                LOGGER.error(
+                    "Migration v3->v4 failed: 'name' or 'id' field is missing from config."
+                )
+                return False
+
+            if old_identifier_slug == new_identifier:
+                LOGGER.debug("Identifier is already up-to-date. Finalizing migration.")
+                hass.config_entries.async_update_entry(config_entry, version=4)
+                return True
+
+            # --- 2. Get Device and Entity Registries ---
+            device_registry = dr.async_get(hass)
+            entity_registry = er.async_get(hass)
+
+            # --- 3. Migrate the Device Registry ---
+            device_entries = dr.async_entries_for_config_entry(
+                device_registry, config_entry.entry_id
+            )
+            device_entry = device_entries[0] if device_entries else None
+            if device_entry:
+                new_identifiers = {(DOMAIN, new_identifier)}
+                LOGGER.debug("Updating device identifiers to %s", new_identifiers)
+                device_registry.async_update_device(
+                    device_entry.id, new_identifiers=new_identifiers
+                )
+
+            # --- 4. Migrate the Entity Registry ---
+            entity_entries = er.async_get(
+                hass
+            ).entities.get_entries_for_config_entry_id(config_entry.entry_id)
+            for entry in entity_entries:
+                LOGGER.debug(
+                    "MIGRATION CHECK: Comparing with entity unique_id: '%s'",
+                    entry.unique_id,
+                )
+                # If it's the camera entity, remove it so it can be recreated cleanly.
+                if entry.domain == "camera":
+                    LOGGER.debug(
+                        "Removing old camera entity '%s' to allow for clean re-creation.",
+                        entry.entity_id,
+                    )
+                    entity_registry.async_remove(entry.entity_id)
+                    continue  # Skip to the next entity
+
+                # Check if the entity's unique_id uses the old identifier
+                if entry.unique_id.lower().startswith(old_identifier_slug.lower()):
+                    LOGGER.debug("MIGRATION MATCH FOUND!")
+                    # Replace the old identifier prefix with the new one
+                    new_unique_id = entry.unique_id.replace(
+                        old_identifier_slug, new_identifier, 1
+                    )
+                    LOGGER.debug(
+                        "Migrating entity '%s' to new unique_id: %s",
+                        entry.entity_id,
+                        new_unique_id,
+                    )
+                    entity_registry.async_update_entity(
+                        entry.entity_id, new_unique_id=new_unique_id
+                    )
+
+            # --- 5. Update Config Entry Version ---
+            hass.config_entries.async_update_entry(config_entry, version=4)
+            LOGGER.info(
+                "Migration to version 4 successful for printer ID %s", new_identifier
+            )
+
+        except Exception as e:
+            LOGGER.error(
+                "Error migrating config entry to version 4: %s", e, exc_info=True
+            )
+            return False
     return True
