@@ -1,6 +1,5 @@
 from http import HTTPStatus
 
-import homeassistant
 from aiohttp import web
 from haffmpeg.camera import CameraMjpeg
 from homeassistant.components.camera import Camera, CameraEntityFeature
@@ -9,7 +8,6 @@ from homeassistant.components.ffmpeg import (
     async_get_image,
 )
 from homeassistant.components.mjpeg.camera import MjpegCamera
-from homeassistant.components.stream.const import CONF_RTSP_TRANSPORT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_stream
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -36,18 +34,6 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVide
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 from .coordinator import ElegooDataUpdateCoordinator
-
-
-def normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
-    """Checks if video_object.video_url starts with 'http://' and adds it if missing.
-
-    Args:
-        video_object: The video object to normalize.
-    """
-    if not video_object.video_url.startswith("http://"):
-        video_object.video_url = "http://" + video_object.video_url
-
-    return video_object
 
 
 async def async_setup_entry(
@@ -82,7 +68,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
     def __init__(
         self,
-        hass: homeassistant,
+        hass: HomeAssistant,
         coordinator: ElegooDataUpdateCoordinator,
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
@@ -97,30 +83,15 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         self._attr_name = description.name
         self._attr_unique_id = coordinator.generate_unique_id(description.key)
 
-        # For HLS stream worker
-        self.stream_options = {
-            CONF_RTSP_TRANSPORT: "udp",
-            "ffmpeg_options": {
-                "rtsp_transport": "udp",
-                "err_detect": "ignore_err",
-                "fflags": "nobuffer",
-                "analyzeduration": "10M",
-                "probesize": "5M",
-            },
-        }
-
         # For MJPEG stream
-        self._extra_ffmpeg_arguments = "-rtsp_transport udp"
-        self._elegoo_video = None
-        self.stream = None
-        self._create_stream_lock = None
+        self._extra_ffmpeg_arguments = "-rtsp_transport udp -fflags nobuffer"
 
     @property
     def supported_features(self) -> CameraEntityFeature:
         """Return supported features."""
         return self._attr_supported_features
 
-    async def _get_stream(self) -> ElegooVideo | None:
+    async def _get_stream_url(self) -> str | None:
         """Get the stream URL, from cache if recent."""
 
         video = await self._printer_client.get_printer_video(toggle=True)
@@ -128,19 +99,16 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
             LOGGER.debug(
                 f"stream_source: Video is OK, using printer video url: {video.video_url}"
             )
-            self._elegoo_video = video
-            return video
+            return video.video_url
 
-        LOGGER.error(f"stream_source: Failed to get video stream: {video.status}")
-        self._elegoo_video = None
         return None
 
     async def handle_async_mjpeg_stream(
         self, request: web.Request
     ) -> web.StreamResponse:
         """Generate an HTTP MJPEG stream from the camera."""
-        elegoo_stream = await self._get_stream()
-        if not elegoo_stream or not elegoo_stream.video_url:
+        stream_url = await self._get_stream_url()
+        if not stream_url:
             return web.Response(
                 status=HTTPStatus.SERVICE_UNAVAILABLE,
                 reason="Stream URL not available",
@@ -149,7 +117,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         ffmpeg_manager = self.hass.data[DOMAIN]
         mjpeg_stream = CameraMjpeg(ffmpeg_manager.binary)
         await mjpeg_stream.open_camera(
-            elegoo_stream.video_url, extra_cmd=self._extra_ffmpeg_arguments
+            stream_url, extra_cmd=self._extra_ffmpeg_arguments
         )
 
         try:
@@ -165,21 +133,20 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
     async def stream_source(self) -> str | None:
         """Return the source of the stream."""
-        stream = await self._get_stream()
-        return stream.video_url
+        return await self._get_stream_url()
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
         """Return a still image response from the camera."""
-        stream = await self._get_stream()
-        if not stream or not stream.video_url:
+        stream_url = await self._get_stream_url()
+        if not stream_url:
             return None
 
         try:
             return await async_get_image(
                 self.hass,
-                input_source=stream.video_url,
+                input_source=stream_url,
             )
         except Exception as e:
             LOGGER.error(
@@ -227,6 +194,17 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             coordinator.config_entry.runtime_data.api.client
         )
 
+    def _normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
+        """Checks if video_object.video_url starts with 'http://' and adds it if missing.
+
+        Args:
+            video_object: The video object to normalize.
+        """
+        if not video_object.video_url.startswith("http://"):
+            video_object.video_url = "http://" + video_object.video_url
+
+        return video_object
+
     async def _update_stream_url(self) -> None:
         """Update the MJPEG stream URL."""
         video = await self._printer_client.get_printer_video(toggle=True)
@@ -240,7 +218,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
                     "stream_source: Proxy is disabled using printer video url: %s",
                     video.video_url,
                 )
-                self._mjpeg_url = normalize_video_url(video).video_url
+                self._mjpeg_url = self._normalize_video_url(video).video_url
         else:
             LOGGER.error("stream_source: Failed to get video stream: %s", video.status)
             self._mjpeg_url = None
