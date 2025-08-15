@@ -1,10 +1,16 @@
-import asyncio
-from datetime import datetime, timedelta
+from http import HTTPStatus
 
-from homeassistant.components.camera import Camera
-from homeassistant.components.ffmpeg import async_get_image
+import homeassistant
+from aiohttp import web
+from haffmpeg.camera import CameraMjpeg
+from homeassistant.components.camera import Camera, CameraEntityFeature
+from homeassistant.components.ffmpeg import (
+    DOMAIN,
+    async_get_image,
+)
 from homeassistant.components.mjpeg.camera import MjpegCamera
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_stream
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.elegoo_printer.const import (
@@ -51,7 +57,9 @@ async def async_setup_entry(
     """Asynchronously sets up Elegoo camera entities."""
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
     printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
-
+    printer_client: ElegooPrinterClient = (
+        coordinator.config_entry.runtime_data.api.client
+    )
     if printer_type == PrinterType.FDM:
         LOGGER.debug(f"Adding {len(PRINTER_MJPEG_CAMERAS)} Camera entities")
         for camera in PRINTER_MJPEG_CAMERAS:
@@ -59,10 +67,11 @@ async def async_setup_entry(
                 [ElegooMjpegCamera(hass, coordinator, camera)], update_before_add=True
             )
     elif printer_type == PrinterType.RESIN:
+        await printer_client.get_printer_video(toggle=True)
         LOGGER.debug(f"Adding {len(PRINTER_FFMPEG_CAMERAS)} Camera entities")
         for camera in PRINTER_FFMPEG_CAMERAS:
             async_add_entities(
-                [ElegooStreamCamera(coordinator, camera)],
+                [ElegooStreamCamera(hass, coordinator, camera)],
                 update_before_add=True,
             )
 
@@ -72,46 +81,86 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
     def __init__(
         self,
+        hass: homeassistant,
         coordinator: ElegooDataUpdateCoordinator,
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
         """Initialize an Elegoo stream camera entity."""
-        ElegooPrinterEntity.__init__(self, coordinator)
         Camera.__init__(self)
+        ElegooPrinterEntity.__init__(self, coordinator)
+
         self.entity_description = description
         self._printer_client: ElegooPrinterClient = (
             coordinator.config_entry.runtime_data.api.client
         )
+        self._attr_name = description.name
         self._attr_unique_id = coordinator.generate_unique_id(description.key)
+        self._attr_supported_features = CameraEntityFeature.STREAM
+
+        # For HLS stream worker
         self.stream_options = {
-            "extra_arguments": "-fflags nobuffer -flags low_delay",
+            "rtsp_transport": "udp",
+            "err_detect": "ignore_err",
+            "fflags": "nobuffer",
+            "analyzeduration": "10M",
+            "probesize": "5M",
         }
-        self._cached_video_url: str | None = None
-        self._cached_video_url_time: datetime | None = None
-        self._url_lock = asyncio.Lock()
+        # For MJPEG stream
+        self._extra_ffmpeg_arguments = "-rtsp_transport udp"
+
+    @property
+    def supported_features(self) -> CameraEntityFeature:
+        """Return supported features."""
+        return self._attr_supported_features
 
     async def _get_stream_url(self) -> str | None:
         """Get the stream URL, from cache if recent."""
-        async with self._url_lock:
-            if (
-                self._cached_video_url
-                and self._cached_video_url_time
-                and (datetime.now() - self._cached_video_url_time)
-                < timedelta(seconds=5)
-            ):
-                return self._cached_video_url
+        # if self._printer_client.printer_data.attributes.num_video_stream_connected > 2:
+        #     return None
+        #
+        # if (
+        #     self._printer_client.printer_data.video is not None
+        #     and self._printer_client.printer_data.video.video_url is not None
+        # ):
+        #     return self._printer_client.printer_data.video.video_url
 
-            video = await self._printer_client.get_printer_video(toggle=True)
-            if video.status and video.status == ElegooVideoStatus.SUCCESS:
-                LOGGER.debug(
-                    f"stream_source: Video is OK, using printer video url: {video.video_url}"
-                )
-                self._cached_video_url = video.video_url
-                self._cached_video_url_time = datetime.now()
-                return self._cached_video_url
+        video = await self._printer_client.get_printer_video(toggle=True)
+        if video.status and video.status == ElegooVideoStatus.SUCCESS:
+            LOGGER.debug(
+                f"stream_source: Video is OK, using printer video url: {video.video_url}"
+            )
+            return video.video_url
 
-            LOGGER.error(f"stream_source: Failed to get video stream: {video.status}")
-            return None
+        LOGGER.error(f"stream_source: Failed to get video stream: {video.status}")
+        return None
+
+    async def handle_async_mjpeg_stream(
+        self, request: web.Request
+    ) -> web.StreamResponse:
+        """Generate an HTTP MJPEG stream from the camera."""
+        stream_url = await self._get_stream_url()
+        if not stream_url:
+            return web.Response(
+                status=HTTPStatus.SERVICE_UNAVAILABLE,
+                reason="Stream URL not available",
+            )
+
+        ffmpeg_manager = self.hass.data[DOMAIN]
+        stream = CameraMjpeg(ffmpeg_manager.binary)
+        await stream.open_camera(
+            stream_url, extra_cmd=self._extra_ffmpeg_arguments
+        )
+
+        try:
+            stream_reader = await stream.get_reader()
+            return await async_aiohttp_proxy_stream(
+                self.hass,
+                request,
+                stream_reader,
+                ffmpeg_manager.ffmpeg_stream_content_type,
+            )
+        finally:
+            await stream.close()
 
     async def stream_source(self) -> str | None:
         """Return the source of the stream."""
@@ -128,7 +177,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         try:
             return await async_get_image(
                 self.hass,
-                stream_url,
+                input_source=stream_url,
             )
         except Exception as e:
             LOGGER.error(
@@ -139,12 +188,13 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
     @property
     def available(self) -> bool:
         """Return whether the camera entity is currently available."""
+        LOGGER.debug(
+            f"ElegooStreamCamera.available: {self._printer_client.printer_data.video.video_url}"
+        )
         return (
             super().available
-            and self._printer_client.printer_data.video is not None
-            and self.entity_description.available_fn(
-                self._printer_client.printer_data.video
-            )
+            and self._printer_client.printer_data.attributes.num_video_stream_connected
+            <= 2
         )
 
 
@@ -178,22 +228,8 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             coordinator.config_entry.runtime_data.api.client
         )
 
-    async def async_camera_image(
-        self, width: int | None = None, height: int | None = None
-    ) -> bytes | None:
-        """Asynchronously retrieves the current MJPEG stream URL for the printer camera.
-
-        If the printer video stream is successfully enabled, returns either a local
-        proxy URL or the direct printer video URL based on configuration. Otherwise,
-        returns the last known MJPEG URL.
-
-        Args:
-            width: The desired width of the image.
-            height: The desired height of the image.
-
-        Returns:
-            The MJPEG stream URL for the camera.
-        """
+    async def _update_stream_url(self) -> None:
+        """Update the MJPEG stream URL."""
         video = await self._printer_client.get_printer_video(toggle=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug("stream_source: Video is OK, getting stream source")
@@ -202,14 +238,29 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
                 self._mjpeg_url = f"http://{PROXY_HOST}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"
             else:
                 LOGGER.debug(
-                    f"stream_source: Proxy is disabled using printer video url: {video.video_url}"
+                    "stream_source: Proxy is disabled using printer video url: %s",
+                    video.video_url,
                 )
-
                 self._mjpeg_url = normalize_video_url(video).video_url
-
         else:
-            LOGGER.error(f"stream_source: Failed to get video stream: {video.status}")
+            LOGGER.error("stream_source: Failed to get video stream: %s", video.status)
+            self._mjpeg_url = None
+
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
+        """Asynchronously retrieves the current MJPEG stream URL for the printer camera."""
+        await self._update_stream_url()
+        if not self._mjpeg_url:
+            return None
         return await super().async_camera_image(width=width, height=height)
+
+    async def handle_async_mjpeg_stream(
+        self, request: web.Request
+    ) -> web.StreamResponse:
+        """Generate an HTTP MJPEG stream from the camera."""
+        await self._update_stream_url()
+        return await super().handle_async_mjpeg_stream(request)
 
     @property
     def available(self) -> bool:
