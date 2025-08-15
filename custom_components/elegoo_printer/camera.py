@@ -9,7 +9,6 @@ from homeassistant.components.ffmpeg import (
     async_get_image,
 )
 from homeassistant.components.mjpeg.camera import MjpegCamera
-from homeassistant.components.stream import Stream
 from homeassistant.components.stream.const import CONF_RTSP_TRANSPORT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_stream
@@ -97,7 +96,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         )
         self._attr_name = description.name
         self._attr_unique_id = coordinator.generate_unique_id(description.key)
-        self._attr_supported_features = CameraEntityFeature.STREAM
+        self._attr_supported_features = 0
 
         # For HLS stream worker
         self.stream_options = {
@@ -135,9 +134,6 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
         LOGGER.error(f"stream_source: Failed to get video stream: {video.status}")
         self._elegoo_video = None
-        return None
-
-    async def async_create_stream(self) -> Stream | None:
         return None
 
     async def handle_async_mjpeg_stream(
