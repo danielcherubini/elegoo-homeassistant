@@ -96,7 +96,6 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         )
         self._attr_name = description.name
         self._attr_unique_id = coordinator.generate_unique_id(description.key)
-        self._attr_supported_features = 0
 
         # For HLS stream worker
         self.stream_options = {
