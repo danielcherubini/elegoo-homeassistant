@@ -9,6 +9,7 @@ from homeassistant.components.ffmpeg import (
     async_get_image,
 )
 from homeassistant.components.mjpeg.camera import MjpegCamera
+from homeassistant.components.stream import Stream
 from homeassistant.components.stream.const import CONF_RTSP_TRANSPORT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_stream
@@ -123,14 +124,6 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
     async def _get_stream(self) -> ElegooVideo | None:
         """Get the stream URL, from cache if recent."""
-        # if self._printer_client.printer_data.attributes.num_video_stream_connected > 2:
-        #     return None
-        #
-        # if (
-        #     self._printer_client.printer_data.video is not None
-        #     and self._printer_client.printer_data.video.video_url is not None
-        # ):
-        #     return self._printer_client.printer_data.video.video_url
 
         video = await self._printer_client.get_printer_video(toggle=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
@@ -144,33 +137,8 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         self._elegoo_video = None
         return None
 
-    # async def async_create_stream(self) -> Stream | None:
-    #     """Create a Stream for stream_source."""
-    #     # There is at most one stream (a decode worker) per camera
-    #     if not self._create_stream_lock:
-    #         self._create_stream_lock = asyncio.Lock()
-    #     async with self._create_stream_lock:
-    #         if not self.stream:
-    #             async with asyncio.timeout(CAMERA_STREAM_SOURCE_TIMEOUT):
-    #                 source = await self.stream_source()
-    #             if not source:
-    #                 return None
-    #             try:
-    #                 self.stream = create_stream(
-    #                     self.hass,
-    #                     source,
-    #                     options=self.stream_options,
-    #                     dynamic_stream_settings=await self.hass.data[
-    #                         DATA_CAMERA_PREFS
-    #                     ].get_dynamic_stream_settings(self.entity_id),
-    #                     stream_label=self.entity_id,
-    #                 )
-    #
-    #                 self.stream.set_update_callback(self.async_write_ha_state)
-    #             except HomeAssistantError:
-    #                 LOGGER.debug("Error creating stream")
-    #                 pass
-    #         return self.stream
+    async def async_create_stream(self) -> Stream | None:
+        return None
 
     async def handle_async_mjpeg_stream(
         self, request: web.Request
