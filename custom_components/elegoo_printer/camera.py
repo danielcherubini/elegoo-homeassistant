@@ -44,9 +44,7 @@ async def async_setup_entry(
     """Asynchronously sets up Elegoo camera entities."""
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
     printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
-    printer_client: ElegooPrinterClient = (
-        coordinator.config_entry.runtime_data.api.client
-    )
+
     if printer_type == PrinterType.FDM:
         LOGGER.debug(f"Adding {len(PRINTER_MJPEG_CAMERAS)} Camera entities")
         for camera in PRINTER_MJPEG_CAMERAS:
@@ -54,7 +52,6 @@ async def async_setup_entry(
                 [ElegooMjpegCamera(hass, coordinator, camera)], update_before_add=True
             )
     elif printer_type == PrinterType.RESIN:
-        await printer_client.get_printer_video(toggle=True)
         LOGGER.debug(f"Adding {len(PRINTER_FFMPEG_CAMERAS)} Camera entities")
         for camera in PRINTER_FFMPEG_CAMERAS:
             async_add_entities(
@@ -94,7 +91,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
     async def _get_stream_url(self) -> str | None:
         """Get the stream URL, from cache if recent."""
 
-        video = await self._printer_client.get_printer_video(toggle=True)
+        video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug(
                 f"stream_source: Video is OK, using printer video url: {video.video_url}"
@@ -207,7 +204,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     async def _update_stream_url(self) -> None:
         """Update the MJPEG stream URL."""
-        video = await self._printer_client.get_printer_video(toggle=True)
+        video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug("stream_source: Video is OK, getting stream source")
             if self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False):
