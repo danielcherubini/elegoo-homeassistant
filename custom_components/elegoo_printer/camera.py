@@ -109,13 +109,14 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         }
         # For MJPEG stream
         self._extra_ffmpeg_arguments = "-rtsp_transport udp"
+        self._elegoo_video = None
 
     @property
     def supported_features(self) -> CameraEntityFeature:
         """Return supported features."""
         return self._attr_supported_features
 
-    async def _get_stream_url(self) -> str | None:
+    async def _get_stream(self) -> ElegooVideo | None:
         """Get the stream URL, from cache if recent."""
         # if self._printer_client.printer_data.attributes.num_video_stream_connected > 2:
         #     return None
@@ -131,16 +132,19 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
             LOGGER.debug(
                 f"stream_source: Video is OK, using printer video url: {video.video_url}"
             )
-            return video.video_url
+            self._elegoo_video = video
+            return video
 
         LOGGER.error(f"stream_source: Failed to get video stream: {video.status}")
+        self._elegoo_video = None
         return None
 
     async def handle_async_mjpeg_stream(
         self, request: web.Request
     ) -> web.StreamResponse:
         """Generate an HTTP MJPEG stream from the camera."""
-        stream_url = await self._get_stream_url()
+        stream = await self._get_stream()
+        stream_url = stream.video_url
         if not stream_url:
             return web.Response(
                 status=HTTPStatus.SERVICE_UNAVAILABLE,
@@ -164,20 +168,21 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
     async def stream_source(self) -> str | None:
         """Return the source of the stream."""
-        return await self._get_stream_url()
+        stream = await self._get_stream()
+        return stream.video_url
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
         """Return a still image response from the camera."""
-        stream_url = await self._get_stream_url()
-        if not stream_url:
+        stream: ElegooVideo | None = await self._get_stream()
+        if not stream and stream.video_url:
             return None
 
         try:
             return await async_get_image(
                 self.hass,
-                input_source=stream_url,
+                input_source=stream.video_url,
             )
         except Exception as e:
             LOGGER.error(
@@ -188,13 +193,11 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
     @property
     def available(self) -> bool:
         """Return whether the camera entity is currently available."""
-        LOGGER.debug(
-            f"ElegooStreamCamera.available: {self._printer_client.printer_data.video.video_url}"
-        )
         return (
             super().available
             and self._printer_client.printer_data.attributes.num_video_stream_connected
             <= 2
+            and self.entity_description.available_fn(self._elegoo_video)
         )
 
 
