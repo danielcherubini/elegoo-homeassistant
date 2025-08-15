@@ -1,15 +1,22 @@
+import asyncio
 from http import HTTPStatus
 
 import homeassistant
 from aiohttp import web
 from haffmpeg.camera import CameraMjpeg
 from homeassistant.components.camera import Camera, CameraEntityFeature
+from homeassistant.components.camera.const import (
+    CAMERA_STREAM_SOURCE_TIMEOUT,
+    DATA_CAMERA_PREFS,
+)
 from homeassistant.components.ffmpeg import (
     DOMAIN,
     async_get_image,
 )
 from homeassistant.components.mjpeg.camera import MjpegCamera
+from homeassistant.components.stream import Stream, create_stream
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_stream
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -110,6 +117,8 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         # For MJPEG stream
         self._extra_ffmpeg_arguments = "-rtsp_transport udp"
         self._elegoo_video = None
+        self.stream = None
+        self._create_stream_lock = None
 
     @property
     def supported_features(self) -> CameraEntityFeature:
@@ -139,24 +148,53 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         self._elegoo_video = None
         return None
 
+    async def async_create_stream(self) -> Stream | None:
+        """Create a Stream for stream_source."""
+        # There is at most one stream (a decode worker) per camera
+        if not self._create_stream_lock:
+            self._create_stream_lock = asyncio.Lock()
+        async with self._create_stream_lock:
+            if not self.stream:
+                async with asyncio.timeout(CAMERA_STREAM_SOURCE_TIMEOUT):
+                    source = await self.stream_source()
+                if not source:
+                    return None
+                try:
+                    self.stream = create_stream(
+                        self.hass,
+                        source,
+                        options=self.stream_options,
+                        dynamic_stream_settings=await self.hass.data[
+                            DATA_CAMERA_PREFS
+                        ].get_dynamic_stream_settings(self.entity_id),
+                        stream_label=self.entity_id,
+                    )
+
+                    self.stream.set_update_callback(self.async_write_ha_state)
+                except HomeAssistantError:
+                    LOGGER.debug("Error creating stream")
+                    pass
+            return self.stream
+
     async def handle_async_mjpeg_stream(
         self, request: web.Request
     ) -> web.StreamResponse:
         """Generate an HTTP MJPEG stream from the camera."""
-        stream = await self._get_stream()
-        stream_url = stream.video_url
-        if not stream_url:
+        elegoo_stream = await self._get_stream()
+        if not elegoo_stream or not elegoo_stream.video_url:
             return web.Response(
                 status=HTTPStatus.SERVICE_UNAVAILABLE,
                 reason="Stream URL not available",
             )
 
         ffmpeg_manager = self.hass.data[DOMAIN]
-        stream = CameraMjpeg(ffmpeg_manager.binary)
-        await stream.open_camera(stream_url, extra_cmd=self._extra_ffmpeg_arguments)
+        mjpeg_stream = CameraMjpeg(ffmpeg_manager.binary)
+        await mjpeg_stream.open_camera(
+            elegoo_stream.video_url, extra_cmd=self._extra_ffmpeg_arguments
+        )
 
         try:
-            stream_reader = await stream.get_reader()
+            stream_reader = await mjpeg_stream.get_reader()
             return await async_aiohttp_proxy_stream(
                 self.hass,
                 request,
@@ -164,7 +202,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
                 ffmpeg_manager.ffmpeg_stream_content_type,
             )
         finally:
-            await stream.close()
+            await mjpeg_stream.close()
 
     async def stream_source(self) -> str | None:
         """Return the source of the stream."""
@@ -175,8 +213,8 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
         """Return a still image response from the camera."""
-        stream: ElegooVideo | None = await self._get_stream()
-        if not stream and stream.video_url:
+        stream = await self._get_stream()
+        if not stream or not stream.video_url:
             return None
 
         try:
@@ -197,7 +235,6 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
             super().available
             and self._printer_client.printer_data.attributes.num_video_stream_connected
             <= 2
-            and self.entity_description.available_fn(self._elegoo_video)
         )
 
 
