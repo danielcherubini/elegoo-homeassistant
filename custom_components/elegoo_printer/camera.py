@@ -1,27 +1,16 @@
-import asyncio
 from http import HTTPStatus
 
 import homeassistant
 from aiohttp import web
 from haffmpeg.camera import CameraMjpeg
 from homeassistant.components.camera import Camera, CameraEntityFeature
-from homeassistant.components.camera.const import (
-    CAMERA_STREAM_SOURCE_TIMEOUT,
-    DATA_CAMERA_PREFS,
-)
 from homeassistant.components.ffmpeg import (
     DOMAIN,
     async_get_image,
 )
 from homeassistant.components.mjpeg.camera import MjpegCamera
-from homeassistant.components.stream import (
-    CONF_USE_WALLCLOCK_AS_TIMESTAMPS,
-    Stream,
-    create_stream,
-)
 from homeassistant.components.stream.const import CONF_RTSP_TRANSPORT
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_stream
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
