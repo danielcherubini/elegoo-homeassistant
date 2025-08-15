@@ -99,11 +99,13 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
         # For HLS stream worker
         self.stream_options = {
-            "rtsp_transport": "udp",
-            "err_detect": "ignore_err",
-            "fflags": "nobuffer",
-            "analyzeduration": "10M",
-            "probesize": "5M",
+            "ffmpeg_options": {
+                "rtsp_transport": "udp",
+                "err_detect": "ignore_err",
+                "fflags": "nobuffer",
+                "analyzeduration": "10M",
+                "probesize": "5M",
+            }
         }
         # For MJPEG stream
         self._extra_ffmpeg_arguments = "-rtsp_transport udp"
@@ -147,9 +149,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
         ffmpeg_manager = self.hass.data[DOMAIN]
         stream = CameraMjpeg(ffmpeg_manager.binary)
-        await stream.open_camera(
-            stream_url, extra_cmd=self._extra_ffmpeg_arguments
-        )
+        await stream.open_camera(stream_url, extra_cmd=self._extra_ffmpeg_arguments)
 
         try:
             stream_reader = await stream.get_reader()
