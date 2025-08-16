@@ -304,19 +304,19 @@ class PrinterType(Enum):
         if model is None:
             return None
 
-        fdm_printers = ["Centauri Carbon", "Centauri"]
+        fdm_printers = ["centauri carbon", "centauri"]
         resin_printers = [
-            "Mars 5",
-            "Mars 5 Ultra",
-            "Saturn 4",
-            "Saturn 4 Ultra",
-            "Saturn 4 Ultra 16k",
+            "mars 5",
+            "mars 5 ultra",
+            "saturn 4",
+            "saturn 4 ultra",
+            "saturn 4 ultra 16k",
         ]
 
-        if model in fdm_printers:
+        if model.lower() in fdm_printers:
             return cls.FDM
 
-        if model in resin_printers:
+        if model.lower() in resin_printers:
             return cls.RESIN
 
         return None
