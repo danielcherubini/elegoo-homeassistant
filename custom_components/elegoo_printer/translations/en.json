@@ -45,7 +45,13 @@
     },
     "error": {
       "connection": "Unable to connect to the printer.",
-      "unknown": "Unknown error occurred."
+      "unknown": "Unknown error occurred.",
+      "invalid_printer_selection": "Invalid printer selection.",
+      "no_printer_found": "No printer could be found at the specified IP address.",
+      "validation_no_printer_found": "Validation failed: No printer was found.",
+      "no_printer_selected_or_ip_provided": "Please select a discovered printer or provide an IP address.",
+      "manual_options_no_printer_found": "The selected printer could not be found to apply options.",
+      "init_no_printer_found": "Failed to initialize: The printer could not be found."
     },
     "abort": {
       "already_configured": "This entry is already configured."

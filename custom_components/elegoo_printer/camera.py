@@ -222,7 +222,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
                 )
                 self._mjpeg_url = self._normalize_video_url(video).video_url
         else:
-            LOGGER.error("stream_source: Failed to get video stream: %s", video.status)
+            LOGGER.debug("stream_source: Failed to get video stream: %s", video.status)
             self._mjpeg_url = None
 
     async def async_camera_image(
