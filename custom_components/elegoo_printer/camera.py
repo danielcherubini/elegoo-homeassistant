@@ -13,6 +13,7 @@ from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_stream
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.elegoo_printer.const import (
+    CONF_CAMERA_ENABLED,
     CONF_PROXY_ENABLED,
     LOGGER,
     PROXY_HOST,
@@ -79,6 +80,9 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         )
         self._attr_name = description.name
         self._attr_unique_id = coordinator.generate_unique_id(description.key)
+        self._attr_entity_registry_enabled_default = coordinator.config_entry.data.get(
+            CONF_CAMERA_ENABLED, False
+        )
 
         # For MJPEG stream
         self._extra_ffmpeg_arguments = "-rtsp_transport udp -fflags nobuffer"
@@ -191,6 +195,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             coordinator.config_entry.runtime_data.api.client
         )
 
+    @staticmethod
     def _normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
         """Checks if video_object.video_url starts with 'http://' and adds it if missing.
 

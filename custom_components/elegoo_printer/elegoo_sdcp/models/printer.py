@@ -4,7 +4,10 @@ import json
 from types import MappingProxyType
 from typing import Any, Dict, Optional
 
-from custom_components.elegoo_printer.const import CONF_PROXY_ENABLED
+from custom_components.elegoo_printer.const import (
+    CONF_CAMERA_ENABLED,
+    CONF_PROXY_ENABLED,
+)
 from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
 
 from .attributes import PrinterAttributes
@@ -59,6 +62,7 @@ class Printer:
     id: Optional[str]
     printer_type: Optional[PrinterType]
     proxy_enabled: bool
+    camera_enabled: bool
 
     def __init__(
         self,
@@ -109,6 +113,7 @@ class Printer:
 
         # Initialize config-based attributes for all instances
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
+        self.camera_enabled = config.get(CONF_CAMERA_ENABLED, False)
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -130,6 +135,7 @@ class Printer:
             "id": self.id,
             "printer_type": self.printer_type.value if self.printer_type else None,
             "proxy_enabled": self.proxy_enabled,
+            "camera_enabled": self.camera_enabled,
         }
 
     @classmethod
@@ -152,7 +158,12 @@ class Printer:
         printer.firmware = data_dict.get("FirmwareVersion", data_dict.get("firmware"))
         printer.id = data_dict.get("MainboardID", data_dict.get("id"))
         printer.printer_type = PrinterType.from_model(printer.model)
-        printer.proxy_enabled = data_dict.get(CONF_PROXY_ENABLED, False)
+        printer.proxy_enabled = data_dict.get(
+            CONF_PROXY_ENABLED, data_dict.get("proxy_enabled", False)
+        )
+        printer.camera_enabled = data_dict.get(
+            CONF_CAMERA_ENABLED, data_dict.get("camera_enabled", False)
+        )
         return printer
 
 
