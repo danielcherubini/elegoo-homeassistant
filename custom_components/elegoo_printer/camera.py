@@ -85,7 +85,9 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         )
 
         # For MJPEG stream
-        self._extra_ffmpeg_arguments = "-rtsp_transport udp -fflags nobuffer"
+        self._extra_ffmpeg_arguments = (
+            "-rtsp_transport udp -fflags nobuffer -err_detect ignore_err"
+        )
 
     @property
     def supported_features(self) -> CameraEntityFeature:
