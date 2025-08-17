@@ -9,12 +9,16 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.config_validation import url
 from homeassistant.helpers.httpx_client import get_async_client
 from PIL import Image as PILImage
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.models.elegoo_image import ElegooImage
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import ElegooFan
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+    ElegooFan,
+    PrinterType,
+)
 from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
@@ -193,6 +197,15 @@ class ElegooPrinterApiClient:
                 )
                 response.raise_for_status()
                 LOGGER.debug("get_thumbnail response status: %s", response.status_code)
+                if self.printer.printer_type == PrinterType.FDM:
+                    LOGGER.debug("get_thumbnail is FDM printer")
+                    return ElegooImage(
+                        url=task.thumbnail,
+                        image_bytes=response.content,
+                        last_updated_timestamp=task.begin_time,
+                        content_type="image/png",
+                    )
+
                 with PILImage.open(BytesIO(response.content)) as img:
                     with BytesIO() as output:
                         rgb_img = img.convert("RGB")
@@ -201,8 +214,9 @@ class ElegooPrinterApiClient:
                         LOGGER.debug("get_thumbnail converted image to jpg")
                         thumbnail_image = ElegooImage(
                             url=task.thumbnail,
-                            bytes=jpg_bytes,
+                            image_bytes=jpg_bytes,
                             last_updated_timestamp=task.begin_time,
+                            content_type="image/jpeg",
                         )
                         return thumbnail_image
             except Exception as e:

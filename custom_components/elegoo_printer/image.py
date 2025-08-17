@@ -80,7 +80,7 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
                 self._attr_image_last_updated = thumbnail_image.get_last_update_time()
                 self._cached_image = thumbnail_image.get_image()
                 self.image_url = task.thumbnail
-                self._attr_content_type = "image/jpg"
+                self._attr_content_type = thumbnail_image.get_content_type()
                 return thumbnail_image.get_bytes()
 
         elif self._cached_image:
