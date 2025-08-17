@@ -58,7 +58,7 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         """
         Initialize a CoverImage entity for the Elegoo Printer.
 
-        Sets up the entity with the provided Home Assistant instance, data coordinator, and entity description. Assigns a unique ID, sets the content type to BMP, and records the initial image update timestamp.
+        Sets up the entity with the provided Home Assistant instance, data coordinator, and entity description. Assigns a unique ID, sets the content type to PNG, and records the initial image update timestamp.
         """
         super().__init__(coordinator)
         ImageEntity.__init__(self, hass=hass)
@@ -80,7 +80,7 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
                 self._attr_image_last_updated = thumbnail_image.get_last_update_time()
                 self._cached_image = thumbnail_image.get_image()
                 self.image_url = task.thumbnail
-                self._attr_content_type = "image/jpg"
+                self._attr_content_type = thumbnail_image.get_content_type()
                 return thumbnail_image.get_bytes()
 
         elif self._cached_image:

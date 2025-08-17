@@ -14,7 +14,9 @@ from PIL import Image as PILImage
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
 from custom_components.elegoo_printer.elegoo_sdcp.models.elegoo_image import ElegooImage
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import ElegooFan
+from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+    ElegooFan,
+)
 from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
@@ -193,16 +195,30 @@ class ElegooPrinterApiClient:
                 )
                 response.raise_for_status()
                 LOGGER.debug("get_thumbnail response status: %s", response.status_code)
+                content_type = response.headers.get("content-type", "image/png")
+
+                if content_type and content_type == "image/png":
+                    # Normalize common header forms like "image/png; charset=binary"
+                    content_type = content_type.split(";", 1)[0].strip().lower()
+                    LOGGER.debug("get_thumbnail (FDM) content-type: %s", content_type)
+                    return ElegooImage(
+                        image_url=task.thumbnail,
+                        image_bytes=response.content,
+                        last_updated_timestamp=task.begin_time,
+                        content_type=content_type or "image/png",
+                    )
+
                 with PILImage.open(BytesIO(response.content)) as img:
                     with BytesIO() as output:
                         rgb_img = img.convert("RGB")
-                        rgb_img.save(output, format="JPEG")
+                        rgb_img.save(output, format="PNG")
                         jpg_bytes = output.getvalue()
-                        LOGGER.debug("get_thumbnail converted image to jpg")
+                        LOGGER.debug("get_thumbnail converted image to png")
                         thumbnail_image = ElegooImage(
-                            url=task.thumbnail,
-                            bytes=jpg_bytes,
+                            image_url=task.thumbnail,
+                            image_bytes=jpg_bytes,
                             last_updated_timestamp=task.begin_time,
+                            content_type="image/png",
                         )
                         return thumbnail_image
             except Exception as e:
