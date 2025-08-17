@@ -209,14 +209,14 @@ class ElegooPrinterApiClient:
                 with PILImage.open(BytesIO(response.content)) as img:
                     with BytesIO() as output:
                         rgb_img = img.convert("RGB")
-                        rgb_img.save(output, format="JPEG")
+                        rgb_img.save(output, format="PNG")
                         jpg_bytes = output.getvalue()
-                        LOGGER.debug("get_thumbnail converted image to jpg")
+                        LOGGER.debug("get_thumbnail converted image to png")
                         thumbnail_image = ElegooImage(
                             url=task.thumbnail,
                             image_bytes=jpg_bytes,
                             last_updated_timestamp=task.begin_time,
-                            content_type="image/jpeg",
+                            content_type="image/png",
                         )
                         return thumbnail_image
             except Exception as e:
