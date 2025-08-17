@@ -196,13 +196,17 @@ class ElegooPrinterApiClient:
                 )
                 response.raise_for_status()
                 LOGGER.debug("get_thumbnail response status: %s", response.status_code)
-                if self.printer.printer_type == PrinterType.FDM:
-                    LOGGER.debug("get_thumbnail is FDM printer")
+                content_type = response.headers.get("content-type", "image/png")
+
+                if content_type and content_type == "image/png":
+                    # Normalize common header forms like "image/png; charset=binary"
+                    content_type = content_type.split(";", 1)[0].strip().lower()
+                    LOGGER.debug("get_thumbnail (FDM) content-type: %s", content_type)
                     return ElegooImage(
                         image_url=task.thumbnail,
                         image_bytes=response.content,
                         last_updated_timestamp=task.begin_time,
-                        content_type="image/png",
+                        content_type=content_type or "image/png",
                     )
 
                 with PILImage.open(BytesIO(response.content)) as img:
