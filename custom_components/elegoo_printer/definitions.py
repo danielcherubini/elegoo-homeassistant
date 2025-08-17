@@ -357,6 +357,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DISTANCE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=4,
         # Z-Offset is a direct attribute of PrinterStatus
         available_fn=lambda printer_data: printer_data.status is not None,
         value_fn=lambda printer_data: printer_data.status.z_offset,
