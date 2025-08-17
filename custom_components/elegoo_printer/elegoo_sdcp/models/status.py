@@ -138,14 +138,15 @@ class PrintInfo:
         if self.remaining_ticks > 0:
             now = datetime.now(timezone.utc)
             total_seconds_remaining = self.remaining_ticks / 1000
-            future_datetime = now + timedelta(seconds=total_seconds_remaining)
-            return self.round_minute(future_datetime, 1)
+            target_datetime = now + timedelta(seconds=total_seconds_remaining)
+            # Round to nearest minute by adding a 30s bias before flooring
+            return self.round_minute(target_datetime + timedelta(seconds=30), 1)
 
         return None
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
         """Round datetime object to minutes"""
-        if not date:
+        if date is None:
             date = datetime.now(timezone.utc)
 
         if not isinstance(round_to, int) or round_to <= 0:
@@ -207,7 +208,7 @@ class PrinterStatus:
         print_info_data = status.get("PrintInfo", {})
         self.print_info: PrintInfo = PrintInfo(print_info_data, printer_type)
         if (
-            self.current_status is ElegooMachineStatus.PRINTING
+            self.current_status == ElegooMachineStatus.PRINTING
             and self.print_info.remaining_ticks > 0
         ):
             self.print_info.end_time = self.print_info.calculate_end_time()
