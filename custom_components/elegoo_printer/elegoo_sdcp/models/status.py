@@ -110,7 +110,7 @@ class PrintInfo:
         self.remaining_ticks: int = max(0, self.total_ticks - self.current_ticks)
         self.progress: int | None = data.get("Progress")
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
-
+        self.end_time: datetime | None = None
         if self.progress is not None:
             self.percent_complete: int = int(self.progress)
         else:
@@ -133,19 +133,20 @@ class PrintInfo:
         )
         self.task_id: str | None = data.get("TaskId")
 
-    @property
-    def end_time(self) -> datetime | None:
+    def calculate_end_time(self) -> datetime | None:
         """Calculate the estimated end time of the print job."""
         if self.remaining_ticks > 0:
             now = datetime.now(timezone.utc)
             total_seconds_remaining = self.remaining_ticks / 1000
-            future_datetime = now + timedelta(seconds=total_seconds_remaining)
-            return self.round_minute(future_datetime, 1)
+            target_datetime = now + timedelta(seconds=total_seconds_remaining)
+            # Round to nearest minute by adding a 30s bias before flooring
+            return self.round_minute(target_datetime + timedelta(seconds=30), 1)
+
         return None
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
         """Round datetime object to minutes"""
-        if not date:
+        if date is None:
             date = datetime.now(timezone.utc)
 
         if not isinstance(round_to, int) or round_to <= 0:
@@ -206,6 +207,11 @@ class PrinterStatus:
 
         print_info_data = status.get("PrintInfo", {})
         self.print_info: PrintInfo = PrintInfo(print_info_data, printer_type)
+        if (
+            self.current_status == ElegooMachineStatus.PRINTING
+            and self.print_info.remaining_ticks > 0
+        ):
+            self.print_info.end_time = self.print_info.calculate_end_time()
 
     @classmethod
     def from_json(
