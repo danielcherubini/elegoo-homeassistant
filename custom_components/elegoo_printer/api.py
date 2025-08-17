@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.config_validation import url
 from homeassistant.helpers.httpx_client import get_async_client
 from PIL import Image as PILImage
 
@@ -200,7 +199,7 @@ class ElegooPrinterApiClient:
                 if self.printer.printer_type == PrinterType.FDM:
                     LOGGER.debug("get_thumbnail is FDM printer")
                     return ElegooImage(
-                        url=task.thumbnail,
+                        image_url=task.thumbnail,
                         image_bytes=response.content,
                         last_updated_timestamp=task.begin_time,
                         content_type="image/png",
@@ -213,7 +212,7 @@ class ElegooPrinterApiClient:
                         jpg_bytes = output.getvalue()
                         LOGGER.debug("get_thumbnail converted image to png")
                         thumbnail_image = ElegooImage(
-                            url=task.thumbnail,
+                            image_url=task.thumbnail,
                             image_bytes=jpg_bytes,
                             last_updated_timestamp=task.begin_time,
                             content_type="image/png",

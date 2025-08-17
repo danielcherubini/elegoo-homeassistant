@@ -10,12 +10,12 @@ class ElegooImage:
 
     def __init__(
         self,
-        url: str,
+        image_url: str,
         image_bytes: bytes,
         last_updated_timestamp: int,
         content_type: str,
     ):
-        self._image_url = url
+        self._image_url = image_url
         self._bytes = image_bytes
         self._content_type = content_type
         try:
