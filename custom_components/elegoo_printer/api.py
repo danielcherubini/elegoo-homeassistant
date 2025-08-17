@@ -16,7 +16,6 @@ from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterCli
 from custom_components.elegoo_printer.elegoo_sdcp.models.elegoo_image import ElegooImage
 from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
     ElegooFan,
-    PrinterType,
 )
 from custom_components.elegoo_printer.elegoo_sdcp.models.print_history_detail import (
     PrintHistoryDetail,
