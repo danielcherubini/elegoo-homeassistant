@@ -14,6 +14,7 @@ class ElegooMachineStatus(Enum):
         FILE_TRANSFERRING: A file transfer is in progress.
         EXPOSURE_TESTING: The machine is performing an exposure test.
         DEVICES_TESTING: The machine is running a device self-check.
+        LEVELING: The machine is performing a leveling operation.
 
     """
 
@@ -22,6 +23,7 @@ class ElegooMachineStatus(Enum):
     FILE_TRANSFERRING = 2
     EXPOSURE_TESTING = 3
     DEVICES_TESTING = 4
+    LEVELING = 5
 
     @classmethod
     def from_int(cls, status_int: int) -> Optional["ElegooMachineStatus"] | None:
