@@ -84,7 +84,8 @@
           "printing": "Printing",
           "file_transferring": "File Transferring",
           "exposure_testing": "Exposure Testing",
-          "devices_testing": "Device Testing"
+          "devices_testing": "Device Testing",
+          "leveling": "Leveling"
         }
       },
       "print_error": {
