@@ -14,6 +14,7 @@ class ElegooMachineStatus(Enum):
         FILE_TRANSFERRING: A file transfer is in progress.
         EXPOSURE_TESTING: The machine is performing an exposure test.
         DEVICES_TESTING: The machine is running a device self-check.
+        LEVELING: The machine is performing a leveling operation.
 
     """
 
