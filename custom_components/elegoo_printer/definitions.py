@@ -5,13 +5,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from homeassistant.components.binary_sensor import BinarySensorEntityDescription
 from homeassistant.components.button import ButtonEntityDescription
 from homeassistant.components.fan import FanEntityDescription, FanEntityFeature
 from homeassistant.components.light import LightEntityDescription
 from homeassistant.components.number import NumberEntityDescription, NumberMode
 from homeassistant.components.select import SelectEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
-from homeassistant.components.binary_sensor import BinarySensorEntityDescription
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.const import (
     PERCENTAGE,
@@ -146,6 +146,7 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Video Stream Connected",
         icon="mdi:camera",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.num_video_stream_connected,  # noqa: E501
     ),
     ElegooPrinterSensorEntityDescription(
@@ -153,6 +154,7 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Video Stream Max",
         icon="mdi:camera",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.max_video_stream_allowed,
     ),
     ElegooPrinterSensorEntityDescription(
@@ -212,6 +214,7 @@ PRINTER_ATTRIBUTES_BINARY_COMMON: tuple[
         key="sdcp_status",
         name="SDCP Status",
         icon="mdi:lan-connect",
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.sdcp_status,
     ),
 )
@@ -222,6 +225,7 @@ PRINTER_ATTRIBUTES_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Release Film Max",
         icon="mdi:film",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.release_film_max,
     ),
     ElegooPrinterSensorEntityDescription(
@@ -231,6 +235,7 @@ PRINTER_ATTRIBUTES_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.temp_of_uvled_max,
         exists_fn=lambda printer_data: printer_data.attributes.temp_of_uvled_max > 0,
         available_fn=lambda printer_data: printer_data
@@ -320,7 +325,7 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         key="task_id",
         name="Task ID",
         icon="mdi:identifier",
-        entity_registry_enabled_default=False,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.status.print_info.task_id,
         available_fn=lambda printer_data: printer_data.status
         and printer_data.status.print_info.task_id is not None,
@@ -464,6 +469,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=4,
+        entity_category=EntityCategory.DIAGNOSTIC,
         # Z-Offset is a direct attribute of PrinterStatus
         available_fn=lambda printer_data: printer_data.status is not None,
         value_fn=lambda printer_data: printer_data.status.z_offset,
