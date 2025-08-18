@@ -15,6 +15,7 @@ from homeassistant.components.binary_sensor import BinarySensorEntityDescription
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.const import (
     PERCENTAGE,
+    EntityCategory,
     UnitOfInformation,
     UnitOfLength,
     UnitOfTemperature,
@@ -163,18 +164,21 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfInformation.BITS,
         suggested_unit_of_measurement=UnitOfInformation.MEGABYTES,
         suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.remaining_memory,
     ),
     ElegooPrinterSensorEntityDescription(
         key="mainboard_mac",
         name="MAC Address",
         icon="mdi:network",
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.mainboard_mac,
     ),
     ElegooPrinterSensorEntityDescription(
         key="mainboard_ip",
         name="IP Address",
         icon="mdi:ip-network",
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.mainboard_ip,
     ),
     ElegooPrinterSensorEntityDescription(
@@ -182,6 +186,7 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Cloud Services Connected",
         icon="mdi:cloud-check",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.num_cloud_sdcp_services_connected,
     ),
     ElegooPrinterSensorEntityDescription(
@@ -189,6 +194,7 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Max Cloud Services",
         icon="mdi:cloud-lock",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.max_cloud_sdcp_services_allowed,
     ),
 )
