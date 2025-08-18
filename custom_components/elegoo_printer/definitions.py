@@ -491,6 +491,48 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         available_fn=lambda printer_data: printer_data.status.print_info is not None,
         value_fn=lambda printer_data: printer_data.status.print_info.print_speed_pct,
     ),
+    # --- Current X Coordinate Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="current_x",
+        name="Current X",
+        icon="mdi:axis-x-arrow",
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=2,
+        available_fn=lambda printer_data: printer_data.status.current_coord is not None,
+        value_fn=lambda printer_data: float(
+            printer_data.status.current_coord.split(",")[0]
+        ),
+    ),
+    # --- Current Y Coordinate Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="current_y",
+        name="Current Y",
+        icon="mdi:axis-y-arrow",
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=2,
+        available_fn=lambda printer_data: printer_data.status.current_coord is not None,
+        value_fn=lambda printer_data: float(
+            printer_data.status.current_coord.split(",")[1]
+        ),
+    ),
+    # --- Current Z Coordinate Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="current_z",
+        name="Current Z",
+        icon="mdi:axis-z-arrow",
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=2,
+        available_fn=lambda printer_data: printer_data.status.current_coord is not None,
+        value_fn=lambda printer_data: float(
+            printer_data.status.current_coord.split(",")[2]
+        ),
+    ),
 )
 
 PRINTER_IMAGES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
