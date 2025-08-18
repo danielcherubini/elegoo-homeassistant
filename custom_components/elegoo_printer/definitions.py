@@ -11,8 +11,15 @@ from homeassistant.components.light import LightEntityDescription
 from homeassistant.components.number import NumberEntityDescription, NumberMode
 from homeassistant.components.select import SelectEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
+from homeassistant.components.binary_sensor import BinarySensorEntityDescription
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
-from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfTemperature, UnitOfTime
+from homeassistant.const import (
+    PERCENTAGE,
+    UnitOfInformation,
+    UnitOfLength,
+    UnitOfTemperature,
+    UnitOfTime,
+)
 from homeassistant.helpers.typing import StateType
 
 from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
@@ -41,6 +48,18 @@ class ElegooPrinterSensorEntityDescription(
     ElegooPrinterSensorEntityDescriptionMixin, SensorEntityDescription
 ):
     """Sensor entity description for Elegoo Printers."""
+
+    available_fn: Callable[..., bool] = lambda printer_data: printer_data
+    exists_fn: Callable[..., bool] = lambda _: True
+    extra_attributes: Callable[..., dict] = lambda _: {}
+    icon_fn: Callable[..., str] = lambda _: "mdi:eye"
+
+
+@dataclass
+class ElegooPrinterBinarySensorEntityDescription(
+    ElegooPrinterSensorEntityDescriptionMixin, BinarySensorEntityDescription
+):
+    """Binary sensor entity description for Elegoo Printers."""
 
     available_fn: Callable[..., bool] = lambda printer_data: printer_data
     exists_fn: Callable[..., bool] = lambda _: True
@@ -116,6 +135,60 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:camera",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda printer_data: printer_data.attributes.max_video_stream_allowed,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="remaining_memory",
+        name="Remaining Memory",
+        icon="mdi:memory",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfInformation.BITS,
+        suggested_unit_of_measurement=UnitOfInformation.MEGABYTES,
+        suggested_display_precision=2,
+        value_fn=lambda printer_data: printer_data.attributes.remaining_memory,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="mainboard_mac",
+        name="MAC Address",
+        icon="mdi:network",
+        value_fn=lambda printer_data: printer_data.attributes.mainboard_mac,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="mainboard_ip",
+        name="IP Address",
+        icon="mdi:ip-network",
+        value_fn=lambda printer_data: printer_data.attributes.mainboard_ip,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="num_cloud_sdcp_services_connected",
+        name="Cloud Services Connected",
+        icon="mdi:cloud-check",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda printer_data: printer_data.attributes.num_cloud_sdcp_services_connected,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="max_cloud_sdcp_services_allowed",
+        name="Max Cloud Services",
+        icon="mdi:cloud-lock",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda printer_data: printer_data.attributes.max_cloud_sdcp_services_allowed,
+    ),
+)
+
+PRINTER_ATTRIBUTES_BINARY_COMMON: tuple[
+    ElegooPrinterBinarySensorEntityDescription, ...
+] = (
+    ElegooPrinterBinarySensorEntityDescription(
+        key="usb_disk_status",
+        name="USB Disk Status",
+        icon="mdi:usb",
+        value_fn=lambda printer_data: printer_data.attributes.usb_disk_status,
+    ),
+    ElegooPrinterBinarySensorEntityDescription(
+        key="sdcp_status",
+        name="SDCP Status",
+        icon="mdi:lan-connect",
+        value_fn=lambda printer_data: printer_data.attributes.sdcp_status,
     ),
 )
 
@@ -218,6 +291,15 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         value_fn=lambda printer_data: printer_data.status.print_info.filename,
         available_fn=lambda printer_data: printer_data.status
         and printer_data.status.print_info.filename != "",
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="task_id",
+        name="Task ID",
+        icon="mdi:identifier",
+        entity_registry_enabled_default=False,
+        value_fn=lambda printer_data: printer_data.status.print_info.task_id,
+        available_fn=lambda printer_data: printer_data.status
+        and printer_data.status.print_info.task_id is not None,
     ),
     ElegooPrinterSensorEntityDescription(
         key="current_status",

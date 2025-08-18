@@ -19,7 +19,10 @@ class PrinterAttributes:
         mainboard_id (str): The ID of the printer's mainboard.
         num_video_stream_connected (int): Number of Connected Video Streams.
         max_video_stream_allowed (int): Maximum Number of Connections for Video Streams.
+        num_cloud_sdcp_services_connected (int): Number of Connected Cloud SDCP Services.
+        max_cloud_sdcp_services_allowed (int): Maximum Number of Connections for Cloud SDCP Services.
         network_status (str): Network Connection Status, WiFi/Ethernet Port.
+        mainboard_mac (str): The MAC address of the printer's mainboard.
         usb_disk_status (int): USB Drive Connection Status. 0: Disconnected, 1: Connected.
         capabilities (List[str]): Supported Sub-protocols on the Motherboard.
         support_file_types (List[str]): Supported File Types.
@@ -28,6 +31,7 @@ class PrinterAttributes:
         temp_of_uvled_max (int): Maximum operating temperature for UVLED(℃).
         camera_status (int): Camera Connection Status, 0: Disconnected, 1: Connected
         remaining_memory (int): Remaining File Storage Space Size(bit).
+        sdcp_status (int): SDCP Service Status. 0: Disconnected, 1: Connected.
         tlp_no_cap_pos (float): Model height threshold for not performing time-lapse photography (mm).
         tlp_start_cap_pos (float): The print height at which time-lapse photography begins (mm).
         tlp_inter_layers (int): Time-lapse photography shooting interval layers.
@@ -51,7 +55,10 @@ class PrinterAttributes:
     ...         "MainboardID": "000000000001d354",
     ...         "NumberOfVideoStreamConnected": 1,
     ...         "MaximumVideoStreamAllowed": 1,
+    ...         "NumberOfCloudSDCPServicesConnected": 0,
+    ...         "MaximumCloudSDCPSercicesAllowed": 1,
     ...         "NetworkStatus": "wlan",
+    ...         "MainboardMAC": "00:11:22:33:44:55",
     ...         "UsbDiskStatus": 0,
     ...         "Capabilities": [
     ...             "FILE_TRANSFER",
@@ -74,6 +81,7 @@ class PrinterAttributes:
     ...         "TempOfUVLEDMax": 0,
     ...         "CameraStatus": 0,
     ...         "RemainingMemory": 123455,
+    ...         "SDCPStatus": 1,
     ...         "TLPNoCapPos": 50.0,
     ...         "TLPStartCapPos": 30.0,
     ...         "TLPInterLayers": 20
@@ -117,7 +125,15 @@ class PrinterAttributes:
         self.max_video_stream_allowed: int = attributes.get(
             "MaximumVideoStreamAllowed", 0
         )
+        self.num_cloud_sdcp_services_connected: int = attributes.get(
+            "NumberOfCloudSDCPServicesConnected", 0
+        )
+        # Note: Typo in the key below is intentional to match the API
+        self.max_cloud_sdcp_services_allowed: int = attributes.get(
+            "MaximumCloudSDCPSercicesAllowed", 0
+        )
         self.network_status: str = attributes.get("NetworkStatus", "")
+        self.mainboard_mac: str = attributes.get("MainboardMAC", "")
         self.usb_disk_status: int = attributes.get("UsbDiskStatus", 0)
         self.capabilities: list[str] = attributes.get("Capabilities")
         self.support_file_types: list[str] = attributes.get("SupportFileType")
@@ -126,6 +142,7 @@ class PrinterAttributes:
         self.temp_of_uvled_max: int = attributes.get("TempOfUVLEDMax", 0)
         self.camera_status: int = attributes.get("CameraStatus", 0)
         self.remaining_memory: int = attributes.get("RemainingMemory", 0)
+        self.sdcp_status: int = attributes.get("SDCPStatus", 0)
         self.tlp_no_cap_pos: float = attributes.get("TLPNoCapPos", 0.0)
         self.tlp_start_cap_pos: float = attributes.get("TLPStartCapPos", 0.0)
         self.tlp_inter_layers: int = attributes.get("TLPInterLayers", 0)
