@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from homeassistant.components.binary_sensor import BinarySensorEntityDescription
 from homeassistant.components.button import ButtonEntityDescription
 from homeassistant.components.fan import FanEntityDescription, FanEntityFeature
 from homeassistant.components.light import LightEntityDescription
@@ -12,7 +13,14 @@ from homeassistant.components.number import NumberEntityDescription, NumberMode
 from homeassistant.components.select import SelectEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
-from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfTemperature, UnitOfTime
+from homeassistant.const import (
+    PERCENTAGE,
+    EntityCategory,
+    UnitOfInformation,
+    UnitOfLength,
+    UnitOfTemperature,
+    UnitOfTime,
+)
 from homeassistant.helpers.typing import StateType
 
 from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
@@ -22,6 +30,24 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
     ElegooPrintStatus,
     ElegooVideoStatus,
 )
+
+
+def _has_valid_current_coords(printer_data) -> bool:
+    """Check if current_coord is valid."""
+    if printer_data.status.current_coord is None:
+        return False
+    coords = printer_data.status.current_coord.split(",")
+    return len(coords) == 3
+
+
+def _get_current_coord_value(printer_data, index: int) -> float | None:
+    """Get a coordinate value from current_coord."""
+    if not _has_valid_current_coords(printer_data):
+        return None
+    try:
+        return float(printer_data.status.current_coord.split(",")[index])
+    except (ValueError, IndexError):
+        return None
 
 
 async def _async_noop() -> None:
@@ -41,6 +67,18 @@ class ElegooPrinterSensorEntityDescription(
     ElegooPrinterSensorEntityDescriptionMixin, SensorEntityDescription
 ):
     """Sensor entity description for Elegoo Printers."""
+
+    available_fn: Callable[..., bool] = lambda printer_data: printer_data
+    exists_fn: Callable[..., bool] = lambda _: True
+    extra_attributes: Callable[..., dict] = lambda _: {}
+    icon_fn: Callable[..., str] = lambda _: "mdi:eye"
+
+
+@dataclass
+class ElegooPrinterBinarySensorEntityDescription(
+    ElegooPrinterSensorEntityDescriptionMixin, BinarySensorEntityDescription
+):
+    """Binary sensor entity description for Elegoo Printers."""
 
     available_fn: Callable[..., bool] = lambda printer_data: printer_data
     exists_fn: Callable[..., bool] = lambda _: True
@@ -108,6 +146,7 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Video Stream Connected",
         icon="mdi:camera",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.num_video_stream_connected,  # noqa: E501
     ),
     ElegooPrinterSensorEntityDescription(
@@ -115,7 +154,68 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Video Stream Max",
         icon="mdi:camera",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.max_video_stream_allowed,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="remaining_memory",
+        name="Remaining Memory",
+        icon="mdi:memory",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfInformation.BITS,
+        suggested_unit_of_measurement=UnitOfInformation.MEGABYTES,
+        suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda printer_data: printer_data.attributes.remaining_memory,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="mainboard_mac",
+        name="MAC Address",
+        icon="mdi:network",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda printer_data: printer_data.attributes.mainboard_mac,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="mainboard_ip",
+        name="IP Address",
+        icon="mdi:ip-network",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda printer_data: printer_data.attributes.mainboard_ip,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="num_cloud_sdcp_services_connected",
+        name="Cloud Services Connected",
+        icon="mdi:cloud-check",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda printer_data: printer_data.attributes.num_cloud_sdcp_services_connected,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="max_cloud_sdcp_services_allowed",
+        name="Max Cloud Services",
+        icon="mdi:cloud-lock",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda printer_data: printer_data.attributes.max_cloud_sdcp_services_allowed,
+    ),
+)
+
+PRINTER_ATTRIBUTES_BINARY_COMMON: tuple[
+    ElegooPrinterBinarySensorEntityDescription, ...
+] = (
+    ElegooPrinterBinarySensorEntityDescription(
+        key="usb_disk_status",
+        name="USB Disk Status",
+        icon="mdi:usb",
+        value_fn=lambda printer_data: printer_data.attributes.usb_disk_status,
+    ),
+    ElegooPrinterBinarySensorEntityDescription(
+        key="sdcp_status",
+        name="SDCP Status",
+        icon="mdi:lan-connect",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda printer_data: printer_data.attributes.sdcp_status,
     ),
 )
 
@@ -125,6 +225,7 @@ PRINTER_ATTRIBUTES_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Release Film Max",
         icon="mdi:film",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.release_film_max,
     ),
     ElegooPrinterSensorEntityDescription(
@@ -134,6 +235,7 @@ PRINTER_ATTRIBUTES_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.temp_of_uvled_max,
         exists_fn=lambda printer_data: printer_data.attributes.temp_of_uvled_max > 0,
         available_fn=lambda printer_data: printer_data
@@ -218,6 +320,15 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         value_fn=lambda printer_data: printer_data.status.print_info.filename,
         available_fn=lambda printer_data: printer_data.status
         and printer_data.status.print_info.filename != "",
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="task_id",
+        name="Task ID",
+        icon="mdi:identifier",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda printer_data: printer_data.status.print_info.task_id,
+        available_fn=lambda printer_data: printer_data.status
+        and printer_data.status.print_info.task_id is not None,
     ),
     ElegooPrinterSensorEntityDescription(
         key="current_status",
@@ -358,6 +469,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=4,
+        entity_category=EntityCategory.DIAGNOSTIC,
         # Z-Offset is a direct attribute of PrinterStatus
         available_fn=lambda printer_data: printer_data.status is not None,
         value_fn=lambda printer_data: printer_data.status.z_offset,
@@ -408,6 +520,48 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         # Check if the nested print info object is available
         available_fn=lambda printer_data: printer_data.status.print_info is not None,
         value_fn=lambda printer_data: printer_data.status.print_info.print_speed_pct,
+    ),
+    # --- Current X Coordinate Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="current_x",
+        name="Current X",
+        icon="mdi:axis-x-arrow",
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=2,
+        available_fn=lambda printer_data: printer_data.status.current_coord is not None,
+        value_fn=lambda printer_data: float(
+            printer_data.status.current_coord.split(",")[0]
+        ),
+    ),
+    # --- Current Y Coordinate Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="current_y",
+        name="Current Y",
+        icon="mdi:axis-y-arrow",
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=2,
+        available_fn=lambda printer_data: printer_data.status.current_coord is not None,
+        value_fn=lambda printer_data: float(
+            printer_data.status.current_coord.split(",")[1]
+        ),
+    ),
+    # --- Current Z Coordinate Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="current_z",
+        name="Current Z",
+        icon="mdi:axis-z-arrow",
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=2,
+        available_fn=lambda printer_data: printer_data.status.current_coord is not None,
+        value_fn=lambda printer_data: float(
+            printer_data.status.current_coord.split(",")[2]
+        ),
     ),
 )
 
