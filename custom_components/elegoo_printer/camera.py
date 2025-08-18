@@ -161,7 +161,8 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
     def available(self) -> bool:
         """Return whether the camera entity is currently available."""
         return (
-            super().available
+            self._printer_client
+            and self._printer_client.printer_data
             and self._printer_client.printer_data.attributes.num_video_stream_connected
             <= 2
         )
@@ -251,6 +252,10 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         used to determine availability based on the printer's video data. Otherwise,
         falls back to the default availability check.
         """
-        return super().available and self.entity_description.available_fn(
-            self._printer_client.printer_data.video
+        return (
+            super().available
+            and self._printer_client.printer_data
+            and self.entity_description.available_fn(
+                self._printer_client.printer_data.video
+            )
         )

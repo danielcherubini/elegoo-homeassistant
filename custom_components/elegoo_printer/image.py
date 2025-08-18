@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.image import Image, ImageEntity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from custom_components.elegoo_printer import api
 from custom_components.elegoo_printer.definitions import (
     ElegooPrinterSensorEntityDescription,
 )
@@ -94,5 +95,7 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         if not super().available:
             return False
         return (
-            self.api.printer_data.status.current_status == ElegooMachineStatus.PRINTING
+            self.api.printer_data
+            and self.api.printer_data.status.current_status
+            == ElegooMachineStatus.PRINTING
         )

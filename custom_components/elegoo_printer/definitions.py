@@ -108,14 +108,16 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Video Stream Connected",
         icon="mdi:camera",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda printer_data: printer_data.attributes.num_video_stream_connected,  # noqa: E501
+        value_fn=lambda printer_data: printer_data
+        and printer_data.attributes.num_video_stream_connected,  # noqa: E501
     ),
     ElegooPrinterSensorEntityDescription(
         key="video_stream_max",
         name="Video Stream Max",
         icon="mdi:camera",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda printer_data: printer_data.attributes.max_video_stream_allowed,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.attributes.max_video_stream_allowed,
     ),
 )
 
@@ -125,7 +127,8 @@ PRINTER_ATTRIBUTES_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Release Film Max",
         icon="mdi:film",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda printer_data: printer_data.attributes.release_film_max,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.attributes.release_film_max,
     ),
     ElegooPrinterSensorEntityDescription(
         key="temp_of_uvled_max",
@@ -134,8 +137,10 @@ PRINTER_ATTRIBUTES_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda printer_data: printer_data.attributes.temp_of_uvled_max,
-        exists_fn=lambda printer_data: printer_data.attributes.temp_of_uvled_max > 0,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.attributes.temp_of_uvled_max,
+        exists_fn=lambda printer_data: printer_data
+        and printer_data.attributes.temp_of_uvled_max > 0,
         available_fn=lambda printer_data: printer_data
         and printer_data.attributes.temp_of_uvled_max > 0,
         entity_registry_enabled_default=False,
@@ -151,7 +156,8 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
         suggested_unit_of_measurement=UnitOfTime.MINUTES,
-        value_fn=lambda printer_data: printer_data.status.print_info.total_ticks,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.total_ticks,
     ),
     ElegooPrinterSensorEntityDescription(
         key="current_ticks",
@@ -161,7 +167,8 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
         suggested_unit_of_measurement=UnitOfTime.MINUTES,
-        value_fn=lambda printer_data: printer_data.status.print_info.current_ticks,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.current_ticks,
     ),
     ElegooPrinterSensorEntityDescription(
         key="ticks_remaining",
@@ -171,37 +178,42 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
         suggested_unit_of_measurement=UnitOfTime.MINUTES,
-        value_fn=lambda printer_data: printer_data.status.print_info.remaining_ticks,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.remaining_ticks,
     ),
     ElegooPrinterSensorEntityDescription(
         key="end_time",
         name="End Time",
         icon="mdi:clock",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda printer_data: printer_data.status.print_info.end_time,
-        available_fn=lambda printer_data: printer_data.status.print_info.end_time
-        is not None,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.end_time,
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.end_time is not None,
     ),
     ElegooPrinterSensorEntityDescription(
         key="total_layers",
         name="Total Layers",
         icon="mdi:eye",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda printer_data: printer_data.status.print_info.total_layers,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.total_layers,
     ),
     ElegooPrinterSensorEntityDescription(
         key="current_layer",
         name="Current Layer",
         icon="mdi:eye",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda printer_data: printer_data.status.print_info.current_layer,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.current_layer,
     ),
     ElegooPrinterSensorEntityDescription(
         key="remaining_layers",
         name="Remaining Layers",
         icon="mdi:eye",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda printer_data: printer_data.status.print_info.remaining_layers,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.remaining_layers,
     ),
     ElegooPrinterSensorEntityDescription(
         key="percent_complete",
@@ -209,14 +221,17 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:percent",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda printer_data: printer_data.status.print_info.percent_complete,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.percent_complete,
     ),
     ElegooPrinterSensorEntityDescription(
         key="filename",
         name="File Name",
         icon="mdi:file",
-        value_fn=lambda printer_data: printer_data.status.print_info.filename,
-        available_fn=lambda printer_data: printer_data.status
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.filename,
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status
         and printer_data.status.print_info.filename != "",
     ),
     ElegooPrinterSensorEntityDescription(
@@ -226,9 +241,10 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:file",
         device_class=SensorDeviceClass.ENUM,
         options=[status.name.lower() for status in ElegooMachineStatus],
-        value_fn=lambda printer_data: printer_data.status.current_status.name.lower(),
-        available_fn=lambda printer_data: printer_data.status.current_status
-        is not None,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.current_status.name.lower(),
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status.current_status is not None,
     ),
     ElegooPrinterSensorEntityDescription(
         key="print_status",
@@ -237,9 +253,10 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:file",
         device_class=SensorDeviceClass.ENUM,
         options=[status.name.lower() for status in ElegooPrintStatus],
-        value_fn=lambda printer_data: printer_data.status.print_info.status.name.lower(),
-        available_fn=lambda printer_data: printer_data.status.print_info.status
-        is not None,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.status.name.lower(),
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.status is not None,
     ),
     ElegooPrinterSensorEntityDescription(
         key="print_error",
@@ -248,9 +265,10 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:file",
         device_class=SensorDeviceClass.ENUM,
         options=[error.name.lower() for error in ElegooPrintError],
-        value_fn=lambda printer_data: printer_data.status.print_info.error_number.name.lower(),
-        available_fn=lambda printer_data: printer_data.status.print_info.error_number
-        is not None,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.error_number.name.lower(),
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.error_number is not None,
     ),
     ElegooPrinterSensorEntityDescription(
         key="current_print_error_status_reason",
@@ -288,14 +306,15 @@ PRINTER_STATUS_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda printer_data: printer_data.status.temp_of_uvled,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.temp_of_uvled,
     ),
     ElegooPrinterSensorEntityDescription(
         key="release_film",
         name="Release Film",
         icon="mdi:film",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda printer_data: printer_data.status.release_film,
+        value_fn=lambda printer_data: printer_data and printer_data.status.release_film,
     ),
 )
 
@@ -310,8 +329,9 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         # Check if the attribute exists and has a valid temperature
-        available_fn=lambda printer_data: printer_data.status.temp_of_box > 0,
-        value_fn=lambda printer_data: printer_data.status.temp_of_box,
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status.temp_of_box > 0,
+        value_fn=lambda printer_data: printer_data and printer_data.status.temp_of_box,
     ),
     # --- Target Enclosure/Box Temperature Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -322,8 +342,10 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         # Check if the attribute exists and has a valid target temperature
-        available_fn=lambda printer_data: printer_data.status.temp_target_box > 0,
-        value_fn=lambda printer_data: printer_data.status.temp_target_box,
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status.temp_target_box > 0,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.temp_target_box,
     ),
     # --- Nozzle Temperature Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -334,8 +356,10 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         # Correct path to nozzle temperature
-        available_fn=lambda printer_data: printer_data.status.temp_of_nozzle > 0,
-        value_fn=lambda printer_data: printer_data.status.temp_of_nozzle,
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status.temp_of_nozzle > 0,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.temp_of_nozzle,
     ),
     # --- Bed Temperature Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -346,8 +370,10 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         # Correct path to bed/hotbed temperature
-        available_fn=lambda printer_data: printer_data.status.temp_of_hotbed > 0,
-        value_fn=lambda printer_data: printer_data.status.temp_of_hotbed,
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status.temp_of_hotbed > 0,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.temp_of_hotbed,
     ),
     # --- Z Offset Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -359,8 +385,9 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=4,
         # Z-Offset is a direct attribute of PrinterStatus
-        available_fn=lambda printer_data: printer_data.status is not None,
-        value_fn=lambda printer_data: printer_data.status.z_offset,
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status is not None,
+        value_fn=lambda printer_data: printer_data and printer_data.status.z_offset,
     ),
     # --- Model Fan Speed Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -370,9 +397,10 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         # Check if the nested fan speed object is available
-        available_fn=lambda printer_data: printer_data.status.current_fan_speed
-        is not None,
-        value_fn=lambda printer_data: printer_data.status.current_fan_speed.model_fan,
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status.current_fan_speed is not None,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.current_fan_speed.model_fan,
     ),
     # --- Auxiliary Fan Speed Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -382,9 +410,10 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         # Correct path to auxiliary_fan inside the nested object
-        available_fn=lambda printer_data: printer_data.status.current_fan_speed
-        is not None,
-        value_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan,
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status.current_fan_speed is not None,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.current_fan_speed.auxiliary_fan,
     ),
     # --- Box/Enclosure Fan Speed Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -394,9 +423,10 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         # Correct path to box_fan inside the nested object
-        available_fn=lambda printer_data: printer_data.status.current_fan_speed
-        is not None,
-        value_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan,
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status.current_fan_speed is not None,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.current_fan_speed.box_fan,
     ),
     # --- Print Speed Percentage Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -406,8 +436,10 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         # Check if the nested print info object is available
-        available_fn=lambda printer_data: printer_data.status.print_info is not None,
-        value_fn=lambda printer_data: printer_data.status.print_info.print_speed_pct,
+        available_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info is not None,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.print_info.print_speed_pct,
     ),
 )
 
@@ -474,7 +506,8 @@ PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
         native_max_value=320,
         native_step=1,
         mode=NumberMode.BOX,
-        value_fn=lambda printer_data: printer_data.status.temp_target_nozzle,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.temp_target_nozzle,
         set_value_fn=lambda api, value: api.async_set_target_nozzle_temp(int(value)),
     ),
     ElegooPrinterNumberEntityDescription(
@@ -486,7 +519,8 @@ PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
         native_max_value=110,
         native_step=1,
         mode=NumberMode.BOX,
-        value_fn=lambda printer_data: printer_data.status.temp_target_hotbed,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.temp_target_hotbed,
         set_value_fn=lambda api, value: api.async_set_target_bed_temp(int(value)),
     ),
 )
@@ -543,9 +577,10 @@ FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
         supported_features=FanEntityFeature.SET_SPEED
         | FanEntityFeature.TURN_ON
         | FanEntityFeature.TURN_OFF,
-        value_fn=lambda printer_data: printer_data.status.current_fan_speed.model_fan
-        > 0,
-        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.model_fan,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.current_fan_speed.model_fan > 0,
+        percentage_fn=lambda printer_data: printer_data
+        and printer_data.status.current_fan_speed.model_fan,
     ),
     ElegooPrinterFanEntityDescription(
         key="auxiliary_fan",
@@ -554,9 +589,10 @@ FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
         supported_features=FanEntityFeature.SET_SPEED
         | FanEntityFeature.TURN_ON
         | FanEntityFeature.TURN_OFF,
-        value_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan
-        > 0,
-        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.current_fan_speed.auxiliary_fan > 0,
+        percentage_fn=lambda printer_data: printer_data
+        and printer_data.status.current_fan_speed.auxiliary_fan,
     ),
     ElegooPrinterFanEntityDescription(
         key="box_fan",
@@ -565,7 +601,9 @@ FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
         supported_features=FanEntityFeature.SET_SPEED
         | FanEntityFeature.TURN_ON
         | FanEntityFeature.TURN_OFF,
-        value_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan > 0,
-        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan,
+        value_fn=lambda printer_data: printer_data
+        and printer_data.status.current_fan_speed.box_fan > 0,
+        percentage_fn=lambda printer_data: printer_data
+        and printer_data.status.current_fan_speed.box_fan,
     ),
 )

@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.httpx_client import get_async_client
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from PIL import Image as PILImage
 
 from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
@@ -64,6 +65,7 @@ class ElegooPrinterApiClient:
         )
         self.server: ElegooPrinterServer | None = None
         self.hass: HomeAssistant = hass
+        self.printer_data: PrinterData | None = None
 
     @classmethod
     async def async_create(
@@ -107,9 +109,10 @@ class ElegooPrinterApiClient:
             if connected:
                 logger.info("Polling Started")
             else:
-                raise ConfigEntryNotReady(
-                    f"Could not connect to printer at {printer.ip_address}, proxy_enabled: {proxy_server_enabled}"
-                )
+                return None
+                # raise ConfigEntryNotReady(
+                #     f"Could not connect to printer at {printer.ip_address}, proxy_enabled: {proxy_server_enabled}"
+                # )
         except Exception as e:
             raise ConfigEntryNotReady from e
 

@@ -73,14 +73,18 @@ async def async_setup_entry(
         **(entry.options or {}),
     }
 
-    client = await ElegooPrinterApiClient.async_create(
-        config=MappingProxyType(config),
-        logger=LOGGER,
-        hass=hass,
-    )
+    try:
+        client = await ElegooPrinterApiClient.async_create(
+            config=MappingProxyType(config),
+            logger=LOGGER,
+            hass=hass,
+        )
 
-    if client is None:
-        raise ConfigEntryNotReady("Failed to connect to the printer")
+        if client is None:
+            raise ConfigEntryNotReady("Failed to connect to the printer")
+
+    except Exception as e:
+        raise ConfigEntryNotReady from e
 
     entry.runtime_data = ElegooPrinterData(
         api=client,
