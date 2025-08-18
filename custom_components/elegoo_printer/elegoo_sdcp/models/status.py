@@ -111,31 +111,32 @@ class PrintInfo:
         self.remaining_ticks: int = max(0, self.total_ticks - self.current_ticks)
         self.progress: int | None = data.get("Progress")
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
-        self.end_time: datetime | None = None
+        self.end_time = None
 
         # Bug where printer sends 0 for percent and current layer if print finished
         if self.status == ElegooPrintStatus.COMPLETE:
             self.percent_complete = 100
             self.current_layer = self.total_layers
             self.remaining_layers = 0
-        elif current_status != ElegooMachineStatus.IDLE:
+        elif current_status is not None and current_status != ElegooMachineStatus.IDLE:
             # If the printer is not idle, we can update progress
             if self.progress is not None:
-                self.percent_complete: int = int(self.progress)
+                percent_complete = int(self.progress)
             else:
                 if self.total_layers > 0:
-                    self.percent_complete: int = int(
+                    percent_complete = int(
                         (self.current_layer / self.total_layers) * 100
                     )
                 else:
-                    self.percent_complete: int = 0
+                    percent_complete = 0
+            self.percent_complete = max(0, min(100, percent_complete))
+        else:
+            self.percent_complete = 0
 
-        self.filename: str = data.get("Filename", "")
-        error_number_int: int = data.get("ErrorNumber", 0)
-        self.error_number: ElegooPrintError | None = ElegooPrintError.from_int(
-            error_number_int
-        )
-        self.task_id: str | None = data.get("TaskId")
+        self.filename = data.get("Filename", "")
+        error_number_int = data.get("ErrorNumber", 0)
+        self.error_number = ElegooPrintError.from_int(error_number_int)
+        self.task_id = data.get("TaskId")
 
     def calculate_end_time(self) -> datetime | None:
         """Calculate the estimated end time of the print job."""
