@@ -1,4 +1,5 @@
 """Binary Sensor platform for elegoo_printer."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
