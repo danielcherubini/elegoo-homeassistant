@@ -31,6 +31,24 @@ from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
 )
 
 
+def _has_valid_current_coords(printer_data) -> bool:
+    """Check if current_coord is valid."""
+    if printer_data.status.current_coord is None:
+        return False
+    coords = printer_data.status.current_coord.split(",")
+    return len(coords) == 3
+
+
+def _get_current_coord_value(printer_data, index: int) -> float | None:
+    """Get a coordinate value from current_coord."""
+    if not _has_valid_current_coords(printer_data):
+        return None
+    try:
+        return float(printer_data.status.current_coord.split(",")[index])
+    except (ValueError, IndexError):
+        return None
+
+
 async def _async_noop() -> None:
     """Async no-op function"""
     pass

@@ -19,6 +19,7 @@ from .const import (
     CONF_PRINTER_TYPE,
     CONF_PROXY_ENABLED,
     DOMAIN,
+    WEBSOCKET_PORT,
 )
 from .coordinator import ElegooDataUpdateCoordinator
 
@@ -48,5 +49,5 @@ class ElegooPrinterEntity(CoordinatorEntity[ElegooDataUpdateCoordinator]):
             manufacturer=coordinator.config_entry.data[CONF_BRAND],
             sw_version=coordinator.config_entry.data[CONF_FIRMWARE],
             serial_number=coordinator.config_entry.data[CONF_ID],
-            configuration_url=f"http://{ip_address}:3030",
+            configuration_url=f"http://{ip_address}:{WEBSOCKET_PORT}",
         )
