@@ -172,7 +172,17 @@ class Printer:
 
 
 class PrinterData:
-    """Data object for printer information."""
+    """
+    Data object for printer information.
+
+    Attributes:
+        status (PrinterStatus): The status of the printer.
+        attributes (PrinterAttributes): The attributes of the printer.
+        printer (Printer): The printer object.
+        print_history (dict[str, PrintHistoryDetail | None]): The print history of the printer.
+        current_job (PrintHistoryDetail | None): The current print job of the printer.
+        video (ElegooVideo): The video object of the printer.
+    """
 
     print_history: dict[str, PrintHistoryDetail | None]
     current_job: PrintHistoryDetail | None

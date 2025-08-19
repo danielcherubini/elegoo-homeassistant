@@ -1,149 +1,349 @@
-"""Enums for the Elegoo printer integration."""
+"""Elegoo Printer enums."""
 
 from enum import Enum
+from typing import Optional
+
+
+class ElegooMachineStatus(Enum):
+    """
+    Represents the different status states of an SDCP machine.
+
+    Attributes:
+        IDLE: The machine is idle and not performing any task.
+        PRINTING: The machine is currently executing a print task.
+        FILE_TRANSFERRING: A file transfer is in progress.
+        EXPOSURE_TESTING: The machine is performing an exposure test.
+        DEVICES_TESTING: The machine is running a device self-check.
+        LEVELING: The machine is performing a leveling operation.
+
+    Example:
+        >>> ElegooMachineStatus(0)
+        <ElegooMachineStatus.IDLE: 0>
+        >>> ElegooMachineStatus.from_int(1)
+        <ElegooMachineStatus.PRINTING: 1>
+    """
+
+    IDLE = 0
+    PRINTING = 1
+    FILE_TRANSFERRING = 2
+    EXPOSURE_TESTING = 3
+    DEVICES_TESTING = 4
+    LEVELING = 5
+
+    @classmethod
+    def from_int(cls, status_int: int) -> Optional["ElegooMachineStatus"] | None:
+        """
+        Converts an integer to an ElegooMachineStatus enum member.
+
+        Args:
+            status_int: The integer representing the print status.
+
+        Returns:
+            The corresponding ElegooMachineStatus enum member, or None if the
+            integer is not a valid status value.
+
+        """  # noqa: D401
+        try:
+            return cls(status_int)  # Use cls() to create enum members
+        except ValueError:
+            return None
+
+    @classmethod
+    def from_list(cls, status_list: list[int]) -> Optional["ElegooMachineStatus"]:
+        """
+        Convert a list of integers to an ElegooMachineStatus enum member.
+
+        Args:
+            status_list: A list of integers representing print statuses.
+                         It is expected to contain only one element.
+
+        Returns:
+            The corresponding ElegooMachineStatus enum member, or None if:
+            - The list is empty.
+            - The list contains more than one element.
+            - The integer in the list is not a valid status value.
+
+        """
+        if not status_list or len(status_list) != 1:
+            return None  # Return None if the list is empty or has more than one element
+
+        status_int = status_list[0]
+        return cls.from_int(status_int)
+
+
+class ElegooPrintStatus(Enum):
+    """
+    Represents the different status states of a print job.
+
+    Attributes:
+        IDLE: The print job is idle and not actively printing.
+        HOMING: The printer is resetting or homing its axes.
+        DROPPING: The print platform is descending.
+        PRINTING: The printer is currently printing.
+        LIFTING: The print platform is lifting.
+        PAUSING: The printer is in the process of pausing the print job.
+        PAUSED: The print job is currently paused.
+        STOPPING: The printer is in the process of stopping the print job.
+        STOPPED: The print job is stopped.
+        COMPLETE: The print job has completed successfully.
+        FILE_CHECKING: The printer is currently checking the print file.
+        LOADING: The printer is loading filament.
+
+    Example:
+        >>> ElegooPrintStatus(0)
+        <ElegooPrintStatus.IDLE: 0>
+        >>> ElegooPrintStatus.from_int(3)
+        <ElegooPrintStatus.PRINTING: 3>
+    """
+
+    IDLE = 0
+    HOMING = 1
+    DROPPING = 2
+    PRINTING = 3
+    LIFTING = 4
+    PAUSING = 5
+    PAUSED = 6
+    STOPPING = 7
+    STOPPED = 8
+    COMPLETE = 9
+    FILE_CHECKING = 10
+    RECOVERY = 12
+    LOADING = 15
+
+    @classmethod
+    def from_int(cls, status_int: int) -> Optional["ElegooPrintStatus"] | None:
+        """
+        Converts an integer to an ElegooPrintStatus enum member.
+
+        Args:
+            status_int: The integer representing the print status.
+
+        Returns:
+            The corresponding ElegooPrintStatus enum member, or None if the
+            integer is not a valid status value.
+
+        """  # noqa: D401
+        if status_int in [16, 18, 19, 20, 21]:
+            return cls.LOADING
+        if status_int == 13:
+            return cls.PRINTING
+        try:
+            return cls(status_int)
+        except ValueError:
+            return None
+
+
+class ElegooPrintError(Enum):
+    """
+    Represents the different error states that can occur during printing.
+
+    Attributes:
+        NONE: No error has occurred. The print process is normal.
+        CHECK: File MD5 checksum check failed, indicating potential file corruption.
+        FILEIO: An error occurred while reading the print file.
+        INVALID_RESOLUTION: The print file's resolution does not match the printer's capabilities.
+        UNKNOWN_FORMAT: The printer does not recognize the format of the print file.
+        UNKNOWN_MODEL: The print file is intended for a different machine model.
+
+    Example:
+        >>> ElegooPrintError(0)
+        <ElegooPrintError.NONE: 0>
+        >>> ElegooPrintError.from_int(1)
+        <ElegooPrintError.CHECK: 1>
+    """  # noqa: E501
+
+    NONE = 0
+    CHECK = 1
+    FILEIO = 2
+    INVALID_RESOLUTION = 3
+    UNKNOWN_FORMAT = 4
+    UNKNOWN_MODEL = 5
+
+    @classmethod
+    def from_int(cls, status_int: int) -> Optional["ElegooPrintError"] | None:
+        """
+        Convert an integer to the corresponding ElegooPrintError enum member.
+
+        Returns:
+            The matching ElegooPrintError member if the integer is valid, or None if it does not correspond to any defined error.
+        """  # noqa: D401
+        try:
+            return cls(status_int)  # Use cls() to create enum members
+        except ValueError:
+            return None
+
+
+class ElegooVideoStatus(Enum):
+    """
+    Represents a video status
+
+    Attributes:
+        0 - Success
+        1 - Exceeded maximum streaming limit
+        2 - Camera does not exist
+        3 - Unknown error
+
+    Example:
+        >>> ElegooVideoStatus(0)
+        <ElegooVideoStatus.SUCCESS: 0>
+        >>> ElegooVideoStatus.from_int(1)
+        <ElegooVideoStatus.EXCEEDED_MAX_STREAMING_LIMIT: 1>
+    """
+
+    SUCCESS = 0
+    EXCEEDED_MAX_STREAMING_LIMIT = 1
+    CAMERA_DOES_NOT_EXIST = 2
+    UNKNOWN_ERROR = 3
+
+    @classmethod
+    def from_int(cls, status_int: int) -> Optional["ElegooVideoStatus"] | None:
+        """
+        Convert an integer to the corresponding ElegooVideoStatus enum member.
+
+        Returns:
+            ElegooVideoStatus: The matching enum member if the integer is valid, otherwise None.
+        """
+        try:
+            return cls(status_int)
+        except ValueError:
+            return None
+
+
+class ElegooErrorStatusReason(Enum):
+    """
+    Represents the reason for a print job status or error.
+
+    Attributes:
+        OK: Normal operation.
+        TEMP_ERROR: Over-temperature error for the nozzle or bed.
+        FILAMENT_RUNOUT: Filament runout was detected.
+        FILAMENT_JAM: A filament jam or clog was detected.
+        LEVEL_FAILED: Auto-bed leveling process failed.
+        UDISK_REMOVE: USB drive was removed during printing.
+        HOME_FAILED_X: Homing failed on the X-axis, likely a motor or endstop issue.
+        HOME_FAILED_Z: Homing failed on the Z-axis, likely a motor or endstop issue.
+        HOME_FAILED: A general homing failure occurred.
+        BED_ADHESION_FAILED: The print detached from the print bed.
+        ERROR: A general, unspecified printing exception occurred.
+        MOVE_ABNORMAL: An abnormality was detected in motor movement.
+        HOME_FAILED_Y: Homing failed on the Y-axis, likely a motor or endstop issue.
+        FILE_ERROR: An error occurred while reading the G-code file.
+        CAMERA_ERROR: A camera connection error occurred.
+        NETWORK_ERROR: A network connection error occurred.
+        SERVER_CONNECT_FAILED: Failed to connect to the server.
+        DISCONNECT_APP: The controlling application disconnected during the print.
+        NOZZLE_TEMP_SENSOR_OFFLINE: The nozzle thermistor is offline or disconnected.
+        BED_TEMP_SENSOR_OFFLINE: The bed thermistor is offline or disconnected.
+
+    Example:
+        >>> ElegooErrorStatusReason(0)
+        <ElegooErrorStatusReason.OK: 0>
+        >>> ElegooErrorStatusReason.from_int(1)
+        <ElegooErrorStatusReason.TEMP_ERROR: 1>
+    """  # noqa: E501
+
+    OK = 0
+    TEMP_ERROR = 1
+    FILAMENT_RUNOUT = 3
+    FILAMENT_JAM = 6
+    LEVEL_FAILED = 7
+    UDISK_REMOVE = 12
+    HOME_FAILED_X = 13
+    HOME_FAILED_Z = 14
+    HOME_FAILED = 17
+    BED_ADHESION_FAILED = 18
+    ERROR = 19
+    MOVE_ABNORMAL = 20
+    HOME_FAILED_Y = 23
+    FILE_ERROR = 24
+    CAMERA_ERROR = 25
+    NETWORK_ERROR = 26
+    SERVER_CONNECT_FAILED = 27
+    DISCONNECT_APP = 28
+    NOZZLE_TEMP_SENSOR_OFFLINE = 33
+    BED_TEMP_SENSOR_OFFLINE = 34
+
+    @classmethod
+    def from_int(cls, status_int: int) -> Optional["ElegooErrorStatusReason"]:
+        """
+        Convert an integer to the corresponding ElegooErrorStatusReason enum member.
+
+        Returns:
+            The matching ElegooErrorStatusReason member if the integer is valid; otherwise, None.
+        """
+        try:
+            return cls(status_int)
+        except ValueError:
+            return None
 
 
 class ElegooFan(Enum):
-    """Enum for Elegoo printer fans."""
+    """
+    Represents the different fan names in the Elegoo printer API.
+
+    Attributes:
+        MODEL_FAN: The fan that cools the model.
+        AUXILIARY_FAN: The auxiliary fan.
+        BOX_FAN: The fan that cools the enclosure.
+    """
 
     MODEL_FAN = "ModelFan"
     AUXILIARY_FAN = "AuxiliaryFan"
     BOX_FAN = "BoxFan"
 
     @classmethod
-    def from_key(cls, key: str) -> "ElegooFan":
-        """Get a fan from a key."""
-        for fan in cls:
-            if fan.name.lower() == key:
-                return fan
-        raise ValueError(f"Invalid fan key: {key}")
+    def from_key(cls, key: str) -> Optional["ElegooFan"] | None:
+        """Convert a key to the corresponding ElegooFan enum member.
+
+        Returns:
+            ElegooFan: The matching enum member if the key is valid, otherwise None.
+        """
+        pascal_case_string = key.replace("_", " ").title().replace(" ", "")
+        for fan_name in cls:
+            if fan_name.value == pascal_case_string:
+                return fan_name
+        return None
 
 
 class PrinterType(Enum):
-    """Enum for Elegoo printer types."""
+    """
+    Represents the type of printer.
+
+    Attributes:
+        RESIN: A resin-based 3D printer.
+        FDM: A fused deposition modeling (FDM) 3D printer.
+    """
 
     RESIN = "resin"
     FDM = "fdm"
 
     @classmethod
-    def from_model(cls, model: str | None) -> "PrinterType":
-        """Get a printer type from a model name."""
-        if model in ["Saturn 4 Ultra"]:
+    def from_model(cls, model: Optional[str]) -> Optional["PrinterType"]:
+        """
+        Returns the printer type (RESIN or FDM) based on the provided model name.
+
+        Parameters:
+            model (str): The printer model name to evaluate.
+
+        Returns:
+            PrinterType or None: The corresponding printer type if the model matches a known FDM or resin printer, otherwise None.
+        """
+        if model is None:
+            return None
+
+        fdm_printers = ["centauri carbon", "centauri"]
+        resin_printers = [
+            "mars 5",
+            "mars 5 ultra",
+            "saturn 4",
+            "saturn 4 ultra",
+            "saturn 4 ultra 16k",
+        ]
+
+        if model.lower() in fdm_printers:
+            return cls.FDM
+
+        if model.lower() in resin_printers:
             return cls.RESIN
-        return cls.FDM
 
-
-class ElegooMachineStatus(Enum):
-    """Enum for Elegoo printer machine statuses."""
-
-    IDLE = 0
-    PRINTING = 1
-    PAUSED = 2
-    COMPLETED = 3
-    ERROR = 4
-    UNKNOWN = 99
-
-    @classmethod
-    def from_list(cls, status_list: list[int]) -> "ElegooMachineStatus":
-        """Get a machine status from a list of integers."""
-        if not status_list:
-            return cls.UNKNOWN
-        return cls.from_int(status_list[0])
-
-    @classmethod
-    def from_int(cls, status: int) -> "ElegooMachineStatus":
-        """Get a machine status from an integer."""
-        try:
-            return cls(status)
-        except ValueError:
-            return cls.UNKNOWN
-
-
-class ElegooPrintStatus(Enum):
-    """Enum for Elegoo printer print statuses."""
-
-    IDLE = 0
-    PRINTING = 1
-    PAUSED = 2
-    COMPLETED = 3
-    ERROR = 4
-    UNKNOWN = 99
-
-    @classmethod
-    def from_int(cls, status: int) -> "ElegooPrintStatus":
-        """Get a print status from an integer."""
-        try:
-            return cls(status)
-        except ValueError:
-            return cls.UNKNOWN
-
-
-class ElegooPrintError(Enum):
-    """Enum for Elegoo printer print errors."""
-
-    NONE = 0
-    M01 = 1
-    M02 = 2
-    M03 = 3
-    M04 = 4
-    M05 = 5
-    M06 = 6
-    M07 = 7
-    M08 = 8
-    M09 = 9
-    M10 = 10
-    M11 = 11
-    M12 = 12
-    M13 = 13
-    M14 = 14
-    M15 = 15
-    M16 = 16
-    M17 = 17
-    M18 = 18
-    M19 = 19
-    M20 = 20
-    M21 = 21
-    M22 = 22
-    M23 = 23
-    M24 = 24
-    UNKNOWN = 99
-
-    @classmethod
-    def from_int(cls, error: int) -> "ElegooPrintError":
-        """Get a print error from an integer."""
-        try:
-            return cls(error)
-        except ValueError:
-            return cls.UNKNOWN
-
-
-class ElegooVideoStatus(Enum):
-    """Enum for Elegoo printer video statuses."""
-
-    SUCCESS = 0
-    CONNECTION_FAILED = 1
-    CAMERA_NOT_FOUND = 2
-    UNKNOWN = 99
-
-    @classmethod
-    def from_int(cls, status: int) -> "ElegooVideoStatus":
-        """Get a video status from an integer."""
-        try:
-            return cls(status)
-        except ValueError:
-            return cls.UNKNOWN
-
-
-class ElegooErrorStatusReason(Enum):
-    """Enum for Elegoo printer error status reasons."""
-
-    NONE = 0
-    UNKNOWN = 99
-
-    @classmethod
-    def from_int(cls, reason: int) -> "ElegooErrorStatusReason":
-        """Get an error status reason from an integer."""
-        try:
-            return cls(reason)
-        except ValueError:
-            return cls.UNKNOWN
+        return None

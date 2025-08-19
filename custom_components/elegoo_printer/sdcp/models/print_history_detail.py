@@ -58,7 +58,61 @@ class PrintHistoryDetail:
 
 
 class SliceInformation:
-    """Represent the slice information of a print job."""
+    """
+    Represent the slice information of a print job.
+
+    Attributes:
+        resolution_x (int): The resolution of the print in the x-axis.
+        resolution_y (int): The resolution of the print in the y-axis.
+        layer_height (float): The height of each layer.
+        total_layer_numbers (int): The total number of layers in the print.
+        machine_size_x (float): The size of the machine in the x-axis.
+        machine_size_y (float): The size of the machine in the y-axis.
+        machine_size_z (float): The size of the machine in the z-axis.
+        model_size_x (float): The size of the model in the x-axis.
+        model_size_y (float): The size of the model in the y-axis.
+        model_size_z (float): The size of the model in the z-axis.
+        volume (float): The volume of the model.
+        weight (float): The weight of the model.
+        price (float): The price of the model.
+        print_time (int): The estimated print time in seconds.
+        machine_name (str): The name of the machine.
+        independent_supports (int): The number of independent supports.
+        resin_color (int): The color of the resin.
+        resin_type (str): The type of the resin.
+        resin_name (str): The name of the resin.
+        profile_name (str): The name of the profile.
+        resin_density (float): The density of the resin.
+        bottom_layer_numbers (int): The number of bottom layers.
+        transition_layer_numbers (int): The number of transition layers.
+        transition_type (int): The type of transition.
+        bottom_layer_lift_height (float): The lift height of the bottom layers.
+        bottom_layer_lift_height2 (float): The second lift height of the bottom layers.
+        bottom_layer_drop_height2 (float): The drop height of the bottom layers.
+        bottom_layer_lift_speed (float): The lift speed of the bottom layers.
+        bottom_layer_lift_speed2 (float): The second lift speed of the bottom layers.
+        bottom_layer_drop_speed (float): The drop speed of the bottom layers.
+        bottom_layer_drop_speed2 (float): The second drop speed of the bottom layers.
+        bottom_layer_exposure_time (int): The exposure time of the bottom layers.
+        bottom_layer_pwm (int): The PWM of the bottom layers.
+        bottom_layer_light_off_time (int): The light off time of the bottom layers.
+        bottom_layer_rest_time_after_drop (int): The rest time after drop of the bottom layers.
+        bottom_layer_rest_time_after_lift (int): The rest time after lift of the bottom layers.
+        bottom_layer_rest_time_before_lift (int): The rest time before lift of the bottom layers.
+        normal_layer_lift_height (float): The lift height of the normal layers.
+        normal_layer_lift_height2 (float): The second lift height of the normal layers.
+        normal_layer_drop_height2 (float): The drop height of the normal layers.
+        normal_layer_lift_speed (float): The lift speed of the normal layers.
+        normal_layer_lift_speed2 (float): The second lift speed of the normal layers.
+        normal_layer_drop_speed (float): The drop speed of the normal layers.
+        normal_layer_drop_speed2 (float): The second drop speed of the normal layers.
+        normal_layer_exposure_time (int): The exposure time of the normal layers.
+        normal_layer_pwm (int): The PWM of the normal layers.
+        normal_layer_light_off_time (int): The light off time of the normal layers.
+        normal_layer_rest_time_after_drop (int): The rest time after drop of the normal layers.
+        normal_layer_rest_time_after_lift (int): The rest time after lift of the normal layers.
+        normal_layer_rest_time_before_lift (int): The rest time before lift of the normal layers.
+    """
 
     def __init__(self, data: dict[str, Any]) -> None:  # noqa: PLR0915
         """

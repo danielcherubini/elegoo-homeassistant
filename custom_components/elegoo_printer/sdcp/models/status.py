@@ -141,6 +141,26 @@ class PrintInfo:
 class PrinterStatus:
     """
     Represents the status of a 3D printer.
+
+    Attributes:
+        current_status (ElegooMachineStatus): The current status of the machine.
+        previous_status (int): The previous status of the machine.
+        print_screen (int): The print screen status.
+        release_film (int): The release film status.
+        time_lapse_status (int): The time lapse status.
+        platform_type (int): The platform type.
+        temp_of_uvled (float): The temperature of the UV LED.
+        temp_of_box (float): The temperature of the box.
+        temp_target_box (float): The target temperature of the box.
+        temp_of_hotbed (float): The temperature of the hotbed.
+        temp_of_nozzle (float): The temperature of the nozzle.
+        temp_target_hotbed (float): The target temperature of the hotbed.
+        temp_target_nozzle (float): The target temperature of the nozzle.
+        current_coord (str): The current coordinates of the printer.
+        z_offset (float): The z-offset of the printer.
+        current_fan_speed (CurrentFanSpeed): The current fan speed.
+        light_status (LightStatus): The status of the lights.
+        print_info (PrintInfo): Information about the current print job.
     """
 
     def __init__(
