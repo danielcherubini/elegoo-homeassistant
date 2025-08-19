@@ -303,9 +303,12 @@ class ElegooPrinterServer:
         if not self.session or self.session.closed:
             return web.Response(status=503, text="Session not available.")
 
+        headers = {
+            k: v for k, v in request.headers.items() if k.lower() not in ("host",)
+        }
         try:
             async with self.session.get(
-                remote_url, timeout=aiohttp.ClientTimeout(total=60)
+                remote_url, timeout=aiohttp.ClientTimeout(total=60), headers=headers
             ) as proxy_response:
                 response = web.StreamResponse(
                     status=proxy_response.status,
@@ -462,12 +465,17 @@ class ElegooPrinterServer:
         target_url = (
             f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
         )
+        headers = {
+            k: v
+            for k, v in request.headers.items()
+            if k.lower() not in ("host", "transfer-encoding")
+        }
 
         try:
             async with self.session.request(
                 request.method,
                 target_url,
-                headers=request.headers,
+                headers=headers,
                 data=request.content,  # Stream the request body
                 allow_redirects=False,
             ) as upstream_response:
@@ -506,13 +514,18 @@ class ElegooPrinterServer:
         if not self.session or self.session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
+        headers = {
+            k: v
+            for k, v in request.headers.items()
+            if k.lower() not in ("host", "transfer-encoding")
+        }
         try:
             # Store: Read the entire request body into memory.
             raw_body = await request.read()
 
             # Forward: Send the complete body to the printer. aiohttp will add the Content-Length.
             async with self.session.post(
-                remote_url, headers=request.headers, data=raw_body
+                remote_url, headers=headers, data=raw_body
             ) as response:
                 self.logger.debug(
                     f"Printer responded to proxied upload with status: {response.status}"
