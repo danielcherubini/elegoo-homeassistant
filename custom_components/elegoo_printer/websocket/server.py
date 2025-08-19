@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import socket
-from threading import Event, Thread
+from threading import Event, Thread, current_thread
 from typing import Any, List
 
 import aiohttp
@@ -120,18 +120,12 @@ class ElegooPrinterServer:
         if self.loop and self.loop.is_running():
             self.loop.call_soon_threadsafe(self.loop.stop)
 
-        if self.proxy_thread and self.proxy_thread.is_alive():
-            try:
-                from threading import (
-                    current_thread as _cr_current_thread,
-                )  # local import to avoid top-level churn
-            except Exception:
-                _cr_current_thread = None
-            if (
-                _cr_current_thread is None
-                or _cr_current_thread() is not self.proxy_thread
-            ):
-                self.proxy_thread.join(timeout=5)
+        if (
+            self.proxy_thread
+            and self.proxy_thread.is_alive()
+            and current_thread() is not self.proxy_thread
+        ):
+            self.proxy_thread.join(timeout=5)
 
         if self in self.__class__._instances:
             self.__class__._instances.remove(self)
@@ -308,32 +302,64 @@ class ElegooPrinterServer:
             web.StreamResponse: The proxied video stream response from the printer, or an error response if the proxy session is unavailable or the upstream connection fails.
         """
         remote_url = f"http://{self.printer.ip_address}:{VIDEO_PORT}{request.path_qs}"
-        self.logger.info(f"Proxying video request to {remote_url}")
+        self.logger.debug(f"Proxying video request to {remote_url}")
 
         if not self.session or self.session.closed:
             return web.Response(status=503, text="Session not available.")
 
+        hop_by_hop = {
+            "host",
+            "connection",
+            "keep-alive",
+            "proxy-connection",
+            "te",
+            "trailer",
+            "trailers",
+            "transfer-encoding",
+            "upgrade",
+        }
         headers = {
-            k: v for k, v in request.headers.items() if k.lower() not in ("host",)
+            k: v for k, v in request.headers.items() if k.lower() not in hop_by_hop
         }
         try:
             async with self.session.get(
                 remote_url,
-                timeout=aiohttp.ClientTimeout(total=None, connect=10, sock_read=None),
+                timeout=aiohttp.ClientTimeout(total=None, connect=10, sock_read=60),
                 headers=headers,
             ) as proxy_response:
+                hop_by_hop = {
+                    "connection",
+                    "keep-alive",
+                    "proxy-authenticate",
+                    "proxy-authorization",
+                    "te",
+                    "trailer",
+                    "trailers",
+                    "transfer-encoding",
+                    "upgrade",
+                }
+                forward_headers = {
+                    k: v
+                    for k, v in proxy_response.headers.items()
+                    if k.lower() not in hop_by_hop
+                }
                 response = web.StreamResponse(
                     status=proxy_response.status,
                     reason=proxy_response.reason,
-                    headers=proxy_response.headers,
+                    headers=forward_headers,
                 )
                 await response.prepare(request)
                 try:
                     async for chunk in proxy_response.content.iter_chunked(8192):
                         await response.write(chunk)
                     await response.write_eof()
-                except (ConnectionResetError, asyncio.CancelledError):
-                    self.logger.info("Video stream client disconnected.")
+                except (
+                    ConnectionResetError,
+                    ConnectionAbortedError,
+                    BrokenPipeError,
+                    asyncio.CancelledError,
+                ):
+                    self.logger.debug("Video stream client disconnected.")
 
                 return response
 
@@ -399,18 +425,18 @@ class ElegooPrinterServer:
                     try:
                         async for msg in source:
                             if msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
-                                (
+                                if msg.type == WSMsgType.BINARY:
                                     await dest.send_bytes(msg.data)
-                                    if msg.type == WSMsgType.BINARY
-                                    else await dest.send_str(
+                                else:
+                                    local_ip = self.get_local_ip()
+                                    await dest.send_str(
                                         msg.data.replace(
-                                            self.printer.ip_address, self.get_local_ip()
+                                            self.printer.ip_address, local_ip
                                         ).replace(
-                                            f"{self.get_local_ip()}/",
-                                            f"{self.get_local_ip()}:{WEBSOCKET_PORT}/",
+                                            f"{local_ip}/",
+                                            f"{local_ip}:{WEBSOCKET_PORT}/",
                                         )
                                     )
-                                )
                             elif msg.type == WSMsgType.CLOSE:
                                 break
                             elif msg.type == WSMsgType.ERROR:
