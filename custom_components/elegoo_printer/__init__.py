@@ -58,13 +58,7 @@ async def async_setup_entry(
     Returns:
         bool: True if the integration is set up successfully.
     """
-    coordinator = ElegooDataUpdateCoordinator(
-        hass=hass,
-        logger=LOGGER,
-        name=DOMAIN,
-        update_interval=timedelta(seconds=2),
-        config_entry=entry,
-    )
+    coordinator = ElegooDataUpdateCoordinator(hass=hass, entry=entry)
 
     config = {
         **(entry.data or {}),
