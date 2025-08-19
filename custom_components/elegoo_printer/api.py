@@ -9,16 +9,15 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.httpx_client import get_async_client
 from PIL import Image as PILImage
 
-from custom_components.elegoo_printer.sdcp.models.elegoo_image import ElegooImage
-from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
-from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
+from .const import CONF_PROXY_ENABLED, LOGGER
+from .sdcp.models.elegoo_image import ElegooImage
+from .sdcp.models.enums import ElegooFan
+from .sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
-from custom_components.elegoo_printer.sdcp.models.printer import Printer, PrinterData
-from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
-from custom_components.elegoo_printer.websocket.server import ElegooPrinterServer
-
-from .const import CONF_PROXY_ENABLED, LOGGER
+from .sdcp.models.printer import Printer, PrinterData
+from .websocket.client import ElegooPrinterClient
+from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
     from logging import Logger
@@ -51,12 +50,6 @@ class ElegooPrinterApiClient:
         self._logger = logger
         self.printer = printer
         self._hass_client = get_async_client(hass)
-        self.client = ElegooPrinterClient(
-            printer.ip_address,
-            config=config,
-            logger=logger,
-            session=async_get_clientsession(hass),
-        )
         self.server: ElegooPrinterServer | None = None
         self.hass: HomeAssistant = hass
 
@@ -66,7 +59,7 @@ class ElegooPrinterApiClient:
         config: MappingProxyType[str, Any],
         logger: Logger,
         hass: HomeAssistant,
-    ) -> ElegooPrinterApiClient:
+    ) -> ElegooPrinterApiClient | None:
         """
         Asynchronously creates and initializes an ElegooPrinterApiClient instance.
 
@@ -74,12 +67,13 @@ class ElegooPrinterApiClient:
         sets up a proxy server, and attempts to connect to the printer. It returns an
         initialized client instance; the connection status should be checked separately.
         """
+
         printer = Printer.from_dict(dict(config))
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
         logger.debug("CONFIGURATION %s", config)
         self = ElegooPrinterApiClient(printer, config=config, logger=logger, hass=hass)
 
-        if printer.proxy_enabled:
+        if proxy_server_enabled:
             logger.debug("Proxy server is enabled, attempting to create proxy server.")
             try:
                 self.server = ElegooPrinterServer(printer, logger=logger)
@@ -98,17 +92,32 @@ class ElegooPrinterApiClient:
         )
 
         try:
+            self.client = ElegooPrinterClient(
+                printer.ip_address,
+                config=config,
+                logger=logger,
+                session=async_get_clientsession(hass),
+            )
             connected = await self.client.connect_printer(printer, proxy_server_enabled)
             if connected:
                 logger.info("Polling Started")
-            else:
-                logger.warning(
-                    f"Could not connect to printer at {printer.ip_address}, proxy_enabled: {proxy_server_enabled}"
-                )
+                return self
+            logger.warning(
+                "Could not connect to printer at %s, proxy_enabled: %s",
+                printer.ip_address,
+                proxy_server_enabled,
+            )
+            if self.server:
+                self.server.stop()
+            await self.client.disconnect()
+            return None
         except Exception as e:
-            logger.warning(f"Could not connect to printer: {e}")
-
-        return self
+            logger.warning("Could not connect to printer: %s", e)
+            if self.server:
+                self.server.stop()
+            if self.client:
+                await self.client.disconnect()
+            return None
 
     async def elegoo_disconnect(self) -> None:
         """Disconnect from the printer by closing the WebSocket connection."""

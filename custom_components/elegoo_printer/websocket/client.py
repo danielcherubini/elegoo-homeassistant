@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
+import secrets
 import socket
 import time
 from types import MappingProxyType
@@ -31,8 +31,6 @@ from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
 from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
-from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
-
 from custom_components.elegoo_printer.sdcp.models.printer import (
     Printer,
     PrinterData,
@@ -41,6 +39,7 @@ from custom_components.elegoo_printer.sdcp.models.status import (
     LightStatus,
     PrinterStatus,
 )
+from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
 logging.getLogger("websocket").setLevel(logging.CRITICAL)
 
@@ -84,6 +83,8 @@ class ElegooPrinterClient:
         self._listener_task: asyncio.Task | None = None
         self._session: aiohttp.ClientSession = session
         self._background_tasks: set[asyncio.Task] = set()
+        self._response_events: dict[str, asyncio.Event] = {}
+        self._response_lock = asyncio.Lock()
 
     @property
     def is_connected(self) -> bool:
@@ -102,6 +103,11 @@ class ElegooPrinterClient:
             self._listener_task = None
         if self.printer_websocket and not self.printer_websocket.closed:
             await self.printer_websocket.close()
+        # NEW: unblock any waiters
+        async with self._response_lock:
+            for ev in self._response_events.values():
+                ev.set()
+            self._response_events.clear()
         self._is_connected = False
 
     async def get_printer_status(self) -> PrinterData:
@@ -136,7 +142,6 @@ class ElegooPrinterClient:
             The current video stream information from the printer.
         """
         await self.set_printer_video_stream(enable=enable)
-        await asyncio.sleep(2)
         self.logger.debug(f"Sending printer video: {self.printer_data.video.to_dict()}")
         return self.printer_data.video
 
@@ -145,7 +150,6 @@ class ElegooPrinterClient:
     ) -> dict[str, PrintHistoryDetail | None] | None:
         """Asynchronously requests the list of historical print tasks from the printer."""
         await self._send_printer_cmd(320)
-        await asyncio.sleep(2)  # Give the printer time to respond
         return self.printer_data.print_history
 
     async def get_printer_task_detail(
@@ -157,7 +161,6 @@ class ElegooPrinterClient:
                 return task
             else:
                 await self._send_printer_cmd(321, data={"Id": [task_id]})
-                await asyncio.sleep(2)
                 return self.printer_data.print_history.get(task_id)
 
         return None
@@ -253,7 +256,6 @@ class ElegooPrinterClient:
             task = self.printer_data.print_history.get(last_task_id)
             if task is None:
                 await self.get_printer_task_detail([last_task_id])
-                await asyncio.sleep(2)  # Give the printer time to respond
                 return self.printer_data.print_history.get(last_task_id)
             return task
         return None
@@ -341,12 +343,13 @@ class ElegooPrinterClient:
             )
         ts = int(time.time())
         data = data or {}
+        request_id = secrets.token_hex(8)
         payload = {
             "Id": self.printer.connection,
             "Data": {
                 "Cmd": cmd,
                 "Data": data,
-                "RequestID": os.urandom(8).hex(),
+                "RequestID": request_id,
                 "MainboardID": self.printer.id,
                 "TimeStamp": ts,
                 "From": 0,
@@ -355,17 +358,29 @@ class ElegooPrinterClient:
         }
         if DEBUG:
             self.logger.debug(f"printer << \n{json.dumps(payload, indent=4)}")
+
+        event = asyncio.Event()
+        async with self._response_lock:
+            self._response_events[request_id] = event
+
         if self.printer_websocket:
             try:
                 await self.printer_websocket.send_str(json.dumps(payload))
-            except (
-                OSError,
-                asyncio.TimeoutError,
-                aiohttp.ClientError,
-            ) as e:
+                await asyncio.wait_for(event.wait(), timeout=10)
+            except asyncio.TimeoutError:
+                # Command-level timeout: keep the connection alive
+                self.logger.warning(
+                    "Timed out waiting for response to cmd %s (RequestID=%s)",
+                    cmd,
+                    request_id,
+                )
+            except (OSError, aiohttp.ClientError) as e:
                 self._is_connected = False
                 self.logger.info("WebSocket connection closed error")
                 raise ElegooPrinterConnectionError from e
+            finally:
+                async with self._response_lock:
+                    self._response_events.pop(request_id, None)
         else:
             raise ElegooPrinterNotConnectedError("Not connected")
 
@@ -578,6 +593,11 @@ class ElegooPrinterClient:
         try:
             inner_data = data.get("Data")
             if inner_data:
+                request_id = inner_data.get("RequestID")
+                if request_id:
+                    task = asyncio.create_task(self._set_response_event(request_id))
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
                 data_data = inner_data.get("Data", {})
                 cmd: int = inner_data.get("Cmd", 0)
                 if cmd == 320:
@@ -644,3 +664,11 @@ class ElegooPrinterClient:
             data_data: Dictionary containing video stream information.
         """
         self.printer_data.video = ElegooVideo(data_data)
+
+    async def _set_response_event(self, request_id: str):
+        """Set the event for a given request ID."""
+        async with self._response_lock:
+            if event := self._response_events.get(request_id):
+                event.set()
+            elif DEBUG:
+                self.logger.debug("No waiter found for RequestID=%s", request_id)

@@ -31,7 +31,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             hass,
             LOGGER,
             name=f"{entry.title}",
-            update_interval=timedelta(seconds=10),
+            update_interval=timedelta(seconds=2),
         )
 
     async def _async_update_data(self) -> Any:
