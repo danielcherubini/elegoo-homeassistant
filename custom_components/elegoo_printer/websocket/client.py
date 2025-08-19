@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Elegoo Printer."""
 
 import asyncio
@@ -7,7 +9,7 @@ import os
 import socket
 import time
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from aiohttp import ClientWebSocketResponse
@@ -33,7 +35,12 @@ from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
 from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
-from custom_components.elegoo_printer.sdcp.models.printer import Printer, PrinterData
+
+if TYPE_CHECKING:
+    from custom_components.elegoo_printer.sdcp.models.printer import (
+        Printer,
+        PrinterData,
+    )
 from custom_components.elegoo_printer.sdcp.models.status import (
     LightStatus,
     PrinterStatus,
@@ -115,24 +122,24 @@ class ElegooPrinterClient:
         await self._send_printer_cmd(1)
         return self.printer_data
 
-    async def set_printer_video_stream(self, *, toggle: bool) -> None:
+    async def set_printer_video_stream(self, *, enable: bool) -> None:
         """Enable or disable the printer's video stream.
 
         Args:
-            toggle: If True, enables the video stream; if False, disables it.
+            enable: If True, enables the video stream; if False, disables it.
         """
-        await self._send_printer_cmd(386, {"Enable": int(toggle)})
+        await self._send_printer_cmd(386, {"Enable": int(enable)})
 
-    async def get_printer_video(self, toggle: bool = False) -> ElegooVideo:
-        """Toggle the printer's video stream and retrieve the current video stream information.
+    async def get_printer_video(self, enable: bool = False) -> ElegooVideo:
+        """Enables the printer's video stream and retrieve the current video stream information.
 
         Args:
-            toggle: If True, enables the video stream; if False, disables it.
+            enable: If True, enables the video stream; if False, disables it.
 
         Returns:
             The current video stream information from the printer.
         """
-        await self.set_printer_video_stream(toggle=toggle)
+        await self.set_printer_video_stream(enable=enable)
         await asyncio.sleep(2)
         self.logger.debug(f"Sending printer video: {self.printer_data.video.to_dict()}")
         return self.printer_data.video

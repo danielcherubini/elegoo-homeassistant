@@ -1,52 +1,26 @@
-"""Printer object for the Elegoo Printers."""
+from __future__ import annotations
 
 import json
 from types import MappingProxyType
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from custom_components.elegoo_printer.const import CONF_PROXY_ENABLED
+from custom_components.elegoo_printer.const import (
+    CONF_CAMERA_ENABLED,
+    CONF_PROXY_ENABLED,
+)
 
 from .attributes import PrinterAttributes
-from .enums import PrinterType
 from .print_history_detail import PrintHistoryDetail
 from .status import PrinterStatus
 from .video import ElegooVideo
+
+if TYPE_CHECKING:
+    from .enums import PrinterType
 
 
 class Printer:
     """
     Represent a printer with various attributes.
-
-    Attributes:
-        connection (str): The connection ID of the printer.
-        name (str): The name of the printer.
-        model (str): The model name of the printer.
-        brand (str): The brand of the printer.
-        ip (str): The IP address of the printer.
-        protocol (str): The protocol version used by the printer.
-        firmware (str): The firmware version of the printer.
-        id (str): The unique ID of the printer's mainboard.
-        printer_type (PrinterType): The type of printer (RESIN or FDM).
-
-    Example usage:
-
-    >>> printer_json = '''
-    ... {
-    ...     "Id": "12345",
-    ...     "Data": {
-    ...         "Name": "My Printer",
-    ...         "MachineName": "Model XYZ",
-    ...         "BrandName": "Acme",
-    ...         "MainboardIP": "192.168.1.100",
-    ...         "ProtocolVersion": "2.0",
-    ...         "FirmwareVersion": "1.5",
-    ...         "MainboardID": "ABCDEF"
-    ...     }    ... }
-    ... '''
-    >>> my_printer = Printer(printer_json)
-    >>> print(my_printer.name)
-    My Printer
-
     """
 
     connection: Optional[str]
@@ -59,6 +33,7 @@ class Printer:
     id: Optional[str]
     printer_type: Optional[PrinterType]
     proxy_enabled: bool
+    camera_enabled: bool
 
     def __init__(
         self,
@@ -67,9 +42,9 @@ class Printer:
     ) -> None:
         """
         Initialize a Printer instance from a JSON string and configuration mapping.
-
-        If a valid JSON string is provided, extracts printer attributes from the JSON data. If parsing fails or no data is given, initializes all attributes to default "nulled" values. The printer type is determined from the model name, and the proxy_enabled flag is set based on the configuration.
         """
+        if TYPE_CHECKING:
+            from .enums import PrinterType
         if json_string is None:
             self.connection = None
             self.name = ""
@@ -94,6 +69,8 @@ class Printer:
                 self.protocol = data_dict.get("ProtocolVersion")
                 self.firmware = data_dict.get("FirmwareVersion")
                 self.id = data_dict.get("MainboardID")
+                from .enums import PrinterType
+
                 self.printer_type = PrinterType.from_model(self.model)
             except json.JSONDecodeError:
                 # Handle the error appropriately (e.g., log it, raise an exception)
@@ -109,15 +86,11 @@ class Printer:
 
         # Initialize config-based attributes for all instances
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
+        self.camera_enabled = config.get(CONF_CAMERA_ENABLED, False)
 
     def to_dict(self) -> Dict[str, Any]:
         """
         Return a dictionary containing all attributes of the Printer instance.
-
-        The resulting dictionary includes connection details, identification, model information, printer type (as a string value or None), and proxy status.
-
-        Returns:
-            dict: Dictionary with printer attributes and metadata.
         """
         return {
             "connection": self.connection,
@@ -130,6 +103,7 @@ class Printer:
             "id": self.id,
             "printer_type": self.printer_type.value if self.printer_type else None,
             "proxy_enabled": self.proxy_enabled,
+            "camera_enabled": self.camera_enabled,
         }
 
     @classmethod
@@ -151,8 +125,14 @@ class Printer:
         printer.protocol = data_dict.get("ProtocolVersion", data_dict.get("protocol"))
         printer.firmware = data_dict.get("FirmwareVersion", data_dict.get("firmware"))
         printer.id = data_dict.get("MainboardID", data_dict.get("id"))
+        from .enums import PrinterType
         printer.printer_type = PrinterType.from_model(printer.model)
-        printer.proxy_enabled = data_dict.get(CONF_PROXY_ENABLED, False)
+        printer.proxy_enabled = data_dict.get(
+            CONF_PROXY_ENABLED, data_dict.get("proxy_enabled", False)
+        )
+        printer.camera_enabled = data_dict.get(
+            CONF_CAMERA_ENABLED, data_dict.get("camera_enabled", False)
+        )
         return printer
 
 
@@ -174,8 +154,6 @@ class PrinterData:
     ) -> None:
         """
         Initialize a PrinterData instance with optional printer-related data.
-
-        If any argument is omitted or None, the corresponding attribute is set to a default instance of its class. The `video` attribute is always initialized as a new ElegooVideo instance.
         """
         self.status: PrinterStatus = status or PrinterStatus()
         self.attributes: PrinterAttributes = attributes or PrinterAttributes()

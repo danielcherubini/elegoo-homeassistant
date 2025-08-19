@@ -163,7 +163,7 @@ async def _async_validate_input(
 class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Elegoo."""
 
-    VERSION = 3
+    VERSION = 4
     MINOR_VERSION = 0
 
     def __init__(self) -> None:
@@ -230,9 +230,23 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
             if self.selected_printer:
-                # Proceed to the next step to get centauri_carbon and proxy_enabled
+                if self.selected_printer.printer_type == PrinterType.RESIN:
+                    return self.async_show_form(
+                        step_id="resin_options",
+                        data_schema=vol.Schema(
+                            {
+                                vol.Required(
+                                    CONF_CAMERA_ENABLED,
+                                    default=self.selected_printer.camera_enabled,
+                                ): selector.BooleanSelector(
+                                    selector.BooleanSelectorConfig()
+                                ),
+                            }
+                        ),
+                        errors=_errors,
+                    )
                 return self.async_show_form(
-                    step_id="manual_options",
+                    step_id="fdm_options",
                     data_schema=vol.Schema(
                         {
                             vol.Required(
@@ -313,27 +327,15 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors=_errors,
         )
 
-    async def async_step_manual_options(
+    async def async_step_resin_options(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """Handle the configuration of additional options for a discovered Elegoo printer.
-
-        If user input is provided and a printer is selected, validates the updated
-        configuration and creates a config entry upon successful connection. If
-        validation fails or no input is provided, displays a form to set the proxy
-        enabled option, defaulting to the current printer setting.
-
-        Args:
-            user_input: The user input data.
-
-        Returns:
-            The result of the configuration flow step.
-        """
+        """Handle the configuration of additional options for a discovered Elegoo printer."""
         _errors = {}
         if user_input is not None and self.selected_printer:
             printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
-            printer_to_validate.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+            printer_to_validate.camera_enabled = user_input[CONF_CAMERA_ENABLED]
             try:
                 # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled
                 validated_printer = await _async_test_connection(
@@ -341,7 +343,6 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 )
                 await self.async_set_unique_id(unique_id=validated_printer.id)
                 self._abort_if_unique_id_configured()
-                validated_printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
                 return self.async_create_entry(
                     title=validated_printer.name or "Elegoo Printer",
                     data=validated_printer.to_dict(),
@@ -359,17 +360,59 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.exception(exception)
                 _errors["base"] = "unknown"
 
-        default_proxy_enabled = (
-            self.selected_printer.proxy_enabled if self.selected_printer else False
+        return self.async_show_form(
+            step_id="resin_options",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_CAMERA_ENABLED,
+                        default=self.selected_printer.camera_enabled,
+                    ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
+                }
+            ),
+            errors=_errors,
         )
 
+    async def async_step_fdm_options(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """Handle the configuration of additional options for a discovered Elegoo printer."""
+        _errors = {}
+        if user_input is not None and self.selected_printer:
+            printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
+            printer_to_validate.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+            try:
+                # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled
+                validated_printer = await _async_test_connection(
+                    self.hass, printer_to_validate, user_input
+                )
+                await self.async_set_unique_id(unique_id=validated_printer.id)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=validated_printer.name or "Elegoo Printer",
+                    data=validated_printer.to_dict(),
+                )
+            except ElegooConfigFlowConnectionError as exception:
+                LOGGER.error("Connection error: %s", exception)
+                _errors["base"] = "connection"
+            except ElegooConfigFlowGeneralError as exception:
+                LOGGER.error("No printer found: %s", exception)
+                _errors["base"] = "manual_options_no_printer_found"
+            except PlatformNotReady as exception:
+                LOGGER.error(exception)
+                _errors["base"] = "connection"
+            except (OSError, Exception) as exception:
+                LOGGER.exception(exception)
+                _errors["base"] = "unknown"
+
         return self.async_show_form(
-            step_id="manual_options",
+            step_id="fdm_options",
             data_schema=vol.Schema(
                 {
                     vol.Required(
                         CONF_PROXY_ENABLED,
-                        default=default_proxy_enabled,
+                        default=self.selected_printer.proxy_enabled,
                     ): selector.BooleanSelector(
                         selector.BooleanSelectorConfig(),
                     ),
@@ -411,6 +454,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         Args:
             config_entry: The configuration entry for which the options are being managed.
         """
+        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -435,11 +479,10 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             **(self.config_entry.data or {}),
             **(self.config_entry.options or {}),
         }
+        printer = Printer.from_dict(current_settings)
         LOGGER.debug("data: %s", self.config_entry.data)
         LOGGER.debug("options: %s", self.config_entry.options)
         if user_input is not None:
-            printer = Printer.from_dict(current_settings)
-            LOGGER.debug(printer.to_dict())
             try:
                 tested_printer = await _async_test_connection(
                     self.hass, printer, user_input
@@ -463,10 +506,25 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 LOGGER.exception(exception)
                 _errors["base"] = "unknown"
 
+        data_schema = {
+            vol.Required(
+                CONF_IP_ADDRESS,
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(
+                    type=selector.TextSelectorType.TEXT,
+                ),
+            ),
+            vol.Required(
+                CONF_PROXY_ENABLED,
+            ): selector.BooleanSelector(
+                selector.BooleanSelectorConfig(),
+            ),
+        }
+
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
-                OPTIONS_SCHEMA,
+                vol.Schema(data_schema),
                 suggested_values=current_settings,
             ),
             errors=_errors,

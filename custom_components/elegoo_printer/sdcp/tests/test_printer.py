@@ -10,6 +10,7 @@ from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 def test_printer_initialization_with_valid_data():
     """Test that the Printer model initializes correctly with valid JSON data."""
+
     printer_json = json.dumps(
         {
             "Id": "12345",

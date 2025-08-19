@@ -14,7 +14,7 @@ def test_printer_type_from_model():
     assert PrinterType.from_model("Mars 5 Ultra") == PrinterType.RESIN
     assert PrinterType.from_model("Saturn 4") == PrinterType.RESIN
     assert PrinterType.from_model("Saturn 4 Ultra") == PrinterType.RESIN
-    assert PrinterType.from_model("Saturn 4 Ultra 16k") == PrinterType.RESIN
+    assert PrinterType.from_model("Saturn 4 Ultra 16K") == PrinterType.RESIN
 
     # Test unknown models
     assert PrinterType.from_model("Unknown Model") is None
@@ -25,5 +25,5 @@ def test_printer_type_from_model():
     assert PrinterType.from_model("My Centauri Printer") is None
     assert PrinterType.from_model("My Mars 5 Printer") is None
 
-    # Test case sensitivity (should be case-sensitive)
-    assert PrinterType.from_model("centauri carbon") is None
+    # Test case sensitivity (shouldn't be case-sensitive)
+    assert PrinterType.from_model("centauri carbon") is PrinterType.FDM

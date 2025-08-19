@@ -1,11 +1,11 @@
 [project]
 name = "elegoo_printer"
-version = "1.7.1"
+version = "2.2.0"
 requires-python = ">=3.13"
 description = "Home Assistant Addon for Elegoo Printers"
 dependencies = [
     "colorlog>=6.9.0",
-    "homeassistant>=2025.3.2",
+    "homeassistant==2025.4.0",
     "loguru>=0.7.3",
     "ruff>=0.9.10",
     "websocket-client>=1.8.0",

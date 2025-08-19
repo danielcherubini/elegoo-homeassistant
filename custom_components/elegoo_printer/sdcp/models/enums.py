@@ -14,6 +14,7 @@ class ElegooMachineStatus(Enum):
         FILE_TRANSFERRING: A file transfer is in progress.
         EXPOSURE_TESTING: The machine is performing an exposure test.
         DEVICES_TESTING: The machine is running a device self-check.
+        LEVELING: The machine is performing a leveling operation.
 
     """
 
@@ -22,6 +23,7 @@ class ElegooMachineStatus(Enum):
     FILE_TRANSFERRING = 2
     EXPOSURE_TESTING = 3
     DEVICES_TESTING = 4
+    LEVELING = 5
 
     @classmethod
     def from_int(cls, status_int: int) -> Optional["ElegooMachineStatus"] | None:
@@ -72,7 +74,7 @@ class ElegooPrintStatus(Enum):
         IDLE: The print job is idle and not actively printing.
         HOMING: The printer is resetting or homing its axes.
         DROPPING: The print platform is descending.
-        EXPOSURING: The printer is exposing the resin/material.
+        PRINTING: The printer is currently printing.
         LIFTING: The print platform is lifting.
         PAUSING: The printer is in the process of pausing the print job.
         PAUSED: The print job is currently paused.
@@ -80,13 +82,14 @@ class ElegooPrintStatus(Enum):
         STOPPED: The print job is stopped.
         COMPLETE: The print job has completed successfully.
         FILE_CHECKING: The printer is currently checking the print file.
+        LOADING: The printer is loading filament.
 
     """
 
     IDLE = 0
     HOMING = 1
     DROPPING = 2
-    EXPOSURING = 3
+    PRINTING = 3
     LIFTING = 4
     PAUSING = 5
     PAUSED = 6
@@ -94,6 +97,8 @@ class ElegooPrintStatus(Enum):
     STOPPED = 8
     COMPLETE = 9
     FILE_CHECKING = 10
+    RECOVERY = 12
+    LOADING = 15
 
     @classmethod
     def from_int(cls, status_int: int) -> Optional["ElegooPrintStatus"] | None:
@@ -108,8 +113,12 @@ class ElegooPrintStatus(Enum):
             integer is not a valid status value.
 
         """  # noqa: D401
+        if status_int in [16, 18, 19, 20, 21]:
+            return cls.LOADING
+        if status_int == 13:
+            return cls.PRINTING
         try:
-            return cls(status_int)  # Use cls() to create enum members
+            return cls(status_int)
         except ValueError:
             return None
 
@@ -180,7 +189,7 @@ class ElegooVideoStatus(Enum):
             return None
 
 
-class ErrorStatusReason(Enum):
+class ElegooErrorStatusReason(Enum):
     """
     Represents the reason for a print job status or error.
 
@@ -230,12 +239,12 @@ class ErrorStatusReason(Enum):
     BED_TEMP_SENSOR_OFFLINE = 34
 
     @classmethod
-    def from_int(cls, status_int: int) -> Optional["ErrorStatusReason"]:
+    def from_int(cls, status_int: int) -> Optional["ElegooErrorStatusReason"]:
         """
-        Convert an integer to the corresponding ErrorStatusReason enum member.
+        Convert an integer to the corresponding ElegooErrorStatusReason enum member.
 
         Returns:
-            The matching ErrorStatusReason member if the integer is valid; otherwise, None.
+            The matching ElegooErrorStatusReason member if the integer is valid; otherwise, None.
         """
         try:
             return cls(status_int)
@@ -297,19 +306,19 @@ class PrinterType(Enum):
         if model is None:
             return None
 
-        fdm_printers = ["Centauri Carbon", "Centauri"]
+        fdm_printers = ["centauri carbon", "centauri"]
         resin_printers = [
-            "Mars 5",
-            "Mars 5 Ultra",
-            "Saturn 4",
-            "Saturn 4 Ultra",
-            "Saturn 4 Ultra 16k",
+            "mars 5",
+            "mars 5 ultra",
+            "saturn 4",
+            "saturn 4 ultra",
+            "saturn 4 ultra 16k",
         ]
 
-        if model in fdm_printers:
+        if model.lower() in fdm_printers:
             return cls.FDM
 
-        if model in resin_printers:
+        if model.lower() in resin_printers:
             return cls.RESIN
 
         return None

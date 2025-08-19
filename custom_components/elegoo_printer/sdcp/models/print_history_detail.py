@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from .enums import ErrorStatusReason
+from .enums import ElegooErrorStatusReason
 
 
 class PrintHistoryDetail:
@@ -31,9 +31,11 @@ class PrintHistoryDetail:
         self.time_lapse_video_status: int | None = data.get("TimeLapseVideoStatus")
         self.time_lapse_video_url: str | None = data.get("TimeLapseVideoUrl")
 
-        _error_status_reason: int = data.get("ErrorStatusReason", 0)
-        self.error_status_reason: ErrorStatusReason | None = ErrorStatusReason.from_int(
-            _error_status_reason
+        _error_status_reason = data.get("ErrorStatusReason")
+        self.error_status_reason: ElegooErrorStatusReason | None = (
+            ElegooErrorStatusReason.from_int(_error_status_reason)
+            if isinstance(_error_status_reason, int)
+            else None
         )
 
     def __repr__(self) -> str:

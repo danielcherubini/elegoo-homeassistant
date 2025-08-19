@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Elegoo Printer Server and Proxy."""
 
 import asyncio
@@ -5,7 +7,7 @@ import json
 import os
 import socket
 from threading import Event, Thread
-from typing import Any, List
+from typing import TYPE_CHECKING, Any, List
 
 import aiohttp
 from aiohttp import ClientSession, WSMsgType, web
@@ -19,7 +21,9 @@ from custom_components.elegoo_printer.const import (
     VIDEO_PORT,
     WEBSOCKET_PORT,
 )
-from custom_components.elegoo_printer.sdcp.models.printer import Printer
+
+if TYPE_CHECKING:
+    from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 INADDR_ANY = "0.0.0.0"
 
