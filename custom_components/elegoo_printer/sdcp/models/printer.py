@@ -8,7 +8,6 @@ from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
     CONF_PROXY_ENABLED,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
 
 from .attributes import PrinterAttributes
 from .print_history_detail import PrintHistoryDetail
@@ -22,6 +21,38 @@ if TYPE_CHECKING:
 class Printer:
     """
     Represent a printer with various attributes.
+
+
+    Attributes:
+        connection (str): The connection ID of the printer.
+        name (str): The name of the printer.
+        model (str): The model name of the printer.
+        brand (str): The brand of the printer.
+        ip (str): The IP address of the printer.
+        protocol (str): The protocol version used by the printer.
+        firmware (str): The firmware version of the printer.
+        id (str): The unique ID of the printer's mainboard.
+        printer_type (PrinterType): The type of printer (RESIN or FDM).
+
+    Example usage:
+
+    >>> printer_json = '''
+    ... {
+    ...     "Id": "12345",
+    ...     "Data": {
+    ...         "Name": "My Printer",
+    ...         "MachineName": "Model XYZ",
+    ...         "BrandName": "Acme",
+    ...         "MainboardIP": "192.168.1.100",
+    ...         "ProtocolVersion": "2.0",
+    ...         "FirmwareVersion": "1.5",
+    ...         "MainboardID": "ABCDEF"
+    ...     }    ... }
+    ... '''
+    >>> my_printer = Printer(printer_json)
+    >>> print(my_printer.name)
+    My Printer
+
     """
 
     connection: Optional[str]
@@ -127,6 +158,7 @@ class Printer:
         printer.firmware = data_dict.get("FirmwareVersion", data_dict.get("firmware"))
         printer.id = data_dict.get("MainboardID", data_dict.get("id"))
         from .enums import PrinterType
+
         printer.printer_type = PrinterType.from_model(printer.model)
         printer.proxy_enabled = data_dict.get(
             CONF_PROXY_ENABLED, data_dict.get("proxy_enabled", False)
@@ -161,3 +193,4 @@ class PrinterData:
         self.printer: Printer = printer or Printer()
         self.print_history: dict[str, PrintHistoryDetail | None] = print_history or {}
         self.video: ElegooVideo = ElegooVideo()
+
