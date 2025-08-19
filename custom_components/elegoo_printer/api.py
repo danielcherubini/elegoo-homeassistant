@@ -59,7 +59,7 @@ class ElegooPrinterApiClient:
         config: MappingProxyType[str, Any],
         logger: Logger,
         hass: HomeAssistant,
-    ) -> ElegooPrinterApiClient:
+    ) -> ElegooPrinterApiClient | None:
         """
         Asynchronously creates and initializes an ElegooPrinterApiClient instance.
 
@@ -73,7 +73,7 @@ class ElegooPrinterApiClient:
         logger.debug("CONFIGURATION %s", config)
         self = ElegooPrinterApiClient(printer, config=config, logger=logger, hass=hass)
 
-        if printer.proxy_enabled:
+        if proxy_server_enabled:
             logger.debug("Proxy server is enabled, attempting to create proxy server.")
             try:
                 self.server = ElegooPrinterServer(printer, logger=logger)
@@ -101,14 +101,16 @@ class ElegooPrinterApiClient:
             connected = await self.client.connect_printer(printer, proxy_server_enabled)
             if connected:
                 logger.info("Polling Started")
-            else:
-                logger.warning(
-                    f"Could not connect to printer at {printer.ip_address}, proxy_enabled: {proxy_server_enabled}"
-                )
+                return self
+            logger.warning(
+                "Could not connect to printer at %s, proxy_enabled: %s",
+                printer.ip_address,
+                proxy_server_enabled,
+            )
+            return None
         except Exception as e:
-            logger.warning(f"Could not connect to printer: {e}")
-
-        return self
+            logger.warning("Could not connect to printer: %s", e)
+            return None
 
     async def elegoo_disconnect(self) -> None:
         """Disconnect from the printer by closing the WebSocket connection."""
