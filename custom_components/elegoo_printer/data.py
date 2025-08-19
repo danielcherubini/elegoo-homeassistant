@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING, TypedDict
 
 from homeassistant.config_entries import ConfigEntry
 
-"""Data classes for the Elegoo printer integration."""
-
 if TYPE_CHECKING:
     from homeassistant.loader import Integration
 
