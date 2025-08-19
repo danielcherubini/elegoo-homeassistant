@@ -14,7 +14,7 @@ from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
 from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
-from custom_components.elegoo_printer.sdcp.models.printer import Printer
+from custom_components.elegoo_printer.sdcp.models.printer import Printer, PrinterData
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 from custom_components.elegoo_printer.websocket.server import ElegooPrinterServer
 
@@ -22,8 +22,6 @@ from .const import CONF_PROXY_ENABLED, LOGGER
 
 if TYPE_CHECKING:
     from logging import Logger
-
-    from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
 
 
 class ElegooPrinterApiClient:
@@ -207,7 +205,7 @@ class ElegooPrinterApiClient:
                     return ElegooImage(
                         image_url=task.thumbnail,
                         image_bytes=response.content,
-                        last_updated_timestamp=task.begin_time,
+                        last_updated_timestamp=task.begin_time.timestamp(),
                         content_type=content_type or "image/png",
                     )
 
@@ -220,7 +218,7 @@ class ElegooPrinterApiClient:
                         thumbnail_image = ElegooImage(
                             image_url=task.thumbnail,
                             image_bytes=png_bytes,
-                            last_updated_timestamp=task.begin_time,
+                            last_updated_timestamp=task.begin_time.timestamp(),
                             content_type="image/png",
                         )
                         return thumbnail_image
@@ -261,7 +259,12 @@ class ElegooPrinterApiClient:
         Returns:
             A list of PrintHistoryDetail objects representing the current print task, or None if no task is active.
         """
-        return await self.client.async_get_printer_current_task()
+        current_task = await self.client.async_get_printer_current_task()
+        if current_task:
+            self.printer_data.current_job = current_task
+            if current_task.task_id:
+                self.printer_data.print_history[current_task.task_id] = current_task
+        return current_task
 
     async def async_get_print_history(
         self,
@@ -313,3 +316,17 @@ class ElegooPrinterApiClient:
     async def async_set_target_bed_temp(self, temperature: int) -> None:
         """Set the target bed temperature."""
         await self.client.set_target_bed_temp(temperature)
+
+    async def async_get_printer_data(self) -> PrinterData:
+        """
+        Asynchronously retrieves and updates the printer's attribute data.
+
+        Returns:
+            PrinterData: The latest attribute information for the printer.
+        """
+        await self.async_get_attributes()
+        await self.async_get_status()
+        await self.async_get_print_history()
+        await self.async_get_current_task()
+        self.printer_data.calculate_current_job_end_time()
+        return self.printer_data

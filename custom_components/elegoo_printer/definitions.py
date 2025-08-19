@@ -284,9 +284,22 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="End Time",
         icon="mdi:clock",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda printer_data: printer_data.status.print_info.end_time,
-        available_fn=lambda printer_data: printer_data.status.print_info.end_time
-        is not None,
+        value_fn=lambda printer_data: printer_data.current_job.end_time
+        if printer_data.current_job
+        else None,
+        available_fn=lambda printer_data: printer_data.current_job
+        and printer_data.current_job.end_time is not None,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="begin_time",
+        name="Begin Time",
+        icon="mdi:clock-start",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda printer_data: printer_data.current_job.begin_time
+        if printer_data.current_job
+        else None,
+        available_fn=lambda printer_data: printer_data.current_job
+        and printer_data.current_job.begin_time is not None,
     ),
     ElegooPrinterSensorEntityDescription(
         key="total_layers",

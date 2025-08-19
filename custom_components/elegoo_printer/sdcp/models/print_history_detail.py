@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from datetime import datetime, timezone
+
 from .enums import ElegooErrorStatusReason
 
 
@@ -16,8 +18,16 @@ class PrintHistoryDetail:
         """
         self.thumbnail: str | None = data.get("Thumbnail")
         self.task_name: str | None = data.get("TaskName")
-        self.begin_time: int | None = data.get("BeginTime")
-        self.end_time: int | None = data.get("EndTime")
+        begin_time_ts = data.get("BeginTime")
+        self.begin_time: datetime | None = (
+            datetime.fromtimestamp(begin_time_ts, tz=timezone.utc)
+            if begin_time_ts
+            else None
+        )
+        end_time_ts = data.get("EndTime")
+        self.end_time: datetime | None = (
+            datetime.fromtimestamp(end_time_ts, tz=timezone.utc) if end_time_ts else None
+        )
         self.task_status: int | None = data.get("TaskStatus")
         self.slice_information: SliceInformation = SliceInformation(
             data.get("SliceInformation", {})

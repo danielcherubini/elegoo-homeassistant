@@ -48,14 +48,13 @@ class ElegooPrinterFan(ElegooPrinterEntity, FanEntity):
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = coordinator.generate_unique_id(description.key)
-        self.printer_data = (
-            coordinator.config_entry.runtime_data.api.client.printer_data
-        )
 
     @property
     def is_on(self) -> bool:
         """Return true if the fan is on."""
-        return self.entity_description.value_fn(self.printer_data)
+        if self.coordinator.data:
+            return self.entity_description.value_fn(self.coordinator.data)
+        return False
 
     async def async_turn_on(
         self,
@@ -85,8 +84,10 @@ class ElegooPrinterFan(ElegooPrinterEntity, FanEntity):
 
     @property
     def percentage(self) -> int | None:
-        """Return the current speed percentage."""
-        return self.entity_description.percentage_fn(self.printer_data)
+        """Return the current speed."""
+        if self.coordinator.data:
+            return self.entity_description.percentage_fn(self.coordinator.data)
+        return None
 
     @property
     def percentage_step(self) -> int:

@@ -94,5 +94,7 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         if not super().available:
             return False
         return (
-            self.api.printer_data.status.current_status == ElegooMachineStatus.PRINTING
+            super().available
+            and self.coordinator.data.status.current_status
+            == ElegooMachineStatus.PRINTING
         )

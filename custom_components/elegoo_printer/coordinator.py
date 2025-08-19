@@ -49,14 +49,13 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             if not self.config_entry.runtime_data.api.client.is_connected:
                 await self.config_entry.runtime_data.api.reconnect()
-            await self.config_entry.runtime_data.api.async_get_attributes()
-            await self.config_entry.runtime_data.api.async_get_status()
-            await self.config_entry.runtime_data.api.async_get_print_history()
-            await self.config_entry.runtime_data.api.async_get_current_task()
+            self.data = (
+                await self.config_entry.runtime_data.api.async_get_printer_data()
+            )
             self.online = True
             if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
-            return self.config_entry.runtime_data.api.client.printer_data
+            return self.data
         except (ElegooPrinterConnectionError, ElegooPrinterNotConnectedError) as e:
             self.online = False
             if self.update_interval != timedelta(seconds=30):

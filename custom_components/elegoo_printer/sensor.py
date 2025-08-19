@@ -83,9 +83,6 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         self._attr_unique_id = coordinator.generate_unique_id(
             self.entity_description.key
         )
-        self.printer_data = (
-            coordinator.config_entry.runtime_data.api.client.printer_data
-        )
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -99,11 +96,15 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
     @property
     def native_value(self) -> datetime | StateType:
         """Return the state of the sensor."""
-        return self.entity_description.value_fn(self.printer_data)
+        if self.coordinator.data:
+            return self.entity_description.value_fn(self.coordinator.data)
+        return None
 
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        if not super().available:
-            return False
-        return self.entity_description.available_fn(self.printer_data)
+        return (
+            super().available
+            and self.coordinator.data
+            and self.entity_description.available_fn(self.coordinator.data)
+        )

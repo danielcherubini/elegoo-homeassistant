@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -8,6 +9,7 @@ from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
     CONF_PROXY_ENABLED,
 )
+from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStatus
 
 from .attributes import PrinterAttributes
 from .print_history_detail import PrintHistoryDetail
@@ -172,10 +174,8 @@ class Printer:
 class PrinterData:
     """Data object for printer information."""
 
-    status: PrinterStatus
-    attributes: PrinterAttributes
-    printer: Printer
     print_history: dict[str, PrintHistoryDetail | None]
+    current_job: PrintHistoryDetail | None
     video: ElegooVideo
 
     def __init__(
@@ -192,4 +192,32 @@ class PrinterData:
         self.attributes: PrinterAttributes = attributes or PrinterAttributes()
         self.printer: Printer = printer or Printer()
         self.print_history: dict[str, PrintHistoryDetail | None] = print_history or {}
+        self.current_job: PrintHistoryDetail | None = None
         self.video: ElegooVideo = ElegooVideo()
+
+    def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
+        """Round datetime object to minutes"""
+        if date is None:
+            date = datetime.now(timezone.utc)
+
+        if not isinstance(round_to, int) or round_to <= 0:
+            raise ValueError("round_to must be a positive integer")
+
+        date = date.replace(second=0, microsecond=0)
+        delta = date.minute % round_to
+        return date.replace(minute=date.minute - delta)
+
+    def calculate_current_job_end_time(self):
+        """Calculate the estimated end time of the print job."""
+        if (
+            self.status.current_status == ElegooMachineStatus.PRINTING
+            and self.status.print_info.remaining_ticks > 0
+            and self.current_job
+        ):
+            now = datetime.now(timezone.utc)
+            total_seconds_remaining = self.status.print_info.remaining_ticks / 1000
+            target_datetime = now + timedelta(seconds=total_seconds_remaining)
+            # Round to nearest minute by adding a 30s bias before flooring
+            self.current_job.end_time = self.round_minute(
+                target_datetime + timedelta(seconds=30), 1
+            )
