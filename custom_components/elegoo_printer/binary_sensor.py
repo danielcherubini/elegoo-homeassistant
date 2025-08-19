@@ -61,7 +61,9 @@ class ElegooPrinterBinarySensor(ElegooPrinterEntity, BinarySensorEntity):
         self._attr_unique_id = coordinator.generate_unique_id(
             self.entity_description.key
         )
-        self.printer_data = coordinator.config_entry.runtime_data.api.printer_data
+        self.printer_data = (
+            coordinator.config_entry.runtime_data.api.client.printer_data
+        )
 
     @property
     def is_on(self) -> bool:

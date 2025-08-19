@@ -46,8 +46,8 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             UpdateFailed: If a connection or operating system error prevents data retrieval.
         """
         try:
-            if not self.config_entry.runtime_data.api.is_connected:
-                await self.config_entry.runtime_data.api.connect()
+            if not self.config_entry.runtime_data.api.client.is_connected:
+                await self.config_entry.runtime_data.api.reconnect()
             await self.config_entry.runtime_data.api.async_get_attributes()
             await self.config_entry.runtime_data.api.async_get_status()
             await self.config_entry.runtime_data.api.async_get_print_history()

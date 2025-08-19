@@ -97,6 +97,8 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
     async def _get_stream_url(self) -> str | None:
         """Get the stream URL, from cache if recent."""
 
+        if not self._printer_client.is_connected:
+            return None
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug(
@@ -211,6 +213,8 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     async def _update_stream_url(self) -> None:
         """Update the MJPEG stream URL."""
+        if not self._printer_client.is_connected:
+            return None
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug("stream_source: Video is OK, getting stream source")

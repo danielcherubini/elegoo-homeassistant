@@ -5,7 +5,6 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.httpx_client import get_async_client
 from PIL import Image as PILImage
@@ -17,8 +16,7 @@ from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
 
-if TYPE_CHECKING:
-    from custom_components.elegoo_printer.sdcp.models.printer import Printer
+from custom_components.elegoo_printer.sdcp.models.printer import Printer
 from custom_components.elegoo_printer.websocket.server import ElegooPrinterServer
 
 from .const import CONF_PROXY_ENABLED, LOGGER
@@ -107,11 +105,11 @@ class ElegooPrinterApiClient:
             if connected:
                 logger.info("Polling Started")
             else:
-                raise ConfigEntryNotReady(
+                logger.warning(
                     f"Could not connect to printer at {printer.ip_address}, proxy_enabled: {proxy_server_enabled}"
                 )
         except Exception as e:
-            raise ConfigEntryNotReady from e
+            logger.warning(f"Could not connect to printer: {e}")
 
         return self
 

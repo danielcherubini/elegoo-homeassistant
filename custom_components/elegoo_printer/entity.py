@@ -6,7 +6,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import network as network_util
 
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
+from .sdcp.models.enums import PrinterType
 
 from .const import (
     ATTRIBUTION,

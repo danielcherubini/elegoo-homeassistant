@@ -7,7 +7,7 @@ import os
 import socket
 import time
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import aiohttp
 from aiohttp import ClientWebSocketResponse
@@ -33,11 +33,10 @@ from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
 )
 from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
-if TYPE_CHECKING:
-    from custom_components.elegoo_printer.sdcp.models.printer import (
-        Printer,
-        PrinterData,
-    )
+from custom_components.elegoo_printer.sdcp.models.printer import (
+    Printer,
+    PrinterData,
+)
 from custom_components.elegoo_printer.sdcp.models.status import (
     LightStatus,
     PrinterStatus,

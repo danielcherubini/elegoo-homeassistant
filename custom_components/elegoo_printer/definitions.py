@@ -23,7 +23,7 @@ from homeassistant.const import (
 )
 from homeassistant.helpers.typing import StateType
 
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+from .sdcp.models.enums import (
     ElegooErrorStatusReason,
     ElegooMachineStatus,
     ElegooPrintError,
