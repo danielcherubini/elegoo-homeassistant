@@ -90,7 +90,6 @@ class ElegooPrinterApiClient:
             proxy_server_enabled,
             printer.proxy_enabled,
         )
-
         try:
             self.client = ElegooPrinterClient(
                 printer.ip_address,
@@ -101,18 +100,10 @@ class ElegooPrinterApiClient:
             connected = await self.client.connect_printer(printer, proxy_server_enabled)
             if connected:
                 logger.info("Polling Started")
-                return self
-            logger.warning(
-                "Could not connect to printer at %s, proxy_enabled: %s",
-                printer.ip_address,
-                proxy_server_enabled,
-            )
-            if self.server:
-                self.server.stop()
-            await self.client.disconnect()
-            return None
-        except Exception as e:
-            logger.warning("Could not connect to printer: %s", e)
+
+            return self
+
+        except Exception:
             if self.server:
                 self.server.stop()
             if self.client:
