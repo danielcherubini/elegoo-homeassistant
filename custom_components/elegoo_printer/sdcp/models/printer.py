@@ -8,6 +8,7 @@ from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
     CONF_PROXY_ENABLED,
 )
+from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
 
 from .attributes import PrinterAttributes
 from .print_history_detail import PrintHistoryDetail
