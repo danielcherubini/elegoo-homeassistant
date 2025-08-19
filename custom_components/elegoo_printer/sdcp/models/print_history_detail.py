@@ -2,9 +2,7 @@
 
 from typing import Any
 
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
-    ElegooErrorStatusReason,
-)
+from .enums import ElegooErrorStatusReason
 
 
 class PrintHistoryDetail:

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-"""Elegoo Printer Server and Proxy."""
-
 import asyncio
 import json
 import os

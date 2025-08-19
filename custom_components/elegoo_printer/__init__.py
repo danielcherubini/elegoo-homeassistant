@@ -7,7 +7,6 @@ https://github.com/danielcherubini/elegoo-homeassistant
 
 from __future__ import annotations
 
-from datetime import timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 

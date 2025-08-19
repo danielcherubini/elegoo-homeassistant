@@ -16,6 +16,7 @@ from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
 from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
+
 if TYPE_CHECKING:
     from custom_components.elegoo_printer.sdcp.models.printer import Printer
 from custom_components.elegoo_printer.websocket.server import ElegooPrinterServer

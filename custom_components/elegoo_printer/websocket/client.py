@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-"""Elegoo Printer."""
-
 import asyncio
 import json
 import logging
@@ -22,19 +20,18 @@ from custom_components.elegoo_printer.const import (
     DISCOVERY_PORT,
     WEBSOCKET_PORT,
 )
+from custom_components.elegoo_printer.sdcp.const import DEBUG, LOGGER
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConfigurationError,
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
 )
-from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
-
-from custom_components.elegoo_printer.sdcp.const import DEBUG, LOGGER
 from custom_components.elegoo_printer.sdcp.models.attributes import PrinterAttributes
 from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
 from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
+from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
 if TYPE_CHECKING:
     from custom_components.elegoo_printer.sdcp.models.printer import (
