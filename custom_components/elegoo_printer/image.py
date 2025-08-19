@@ -90,11 +90,11 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
 
     @property
     def available(self) -> bool:
-        """Return if entity is not available"""
-        if not super().available:
-            return False
+        """Return if entity is available."""
         return (
             super().available
+            and self.coordinator.data
+            and self.coordinator.data.status
             and self.coordinator.data.status.current_status
             == ElegooMachineStatus.PRINTING
         )

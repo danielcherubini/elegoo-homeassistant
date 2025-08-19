@@ -21,13 +21,13 @@ class PrintHistoryDetail:
         begin_time_ts = data.get("BeginTime")
         self.begin_time: datetime | None = (
             datetime.fromtimestamp(begin_time_ts, tz=timezone.utc)
-            if begin_time_ts
+            if begin_time_ts is not None
             else None
         )
         end_time_ts = data.get("EndTime")
         self.end_time: datetime | None = (
             datetime.fromtimestamp(end_time_ts, tz=timezone.utc)
-            if end_time_ts
+            if end_time_ts is not None
             else None
         )
         self.task_status: int | None = data.get("TaskStatus")
