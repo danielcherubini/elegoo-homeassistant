@@ -1,10 +1,10 @@
 """Custom types for elegoo_printer."""
 
-"""Data classes for the Elegoo printer integration."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypedDict
+
+"""Data classes for the Elegoo printer integration."""
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry

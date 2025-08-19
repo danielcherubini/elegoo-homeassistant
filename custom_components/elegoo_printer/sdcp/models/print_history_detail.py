@@ -26,7 +26,9 @@ class PrintHistoryDetail:
         )
         end_time_ts = data.get("EndTime")
         self.end_time: datetime | None = (
-            datetime.fromtimestamp(end_time_ts, tz=timezone.utc) if end_time_ts else None
+            datetime.fromtimestamp(end_time_ts, tz=timezone.utc)
+            if end_time_ts
+            else None
         )
         self.task_status: int | None = data.get("TaskStatus")
         self.slice_information: SliceInformation = SliceInformation(
