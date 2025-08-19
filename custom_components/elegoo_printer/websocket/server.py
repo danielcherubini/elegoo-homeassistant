@@ -308,7 +308,9 @@ class ElegooPrinterServer:
         }
         try:
             async with self.session.get(
-                remote_url, timeout=aiohttp.ClientTimeout(total=60), headers=headers
+                remote_url,
+                timeout=aiohttp.ClientTimeout(total=None, connect=10, sock_read=None),
+                headers=headers,
             ) as proxy_response:
                 response = web.StreamResponse(
                     status=proxy_response.status,
@@ -316,10 +318,13 @@ class ElegooPrinterServer:
                     headers=proxy_response.headers,
                 )
                 await response.prepare(request)
-                async for chunk in proxy_response.content.iter_chunked(8192):
-                    await response.write(chunk)
+                try:
+                    async for chunk in proxy_response.content.iter_chunked(8192):
+                        await response.write(chunk)
+                    await response.write_eof()
+                except (ConnectionResetError, asyncio.CancelledError):
+                    self.logger.info("Video stream client disconnected.")
 
-                await response.write_eof()
                 return response
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:

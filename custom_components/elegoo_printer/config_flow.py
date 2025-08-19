@@ -455,7 +455,6 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         Args:
             config_entry: The configuration entry for which the options are being managed.
         """
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
