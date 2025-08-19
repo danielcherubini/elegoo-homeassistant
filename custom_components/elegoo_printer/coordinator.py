@@ -56,7 +56,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             self.online = True
             if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
-            return self.config_entry.runtime_data.api.printer_data
+            return self.config_entry.runtime_data.api.client.printer_data
         except (ElegooPrinterConnectionError, ElegooPrinterNotConnectedError) as e:
             self.online = False
             if self.update_interval != timedelta(seconds=30):

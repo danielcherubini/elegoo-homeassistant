@@ -55,4 +55,4 @@ class ElegooPrinterEntity(CoordinatorEntity[ElegooDataUpdateCoordinator]):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self.coordinator.online
+        return super().available and self.coordinator.online

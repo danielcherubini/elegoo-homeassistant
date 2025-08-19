@@ -180,10 +180,16 @@ class ElegooPrinterApiClient:
             LOGGER.debug("get_thumbnail no task, getting task")
             task = await self.async_get_task(include_last_task=False)
 
+        if not task:
+            LOGGER.debug("No task found")
+            return None
+
         LOGGER.debug(
-            f"get_thumbnail got begin_time: {task.begin_time} url: {task.thumbnail}"
+            "get_thumbnail got begin_time: %s url: %s",
+            task.begin_time,
+            task.thumbnail,
         )
-        if task and task.thumbnail and task.begin_time is not None:
+        if task.thumbnail and task.begin_time is not None:
             LOGGER.debug("get_thumbnail getting thumbnail from url")
             try:
                 response = await self._hass_client.get(
@@ -276,9 +282,15 @@ class ElegooPrinterApiClient:
         """
         printer = self.client.printer
         if self._proxy_server_enabled:
-            self.server.stop()
-            self.server = ElegooPrinterServer(printer, logger=self._logger)
-            printer = self.server.get_printer()
+            if self.server:
+                self.server.stop()
+            try:
+                self.server = ElegooPrinterServer(printer, logger=self._logger)
+                printer = self.server.get_printer()
+            except Exception as e:
+                self._logger.error(
+                    "Failed to (re)create proxy server: %s", e
+                )
 
         self._logger.debug(
             "Reconnecting to printer: %s proxy_enabled %s",

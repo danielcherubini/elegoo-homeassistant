@@ -73,6 +73,11 @@ class ElegooPrinterServer:
                 self.stop()
                 raise ConfigEntryNotReady("Proxy server failed to start.")
             self.logger.info("Proxy server has started successfully.")
+        else:
+            self.logger.info(
+                "Required proxy ports are in use; failing initialization."
+            )
+            raise ConfigEntryNotReady("Proxy server ports are in use.")
 
     @classmethod
     def stop_all(cls):
