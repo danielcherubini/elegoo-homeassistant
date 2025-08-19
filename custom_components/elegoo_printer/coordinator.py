@@ -26,6 +26,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
     def __init__(self, hass, *, entry: ElegooPrinterConfigEntry) -> None:
         """Initialize."""
         self.online = False
+        self.config_entry = entry
         super().__init__(
             hass,
             LOGGER,

@@ -208,14 +208,18 @@ PRINTER_ATTRIBUTES_BINARY_COMMON: tuple[
         key="usb_disk_status",
         name="USB Disk Status",
         icon="mdi:usb",
-        value_fn=lambda printer_data: printer_data.attributes.usb_disk_status,
+        value_fn=lambda printer_data: bool(printer_data.attributes.usb_disk_status)
+        if printer_data is not None
+        else False,
     ),
     ElegooPrinterBinarySensorEntityDescription(
         key="sdcp_status",
         name="SDCP Status",
         icon="mdi:lan-connect",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.attributes.sdcp_status,
+        value_fn=lambda printer_data: bool(printer_data.attributes.sdcp_status)
+        if printer_data is not None
+        else False,
     ),
 )
 
@@ -530,10 +534,8 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
-        available_fn=lambda printer_data: printer_data.status.current_coord is not None,
-        value_fn=lambda printer_data: float(
-            printer_data.status.current_coord.split(",")[0]
-        ),
+        available_fn=lambda printer_data: _has_valid_current_coords(printer_data),
+        value_fn=lambda printer_data: _get_current_coord_value(printer_data, 0),
     ),
     # --- Current Y Coordinate Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -544,10 +546,8 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
-        available_fn=lambda printer_data: printer_data.status.current_coord is not None,
-        value_fn=lambda printer_data: float(
-            printer_data.status.current_coord.split(",")[1]
-        ),
+        available_fn=lambda printer_data: _has_valid_current_coords(printer_data),
+        value_fn=lambda printer_data: _get_current_coord_value(printer_data, 1),
     ),
     # --- Current Z Coordinate Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -558,10 +558,8 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
-        available_fn=lambda printer_data: printer_data.status.current_coord is not None,
-        value_fn=lambda printer_data: float(
-            printer_data.status.current_coord.split(",")[2]
-        ),
+        available_fn=lambda printer_data: _has_valid_current_coords(printer_data),
+        value_fn=lambda printer_data: _get_current_coord_value(printer_data, 2),
     ),
 )
 
