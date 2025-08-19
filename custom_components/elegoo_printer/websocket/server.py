@@ -78,7 +78,7 @@ class ElegooPrinterServer:
     @classmethod
     def stop_all(cls):
         """Stops all running proxy server instances."""
-        for instance in cls._instances:
+        for instance in cls._instances[:]:
             instance.stop()
         cls._instances.clear()
 
@@ -121,7 +121,17 @@ class ElegooPrinterServer:
             self.loop.call_soon_threadsafe(self.loop.stop)
 
         if self.proxy_thread and self.proxy_thread.is_alive():
-            self.proxy_thread.join(timeout=5)
+            try:
+                from threading import (
+                    current_thread as _cr_current_thread,
+                )  # local import to avoid top-level churn
+            except Exception:
+                _cr_current_thread = None
+            if (
+                _cr_current_thread is None
+                or _cr_current_thread() is not self.proxy_thread
+            ):
+                self.proxy_thread.join(timeout=5)
 
         if self in self.__class__._instances:
             self.__class__._instances.remove(self)
