@@ -1,3 +1,5 @@
+"""Image model for Elegoo printers."""
+
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -6,7 +8,7 @@ from homeassistant.components.image import Image
 
 @dataclass
 class ElegooImage:
-    """Returns the cover image"""
+    """Represents the cover image of a print job."""
 
     def __init__(
         self,
@@ -15,6 +17,7 @@ class ElegooImage:
         last_updated_timestamp: int,
         content_type: str,
     ):
+        """Initialize an ElegooImage object."""
         self._image_url = image_url
         self._bytes = image_bytes
         self._content_type = content_type
@@ -26,13 +29,17 @@ class ElegooImage:
             raise ValueError(f"Invalid timestamp: {last_updated_timestamp}") from e
 
     def get_bytes(self) -> bytes:
+        """Return the image as bytes."""
         return self._bytes
 
     def get_last_update_time(self) -> datetime:
+        """Return the last update time of the image."""
         return self._image_last_updated
 
     def get_content_type(self) -> str:
+        """Return the content type of the image."""
         return self._content_type
 
     def get_image(self) -> Image:
+        """Return the image as a Home Assistant Image object."""
         return Image(self._content_type, self._bytes)

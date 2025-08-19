@@ -1,4 +1,4 @@
-"""Elegoo Printer Server and Proxy."""
+from __future__ import annotations
 
 import asyncio
 import json
@@ -19,8 +19,7 @@ from custom_components.elegoo_printer.const import (
     VIDEO_PORT,
     WEBSOCKET_PORT,
 )
-
-from .models.printer import Printer
+from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 INADDR_ANY = "0.0.0.0"
 
@@ -72,6 +71,9 @@ class ElegooPrinterServer:
                 self.stop()
                 raise ConfigEntryNotReady("Proxy server failed to start.")
             self.logger.info("Proxy server has started successfully.")
+        else:
+            self.logger.info("Required proxy ports are in use; failing initialization.")
+            raise ConfigEntryNotReady("Proxy server ports are in use.")
 
     @classmethod
     def stop_all(cls):
@@ -350,7 +352,7 @@ class ElegooPrinterServer:
         allowed_headers = {
             "Sec-WebSocket-Version",
             "Sec-WebSocket-Key",
-            *"Sec-WebSocket-Protocol",
+            "Sec-WebSocket-Protocol",
             "Upgrade",
             "Connection",
         }

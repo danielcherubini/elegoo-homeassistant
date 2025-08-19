@@ -16,6 +16,11 @@ class ElegooMachineStatus(Enum):
         DEVICES_TESTING: The machine is running a device self-check.
         LEVELING: The machine is performing a leveling operation.
 
+    Example:
+        >>> ElegooMachineStatus(0)
+        <ElegooMachineStatus.IDLE: 0>
+        >>> ElegooMachineStatus.from_int(1)
+        <ElegooMachineStatus.PRINTING: 1>
     """
 
     IDLE = 0
@@ -84,6 +89,11 @@ class ElegooPrintStatus(Enum):
         FILE_CHECKING: The printer is currently checking the print file.
         LOADING: The printer is loading filament.
 
+    Example:
+        >>> ElegooPrintStatus(0)
+        <ElegooPrintStatus.IDLE: 0>
+        >>> ElegooPrintStatus.from_int(3)
+        <ElegooPrintStatus.PRINTING: 3>
     """
 
     IDLE = 0
@@ -135,6 +145,11 @@ class ElegooPrintError(Enum):
         UNKNOWN_FORMAT: The printer does not recognize the format of the print file.
         UNKNOWN_MODEL: The print file is intended for a different machine model.
 
+    Example:
+        >>> ElegooPrintError(0)
+        <ElegooPrintError.NONE: 0>
+        >>> ElegooPrintError.from_int(1)
+        <ElegooPrintError.CHECK: 1>
     """  # noqa: E501
 
     NONE = 0
@@ -168,6 +183,11 @@ class ElegooVideoStatus(Enum):
         2 - Camera does not exist
         3 - Unknown error
 
+    Example:
+        >>> ElegooVideoStatus(0)
+        <ElegooVideoStatus.SUCCESS: 0>
+        >>> ElegooVideoStatus.from_int(1)
+        <ElegooVideoStatus.EXCEEDED_MAX_STREAMING_LIMIT: 1>
     """
 
     SUCCESS = 0
@@ -215,6 +235,11 @@ class ElegooErrorStatusReason(Enum):
         NOZZLE_TEMP_SENSOR_OFFLINE: The nozzle thermistor is offline or disconnected.
         BED_TEMP_SENSOR_OFFLINE: The bed thermistor is offline or disconnected.
 
+    Example:
+        >>> ElegooErrorStatusReason(0)
+        <ElegooErrorStatusReason.OK: 0>
+        >>> ElegooErrorStatusReason.from_int(1)
+        <ElegooErrorStatusReason.TEMP_ERROR: 1>
     """  # noqa: E501
 
     OK = 0

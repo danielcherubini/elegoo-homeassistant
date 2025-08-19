@@ -7,7 +7,6 @@ https://github.com/danielcherubini/elegoo-homeassistant
 
 from __future__ import annotations
 
-from datetime import timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -23,7 +22,7 @@ from homeassistant.helpers.entity_registry import (
 )
 from homeassistant.loader import async_get_loaded_integration
 
-from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 from .api import ElegooPrinterApiClient
 from .const import CONF_PROXY_ENABLED, DOMAIN, LOGGER
@@ -61,13 +60,7 @@ async def async_setup_entry(
     Returns:
         bool: True if the integration is set up successfully.
     """
-    coordinator = ElegooDataUpdateCoordinator(
-        hass=hass,
-        logger=LOGGER,
-        name=DOMAIN,
-        update_interval=timedelta(seconds=2),
-        config_entry=entry,
-    )
+    coordinator = ElegooDataUpdateCoordinator(hass=hass, entry=entry)
 
     config = {
         **(entry.data or {}),

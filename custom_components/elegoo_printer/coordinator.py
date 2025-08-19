@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from custom_components.elegoo_printer.const import LOGGER
-from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
+from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
 )
@@ -23,6 +23,17 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
 
     config_entry: ElegooPrinterConfigEntry
 
+    def __init__(self, hass, *, entry: ElegooPrinterConfigEntry) -> None:
+        """Initialize."""
+        self.online = False
+        self.config_entry = entry
+        super().__init__(
+            hass,
+            LOGGER,
+            name=f"{entry.title}",
+            update_interval=timedelta(seconds=10),
+        )
+
     async def _async_update_data(self) -> Any:
         """
         Asynchronously fetches and updates the latest attributes and status from the Elegoo printer.
@@ -36,28 +47,23 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             UpdateFailed: If a connection or operating system error prevents data retrieval.
         """
         try:
-            await self.config_entry.runtime_data.api.async_get_attributes()
-            await self.config_entry.runtime_data.api.async_get_status()
-            await self.config_entry.runtime_data.api.async_get_print_history()
-            await self.config_entry.runtime_data.api.async_get_current_task()
+            if not self.config_entry.runtime_data.api.client.is_connected:
+                await self.config_entry.runtime_data.api.reconnect()
+            self.data = (
+                await self.config_entry.runtime_data.api.async_get_printer_data()
+            )
+            self.online = True
             if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
-            return self.config_entry.runtime_data.api.printer_data
-        except ElegooPrinterConnectionError as e:
+            return self.data
+        except (ElegooPrinterConnectionError, ElegooPrinterNotConnectedError) as e:
+            self.online = False
             if self.update_interval != timedelta(seconds=30):
                 self.update_interval = timedelta(seconds=30)
             LOGGER.info("Elegoo printer is not connected: %s", e)
-            raise UpdateFailed("Elegoo printer is not connected") from e
-        except ElegooPrinterNotConnectedError as e:
-            if self.update_interval != timedelta(seconds=30):
-                self.update_interval = timedelta(seconds=30)
-            connected = await self.config_entry.runtime_data.api.reconnect()
-            if connected:
-                LOGGER.info("Elegoo printer reconnected successfully.")
-                self.update_interval = timedelta(seconds=2)
-            else:
-                raise UpdateFailed("Elegoo Printer is Offline") from e
+            return self.data  # Return last known data
         except OSError as e:
+            self.online = False
             LOGGER.warning(
                 "OSError while communicating with Elegoo printer: [Errno %s] %s",
                 e.errno,

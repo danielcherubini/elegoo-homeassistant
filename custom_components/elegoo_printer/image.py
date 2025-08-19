@@ -11,10 +11,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from custom_components.elegoo_printer.definitions import (
     ElegooPrinterSensorEntityDescription,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+from custom_components.elegoo_printer.entity import ElegooPrinterEntity
+from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooMachineStatus,
 )
-from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 from .const import LOGGER
 from .definitions import PRINTER_IMAGES
@@ -90,9 +90,11 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
 
     @property
     def available(self) -> bool:
-        """Return if entity is not available"""
-        if not super().available:
-            return False
+        """Return if entity is available."""
         return (
-            self.api.printer_data.status.current_status == ElegooMachineStatus.PRINTING
+            super().available
+            and self.coordinator.data
+            and self.coordinator.data.status
+            and self.coordinator.data.status.current_status
+            == ElegooMachineStatus.PRINTING
         )

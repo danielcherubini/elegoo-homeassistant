@@ -1,7 +1,6 @@
 """Models for the Elegoo printer."""
 
 import json
-from datetime import datetime, timedelta, timezone
 from typing import Any, List
 
 from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus, PrinterType
@@ -138,33 +137,30 @@ class PrintInfo:
         self.error_number = ElegooPrintError.from_int(error_number_int)
         self.task_id = data.get("TaskId")
 
-    def calculate_end_time(self) -> datetime | None:
-        """Calculate the estimated end time of the print job."""
-        if self.remaining_ticks > 0:
-            now = datetime.now(timezone.utc)
-            total_seconds_remaining = self.remaining_ticks / 1000
-            target_datetime = now + timedelta(seconds=total_seconds_remaining)
-            # Round to nearest minute by adding a 30s bias before flooring
-            return self.round_minute(target_datetime + timedelta(seconds=30), 1)
-
-        return None
-
-    def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
-        """Round datetime object to minutes"""
-        if date is None:
-            date = datetime.now(timezone.utc)
-
-        if not isinstance(round_to, int) or round_to <= 0:
-            raise ValueError("round_to must be a positive integer")
-
-        date = date.replace(second=0, microsecond=0)
-        delta = date.minute % round_to
-        return date.replace(minute=date.minute - delta)
-
 
 class PrinterStatus:
     """
     Represents the status of a 3D printer.
+
+    Attributes:
+        current_status (ElegooMachineStatus): The current status of the machine.
+        previous_status (int): The previous status of the machine.
+        print_screen (int): The print screen status.
+        release_film (int): The release film status.
+        time_lapse_status (int): The time lapse status.
+        platform_type (int): The platform type.
+        temp_of_uvled (float): The temperature of the UV LED.
+        temp_of_box (float): The temperature of the box.
+        temp_target_box (float): The target temperature of the box.
+        temp_of_hotbed (float): The temperature of the hotbed.
+        temp_of_nozzle (float): The temperature of the nozzle.
+        temp_target_hotbed (float): The target temperature of the hotbed.
+        temp_target_nozzle (float): The target temperature of the nozzle.
+        current_coord (str): The current coordinates of the printer.
+        z_offset (float): The z-offset of the printer.
+        current_fan_speed (CurrentFanSpeed): The current fan speed.
+        light_status (LightStatus): The status of the lights.
+        print_info (PrintInfo): Information about the current print job.
     """
 
     def __init__(
@@ -214,11 +210,6 @@ class PrinterStatus:
         self.print_info: PrintInfo = PrintInfo(
             print_info_data, printer_type, self.current_status
         )
-        if (
-            self.current_status == ElegooMachineStatus.PRINTING
-            and self.print_info.remaining_ticks > 0
-        ):
-            self.print_info.end_time = self.print_info.calculate_end_time()
 
     @classmethod
     def from_json(

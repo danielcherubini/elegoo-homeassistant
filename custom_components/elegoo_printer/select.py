@@ -3,7 +3,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
+from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
 
 from .coordinator import ElegooDataUpdateCoordinator
 from .definitions import PRINTER_SELECT_TYPES, ElegooPrinterSelectEntityDescription
@@ -60,8 +60,8 @@ class ElegooPrintSpeedSelect(ElegooPrinterEntity, SelectEntity):
         """
         Returns the current selected option.
         """
-        if self._api and self._api.printer_data:
-            return self.entity_description.current_option_fn(self._api.printer_data)
+        if self.coordinator.data:
+            return self.entity_description.current_option_fn(self.coordinator.data)
         return None
 
     async def async_select_option(self, option: str):
@@ -71,6 +71,6 @@ class ElegooPrintSpeedSelect(ElegooPrinterEntity, SelectEntity):
         value = self.entity_description.options_map.get(option)
         if self._api:
             await self.entity_description.select_option_fn(self._api, value)
-            if self._api.printer_data:
-                self.coordinator.async_set_updated_data(self._api.printer_data)
+            if self.coordinator.data:
+                self.coordinator.async_set_updated_data(self.coordinator.data)
             self.async_write_ha_state()

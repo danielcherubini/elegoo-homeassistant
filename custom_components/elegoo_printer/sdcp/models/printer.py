@@ -1,24 +1,29 @@
-"""Printer object for the Elegoo Printers."""
+from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
     CONF_PROXY_ENABLED,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.models.video import ElegooVideo
+from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStatus
 
 from .attributes import PrinterAttributes
-from .enums import PrinterType
 from .print_history_detail import PrintHistoryDetail
 from .status import PrinterStatus
+from .video import ElegooVideo
+
+if TYPE_CHECKING:
+    from .enums import PrinterType
 
 
 class Printer:
     """
     Represent a printer with various attributes.
+
 
     Attributes:
         connection (str): The connection ID of the printer.
@@ -71,9 +76,9 @@ class Printer:
     ) -> None:
         """
         Initialize a Printer instance from a JSON string and configuration mapping.
-
-        If a valid JSON string is provided, extracts printer attributes from the JSON data. If parsing fails or no data is given, initializes all attributes to default "nulled" values. The printer type is determined from the model name, and the proxy_enabled flag is set based on the configuration.
         """
+        if TYPE_CHECKING:
+            from .enums import PrinterType
         if json_string is None:
             self.connection = None
             self.name = ""
@@ -98,6 +103,8 @@ class Printer:
                 self.protocol = data_dict.get("ProtocolVersion")
                 self.firmware = data_dict.get("FirmwareVersion")
                 self.id = data_dict.get("MainboardID")
+                from .enums import PrinterType
+
                 self.printer_type = PrinterType.from_model(self.model)
             except json.JSONDecodeError:
                 # Handle the error appropriately (e.g., log it, raise an exception)
@@ -118,11 +125,6 @@ class Printer:
     def to_dict(self) -> Dict[str, Any]:
         """
         Return a dictionary containing all attributes of the Printer instance.
-
-        The resulting dictionary includes connection details, identification, model information, printer type (as a string value or None), and proxy status.
-
-        Returns:
-            dict: Dictionary with printer attributes and metadata.
         """
         return {
             "connection": self.connection,
@@ -157,6 +159,8 @@ class Printer:
         printer.protocol = data_dict.get("ProtocolVersion", data_dict.get("protocol"))
         printer.firmware = data_dict.get("FirmwareVersion", data_dict.get("firmware"))
         printer.id = data_dict.get("MainboardID", data_dict.get("id"))
+        from .enums import PrinterType
+
         printer.printer_type = PrinterType.from_model(printer.model)
         printer.proxy_enabled = data_dict.get(
             CONF_PROXY_ENABLED, data_dict.get("proxy_enabled", False)
@@ -168,12 +172,20 @@ class Printer:
 
 
 class PrinterData:
-    """Data object for printer information."""
+    """
+    Data object for printer information.
 
-    status: PrinterStatus
-    attributes: PrinterAttributes
-    printer: Printer
+    Attributes:
+        status (PrinterStatus): The status of the printer.
+        attributes (PrinterAttributes): The attributes of the printer.
+        printer (Printer): The printer object.
+        print_history (dict[str, PrintHistoryDetail | None]): The print history of the printer.
+        current_job (PrintHistoryDetail | None): The current print job of the printer.
+        video (ElegooVideo): The video object of the printer.
+    """
+
     print_history: dict[str, PrintHistoryDetail | None]
+    current_job: PrintHistoryDetail | None
     video: ElegooVideo
 
     def __init__(
@@ -185,11 +197,37 @@ class PrinterData:
     ) -> None:
         """
         Initialize a PrinterData instance with optional printer-related data.
-
-        If any argument is omitted or None, the corresponding attribute is set to a default instance of its class. The `video` attribute is always initialized as a new ElegooVideo instance.
         """
         self.status: PrinterStatus = status or PrinterStatus()
         self.attributes: PrinterAttributes = attributes or PrinterAttributes()
         self.printer: Printer = printer or Printer()
         self.print_history: dict[str, PrintHistoryDetail | None] = print_history or {}
+        self.current_job: PrintHistoryDetail | None = None
         self.video: ElegooVideo = ElegooVideo()
+
+    def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
+        """Round datetime object to minutes"""
+        if date is None:
+            date = datetime.now(timezone.utc)
+
+        if not isinstance(round_to, int) or round_to <= 0:
+            raise ValueError("round_to must be a positive integer")
+
+        date = date.replace(second=0, microsecond=0)
+        delta = date.minute % round_to
+        return date.replace(minute=date.minute - delta)
+
+    def calculate_current_job_end_time(self):
+        """Calculate the estimated end time of the print job."""
+        if (
+            self.status.current_status == ElegooMachineStatus.PRINTING
+            and self.status.print_info.remaining_ticks > 0
+            and self.current_job
+        ):
+            now = datetime.now(timezone.utc)
+            total_seconds_remaining = self.status.print_info.remaining_ticks / 1000
+            target_datetime = now + timedelta(seconds=total_seconds_remaining)
+            # Round to nearest minute by adding a 30s bias before flooring
+            self.current_job.end_time = self.round_minute(
+                target_datetime + timedelta(seconds=30), 1
+            )

@@ -23,7 +23,7 @@ from homeassistant.const import (
 )
 from homeassistant.helpers.typing import StateType
 
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import (
+from .sdcp.models.enums import (
     ElegooErrorStatusReason,
     ElegooMachineStatus,
     ElegooPrintError,
@@ -208,14 +208,18 @@ PRINTER_ATTRIBUTES_BINARY_COMMON: tuple[
         key="usb_disk_status",
         name="USB Disk Status",
         icon="mdi:usb",
-        value_fn=lambda printer_data: printer_data.attributes.usb_disk_status,
+        value_fn=lambda printer_data: bool(printer_data.attributes.usb_disk_status)
+        if printer_data is not None
+        else False,
     ),
     ElegooPrinterBinarySensorEntityDescription(
         key="sdcp_status",
         name="SDCP Status",
         icon="mdi:lan-connect",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.attributes.sdcp_status,
+        value_fn=lambda printer_data: bool(printer_data.attributes.sdcp_status)
+        if printer_data is not None
+        else False,
     ),
 )
 
@@ -280,9 +284,22 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="End Time",
         icon="mdi:clock",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda printer_data: printer_data.status.print_info.end_time,
-        available_fn=lambda printer_data: printer_data.status.print_info.end_time
-        is not None,
+        value_fn=lambda printer_data: printer_data.current_job.end_time
+        if printer_data.current_job
+        else None,
+        available_fn=lambda printer_data: printer_data.current_job
+        and printer_data.current_job.end_time is not None,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="begin_time",
+        name="Begin Time",
+        icon="mdi:clock-start",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda printer_data: printer_data.current_job.begin_time
+        if printer_data.current_job
+        else None,
+        available_fn=lambda printer_data: printer_data.current_job
+        and printer_data.current_job.begin_time is not None,
     ),
     ElegooPrinterSensorEntityDescription(
         key="total_layers",
@@ -530,10 +547,8 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
-        available_fn=lambda printer_data: printer_data.status.current_coord is not None,
-        value_fn=lambda printer_data: float(
-            printer_data.status.current_coord.split(",")[0]
-        ),
+        available_fn=lambda printer_data: _has_valid_current_coords(printer_data),
+        value_fn=lambda printer_data: _get_current_coord_value(printer_data, 0),
     ),
     # --- Current Y Coordinate Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -544,10 +559,8 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
-        available_fn=lambda printer_data: printer_data.status.current_coord is not None,
-        value_fn=lambda printer_data: float(
-            printer_data.status.current_coord.split(",")[1]
-        ),
+        available_fn=lambda printer_data: _has_valid_current_coords(printer_data),
+        value_fn=lambda printer_data: _get_current_coord_value(printer_data, 1),
     ),
     # --- Current Z Coordinate Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -558,10 +571,8 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
-        available_fn=lambda printer_data: printer_data.status.current_coord is not None,
-        value_fn=lambda printer_data: float(
-            printer_data.status.current_coord.split(",")[2]
-        ),
+        available_fn=lambda printer_data: _has_valid_current_coords(printer_data),
+        value_fn=lambda printer_data: _get_current_coord_value(printer_data, 2),
     ),
 )
 

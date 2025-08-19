@@ -14,15 +14,14 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import SelectOptionDict
 
-from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
-from custom_components.elegoo_printer.elegoo_sdcp.exceptions import (
+from .const import CONF_CAMERA_ENABLED, CONF_PROXY_ENABLED, DOMAIN, LOGGER
+from .sdcp.exceptions import (
     ElegooConfigFlowConnectionError,
     ElegooConfigFlowGeneralError,
 )
-
-from .const import CONF_CAMERA_ENABLED, CONF_PROXY_ENABLED, DOMAIN, LOGGER
-from .elegoo_sdcp.models.enums import PrinterType
-from .elegoo_sdcp.models.printer import Printer
+from .sdcp.models.enums import PrinterType
+from .sdcp.models.printer import Printer
+from .websocket.client import ElegooPrinterClient
 
 if TYPE_CHECKING:
     pass

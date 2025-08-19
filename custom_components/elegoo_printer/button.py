@@ -8,7 +8,7 @@ from custom_components.elegoo_printer.definitions import (
     PRINTER_FDM_BUTTONS,
     ElegooPrinterButtonEntityDescription,
 )
-from custom_components.elegoo_printer.elegoo_sdcp.client import ElegooPrinterClient
+from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 from .const import LOGGER

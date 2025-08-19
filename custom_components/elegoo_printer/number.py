@@ -3,7 +3,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
+from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
 
 from .coordinator import ElegooDataUpdateCoordinator
 from .definitions import PRINTER_NUMBER_TYPES, ElegooPrinterNumberEntityDescription
@@ -67,8 +67,8 @@ class ElegooNumber(ElegooPrinterEntity, NumberEntity):
         """
         Returns the current value.
         """
-        if self._api and self._api.printer_data:
-            return self.entity_description.value_fn(self._api.printer_data)
+        if self.coordinator.data:
+            return self.entity_description.value_fn(self.coordinator.data)
         return None
 
     async def async_set_native_value(self, value: float) -> None:

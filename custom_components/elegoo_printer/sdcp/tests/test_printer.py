@@ -4,12 +4,13 @@ import json
 from types import MappingProxyType
 
 from custom_components.elegoo_printer.const import CONF_PROXY_ENABLED
-from custom_components.elegoo_printer.elegoo_sdcp.models.enums import PrinterType
-from custom_components.elegoo_printer.elegoo_sdcp.models.printer import Printer
+from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
+from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 
 def test_printer_initialization_with_valid_data():
     """Test that the Printer model initializes correctly with valid JSON data."""
+
     printer_json = json.dumps(
         {
             "Id": "12345",
