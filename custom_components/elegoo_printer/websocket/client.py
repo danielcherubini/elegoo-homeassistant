@@ -369,7 +369,7 @@ class ElegooPrinterClient:
                 await asyncio.wait_for(event.wait(), timeout=10)
             except asyncio.TimeoutError:
                 # Command-level timeout: keep the connection alive
-                self.logger.warning(
+                self.logger.info(
                     "Timed out waiting for response to cmd %s (RequestID=%s)",
                     cmd,
                     request_id,
