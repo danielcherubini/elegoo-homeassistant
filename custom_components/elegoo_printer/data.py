@@ -1,9 +1,10 @@
 """Custom types for elegoo_printer."""
 
+"""Data classes for the Elegoo printer integration."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -13,12 +14,14 @@ if TYPE_CHECKING:
     from .coordinator import ElegooDataUpdateCoordinator
 
 
-type ElegooPrinterConfigEntry = ConfigEntry[ElegooPrinterData]
+class ElegooPrinterConfigEntry(ConfigEntry):
+    """Config entry for Elegoo printers."""
+
+    runtime_data: ElegooPrinterData
 
 
-@dataclass
-class ElegooPrinterData:
-    """Data for the Elegoo integration."""
+class ElegooPrinterData(TypedDict):
+    """Runtime data for Elegoo printers."""
 
     api: ElegooPrinterApiClient
     coordinator: ElegooDataUpdateCoordinator
