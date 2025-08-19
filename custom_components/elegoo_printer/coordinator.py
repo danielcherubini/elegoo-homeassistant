@@ -31,7 +31,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             hass,
             LOGGER,
             name=f"{entry.title}",
-            update_interval=timedelta(seconds=10),
+            update_interval=timedelta(seconds=1),
         )
 
     async def _async_update_data(self) -> Any:
@@ -53,8 +53,8 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                 await self.config_entry.runtime_data.api.async_get_printer_data()
             )
             self.online = True
-            if self.update_interval != timedelta(seconds=2):
-                self.update_interval = timedelta(seconds=2)
+            if self.update_interval != timedelta(seconds=1):
+                self.update_interval = timedelta(seconds=1)
             return self.data
         except (ElegooPrinterConnectionError, ElegooPrinterNotConnectedError) as e:
             self.online = False

@@ -9,19 +9,19 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.httpx_client import get_async_client
 from PIL import Image as PILImage
 
-from custom_components.elegoo_printer.sdcp.models.elegoo_image import ElegooImage
-from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
-from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
+from .const import CONF_PROXY_ENABLED, LOGGER
+from .sdcp.models.elegoo_image import ElegooImage
+from .sdcp.models.enums import ElegooFan
+from .sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
-from custom_components.elegoo_printer.sdcp.models.printer import Printer, PrinterData
-from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
-from custom_components.elegoo_printer.websocket.server import ElegooPrinterServer
-
-from .const import CONF_PROXY_ENABLED, LOGGER
+from .sdcp.models.printer import Printer, PrinterData
+from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
     from logging import Logger
+
+    from .websocket.client import ElegooPrinterClient
 
 
 class ElegooPrinterApiClient:
@@ -51,12 +51,6 @@ class ElegooPrinterApiClient:
         self._logger = logger
         self.printer = printer
         self._hass_client = get_async_client(hass)
-        self.client = ElegooPrinterClient(
-            printer.ip_address,
-            config=config,
-            logger=logger,
-            session=async_get_clientsession(hass),
-        )
         self.server: ElegooPrinterServer | None = None
         self.hass: HomeAssistant = hass
 
@@ -74,6 +68,8 @@ class ElegooPrinterApiClient:
         sets up a proxy server, and attempts to connect to the printer. It returns an
         initialized client instance; the connection status should be checked separately.
         """
+        from .websocket.client import ElegooPrinterClient
+
         printer = Printer.from_dict(dict(config))
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
         logger.debug("CONFIGURATION %s", config)
@@ -97,6 +93,12 @@ class ElegooPrinterApiClient:
             printer.proxy_enabled,
         )
 
+        self.client = ElegooPrinterClient(
+            printer.ip_address,
+            config=config,
+            logger=logger,
+            session=async_get_clientsession(hass),
+        )
         try:
             connected = await self.client.connect_printer(printer, proxy_server_enabled)
             if connected:

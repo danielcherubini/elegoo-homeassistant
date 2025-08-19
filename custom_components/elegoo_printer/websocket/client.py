@@ -84,6 +84,8 @@ class ElegooPrinterClient:
         self._listener_task: asyncio.Task | None = None
         self._session: aiohttp.ClientSession = session
         self._background_tasks: set[asyncio.Task] = set()
+        self._response_events: dict[str, asyncio.Event] = {}
+        self._response_lock = asyncio.Lock()
 
     @property
     def is_connected(self) -> bool:
@@ -341,12 +343,13 @@ class ElegooPrinterClient:
             )
         ts = int(time.time())
         data = data or {}
+        request_id = os.urandom(8).hex()
         payload = {
             "Id": self.printer.connection,
             "Data": {
                 "Cmd": cmd,
                 "Data": data,
-                "RequestID": os.urandom(8).hex(),
+                "RequestID": request_id,
                 "MainboardID": self.printer.id,
                 "TimeStamp": ts,
                 "From": 0,
@@ -355,9 +358,15 @@ class ElegooPrinterClient:
         }
         if DEBUG:
             self.logger.debug(f"printer << \n{json.dumps(payload, indent=4)}")
+
+        event = asyncio.Event()
+        async with self._response_lock:
+            self._response_events[request_id] = event
+
         if self.printer_websocket:
             try:
                 await self.printer_websocket.send_str(json.dumps(payload))
+                await asyncio.wait_for(event.wait(), timeout=10)
             except (
                 OSError,
                 asyncio.TimeoutError,
@@ -366,6 +375,9 @@ class ElegooPrinterClient:
                 self._is_connected = False
                 self.logger.info("WebSocket connection closed error")
                 raise ElegooPrinterConnectionError from e
+            finally:
+                async with self._response_lock:
+                    self._response_events.pop(request_id, None)
         else:
             raise ElegooPrinterNotConnectedError("Not connected")
 
@@ -578,6 +590,9 @@ class ElegooPrinterClient:
         try:
             inner_data = data.get("Data")
             if inner_data:
+                request_id = inner_data.get("RequestID")
+                if request_id:
+                    asyncio.create_task(self._set_response_event(request_id))
                 data_data = inner_data.get("Data", {})
                 cmd: int = inner_data.get("Cmd", 0)
                 if cmd == 320:
@@ -644,3 +659,9 @@ class ElegooPrinterClient:
             data_data: Dictionary containing video stream information.
         """
         self.printer_data.video = ElegooVideo(data_data)
+
+    async def _set_response_event(self, request_id: str):
+        """Set the event for a given request ID."""
+        async with self._response_lock:
+            if event := self._response_events.get(request_id):
+                event.set()

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypedDict
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 
@@ -19,7 +20,8 @@ class ElegooPrinterConfigEntry(ConfigEntry):
     runtime_data: ElegooPrinterData
 
 
-class ElegooPrinterData(TypedDict):
+@dataclass
+class ElegooPrinterData:
     """Runtime data for Elegoo printers."""
 
     api: ElegooPrinterApiClient
