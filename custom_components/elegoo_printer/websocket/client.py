@@ -31,8 +31,6 @@ from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
 from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
-from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
-
 from custom_components.elegoo_printer.sdcp.models.printer import (
     Printer,
     PrinterData,
@@ -41,6 +39,7 @@ from custom_components.elegoo_printer.sdcp.models.status import (
     LightStatus,
     PrinterStatus,
 )
+from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
 logging.getLogger("websocket").setLevel(logging.CRITICAL)
 
@@ -138,7 +137,6 @@ class ElegooPrinterClient:
             The current video stream information from the printer.
         """
         await self.set_printer_video_stream(enable=enable)
-        await asyncio.sleep(2)
         self.logger.debug(f"Sending printer video: {self.printer_data.video.to_dict()}")
         return self.printer_data.video
 
@@ -147,7 +145,6 @@ class ElegooPrinterClient:
     ) -> dict[str, PrintHistoryDetail | None] | None:
         """Asynchronously requests the list of historical print tasks from the printer."""
         await self._send_printer_cmd(320)
-        await asyncio.sleep(2)  # Give the printer time to respond
         return self.printer_data.print_history
 
     async def get_printer_task_detail(
@@ -159,7 +156,6 @@ class ElegooPrinterClient:
                 return task
             else:
                 await self._send_printer_cmd(321, data={"Id": [task_id]})
-                await asyncio.sleep(2)
                 return self.printer_data.print_history.get(task_id)
 
         return None
@@ -255,7 +251,6 @@ class ElegooPrinterClient:
             task = self.printer_data.print_history.get(last_task_id)
             if task is None:
                 await self.get_printer_task_detail([last_task_id])
-                await asyncio.sleep(2)  # Give the printer time to respond
                 return self.printer_data.print_history.get(last_task_id)
             return task
         return None
