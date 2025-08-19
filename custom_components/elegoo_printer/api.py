@@ -16,12 +16,11 @@ from .sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
 from .sdcp.models.printer import Printer, PrinterData
+from .websocket.client import ElegooPrinterClient
 from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
     from logging import Logger
-
-    from .websocket.client import ElegooPrinterClient
 
 
 class ElegooPrinterApiClient:
@@ -68,7 +67,6 @@ class ElegooPrinterApiClient:
         sets up a proxy server, and attempts to connect to the printer. It returns an
         initialized client instance; the connection status should be checked separately.
         """
-        from .websocket.client import ElegooPrinterClient
 
         printer = Printer.from_dict(dict(config))
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)

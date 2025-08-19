@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
+import secrets
 import socket
 import time
 from types import MappingProxyType
@@ -103,6 +103,11 @@ class ElegooPrinterClient:
             self._listener_task = None
         if self.printer_websocket and not self.printer_websocket.closed:
             await self.printer_websocket.close()
+        # NEW: unblock any waiters
+        async with self._response_lock:
+            for ev in self._response_events.values():
+                ev.set()
+            self._response_events.clear()
         self._is_connected = False
 
     async def get_printer_status(self) -> PrinterData:
@@ -338,7 +343,7 @@ class ElegooPrinterClient:
             )
         ts = int(time.time())
         data = data or {}
-        request_id = os.urandom(8).hex()
+        request_id = secrets.token_hex(8)
         payload = {
             "Id": self.printer.connection,
             "Data": {
@@ -362,11 +367,14 @@ class ElegooPrinterClient:
             try:
                 await self.printer_websocket.send_str(json.dumps(payload))
                 await asyncio.wait_for(event.wait(), timeout=10)
-            except (
-                OSError,
-                asyncio.TimeoutError,
-                aiohttp.ClientError,
-            ) as e:
+            except asyncio.TimeoutError:
+                # Command-level timeout: keep the connection alive
+                self.logger.warning(
+                    "Timed out waiting for response to cmd %s (RequestID=%s)",
+                    cmd,
+                    request_id,
+                )
+            except (OSError, aiohttp.ClientError) as e:
                 self._is_connected = False
                 self.logger.info("WebSocket connection closed error")
                 raise ElegooPrinterConnectionError from e
@@ -587,7 +595,9 @@ class ElegooPrinterClient:
             if inner_data:
                 request_id = inner_data.get("RequestID")
                 if request_id:
-                    asyncio.create_task(self._set_response_event(request_id))
+                    task = asyncio.create_task(self._set_response_event(request_id))
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
                 data_data = inner_data.get("Data", {})
                 cmd: int = inner_data.get("Cmd", 0)
                 if cmd == 320:
@@ -660,3 +670,5 @@ class ElegooPrinterClient:
         async with self._response_lock:
             if event := self._response_events.get(request_id):
                 event.set()
+            elif DEBUG:
+                self.logger.debug("No waiter found for RequestID=%s", request_id)
