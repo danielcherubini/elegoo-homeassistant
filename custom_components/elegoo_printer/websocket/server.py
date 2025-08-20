@@ -214,9 +214,21 @@ class ElegooPrinterServer:
                     headers=response_headers,
                 )
                 await response.prepare(request)
-                async for chunk in proxy_response.content.iter_chunked(8192):
-                    await response.write(chunk)
-                await response.write_eof()
+                try:
+                    async for chunk in proxy_response.content.iter_chunked(8192):
+                        if request.transport is None or request.transport.is_closing():
+                            self.logger.debug(
+                                "Client disconnected, stopping video stream."
+                            )
+                            break
+                        await response.write(chunk)
+                    await response.write_eof()
+                except (ConnectionResetError, asyncio.CancelledError) as e:
+                    self.logger.debug(f"Video stream stopped: {e}")
+                except Exception as e:
+                    self.logger.error(
+                        f"An unexpected error occurred during video streaming: {e}"
+                    )
                 return response
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             self.logger.error(f"Error proxying video stream: {e}")
