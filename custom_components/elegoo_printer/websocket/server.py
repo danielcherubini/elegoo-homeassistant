@@ -385,20 +385,6 @@ class ElegooPrinterServer:
                     raise aiohttp.ClientConnectionError(
                         f"Connection validation failed: {e}"
                     )
-                try:
-                    # Try a ping first to test basic connectivity
-                    await asyncio.wait_for(remote_ws.ping(), timeout=3.0)
-                    self.logger.debug("Printer WebSocket ping successful")
-                    self._connection_failure_count = 0
-                    self.logger.debug(
-                        "Printer connection validated, failure count reset"
-                    )
-                except (asyncio.TimeoutError, aiohttp.ClientError) as e:
-                    self.logger.warning(f"Printer connection validation failed: {e}")
-                    # If ping fails, the connection is likely not working properly
-                    raise aiohttp.ClientConnectionError(
-                        f"Connection validation failed: {e}"
-                    )
                 # Only reset failure count if validation passed
                 if connection_validated:
                     self._connection_failure_count = 0
