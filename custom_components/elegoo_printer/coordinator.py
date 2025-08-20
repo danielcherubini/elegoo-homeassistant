@@ -38,8 +38,6 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> Any:
         """
         Asynchronously fetches and updates the latest attributes and status from the Elegoo printer.
-        """
-        Asynchronously fetches and updates the latest attributes and status from the Elegoo printer.
 
         If the printer is disconnected, it attempts to reconnect and adjusts the update interval.
 

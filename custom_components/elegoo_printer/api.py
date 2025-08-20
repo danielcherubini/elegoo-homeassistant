@@ -62,8 +62,6 @@ class ElegooPrinterApiClient:
     ) -> ElegooPrinterApiClient | None:
         """
         Asynchronously creates and initializes an ElegooPrinterApiClient instance.
-        """
-        Asynchronously creates and initializes an ElegooPrinterApiClient instance.
 
         This method parses the configuration to construct a Printer object, optionally
         sets up a proxy server, and attempts to connect to the printer. It returns an
