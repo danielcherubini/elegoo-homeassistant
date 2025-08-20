@@ -370,7 +370,24 @@ class ElegooPrinterServer:
                 self.logger.info(
                     f"Proxy connected to remote printer WebSocket at {self.printer.ip_address}"
                 )
-                self._connection_failure_count = 0
+                
+                # Validate the connection is working before resetting failure count
+                # We do this by checking if we can read from the WebSocket without blocking
+                connection_validated = False
+                try:
+                    # Try a ping first to test basic connectivity
+                    await asyncio.wait_for(remote_ws.ping(), timeout=3.0)
+                    self.logger.debug("Printer WebSocket ping successful")
+                    connection_validated = True
+                except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+                    self.logger.warning(f"Printer connection validation failed: {e}")
+                    # If ping fails, the connection is likely not working properly
+                    raise aiohttp.ClientConnectionError(f"Connection validation failed: {e}")
+                
+                # Only reset failure count if validation passed
+                if connection_validated:
+                    self._connection_failure_count = 0
+                    self.logger.debug("Printer connection validated, failure count reset")
 
                 async def forward(source, dest, direction):
                     """
@@ -384,29 +401,40 @@ class ElegooPrinterServer:
                     try:
                         async for msg in source:
                             if msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
-                                (
-                                    await dest.send_bytes(msg.data)
-                                    if msg.type == WSMsgType.BINARY
-                                    else await dest.send_str(
-                                        msg.data.replace(
-                                            self.printer.ip_address, self.get_local_ip()
-                                        ).replace(
-                                            f"{self.get_local_ip()}/",
-                                            f"{self.get_local_ip()}:{WEBSOCKET_PORT}/",
+                                try:
+                                    (
+                                        await dest.send_bytes(msg.data)
+                                        if msg.type == WSMsgType.BINARY
+                                        else await dest.send_str(
+                                            msg.data.replace(
+                                                self.printer.ip_address, self.get_local_ip()
+                                            ).replace(
+                                                f"{self.get_local_ip()}/",
+                                                f"{self.get_local_ip()}:{WEBSOCKET_PORT}/",
+                                            )
                                         )
                                     )
-                                )
+                                except (aiohttp.ClientConnectionError, ConnectionResetError) as e:
+                                    self.logger.warning(f"Failed to forward message in {direction}: {e}")
+                                    # Re-raise to trigger connection failure handling
+                                    raise aiohttp.ClientConnectionError(f"Message forwarding failed: {e}")
                             elif msg.type == WSMsgType.CLOSE:
+                                self.logger.debug(f"WebSocket close message received in {direction}")
                                 break
                             elif msg.type == WSMsgType.ERROR:
                                 self.logger.error(
                                     f"WebSocket error in {direction}: {source.exception()}"
                                 )
-                                break
+                                # Treat WebSocket errors as connection failures
+                                raise aiohttp.ClientConnectionError(f"WebSocket error in {direction}")
                     except aiohttp.ClientConnectionResetError:
-                        self.logger.debug(
+                        self.logger.warning(
                             f"WebSocket connection reset by peer in {direction}."
                         )
+                        # Re-raise as a more general connection error to trigger failure handling
+                        raise aiohttp.ClientConnectionError(f"Connection reset in {direction}")
+                    except Exception as e:
+                        self.logger.error(f"Unexpected error in {direction} forwarding: {e}")
                         raise
 
                 # Create tasks to run the forwarding coroutines concurrently
@@ -435,14 +463,14 @@ class ElegooPrinterServer:
         ) as e:
             self.logger.warning(f"WebSocket connection to printer failed: {e}")
             self._connection_failure_count += 1
-            if self._connection_failure_count >= 3:  # Threshold for shutdown
+            if self._connection_failure_count >= 2:  # Reduced threshold for faster shutdown
                 self.logger.info(
                     "Printer connection consistently failing, initiating shutdown."
                 )
                 self.stop()
             else:
                 self.logger.info(
-                    f"Connection failure {self._connection_failure_count}/3. Retrying..."
+                    f"Connection failure {self._connection_failure_count}/2. Retrying..."
                 )
         except Exception as e:
             self.logger.error(f"WebSocket proxy error: {e}")
