@@ -208,6 +208,7 @@ PRINTER_ATTRIBUTES_BINARY_COMMON: tuple[
         key="usb_disk_status",
         name="USB Disk Status",
         icon="mdi:usb",
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: bool(printer_data.attributes.usb_disk_status)
         if printer_data is not None
         else False,
@@ -375,6 +376,7 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Print Error",
         icon="mdi:file",
         device_class=SensorDeviceClass.ENUM,
+        entity_category=EntityCategory.DIAGNOSTIC,
         options=[error.name.lower() for error in ElegooPrintError],
         value_fn=lambda printer_data: printer_data.status.print_info.error_number.name.lower(),
         available_fn=lambda printer_data: printer_data.status.print_info.error_number
@@ -386,6 +388,7 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="Print Error Reason",
         icon="mdi:file",
         device_class=SensorDeviceClass.ENUM,
+        entity_category=EntityCategory.DIAGNOSTIC,
         options=[reason.name.lower() for reason in ElegooErrorStatusReason],
         available_fn=lambda printer_data: printer_data
         and printer_data.print_history
