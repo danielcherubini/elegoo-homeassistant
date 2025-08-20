@@ -204,10 +204,13 @@ class ElegooPrinterServer:
                 ),
                 headers=headers,
             ) as proxy_response:
+                response_headers = proxy_response.headers.copy()
+                for h in ("Content-Length", "Transfer-Encoding", "Connection"):
+                    response_headers.pop(h, None)
                 response = web.StreamResponse(
                     status=proxy_response.status,
                     reason=proxy_response.reason,
-                    headers=proxy_response.headers,
+                    headers=response_headers,
                 )
                 await response.prepare(request)
                 async for chunk in proxy_response.content.iter_chunked(8192):
@@ -287,8 +290,13 @@ class ElegooPrinterServer:
             self.logger.error(f"WebSocket proxy error: {e}")
             self._is_connected = False
         finally:
+            # Ensure connected state is reset on normal closure as well
+            self._is_connected = False
             for task in tasks:
                 task.cancel()
+            # Drain cancellations to avoid unhandled exceptions
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
             if not client_ws.closed:
                 await client_ws.close()
         return client_ws
@@ -379,8 +387,8 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                     "BrandName": "Elegoo",
                     "MainboardIP": self.proxy_ip,
                     "MainboardID": getattr(self.printer, "id", "unknown"),
-                    "ProtocolVersion": "V3.0.0",
-                    "FirmwareVersion": getattr(self.printer, "version", "V1.0.0"),
+                    "ProtocolVersion": getattr(self.printer, "protocol", "V3.0.0"),
+                    "FirmwareVersion": getattr(self.printer, "firmware", "V1.0.0"),
                 },
             }
             json_string = json.dumps(response_payload)
