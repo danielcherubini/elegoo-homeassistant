@@ -11,6 +11,7 @@ from custom_components.elegoo_printer.const import LOGGER
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
+    ElegooPrinterTimeoutError,
 )
 
 if TYPE_CHECKING:
@@ -56,6 +57,8 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
             return self.data
+        except ElegooPrinterTimeoutError as e:
+            raise UpdateFailed("Timeout communicating with Elegoo printer") from e
         except (ElegooPrinterConnectionError, ElegooPrinterNotConnectedError) as e:
             self.online = False
             if self.update_interval != timedelta(seconds=30):
