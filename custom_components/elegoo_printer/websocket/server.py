@@ -324,8 +324,21 @@ class ElegooPrinterServer:
                 data=request.content,
                 allow_redirects=False,
             ) as upstream_response:
+                response_headers = upstream_response.headers.copy()
+                for h in (
+                    "Content-Length",
+                    "Transfer-Encoding",
+                    "Connection",
+                    "Keep-Alive",
+                    "Proxy-Authenticate",
+                    "Proxy-Authorization",
+                    "TE",
+                    "Trailer",
+                    "Upgrade",
+                ):
+                    response_headers.pop(h, None)
                 client_response = web.StreamResponse(
-                    status=upstream_response.status, headers=upstream_response.headers
+                    status=upstream_response.status, headers=response_headers
                 )
                 await client_response.prepare(request)
                 async for chunk in upstream_response.content.iter_any():
@@ -340,7 +353,9 @@ class ElegooPrinterServer:
         self, request: web.Request
     ) -> web.Response:
         """Proxies multipart file upload requests."""
-        remote_url = f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path}"
+        remote_url = (
+            f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
+        )
         if not self.session or self.session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
@@ -350,13 +365,25 @@ class ElegooPrinterServer:
             if k.lower() not in ("host", "transfer-encoding")
         }
         try:
-            raw_body = await request.read()
             async with self.session.post(
-                remote_url, headers=headers, data=raw_body
+                remote_url, headers=headers, data=request.content
             ) as response:
                 content = await response.read()
+                resp_headers = response.headers.copy()
+                for h in (
+                    "Content-Length",
+                    "Transfer-Encoding",
+                    "Connection",
+                    "Keep-Alive",
+                    "Proxy-Authenticate",
+                    "Proxy-Authorization",
+                    "TE",
+                    "Trailer",
+                    "Upgrade",
+                ):
+                    resp_headers.pop(h, None)
                 return web.Response(
-                    body=content, status=response.status, headers=response.headers
+                    body=content, status=response.status, headers=resp_headers
                 )
         except Exception as e:
             self.logger.error(f"HTTP file passthrough proxy error: {e}")
@@ -392,6 +419,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                     "FirmwareVersion": getattr(self.printer, "firmware", "V1.0.0"),
                 },
             }
+            # self.logger.debug(response_payload)
             json_string = json.dumps(response_payload)
             if self.transport:
                 self.transport.sendto(json_string.encode(), addr)

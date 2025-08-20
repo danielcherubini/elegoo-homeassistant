@@ -132,10 +132,10 @@ class ElegooPrinterApiClient:
         """Disconnect from the printer by closing the WebSocket connection."""
         await self.client.disconnect()
 
-    def elegoo_stop_proxy(self) -> None:
+    async def elegoo_stop_proxy(self) -> None:
         """Stops the proxy server if it is running."""
         if self.server:
-            self.hass.async_create_task(self.server.stop())
+            await self.server.stop()
 
     async def async_get_status(self) -> PrinterData:
         """
