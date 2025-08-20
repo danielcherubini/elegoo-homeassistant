@@ -25,6 +25,7 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConfigurationError,
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
+    ElegooPrinterTimeoutError,
 )
 from custom_components.elegoo_printer.sdcp.models.attributes import PrinterAttributes
 from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
@@ -367,13 +368,14 @@ class ElegooPrinterClient:
             try:
                 await self.printer_websocket.send_str(json.dumps(payload))
                 await asyncio.wait_for(event.wait(), timeout=10)
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as e:
                 # Command-level timeout: keep the connection alive
                 self.logger.warning(
                     "Timed out waiting for response to cmd %s (RequestID=%s)",
                     cmd,
                     request_id,
                 )
+                raise ElegooPrinterTimeoutError from e
             except (OSError, aiohttp.ClientError) as e:
                 self._is_connected = False
                 self.logger.info("WebSocket connection closed error")

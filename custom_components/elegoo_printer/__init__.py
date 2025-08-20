@@ -20,6 +20,7 @@ from homeassistant.helpers.entity_registry import (
     EntityRegistry,
     async_get,
 )
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.loader import async_get_loaded_integration
 
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
