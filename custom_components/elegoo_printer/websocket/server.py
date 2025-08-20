@@ -325,7 +325,19 @@ class ElegooPrinterServer:
         headers = {
             k: v
             for k, v in request.headers.items()
-            if k.lower() not in ("host", "transfer-encoding")
+            if k.lower()
+            not in (
+                "host",
+                "content-length",
+                "transfer-encoding",
+                "connection",
+                "keep-alive",
+                "proxy-authenticate",
+                "proxy-authorization",
+                "te",
+                "trailer",
+                "upgrade",
+            )
         }
 
         try:
@@ -335,6 +347,9 @@ class ElegooPrinterServer:
                 headers=headers,
                 data=request.content,
                 allow_redirects=False,
+                timeout=aiohttp.ClientTimeout(
+                    total=None, sock_connect=10, sock_read=None
+                ),
             ) as upstream_response:
                 response_headers = upstream_response.headers.copy()
                 for h in (
@@ -374,11 +389,28 @@ class ElegooPrinterServer:
         headers = {
             k: v
             for k, v in request.headers.items()
-            if k.lower() not in ("host", "transfer-encoding")
+            if k.lower()
+            not in (
+                "host",
+                "content-length",
+                "transfer-encoding",
+                "connection",
+                "keep-alive",
+                "proxy-authenticate",
+                "proxy-authorization",
+                "te",
+                "trailer",
+                "upgrade",
+            )
         }
         try:
             async with self.session.post(
-                remote_url, headers=headers, data=request.content
+                remote_url,
+                headers=headers,
+                data=request.content,
+                timeout=aiohttp.ClientTimeout(
+                    total=None, sock_connect=10, sock_read=None
+                ),
             ) as response:
                 content = await response.read()
                 resp_headers = response.headers.copy()
@@ -417,7 +449,14 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
 
     def datagram_received(self, data, addr):
         """Handles incoming UDP datagrams for discovery."""
-        if data.decode() == DISCOVERY_MESSAGE:
+        try:
+            message = data.decode("utf-8", errors="ignore").strip()
+        except Exception as e:
+            self.logger.debug(
+                f"Ignoring undecodable discovery datagram from {addr}: {e}"
+            )
+            return
+        if message == DISCOVERY_MESSAGE:
             self.logger.debug(f"Discovery request received from {addr}, responding.")
             response_payload = {
                 "Id": getattr(self.printer, "connection", os.urandom(8).hex()),
