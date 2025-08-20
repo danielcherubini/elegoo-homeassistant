@@ -49,7 +49,6 @@ class ElegooPrinterServer:
         self.runners: List[web.AppRunner] = []
         self._is_connected = False
         self.datagram_transport: asyncio.DatagramTransport | None = None
-        self.__class__._instances.append(self)
 
         if not self.printer.ip_address:
             raise ConfigEntryNotReady(
@@ -85,7 +84,8 @@ class ElegooPrinterServer:
         )
 
         try:
-            main_app = web.Application(client_max_size=2 * 1024 * 1024)
+            # Allow large uploads (streamed), keep headroom for typical print files.
+            main_app = web.Application(client_max_size=1024 * 1024 * 1024)  # 1 GiB
             main_app.router.add_route("*", "/{path:.*}", self._http_handler)
             main_runner = web.AppRunner(main_app)
             await main_runner.setup()
@@ -121,6 +121,7 @@ class ElegooPrinterServer:
             await self.stop()
             raise ConfigEntryNotReady(f"Failed to start proxy server: {e}") from e
 
+        self.__class__._instances.append(self)
         self.logger.info("Proxy server has started successfully.")
 
     @classmethod
