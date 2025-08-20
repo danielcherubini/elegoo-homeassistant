@@ -127,7 +127,7 @@ class ElegooPrinterServer:
     @classmethod
     async def stop_all(cls):
         """Stops all running proxy server instances."""
-        for instance in cls._instances:
+        for instance in list(cls._instances):
             await instance.stop()
         cls._instances.clear()
 
@@ -235,13 +235,13 @@ class ElegooPrinterServer:
             f"ws://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
         )
         allowed_headers = {
-            "Sec-WebSocket-Version",
-            "Sec-WebSocket-Key",
-            "Upgrade",
-            "Connection",
+            "sec-websocket-version",
+            "sec-websocket-key",
+            "upgrade",
+            "connection",
         }
         filtered_headers = {
-            k: v for k, v in request.headers.items() if k in allowed_headers
+            k: v for k, v in request.headers.items() if k.lower() in allowed_headers
         }
 
         tasks = set()
