@@ -63,6 +63,12 @@ class ElegooPrinterApiClient:
         """
         Asynchronously creates and initializes an ElegooPrinterApiClient instance.
         """
+        Asynchronously creates and initializes an ElegooPrinterApiClient instance.
+
+        This method parses the configuration to construct a Printer object, optionally
+        sets up a proxy server, and attempts to connect to the printer. It returns an
+        initialized client instance on success, otherwise None.
+        """
         printer = Printer.from_dict(dict(config))
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
         logger.debug("CONFIGURATION %s", config)
