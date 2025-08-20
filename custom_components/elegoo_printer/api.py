@@ -102,8 +102,13 @@ class ElegooPrinterApiClient:
                 session=session,
             )
             connected = await self.client.connect_printer(printer, proxy_server_enabled)
-            if connected:
-                logger.info("Polling Started")
+            if not connected:
+                if self.server:
+                    await self.server.stop()
+                if self.client:
+                    await self.client.disconnect()
+                return None
+            logger.info("Polling Started")
             return self
         except Exception:
             if self.server:
@@ -116,7 +121,11 @@ class ElegooPrinterApiClient:
     def is_connected(self) -> bool:
         """Return true if the client and server are connected to the printer."""
         if self._proxy_server_enabled:
-            return self.client.is_connected and self.server and self.server.is_connected
+            return (
+                self.client.is_connected
+                and self.server is not None
+                and self.server.is_connected
+            )
         return self.client.is_connected
 
     async def elegoo_disconnect(self) -> None:
@@ -126,7 +135,7 @@ class ElegooPrinterApiClient:
     def elegoo_stop_proxy(self) -> None:
         """Stops the proxy server if it is running."""
         if self.server:
-            self.server.stop()
+            self.hass.async_create_task(self.server.stop())
 
     async def async_get_status(self) -> PrinterData:
         """

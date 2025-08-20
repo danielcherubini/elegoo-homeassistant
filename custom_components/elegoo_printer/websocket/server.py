@@ -198,7 +198,11 @@ class ElegooPrinterServer:
         headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
         try:
             async with self.session.get(
-                remote_url, timeout=aiohttp.ClientTimeout(total=60), headers=headers
+                remote_url,
+                timeout=aiohttp.ClientTimeout(
+                    total=None, sock_connect=10, sock_read=None
+                ),
+                headers=headers,
             ) as proxy_response:
                 response = web.StreamResponse(
                     status=proxy_response.status,
