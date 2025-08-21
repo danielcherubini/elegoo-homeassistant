@@ -1,3 +1,5 @@
+"""Elegoo SDCP Printer Model."""
+
 from __future__ import annotations
 
 import json
@@ -72,10 +74,7 @@ class Printer:
         json_string: str | None = None,
         config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
-        """Initialize a Printer instance from a JSON string and configuration mapping.
-        """
-        if TYPE_CHECKING:
-            from .enums import PrinterType
+        """Initialize a Printer instance from a JSON string and configuration mapping."""
         if json_string is None:
             self.connection = None
             self.name = ""
@@ -100,7 +99,6 @@ class Printer:
                 self.protocol = data_dict.get("ProtocolVersion")
                 self.firmware = data_dict.get("FirmwareVersion")
                 self.id = data_dict.get("MainboardID")
-                from .enums import PrinterType
 
                 self.printer_type = PrinterType.from_model(self.model)
             except json.JSONDecodeError:
@@ -120,8 +118,7 @@ class Printer:
         self.camera_enabled = config.get(CONF_CAMERA_ENABLED, False)
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a dictionary containing all attributes of the Printer instance.
-        """
+        """Return a dictionary containing all attributes of the Printer instance."""
         return {
             "connection": self.connection,
             "name": self.name,
@@ -142,8 +139,7 @@ class Printer:
         data: dict[str, Any],
         config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> Printer:
-        """Create a Printer instance from a dictionary.
-        """
+        """Create a Printer instance from a dictionary."""
         printer = cls(config=config)
         printer.connection = data.get("Id", data.get("connection"))
         data_dict = data.get("Data", data)
@@ -154,7 +150,6 @@ class Printer:
         printer.protocol = data_dict.get("ProtocolVersion", data_dict.get("protocol"))
         printer.firmware = data_dict.get("FirmwareVersion", data_dict.get("firmware"))
         printer.id = data_dict.get("MainboardID", data_dict.get("id"))
-        from .enums import PrinterType
 
         printer.printer_type = PrinterType.from_model(printer.model)
         printer.proxy_enabled = data_dict.get(
@@ -190,8 +185,7 @@ class PrinterData:
         printer: Printer | None = None,
         print_history: dict[str, PrintHistoryDetail | None] | None = None,
     ) -> None:
-        """Initialize a PrinterData instance with optional printer-related data.
-        """
+        """Initialize a PrinterData instance with optional printer-related data."""
         self.status: PrinterStatus = status or PrinterStatus()
         self.attributes: PrinterAttributes = attributes or PrinterAttributes()
         self.printer: Printer = printer or Printer()
@@ -200,7 +194,7 @@ class PrinterData:
         self.video: ElegooVideo = ElegooVideo()
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
-        """Round datetime object to minutes"""
+        """Round datetime object to minutes."""
         if date is None:
             date = datetime.now(UTC)
 

@@ -2,8 +2,7 @@
 
 
 class ElegooSDCPError(Exception):
-    """Base class for other exceptions"""
-
+    """Base class for other exceptions."""
 
 
 class ElegooConfigFlowGeneralError(ElegooSDCPError):

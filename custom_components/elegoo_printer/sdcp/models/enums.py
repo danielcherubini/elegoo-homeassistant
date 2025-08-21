@@ -171,7 +171,7 @@ class ElegooPrintError(Enum):
 
 
 class ElegooVideoStatus(Enum):
-    """Represents a video status
+    """Represents a video status.
 
     Attributes:
         0 - Success
@@ -317,14 +317,12 @@ class PrinterType(Enum):
 
     @classmethod
     def from_model(cls, model: str | None) -> Optional["PrinterType"]:
-        """Returns the printer type (RESIN or FDM) based on the provided model name.
+        """Return the printer type (RESIN or FDM) based on the provided model name.
 
-        Parameters
-        ----------
+        Arguments:
             model (str): The printer model name to evaluate.
 
-        Returns
-        -------
+        Returns:
             PrinterType or None: The corresponding printer type if the model matches a known FDM or resin printer, otherwise None.
 
         """

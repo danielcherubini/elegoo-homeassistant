@@ -24,8 +24,7 @@ class LightStatus:
     def __init__(self, data: dict[str, Any] | None = None) -> None:
         """Initialize a LightStatus instance with secondary and RGB light values.
 
-        Parameters
-        ----------
+        Arguments:
             data (dict[str, Any] | None): Optional dictionary containing "SecondLight" and "RgbLight" keys. Defaults to all lights off if not provided.
 
         """
@@ -49,15 +48,13 @@ class LightStatus:
         }
 
     def __repr__(self) -> str:
-        """Return a developer-oriented string representation of the LightStatus instance, showing the values of second_light and rgb_light.
-        """
+        """Return a developer-oriented string representation of the LightStatus instance, showing the values of second_light and rgb_light."""
         return (
             f"LightStatus(second_light={self.second_light}, rgb_light={self.rgb_light})"
         )
 
     def __str__(self) -> str:
-        """Return a user-friendly string describing the secondary light status and RGB light values.
-        """
+        """Return a user-friendly string describing the secondary light status and RGB light values."""
         return f"Secondary Light: {'On' if self.second_light else 'Off'}, RGB: {self.rgb_light}"
 
 
@@ -89,9 +86,10 @@ class PrintInfo:
     ) -> None:
         """Initialize a new PrintInfo object.
 
-        Args:
+        Arguments:
             data (Dict[str, Any], optional): A dictionary containing print info data.
-                                            Defaults to an empty dictionary.
+            printer_type: (PrinterType, optional): The type of printer.
+            current_status: (ElegooMachineStatus, optional): The current status of the printer.
 
         """
         if data is None:
@@ -121,9 +119,7 @@ class PrintInfo:
             if self.progress is not None:
                 percent_complete = int(self.progress)
             elif self.total_layers > 0:
-                percent_complete = int(
-                    (self.current_layer / self.total_layers) * 100
-                )
+                percent_complete = int((self.current_layer / self.total_layers) * 100)
             else:
                 percent_complete = 0
             self.percent_complete = max(0, min(100, percent_complete))
@@ -166,8 +162,7 @@ class PrinterStatus:
         data: dict[str, Any] | None = None,
         printer_type: PrinterType | None = None,
     ) -> None:
-        """Initialize a new PrinterStatus object from a dictionary.
-        """
+        """Initialize a new PrinterStatus object from a dictionary."""
         if data is None:
             data = {}
         status = data.get("Status", {"CurrentStatus": {}})
@@ -212,8 +207,7 @@ class PrinterStatus:
     def from_json(
         cls, json_string: str, printer_type: PrinterType | None = None
     ) -> "PrinterStatus":
-        """Create a PrinterStatus object from a JSON string.
-        """
+        """Create a PrinterStatus object from a JSON string."""
         try:
             data = json.loads(json_string)
         except json.JSONDecodeError:

@@ -1,4 +1,4 @@
-"""Elegoo Video Model"""
+"""Elegoo Video Model."""
 
 from typing import Any
 
@@ -11,8 +11,7 @@ class ElegooVideo:
     def __init__(self, data: dict[str, Any] | None = None):
         """Initialize an ElegooVideo instance with status and video URL extracted from the provided data dictionary.
 
-        Parameters
-        ----------
+        Arguments:
             data (dict[str, Any] | None): Optional dictionary containing video information. If not provided, defaults are used for all attributes.
 
         """
