@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 description = "Home Assistant Addon for Elegoo Printers"
 dependencies = [
     "colorlog>=6.9.0",
+    "homeassistant==2025.4.0",
     "loguru>=0.7.3",
     "websocket-client>=1.8.0",
     "websockets>=15.0.1",
