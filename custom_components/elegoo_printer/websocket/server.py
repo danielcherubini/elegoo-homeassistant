@@ -268,7 +268,11 @@ class ElegooPrinterServer:
             ) as remote_ws:
                 self._is_connected = True
 
-                async def forward(source, dest, direction) -> None:
+                async def forward(
+                    source: web.WebSocketResponse,
+                    dest: web.WebSocketResponse,
+                    direction: str,
+                ) -> None:
                     try:
                         async for message in source:
                             if message.type in (WSMsgType.TEXT, WSMsgType.BINARY):

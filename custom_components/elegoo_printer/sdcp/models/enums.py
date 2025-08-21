@@ -110,6 +110,7 @@ class ElegooPrintStatus(Enum):
     COMPLETE = 9
     FILE_CHECKING = 10
     RECOVERY = 12
+    PRINTING_RECOVERY = 13
     LOADING = 15
 
     @classmethod
@@ -127,7 +128,7 @@ class ElegooPrintStatus(Enum):
         """  # noqa: D401
         if status_int in [16, 18, 19, 20, 21]:
             return cls.LOADING
-        if status_int == 13:
+        if status_int == cls.PRINTING_RECOVERY.value:
             return cls.PRINTING
         try:
             return cls(status_int)
@@ -143,7 +144,8 @@ class ElegooPrintError(Enum):
         NONE: No error has occurred. The print process is normal.
         CHECK: File MD5 checksum check failed, indicating potential file corruption.
         FILEIO: An error occurred while reading the print file.
-        INVALID_RESOLUTION: The print file's resolution does not match the printer's capabilities.
+        INVALID_RESOLUTION: The print file's resolution does not match the printer's
+            capabilities.
         UNKNOWN_FORMAT: The printer does not recognize the format of the print file.
         UNKNOWN_MODEL: The print file is intended for a different machine model.
 
@@ -168,7 +170,8 @@ class ElegooPrintError(Enum):
         Convert an integer to the corresponding ElegooPrintError enum member.
 
         Returns:
-            The matching ElegooPrintError member if the integer is valid, or None if it does not correspond to any defined error.
+            The matching ElegooPrintError member if the integer is valid, or None if it
+            does not correspond to any defined error.
 
         """
         try:
@@ -206,7 +209,8 @@ class ElegooVideoStatus(Enum):
         Convert an integer to the corresponding ElegooVideoStatus enum member.
 
         Returns:
-            ElegooVideoStatus: The matching enum member if the integer is valid, otherwise None.
+            ElegooVideoStatus: The matching enum member if the integer is valid,
+            otherwise None.
 
         """
         try:
@@ -276,7 +280,8 @@ class ElegooErrorStatusReason(Enum):
         Convert an integer to the corresponding ElegooErrorStatusReason enum member.
 
         Returns:
-            The matching ElegooErrorStatusReason member if the integer is valid; otherwise, None.
+            The matching ElegooErrorStatusReason member if the integer is valid;
+            otherwise, None.
 
         """
         try:
@@ -338,7 +343,8 @@ class PrinterType(Enum):
             model (str): The printer model name to evaluate.
 
         Returns:
-            PrinterType or None: The corresponding printer type if the model matches a known FDM or resin printer, otherwise None.
+            PrinterType or None: The corresponding printer type if the model matches a
+            known FDM or resin printer, otherwise None.
 
         """
         if model is None:

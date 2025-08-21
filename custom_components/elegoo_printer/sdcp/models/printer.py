@@ -75,7 +75,7 @@ class Printer:
         json_string: str | None = None,
         config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
-        """Initialize a Printer instance from a JSON string and configuration mapping."""
+        """Initialize a Printer instance from a JSON string and config mapping."""
         if json_string is None:
             self.connection = None
             self.name = ""
@@ -170,7 +170,8 @@ class PrinterData:
         status (PrinterStatus): The status of the printer.
         attributes (PrinterAttributes): The attributes of the printer.
         printer (Printer): The printer object.
-        print_history (dict[str, PrintHistoryDetail | None]): The print history of the printer.
+        print_history (dict[str, PrintHistoryDetail | None]): The print history of the
+            printer.
         current_job (PrintHistoryDetail | None): The current print job of the printer.
         video (ElegooVideo): The video object of the printer.
 
@@ -201,13 +202,14 @@ class PrinterData:
             date = datetime.now(UTC)
 
         if not isinstance(round_to, int) or round_to <= 0:
-            raise ValueError("round_to must be a positive integer")
+            msg = "round_to must be a positive integer"
+            raise ValueError(msg)
 
         date = date.replace(second=0, microsecond=0)
         delta = date.minute % round_to
         return date.replace(minute=date.minute - delta)
 
-    def calculate_current_job_end_time(self):
+    def calculate_current_job_end_time(self) -> None:
         """Calculate the estimated end time of the print job."""
         if (
             self.status.current_status == ElegooMachineStatus.PRINTING
