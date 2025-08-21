@@ -49,7 +49,7 @@ async def _async_test_connection(
     """
     Attempt to connect to an Elegoo printer.
 
-    Args:
+    Arguments:
         hass: The Home Assistant instance.
         printer_object: The printer object to test.
         user_input: The user input data.
@@ -99,7 +99,7 @@ async def _async_validate_input(  # noqa: PLR0912
     Matches a discovered printer or locates one by IP address, and verifies
     connectivity.
 
-    Args:
+    Arguments:
         hass: The Home Assistant instance.
         user_input: Configuration data that may include a printer ID or IP address.
         discovered_printers: A list of discovered printers.
@@ -183,7 +183,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         If printers are discovered, proceeds to the printer selection step; otherwise,
         prompts the user to manually enter a printer IP address.
 
-        Args:
+        Arguments:
             user_input: The user input data.
 
         Returns:
@@ -216,7 +216,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         provided, displays a form listing discovered printers with IP addresses and an
         option to enter an IP manually.
 
-        Args:
+        Arguments:
             user_input: The user input data.
 
         Returns:
@@ -308,7 +308,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         printer. If validation fails or no input is provided, displays the manual IP
         entry form with any relevant errors.
 
-        Args:
+        Arguments:
             user_input: The user input data.
 
         Returns:
@@ -437,7 +437,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         Return an options flow handler for managing configuration options.
 
-        Args:
+        Arguments:
             config_entry: The configuration entry for which to create the options flow.
 
         Returns:
@@ -463,7 +463,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         """
         Initialize the options flow handler.
 
-        Args:
+        Arguments:
             config_entry: The configuration entry for which the options are being managed.
 
         """  # noqa: E501
@@ -480,7 +480,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         before saving changes. If validation fails, displays relevant error messages
         on the form.
 
-        Args:
+        Arguments:
             user_input: The user input data.
 
         Returns:

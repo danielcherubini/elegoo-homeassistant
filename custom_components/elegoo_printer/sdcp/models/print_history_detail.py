@@ -118,7 +118,7 @@ class SliceInformation:
         """
         Initialize a SliceInformation object.
 
-        Args:
+        Arguments:
             data: A dictionary containing the slice information data.
 
         """

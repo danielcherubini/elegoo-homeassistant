@@ -36,7 +36,7 @@ class ElegooMachineStatus(Enum):
         """
         Converts an integer to an ElegooMachineStatus enum member.
 
-        Args:
+        Arguments:
             status_int: The integer representing the print status.
 
         Returns:
@@ -54,7 +54,7 @@ class ElegooMachineStatus(Enum):
         """
         Convert a list of integers to an ElegooMachineStatus enum member.
 
-        Args:
+        Arguments:
             status_list: A list of integers representing print statuses.
                          It is expected to contain only one element.
 
@@ -118,7 +118,7 @@ class ElegooPrintStatus(Enum):
         """
         Converts an integer to an ElegooPrintStatus enum member.
 
-        Args:
+        Arguments:
             status_int: The integer representing the print status.
 
         Returns:

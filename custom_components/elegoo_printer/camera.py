@@ -187,7 +187,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         """
         Initialize an Elegoo MJPEG camera entity.
 
-        Args:
+        Arguments:
             hass: The Home Assistant instance.
             coordinator: The data update coordinator.
             description: The entity description.
@@ -212,7 +212,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         """
         Check if video_object.video_url starts with 'http://' and adds it if missing.
 
-        Args:
+        Arguments:
             video_object: The video object to normalize.
 
         """
