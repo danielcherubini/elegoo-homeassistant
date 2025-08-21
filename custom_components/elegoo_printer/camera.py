@@ -97,7 +97,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
     def _is_over_capacity(self) -> bool:
         """Check if the printer is over capacity."""
-        attrs = self.coordinator.config_entry.runtime_data.api.client.printer_data.attributes  # noqa: E501
+        attrs = self._printer_client.printer_data.attributes
         num_connected = getattr(attrs, "num_video_stream_connected", 0) or 0
         max_allowed = getattr(attrs, "max_video_stream_allowed", 0) or 0
         return num_connected >= max_allowed
@@ -208,7 +208,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     def _is_over_capacity(self) -> bool:
         """Check if the printer is over capacity."""
-        attrs = self.coordinator.config_entry.runtime_data.api.client.printer_data.attributes  # noqa: E501
+        attrs = self._printer_client.printer_data.attributes
         num_connected = getattr(attrs, "num_video_stream_connected", 0) or 0
         max_allowed = getattr(attrs, "max_video_stream_allowed", 0) or 0
         return num_connected >= max_allowed
