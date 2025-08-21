@@ -44,7 +44,8 @@ OPTIONS_SCHEMA = vol.Schema(
 async def _async_test_connection(
     hass: HomeAssistant, printer_object: Printer, user_input: dict[str, Any]
 ) -> Printer:
-    """Attempt to connect to an Elegoo printer.
+    """
+    Attempt to connect to an Elegoo printer.
 
     Args:
         hass: The Home Assistant instance.
@@ -92,7 +93,8 @@ async def _async_validate_input(
     user_input: dict[str, Any],
     discovered_printers: list[Printer] | None = None,
 ) -> dict:
-    """Asynchronously validates user input for Elegoo printer configuration.
+    """
+    Asynchronously validates user input for Elegoo printer configuration.
 
     Matches a discovered printer or locates one by IP address, and verifies
     connectivity.
@@ -175,7 +177,8 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """Initiate the configuration flow by attempting to discover available Elegoo printers.
+        """
+        Initiate the configuration flow by attempting to discover available Elegoo printers.
 
         If printers are discovered, proceeds to the printer selection step; otherwise,
         prompts the user to manually enter a printer IP address.
@@ -203,7 +206,8 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """Handle the step for selecting a discovered Elegoo printer.
+        """
+        Handle the step for selecting a discovered Elegoo printer.
 
         If user input is provided, processes the selection and either advances to
         manual IP entry or presents options for the selected printer. If no input is
@@ -294,7 +298,8 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """Handle the configuration flow step for manually entering a printer's IP address.
+        """
+        Handle the configuration flow step for manually entering a printer's IP address.
 
         If user input is provided, validates the IP and attempts to connect to the
         printer. On successful validation, creates a new configuration entry for the
@@ -427,7 +432,8 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> ElegooOptionsFlowHandler:
-        """Return an options flow handler for managing configuration options.
+        """
+        Return an options flow handler for managing configuration options.
 
         Args:
             config_entry: The configuration entry for which to create the options flow.
@@ -451,7 +457,8 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
     """Options flow handler for Elegoo Printer."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize the options flow handler.
+        """
+        Initialize the options flow handler.
 
         Args:
             config_entry: The configuration entry for which the options are being managed.
@@ -462,7 +469,8 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Display and manage the options form for an existing Elegoo printer configuration.
+        """
+        Display and manage the options form for an existing Elegoo printer configuration.
 
         Allows users to update printer settings such as IP address and proxy usage.
         Validates the updated configuration by testing connectivity to the printer

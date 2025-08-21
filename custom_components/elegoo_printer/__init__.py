@@ -1,4 +1,5 @@
-"""Custom integration to integrate elegoo_printer with Home Assistant.
+"""
+Custom integration to integrate elegoo_printer with Home Assistant.
 
 For more details about this integration, please refer to
 https://github.com/danielcherubini/elegoo-homeassistant
@@ -51,7 +52,8 @@ async def async_setup_entry(
     hass: HomeAssistant,
     entry: ElegooPrinterConfigEntry,
 ) -> bool:
-    """Asynchronously sets up the Elegoo printer integration from a configuration entry.
+    """
+    Asynchronously sets up the Elegoo printer integration from a configuration entry.
 
     Initializes the data update coordinator and printer API client, performs the first data refresh, forwards setup to supported platforms, and registers a listener for entry updates. Raises ConfigEntryNotReady if the printer cannot be reached.
 

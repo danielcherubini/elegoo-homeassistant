@@ -31,7 +31,8 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Asynchronously sets up Elegoo Printer image entities for a Home Assistant config entry.
+    """
+    Asynchronously sets up Elegoo Printer image entities for a Home Assistant config entry.
 
     Creates and adds a CoverImage entity for each supported printer image, ensuring each entity is updated before being added to the platform.
     """
@@ -54,7 +55,8 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         coordinator: ElegooDataUpdateCoordinator,
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
-        """Initialize a CoverImage entity for the Elegoo Printer.
+        """
+        Initialize a CoverImage entity for the Elegoo Printer.
 
         Sets up the entity with the provided Home Assistant instance, data coordinator, and entity description.
         Assigns a unique ID, sets the content type to PNG, and records the initial image update timestamp.

@@ -29,7 +29,8 @@ INADDR_ANY = "0.0.0.0"
 
 
 class ElegooPrinterServer:
-    """Manages local proxy servers for an Elegoo printer.
+    """
+    Manages local proxy servers for an Elegoo printer.
 
     This includes WebSocket, UDP discovery, and a full HTTP reverse proxy.
     This server runs on the main Home Assistant event loop.

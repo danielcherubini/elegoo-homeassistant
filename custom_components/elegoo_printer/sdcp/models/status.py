@@ -22,7 +22,8 @@ class LightStatus:
     """Represents the status of the printer's lights."""
 
     def __init__(self, data: dict[str, Any] | None = None) -> None:
-        """Initialize a LightStatus instance with secondary and RGB light values.
+        """
+        Initialize a LightStatus instance with secondary and RGB light values.
 
         Arguments:
             data (dict[str, Any] | None): Optional dictionary containing "SecondLight" and "RgbLight" keys. Defaults to all lights off if not provided.
@@ -34,7 +35,8 @@ class LightStatus:
         self.rgb_light: list[int] | None = data.get("RgbLight")
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a dictionary representation of the LightStatus instance in the original JSON format.
+        """
+        Return a dictionary representation of the LightStatus instance in the original JSON format.
 
         Returns:
             dict: A dictionary with keys "LightStatus", "SecondLight", and "RgbLight" reflecting the current light status.
@@ -59,7 +61,8 @@ class LightStatus:
 
 
 class PrintInfo:
-    """Represents information about a print job.
+    """
+    Represents information about a print job.
 
     Attributes:
         status (ElegooPrintStatus): Printing Sub-status.
@@ -84,7 +87,8 @@ class PrintInfo:
         printer_type: PrinterType | None = None,
         current_status: ElegooMachineStatus | None = None,
     ) -> None:
-        """Initialize a new PrintInfo object.
+        """
+        Initialize a new PrintInfo object.
 
         Arguments:
             data (Dict[str, Any], optional): A dictionary containing print info data.
@@ -133,7 +137,8 @@ class PrintInfo:
 
 
 class PrinterStatus:
-    """Represents the status of a 3D printer.
+    """
+    Represents the status of a 3D printer.
 
     Attributes:
         current_status (ElegooMachineStatus): The current status of the machine.

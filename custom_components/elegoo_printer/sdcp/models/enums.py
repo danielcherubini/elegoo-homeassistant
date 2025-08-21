@@ -5,7 +5,8 @@ from typing import Optional
 
 
 class ElegooMachineStatus(Enum):
-    """Represents the different status states of an SDCP machine.
+    """
+    Represents the different status states of an SDCP machine.
 
     Attributes:
         IDLE: The machine is idle and not performing any task.
@@ -32,7 +33,8 @@ class ElegooMachineStatus(Enum):
 
     @classmethod
     def from_int(cls, status_int: int) -> Optional["ElegooMachineStatus"] | None:
-        """Converts an integer to an ElegooMachineStatus enum member.
+        """
+        Converts an integer to an ElegooMachineStatus enum member.
 
         Args:
             status_int: The integer representing the print status.
@@ -49,7 +51,8 @@ class ElegooMachineStatus(Enum):
 
     @classmethod
     def from_list(cls, status_list: list[int]) -> Optional["ElegooMachineStatus"]:
-        """Convert a list of integers to an ElegooMachineStatus enum member.
+        """
+        Convert a list of integers to an ElegooMachineStatus enum member.
 
         Args:
             status_list: A list of integers representing print statuses.
@@ -70,7 +73,8 @@ class ElegooMachineStatus(Enum):
 
 
 class ElegooPrintStatus(Enum):
-    """Represents the different status states of a print job.
+    """
+    Represents the different status states of a print job.
 
     Attributes:
         IDLE: The print job is idle and not actively printing.
@@ -110,7 +114,8 @@ class ElegooPrintStatus(Enum):
 
     @classmethod
     def from_int(cls, status_int: int) -> Optional["ElegooPrintStatus"] | None:
-        """Converts an integer to an ElegooPrintStatus enum member.
+        """
+        Converts an integer to an ElegooPrintStatus enum member.
 
         Args:
             status_int: The integer representing the print status.
@@ -131,7 +136,8 @@ class ElegooPrintStatus(Enum):
 
 
 class ElegooPrintError(Enum):
-    """Represents the different error states that can occur during printing.
+    """
+    Represents the different error states that can occur during printing.
 
     Attributes:
         NONE: No error has occurred. The print process is normal.
@@ -158,7 +164,8 @@ class ElegooPrintError(Enum):
 
     @classmethod
     def from_int(cls, status_int: int) -> Optional["ElegooPrintError"] | None:
-        """Convert an integer to the corresponding ElegooPrintError enum member.
+        """
+        Convert an integer to the corresponding ElegooPrintError enum member.
 
         Returns:
             The matching ElegooPrintError member if the integer is valid, or None if it does not correspond to any defined error.
@@ -171,7 +178,8 @@ class ElegooPrintError(Enum):
 
 
 class ElegooVideoStatus(Enum):
-    """Represents a video status.
+    """
+    Represents a video status.
 
     Attributes:
         0 - Success
@@ -194,7 +202,8 @@ class ElegooVideoStatus(Enum):
 
     @classmethod
     def from_int(cls, status_int: int) -> Optional["ElegooVideoStatus"] | None:
-        """Convert an integer to the corresponding ElegooVideoStatus enum member.
+        """
+        Convert an integer to the corresponding ElegooVideoStatus enum member.
 
         Returns:
             ElegooVideoStatus: The matching enum member if the integer is valid, otherwise None.
@@ -207,7 +216,8 @@ class ElegooVideoStatus(Enum):
 
 
 class ElegooErrorStatusReason(Enum):
-    """Represents the reason for a print job status or error.
+    """
+    Represents the reason for a print job status or error.
 
     Attributes:
         OK: Normal operation.
@@ -262,7 +272,8 @@ class ElegooErrorStatusReason(Enum):
 
     @classmethod
     def from_int(cls, status_int: int) -> Optional["ElegooErrorStatusReason"]:
-        """Convert an integer to the corresponding ElegooErrorStatusReason enum member.
+        """
+        Convert an integer to the corresponding ElegooErrorStatusReason enum member.
 
         Returns:
             The matching ElegooErrorStatusReason member if the integer is valid; otherwise, None.
@@ -275,7 +286,8 @@ class ElegooErrorStatusReason(Enum):
 
 
 class ElegooFan(Enum):
-    """Represents the different fan names in the Elegoo printer API.
+    """
+    Represents the different fan names in the Elegoo printer API.
 
     Attributes:
         MODEL_FAN: The fan that cools the model.
@@ -290,7 +302,8 @@ class ElegooFan(Enum):
 
     @classmethod
     def from_key(cls, key: str) -> Optional["ElegooFan"] | None:
-        """Convert a key to the corresponding ElegooFan enum member.
+        """
+        Convert a key to the corresponding ElegooFan enum member.
 
         Returns:
             ElegooFan: The matching enum member if the key is valid, otherwise None.
@@ -304,7 +317,8 @@ class ElegooFan(Enum):
 
 
 class PrinterType(Enum):
-    """Represents the type of printer.
+    """
+    Represents the type of printer.
 
     Attributes:
         RESIN: A resin-based 3D printer.
@@ -317,7 +331,8 @@ class PrinterType(Enum):
 
     @classmethod
     def from_model(cls, model: str | None) -> Optional["PrinterType"]:
-        """Return the printer type (RESIN or FDM) based on the provided model name.
+        """
+        Return the printer type (RESIN or FDM) based on the provided model name.
 
         Arguments:
             model (str): The printer model name to evaluate.

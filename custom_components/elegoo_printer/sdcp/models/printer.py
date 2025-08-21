@@ -21,7 +21,8 @@ from .video import ElegooVideo
 
 
 class Printer:
-    """Represent a printer with various attributes.
+    """
+    Represent a printer with various attributes.
 
     Attributes:
         connection (str): The connection ID of the printer.
@@ -160,7 +161,8 @@ class Printer:
 
 
 class PrinterData:
-    """Data object for printer information.
+    """
+    Data object for printer information.
 
     Attributes:
         status (PrinterStatus): The status of the printer.
