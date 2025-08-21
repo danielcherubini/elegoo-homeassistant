@@ -1,8 +1,7 @@
 """Print History Detail for Elegoo SDCP."""
 
+from datetime import UTC, datetime
 from typing import Any
-
-from datetime import datetime, timezone
 
 from .enums import ElegooErrorStatusReason
 
@@ -14,19 +13,21 @@ class PrintHistoryDetail:
         """
         Initialize a PrintHistoryDetail instance with print job details from a dictionary.
 
-        The input dictionary should contain keys corresponding to print job attributes such as thumbnail, task name, timing, status, slice information, print layers, task ID, MD5 hash, current layer volume, time-lapse video details, and error status reason. Missing keys default to None or zero where applicable.
-        """
+        The input dictionary should contain keys corresponding to print job attributes such as thumbnail,
+        task name, timing, status, slice information, print layers, task ID, MD5 hash, current layer volume,
+        time-lapse video details, and error status reason. Missing keys default to None or zero where applicable.
+        """  # noqa: E501
         self.thumbnail: str | None = data.get("Thumbnail")
         self.task_name: str | None = data.get("TaskName")
         begin_time_ts = data.get("BeginTime")
         self.begin_time: datetime | None = (
-            datetime.fromtimestamp(begin_time_ts, tz=timezone.utc)
+            datetime.fromtimestamp(begin_time_ts, tz=UTC)
             if begin_time_ts is not None
             else None
         )
         end_time_ts = data.get("EndTime")
         self.end_time: datetime | None = (
-            datetime.fromtimestamp(end_time_ts, tz=timezone.utc)
+            datetime.fromtimestamp(end_time_ts, tz=UTC)
             if end_time_ts is not None
             else None
         )
@@ -51,9 +52,7 @@ class PrintHistoryDetail:
         )
 
     def __repr__(self) -> str:
-        """
-        Return a string representation of the instance's attributes as a dictionary.
-        """
+        """Return a string representation of the instance's attributes as a dict."""
         return str(self.__dict__)
 
 
@@ -112,13 +111,14 @@ class SliceInformation:
         normal_layer_rest_time_after_drop (int): The rest time after drop of the normal layers.
         normal_layer_rest_time_after_lift (int): The rest time after lift of the normal layers.
         normal_layer_rest_time_before_lift (int): The rest time before lift of the normal layers.
-    """
+
+    """  # noqa: E501
 
     def __init__(self, data: dict[str, Any]) -> None:  # noqa: PLR0915
         """
         Initialize a SliceInformation object.
 
-        Args:
+        Arguments:
             data: A dictionary containing the slice information data.
 
         """

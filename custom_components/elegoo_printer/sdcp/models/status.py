@@ -1,7 +1,7 @@
 """Models for the Elegoo printer."""
 
 import json
-from typing import Any, List
+from typing import Any
 
 from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus, PrinterType
 
@@ -25,20 +25,23 @@ class LightStatus:
         """
         Initialize a LightStatus instance with secondary and RGB light values.
 
-        Parameters:
-            data (dict[str, Any] | None): Optional dictionary containing "SecondLight" and "RgbLight" keys. Defaults to all lights off if not provided.
+        Arguments:
+            data (dict[str, Any] | None): Optional dictionary containing "SecondLight"
+            and "RgbLight" keys. Defaults to all lights off if not provided.
+
         """
         if data is None:
             data = {}
         self.second_light: int | None = data.get("SecondLight")
-        self.rgb_light: List[int] | None = data.get("RgbLight")
+        self.rgb_light: list[int] | None = data.get("RgbLight")
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Return a dictionary representation of the LightStatus instance in the original JSON format.
+        Return a dictionary representation of the LightStatus instance.
 
         Returns:
-            dict: A dictionary with keys "LightStatus", "SecondLight", and "RgbLight" reflecting the current light status.
+            dict: A dictionary with keys "LightStatus", "SecondLight", and "RgbLight".
+
         """
         return {
             "LightStatus": {
@@ -48,18 +51,14 @@ class LightStatus:
         }
 
     def __repr__(self) -> str:
-        """
-        Return a developer-oriented string representation of the LightStatus instance, showing the values of second_light and rgb_light.
-        """
+        """Return a string representation of the LightStatus instance."""
         return (
             f"LightStatus(second_light={self.second_light}, rgb_light={self.rgb_light})"
         )
 
     def __str__(self) -> str:
-        """
-        Return a user-friendly string describing the secondary light status and RGB light values.
-        """
-        return f"Secondary Light: {'On' if self.second_light else 'Off'}, RGB: {self.rgb_light}"
+        """Return a string describing the secondary light status and RGB light values."""  # noqa: E501
+        return f"Secondary Light: {'On' if self.second_light else 'Off'}, RGB: {self.rgb_light}"  # noqa: E501
 
 
 class PrintInfo:
@@ -80,6 +79,7 @@ class PrintInfo:
         filename (str): Print File Name.
         error_number (ElegooPrintError): Error Number (refer to documentation).
         task_id (str): Current Task ID.
+
     """
 
     def __init__(
@@ -91,10 +91,12 @@ class PrintInfo:
         """
         Initialize a new PrintInfo object.
 
-        Args:
+        Arguments:
             data (Dict[str, Any], optional): A dictionary containing print info data.
-                                            Defaults to an empty dictionary.
-        """
+            printer_type: (PrinterType, optional): The type of printer.
+            current_status: (ElegooMachineStatus, optional): The current status of the printer.
+
+        """  # noqa: E501
         if data is None:
             data = {}
         status_int: int = data.get("Status", 0)
@@ -121,13 +123,10 @@ class PrintInfo:
             # If the printer is not idle, we can update progress
             if self.progress is not None:
                 percent_complete = int(self.progress)
+            elif self.total_layers > 0:
+                percent_complete = int((self.current_layer / self.total_layers) * 100)
             else:
-                if self.total_layers > 0:
-                    percent_complete = int(
-                        (self.current_layer / self.total_layers) * 100
-                    )
-                else:
-                    percent_complete = 0
+                percent_complete = 0
             self.percent_complete = max(0, min(100, percent_complete))
         else:
             self.percent_complete = 0
@@ -161,6 +160,7 @@ class PrinterStatus:
         current_fan_speed (CurrentFanSpeed): The current fan speed.
         light_status (LightStatus): The status of the lights.
         print_info (PrintInfo): Information about the current print job.
+
     """
 
     def __init__(
@@ -168,9 +168,7 @@ class PrinterStatus:
         data: dict[str, Any] | None = None,
         printer_type: PrinterType | None = None,
     ) -> None:
-        """
-        Initialize a new PrinterStatus object from a dictionary.
-        """
+        """Initialize a new PrinterStatus object from a dictionary."""
         if data is None:
             data = {}
         status = data.get("Status", {"CurrentStatus": {}})
@@ -215,9 +213,7 @@ class PrinterStatus:
     def from_json(
         cls, json_string: str, printer_type: PrinterType | None = None
     ) -> "PrinterStatus":
-        """
-        Create a PrinterStatus object from a JSON string.
-        """
+        """Create a PrinterStatus object from a JSON string."""
         try:
             data = json.loads(json_string)
         except json.JSONDecodeError:

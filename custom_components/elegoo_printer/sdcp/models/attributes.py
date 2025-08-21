@@ -1,5 +1,6 @@
 """Attributes models for Elegoo Printer."""
 
+import json
 from typing import Any
 
 
@@ -102,7 +103,7 @@ class PrinterAttributes:
         """
         Initialize a new PrinterAttributes object from a dictionary.
 
-        Args:
+        Arguments:
             data (Dict[str, Any], optional): A dictionary containing printer attribute
                                              data. Defaults to an empty dictionary.
 
@@ -155,15 +156,13 @@ class PrinterAttributes:
         """
         Create a PrinterAttributes object from a JSON string.
 
-        Args:
+        Arguments:
             json_string (str): A JSON string containing printer attribute data.
 
         Returns:
             PrinterAttributes: A new PrinterAttributes object.
 
         """
-        import json
-
         try:
             data: dict[str, Any] = json.loads(json_string)
         except json.JSONDecodeError:

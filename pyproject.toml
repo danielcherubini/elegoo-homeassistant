@@ -7,7 +7,6 @@ dependencies = [
     "colorlog>=6.9.0",
     "homeassistant==2025.4.0",
     "loguru>=0.7.3",
-    "ruff>=0.9.10",
     "websocket-client>=1.8.0",
     "websockets>=15.0.1",
 ]
@@ -15,29 +14,45 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
+    "ruff>=0.9.10",
 ]
 [tool.ruff]
 target-version = "py313"
-[lint]
-select = ["ALL"]
-ignore = [
-    "ANN101",
-    "ANN401",
-    "D203",
-    "D212",
-    "COM812",
-    "ISC001",
-    "G004",
+exclude = [
+  "scripts",
+  "debug.py",
 ]
-[flake8-pytest-style]
+
+[tool.ruff.lint]
+select = [
+    "ALL",
+]
+
+ignore = [
+    "ANN401", # Dynamically typed expressions (typing.Any) are disallowed
+    "D203", # no-blank-line-before-class (incompatible with formatter)
+    "D212", # multi-line-summary-first-line (incompatible with formatter)
+    "COM812", # incompatible with formatter
+    "ISC001", # incompatible with formatter
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+
+[tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
-[pyupgrade]
+
+[tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
-[mccabe]
+
+[tool.ruff.lint.mccabe]
 max-complexity = 25
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["S101"]
+"custom_components/elegoo_printer/sdcp/tests/*.py" = ["S101"]
 
 [tool.pytest.ini_options]
 pythonpath = [
   "."
 ]
-

@@ -8,9 +8,8 @@ from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
 from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 
-def test_printer_initialization_with_valid_data():
+def test_printer_initialization_with_valid_data() -> None:
     """Test that the Printer model initializes correctly with valid JSON data."""
-
     printer_json = json.dumps(
         {
             "Id": "12345",
@@ -39,7 +38,7 @@ def test_printer_initialization_with_valid_data():
     assert not printer.proxy_enabled
 
 
-def test_printer_initialization_with_invalid_data():
+def test_printer_initialization_with_invalid_data() -> None:
     """Test that the Printer model handles invalid or empty JSON data."""
     printer = Printer("invalid json")
     assert printer.connection is None
@@ -52,7 +51,7 @@ def test_printer_initialization_with_invalid_data():
     assert printer.model is None
 
 
-def test_printer_to_dict():
+def test_printer_to_dict() -> None:
     """Test the to_dict method of the Printer model."""
     printer_json = json.dumps(
         {
@@ -83,14 +82,14 @@ def test_printer_to_dict():
     assert not printer_dict["proxy_enabled"]
 
 
-def test_printer_initialization_with_proxy_enabled():
+def test_printer_initialization_with_proxy_enabled() -> None:
     """Test that the Printer model initializes with proxy enabled."""
     config = MappingProxyType({CONF_PROXY_ENABLED: True})
     printer = Printer(config=config)
     assert printer.proxy_enabled
 
 
-def test_printer_initialization_with_resin_printer():
+def test_printer_initialization_with_resin_printer() -> None:
     """Test that the Printer model initializes correctly with a resin printer."""
     printer_json = json.dumps(
         {
@@ -120,7 +119,7 @@ def test_printer_initialization_with_resin_printer():
     assert not printer.proxy_enabled
 
 
-def test_printer_from_dict():
+def test_printer_from_dict() -> None:
     """Test the from_dict method of the Printer model."""
     printer_dict = {
         "Id": "12345",

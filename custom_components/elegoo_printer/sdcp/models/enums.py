@@ -21,6 +21,7 @@ class ElegooMachineStatus(Enum):
         <ElegooMachineStatus.IDLE: 0>
         >>> ElegooMachineStatus.from_int(1)
         <ElegooMachineStatus.PRINTING: 1>
+
     """
 
     IDLE = 0
@@ -35,7 +36,7 @@ class ElegooMachineStatus(Enum):
         """
         Converts an integer to an ElegooMachineStatus enum member.
 
-        Args:
+        Arguments:
             status_int: The integer representing the print status.
 
         Returns:
@@ -53,7 +54,7 @@ class ElegooMachineStatus(Enum):
         """
         Convert a list of integers to an ElegooMachineStatus enum member.
 
-        Args:
+        Arguments:
             status_list: A list of integers representing print statuses.
                          It is expected to contain only one element.
 
@@ -94,6 +95,7 @@ class ElegooPrintStatus(Enum):
         <ElegooPrintStatus.IDLE: 0>
         >>> ElegooPrintStatus.from_int(3)
         <ElegooPrintStatus.PRINTING: 3>
+
     """
 
     IDLE = 0
@@ -108,6 +110,7 @@ class ElegooPrintStatus(Enum):
     COMPLETE = 9
     FILE_CHECKING = 10
     RECOVERY = 12
+    PRINTING_RECOVERY = 13
     LOADING = 15
 
     @classmethod
@@ -115,7 +118,7 @@ class ElegooPrintStatus(Enum):
         """
         Converts an integer to an ElegooPrintStatus enum member.
 
-        Args:
+        Arguments:
             status_int: The integer representing the print status.
 
         Returns:
@@ -125,7 +128,7 @@ class ElegooPrintStatus(Enum):
         """  # noqa: D401
         if status_int in [16, 18, 19, 20, 21]:
             return cls.LOADING
-        if status_int == 13:
+        if status_int == cls.PRINTING_RECOVERY.value:
             return cls.PRINTING
         try:
             return cls(status_int)
@@ -141,7 +144,8 @@ class ElegooPrintError(Enum):
         NONE: No error has occurred. The print process is normal.
         CHECK: File MD5 checksum check failed, indicating potential file corruption.
         FILEIO: An error occurred while reading the print file.
-        INVALID_RESOLUTION: The print file's resolution does not match the printer's capabilities.
+        INVALID_RESOLUTION: The print file's resolution does not match the printer's
+            capabilities.
         UNKNOWN_FORMAT: The printer does not recognize the format of the print file.
         UNKNOWN_MODEL: The print file is intended for a different machine model.
 
@@ -150,7 +154,8 @@ class ElegooPrintError(Enum):
         <ElegooPrintError.NONE: 0>
         >>> ElegooPrintError.from_int(1)
         <ElegooPrintError.CHECK: 1>
-    """  # noqa: E501
+
+    """
 
     NONE = 0
     CHECK = 1
@@ -165,8 +170,10 @@ class ElegooPrintError(Enum):
         Convert an integer to the corresponding ElegooPrintError enum member.
 
         Returns:
-            The matching ElegooPrintError member if the integer is valid, or None if it does not correspond to any defined error.
-        """  # noqa: D401
+            The matching ElegooPrintError member if the integer is valid, or None if it
+            does not correspond to any defined error.
+
+        """
         try:
             return cls(status_int)  # Use cls() to create enum members
         except ValueError:
@@ -175,7 +182,7 @@ class ElegooPrintError(Enum):
 
 class ElegooVideoStatus(Enum):
     """
-    Represents a video status
+    Represents a video status.
 
     Attributes:
         0 - Success
@@ -188,6 +195,7 @@ class ElegooVideoStatus(Enum):
         <ElegooVideoStatus.SUCCESS: 0>
         >>> ElegooVideoStatus.from_int(1)
         <ElegooVideoStatus.EXCEEDED_MAX_STREAMING_LIMIT: 1>
+
     """
 
     SUCCESS = 0
@@ -201,7 +209,9 @@ class ElegooVideoStatus(Enum):
         Convert an integer to the corresponding ElegooVideoStatus enum member.
 
         Returns:
-            ElegooVideoStatus: The matching enum member if the integer is valid, otherwise None.
+            ElegooVideoStatus: The matching enum member if the integer is valid,
+            otherwise None.
+
         """
         try:
             return cls(status_int)
@@ -240,7 +250,8 @@ class ElegooErrorStatusReason(Enum):
         <ElegooErrorStatusReason.OK: 0>
         >>> ElegooErrorStatusReason.from_int(1)
         <ElegooErrorStatusReason.TEMP_ERROR: 1>
-    """  # noqa: E501
+
+    """
 
     OK = 0
     TEMP_ERROR = 1
@@ -269,7 +280,9 @@ class ElegooErrorStatusReason(Enum):
         Convert an integer to the corresponding ElegooErrorStatusReason enum member.
 
         Returns:
-            The matching ElegooErrorStatusReason member if the integer is valid; otherwise, None.
+            The matching ElegooErrorStatusReason member if the integer is valid;
+            otherwise, None.
+
         """
         try:
             return cls(status_int)
@@ -285,6 +298,7 @@ class ElegooFan(Enum):
         MODEL_FAN: The fan that cools the model.
         AUXILIARY_FAN: The auxiliary fan.
         BOX_FAN: The fan that cools the enclosure.
+
     """
 
     MODEL_FAN = "ModelFan"
@@ -293,10 +307,12 @@ class ElegooFan(Enum):
 
     @classmethod
     def from_key(cls, key: str) -> Optional["ElegooFan"] | None:
-        """Convert a key to the corresponding ElegooFan enum member.
+        """
+        Convert a key to the corresponding ElegooFan enum member.
 
         Returns:
             ElegooFan: The matching enum member if the key is valid, otherwise None.
+
         """
         pascal_case_string = key.replace("_", " ").title().replace(" ", "")
         for fan_name in cls:
@@ -312,21 +328,24 @@ class PrinterType(Enum):
     Attributes:
         RESIN: A resin-based 3D printer.
         FDM: A fused deposition modeling (FDM) 3D printer.
+
     """
 
     RESIN = "resin"
     FDM = "fdm"
 
     @classmethod
-    def from_model(cls, model: Optional[str]) -> Optional["PrinterType"]:
+    def from_model(cls, model: str | None) -> Optional["PrinterType"]:
         """
-        Returns the printer type (RESIN or FDM) based on the provided model name.
+        Return the printer type (RESIN or FDM) based on the provided model name.
 
-        Parameters:
+        Arguments:
             model (str): The printer model name to evaluate.
 
         Returns:
-            PrinterType or None: The corresponding printer type if the model matches a known FDM or resin printer, otherwise None.
+            PrinterType or None: The corresponding printer type if the model matches a
+            known FDM or resin printer, otherwise None.
+
         """
         if model is None:
             return None

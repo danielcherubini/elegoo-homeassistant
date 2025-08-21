@@ -1,4 +1,7 @@
+"""Camera platform for Elegoo printer."""
+
 from http import HTTPStatus
+from typing import TYPE_CHECKING
 
 from aiohttp import web
 from haffmpeg.camera import CameraMjpeg
@@ -26,15 +29,17 @@ from custom_components.elegoo_printer.definitions import (
     PRINTER_MJPEG_CAMERAS,
     ElegooPrinterSensorEntityDescription,
 )
-from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
+from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooVideoStatus,
     PrinterType,
 )
 from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
-from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 
 from .coordinator import ElegooDataUpdateCoordinator
+
+if TYPE_CHECKING:
+    from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 
 async def async_setup_entry(
@@ -66,7 +71,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        hass: HomeAssistant,  # noqa: ARG002
         coordinator: ElegooDataUpdateCoordinator,
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
@@ -96,13 +101,12 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
     async def _get_stream_url(self) -> str | None:
         """Get the stream URL, from cache if recent."""
-
         if not self._printer_client.is_connected:
             return None
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug(
-                f"stream_source: Video is OK, using printer video url: {video.video_url}"
+                f"stream_source: Video is OK, printer video url: {video.video_url}"
             )
             return video.video_url
 
@@ -141,7 +145,9 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         return await self._get_stream_url()
 
     async def async_camera_image(
-        self, width: int | None = None, height: int | None = None
+        self,
+        width: int | None = None,  # noqa: ARG002
+        height: int | None = None,  # noqa: ARG002
     ) -> bytes | None:
         """Return a still image response from the camera."""
         stream_url = await self._get_stream_url()
@@ -153,7 +159,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
                 self.hass,
                 input_source=stream_url,
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LOGGER.error(
                 "Failed to get camera image via ffmpeg (ffmpeg may be missing): %s", e
             )
@@ -165,7 +171,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         return (
             super().available
             and self._printer_client.printer_data.attributes.num_video_stream_connected
-            <= 2
+            <= 2  # noqa: PLR2004
         )
 
 
@@ -174,22 +180,24 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        hass: HomeAssistant,  # noqa: ARG002
         coordinator: ElegooDataUpdateCoordinator,
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
-        """Initialize an Elegoo MJPEG camera entity.
+        """
+        Initialize an Elegoo MJPEG camera entity.
 
-        Args:
+        Arguments:
             hass: The Home Assistant instance.
             coordinator: The data update coordinator.
             description: The entity description.
+
         """
         MjpegCamera.__init__(
             self,
             name=f"{description.name}",
             mjpeg_url=f"http://{PROXY_HOST}:{VIDEO_PORT}/{VIDEO_ENDPOINT}",
-            still_image_url=None,  # This camera does not have a separate still image URL
+            still_image_url=None,  # This camera does not have a separate still URL
             unique_id=coordinator.generate_unique_id(description.key),
         )
 
@@ -201,10 +209,12 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     @staticmethod
     def _normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
-        """Checks if video_object.video_url starts with 'http://' and adds it if missing.
+        """
+        Check if video_object.video_url starts with 'http://' and adds it if missing.
 
-        Args:
+        Arguments:
             video_object: The video object to normalize.
+
         """
         if not video_object.video_url.startswith("http://"):
             video_object.video_url = "http://" + video_object.video_url
@@ -214,7 +224,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     async def _update_stream_url(self) -> None:
         """Update the MJPEG stream URL."""
         if not self._printer_client.is_connected:
-            return None
+            return
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug("stream_source: Video is OK, getting stream source")
@@ -234,7 +244,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Asynchronously retrieves the current MJPEG stream URL for the printer camera."""
+        """Asynchronously gets the current MJPEG stream URL for the printer camera."""
         await self._update_stream_url()
         if not self._mjpeg_url:
             return None
@@ -249,7 +259,8 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     @property
     def available(self) -> bool:
-        """Return whether the camera entity is currently available.
+        """
+        Return whether the camera entity is currently available.
 
         If the entity description specifies an availability function, this function is
         used to determine availability based on the printer's video data. Otherwise,

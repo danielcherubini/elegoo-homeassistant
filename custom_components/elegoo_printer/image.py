@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from homeassistant.components.image import Image, ImageEntity
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.elegoo_printer.definitions import (
-    ElegooPrinterSensorEntityDescription,
-)
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooMachineStatus,
@@ -20,10 +15,16 @@ from .const import LOGGER
 from .definitions import PRINTER_IMAGES
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
     from custom_components.elegoo_printer.coordinator import ElegooDataUpdateCoordinator
+    from custom_components.elegoo_printer.definitions import (
+        ElegooPrinterSensorEntityDescription,
+    )
 
 
 async def async_setup_entry(
@@ -35,7 +36,7 @@ async def async_setup_entry(
     Asynchronously sets up Elegoo Printer image entities for a Home Assistant config entry.
 
     Creates and adds a CoverImage entity for each supported printer image, ensuring each entity is updated before being added to the platform.
-    """
+    """  # noqa: E501
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
 
     LOGGER.debug(f"Adding {len(PRINTER_IMAGES)} image entities")
@@ -58,8 +59,9 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         """
         Initialize a CoverImage entity for the Elegoo Printer.
 
-        Sets up the entity with the provided Home Assistant instance, data coordinator, and entity description. Assigns a unique ID, sets the content type to PNG, and records the initial image update timestamp.
-        """
+        Sets up the entity with the provided Home Assistant instance, data coordinator, and entity description.
+        Assigns a unique ID, sets the content type to PNG, and records the initial image update timestamp.
+        """  # noqa: E501
         super().__init__(coordinator)
         ImageEntity.__init__(self, hass=hass)
         self.coordinator = coordinator

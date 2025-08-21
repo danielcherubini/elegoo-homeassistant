@@ -15,6 +15,8 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
 )
 
 if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
     from .data import ElegooPrinterConfigEntry
 
 
@@ -24,7 +26,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
 
     config_entry: ElegooPrinterConfigEntry
 
-    def __init__(self, hass, *, entry: ElegooPrinterConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, *, entry: ElegooPrinterConfigEntry) -> None:
         """Initialize."""
         self.online = False
         self.config_entry = entry
@@ -46,7 +48,8 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
 
         Raises:
             UpdateFailed: If communication with the printer fails.
-        """
+
+        """  # noqa: E501
         try:
             self.data = (
                 await self.config_entry.runtime_data.api.async_get_printer_data()
@@ -54,7 +57,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             self.online = True
             if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
-            return self.data
+            return self.data  # noqa: TRY300
         except (
             ElegooPrinterConnectionError,
             ElegooPrinterNotConnectedError,
@@ -69,10 +72,11 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
 
             try:
                 await self.config_entry.runtime_data.api.reconnect()
-            except Exception as recon_e:
+            except (ConnectionError, TimeoutError) as recon_e:
                 LOGGER.warning("Error during reconnect attempt: %s", recon_e)
 
-            raise UpdateFailed(f"Failed to communicate with printer: {e}") from e
+            msg = f"Failed to communicate with printer: {e}"
+            raise UpdateFailed(msg) from e
         except OSError as e:
             self.online = False
             LOGGER.warning(
@@ -80,20 +84,23 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                 e.errno,
                 e.strerror,
             )
-            raise UpdateFailed(f"Unexpected Error: {e.strerror}") from e
+            msg = f"Unexpected Error: {e.strerror}"
+            raise UpdateFailed(msg) from e
 
     def generate_unique_id(self, key: str) -> str:
         """
         Create a unique identifier for an entity by combining the sanitized printer name or machine ID with a specified key.
 
-        If the printer name is unavailable or empty, the machine ID is used as the prefix. Otherwise, the printer name is converted to lowercase and spaces are replaced with underscores before appending the key.
+        If the printer name is unavailable or empty, the machine ID is used as the prefix.
+        Otherwise, the printer name is converted to lowercase and spaces are replaced with underscores before appending the key.
 
-        Parameters:
+        Arguments:
             key (str): Suffix to ensure uniqueness for the entity.
 
         Returns:
             str: The generated unique identifier.
-        """
+
+        """  # noqa: E501
         machine_id = self.config_entry.data["id"]
 
         return machine_id + "_" + key

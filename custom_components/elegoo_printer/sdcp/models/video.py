@@ -1,4 +1,4 @@
-"""Elegoo Video Model"""
+"""Elegoo Video Model."""
 
 from typing import Any
 
@@ -8,13 +8,14 @@ from custom_components.elegoo_printer.sdcp.models.enums import ElegooVideoStatus
 class ElegooVideo:
     """Represents video information from an Elegoo device."""
 
-    def __init__(self, data: dict[str, Any] | None = None):
+    def __init__(self, data: dict[str, Any] | None = None) -> None:
         """
         Initialize an ElegooVideo instance with status and video URL extracted from the provided data dictionary.
 
-        Parameters:
+        Arguments:
             data (dict[str, Any] | None): Optional dictionary containing video information. If not provided, defaults are used for all attributes.
-        """
+
+        """  # noqa: E501
         if data is None:
             data = {}
 
@@ -29,7 +30,8 @@ class ElegooVideo:
 
         Returns:
             dict: A dictionary with keys "status" and "video_url" reflecting the current attributes of the object.
-        """
+
+        """  # noqa: E501
         return {
             "status": self.status,
             "video_url": self.video_url,
