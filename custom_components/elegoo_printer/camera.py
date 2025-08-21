@@ -94,6 +94,13 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
             "-rtsp_transport udp -fflags nobuffer -err_detect ignore_err"
         )
 
+    def _is_over_capacity(self) -> bool:
+        """Check if the printer is over capacity."""
+        attrs = self.coordinator.api.client.printer_data.attributes
+        num_connected = getattr(attrs, "num_video_stream_connected", 0) or 0
+        max_allowed = getattr(attrs, "max_video_stream_allowed", 0) or 0
+        return num_connected >= max_allowed
+
     @property
     def supported_features(self) -> CameraEntityFeature:
         """Return supported features."""
@@ -101,11 +108,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
     async def _get_stream_url(self) -> str | None:
         """Get the stream URL, from cache if recent."""
-        if (
-            not self._printer_client.is_connected
-            or self._printer_client.printer_data.attributes.num_video_stream_connected
-            > self._printer_client.printer_data.attributes.max_video_stream_allowed
-        ):
+        if (not self._printer_client.is_connected) or self._is_over_capacity():
             return None
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
@@ -202,6 +205,13 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             coordinator.config_entry.runtime_data.api.client
         )
 
+    def _is_over_capacity(self) -> bool:
+        """Check if the printer is over capacity."""
+        attrs = self.coordinator.api.client.printer_data.attributes
+        num_connected = getattr(attrs, "num_video_stream_connected", 0) or 0
+        max_allowed = getattr(attrs, "max_video_stream_allowed", 0) or 0
+        return num_connected >= max_allowed
+
     @staticmethod
     def _normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
         """
@@ -241,11 +251,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     ) -> bytes | None:
         """Asynchronously gets the current MJPEG stream URL for the printer camera."""
         await self._update_stream_url()
-        if (
-            not self._mjpeg_url
-            or self._printer_client.printer_data.attributes.num_video_stream_connected
-            > self._printer_client.printer_data.attributes.max_video_stream_allowed
-        ):
+        if (not self._mjpeg_url) or self._is_over_capacity():
             return None
         return await super().async_camera_image(width=width, height=height)
 
