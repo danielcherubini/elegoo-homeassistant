@@ -53,7 +53,7 @@ def _get_current_coord_value(printer_data: PrinterData, index: int) -> float | N
         return None
 
 
-async def _async_noop() -> None:
+async def _async_noop(*_: Any, **__: Any) -> None:
     """Async no-op function."""
 
 
@@ -104,7 +104,7 @@ class ElegooPrinterLightEntityDescription(
 class ElegooPrinterButtonEntityDescription(ButtonEntityDescription):
     """Button entity description for Elegoo Printers."""
 
-    action_fn: Callable[..., Coroutine[Any, Any, None]] = lambda _: _async_noop()
+    action_fn: Callable[..., Coroutine[Any, Any, None]] = _async_noop
     available_fn: Callable[..., bool] = lambda printer_data: printer_data
 
 

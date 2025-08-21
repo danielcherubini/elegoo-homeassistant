@@ -1,7 +1,6 @@
 """Elegoo Printer enums."""
 
 from enum import Enum
-from typing import Optional
 
 
 class ElegooMachineStatus(Enum):
@@ -32,7 +31,7 @@ class ElegooMachineStatus(Enum):
     LEVELING = 5
 
     @classmethod
-    def from_int(cls, status_int: int) -> Optional["ElegooMachineStatus"] | None:
+    def from_int(cls, status_int: int) -> "ElegooMachineStatus | None":
         """
         Converts an integer to an ElegooMachineStatus enum member.
 
@@ -50,7 +49,7 @@ class ElegooMachineStatus(Enum):
             return None
 
     @classmethod
-    def from_list(cls, status_list: list[int]) -> Optional["ElegooMachineStatus"]:
+    def from_list(cls, status_list: list[int]) -> "ElegooMachineStatus | None":
         """
         Convert a list of integers to an ElegooMachineStatus enum member.
 
@@ -114,7 +113,7 @@ class ElegooPrintStatus(Enum):
     LOADING = 15
 
     @classmethod
-    def from_int(cls, status_int: int) -> Optional["ElegooPrintStatus"] | None:
+    def from_int(cls, status_int: int) -> "ElegooPrintStatus | None":
         """
         Converts an integer to an ElegooPrintStatus enum member.
 
@@ -165,7 +164,7 @@ class ElegooPrintError(Enum):
     UNKNOWN_MODEL = 5
 
     @classmethod
-    def from_int(cls, status_int: int) -> Optional["ElegooPrintError"] | None:
+    def from_int(cls, status_int: int) -> "ElegooPrintError | None":
         """
         Convert an integer to the corresponding ElegooPrintError enum member.
 
@@ -204,7 +203,7 @@ class ElegooVideoStatus(Enum):
     UNKNOWN_ERROR = 3
 
     @classmethod
-    def from_int(cls, status_int: int) -> Optional["ElegooVideoStatus"] | None:
+    def from_int(cls, status_int: int) -> "ElegooVideoStatus | None":
         """
         Convert an integer to the corresponding ElegooVideoStatus enum member.
 
@@ -275,7 +274,7 @@ class ElegooErrorStatusReason(Enum):
     BED_TEMP_SENSOR_OFFLINE = 34
 
     @classmethod
-    def from_int(cls, status_int: int) -> Optional["ElegooErrorStatusReason"]:
+    def from_int(cls, status_int: int) -> "ElegooErrorStatusReason | None":
         """
         Convert an integer to the corresponding ElegooErrorStatusReason enum member.
 
@@ -306,7 +305,7 @@ class ElegooFan(Enum):
     BOX_FAN = "BoxFan"
 
     @classmethod
-    def from_key(cls, key: str) -> Optional["ElegooFan"] | None:
+    def from_key(cls, key: str) -> "ElegooFan | None":
         """
         Convert a key to the corresponding ElegooFan enum member.
 
@@ -335,7 +334,7 @@ class PrinterType(Enum):
     FDM = "fdm"
 
     @classmethod
-    def from_model(cls, model: str | None) -> Optional["PrinterType"]:
+    def from_model(cls, model: str | None) -> "PrinterType | None":
         """
         Return the printer type (RESIN or FDM) based on the provided model name.
 
