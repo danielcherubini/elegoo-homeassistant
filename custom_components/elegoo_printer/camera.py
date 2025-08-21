@@ -229,7 +229,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     async def _update_stream_url(self) -> None:
         """Update the MJPEG stream URL."""
-        if not self._printer_client.is_connected:
+        if (not self._printer_client.is_connected) and self._is_over_capacity():
             return
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
