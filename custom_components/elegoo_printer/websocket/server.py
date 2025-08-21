@@ -82,9 +82,8 @@ class ElegooPrinterServer:
             self.logger.info("Required proxy ports are in use; failing initialization.")
             raise ConfigEntryNotReady("Proxy server ports are in use.")
 
-        self.logger.info(
-            f"Initializing proxy server for remote printer {self.printer.ip_address}"
-        )
+        msg = f"Initializing proxy server for remote printer {self.printer.ip_address}"
+        self.logger.info(msg)
 
         try:
             # Allow large uploads (streamed), keep headroom for typical print files.
@@ -95,9 +94,8 @@ class ElegooPrinterServer:
             main_site = web.TCPSite(main_runner, INADDR_ANY, WEBSOCKET_PORT)
             await main_site.start()
             self.runners.append(main_runner)
-            self.logger.info(
-                f"Main HTTP/WebSocket Proxy running on http://{self.get_local_ip()}:{WEBSOCKET_PORT}"
-            )
+            msg = f"Main HTTP/WebSocket Proxy running on http://{self.get_local_ip()}:{WEBSOCKET_PORT}"
+            self.logger.info(msg)
 
             video_app = web.Application()
             video_app.router.add_route("*", "/{path:.*}", self._video_proxy_handler)
@@ -106,9 +104,8 @@ class ElegooPrinterServer:
             video_site = web.TCPSite(video_runner, INADDR_ANY, VIDEO_PORT)
             await video_site.start()
             self.runners.append(video_runner)
-            self.logger.info(
-                f"Video Proxy running on http://{self.get_local_ip()}:{VIDEO_PORT}"
-            )
+            msg = f"Video Proxy running on http://{self.get_local_ip()}:{VIDEO_PORT}"
+            self.logger.info(msg)
 
             def discovery_factory() -> DiscoveryProtocol:
                 return DiscoveryProtocol(self.logger, self.printer, self.get_local_ip())
@@ -117,7 +114,8 @@ class ElegooPrinterServer:
                 discovery_factory, local_addr=(INADDR_ANY, DISCOVERY_PORT)
             )
             self.datagram_transport = transport
-            self.logger.info(f"Discovery Proxy listening on UDP port {DISCOVERY_PORT}")
+            msg = f"Discovery Proxy listening on UDP port {DISCOVERY_PORT}"
+            self.logger.info(msg)
 
         except OSError as e:
             msg = f"Failed to start proxy server: {e}"
@@ -147,9 +145,10 @@ class ElegooPrinterServer:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     s.bind((INADDR_ANY, port))
             except OSError:
-                self.logger.warning(
+                msg = (
                     f"{name} port {port} is already in use. Proxy server cannot start."
                 )
+                self.logger.warning(msg)
                 return False
         return True
 
@@ -228,7 +227,8 @@ class ElegooPrinterServer:
                         await response.write(chunk)
                     await response.write_eof()
                 except (ConnectionResetError, asyncio.CancelledError) as e:
-                    self.logger.debug(f"Video stream stopped: {e}")
+                    msg = f"Video stream stopped: {e}"
+                    self.logger.debug(msg)
                 except Exception:
                     self.logger.exception(
                         "An unexpected error occurred during video streaming"
@@ -269,22 +269,22 @@ class ElegooPrinterServer:
 
                 async def forward(source, dest, direction) -> None:
                     try:
-                        async for msg in source:
-                            if msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
+                        async for message in source:
+                            if message.type in (WSMsgType.TEXT, WSMsgType.BINARY):
                                 await dest.send_str(
-                                    msg.data
-                                ) if msg.type == WSMsgType.TEXT else await (
-                                    dest.send_bytes(msg.data)
+                                    message.data
+                                ) if message.type == WSMsgType.TEXT else await (
+                                    dest.send_bytes(message.data)
                                 )
-                            elif msg.type == WSMsgType.CLOSE:
+                            elif message.type == WSMsgType.CLOSE:
                                 break
-                            elif msg.type == WSMsgType.ERROR:
-                                self.logger.error(
-                                    f"WebSocket error in {direction}: {source.exception()}"
-                                )
+                            elif message.type == WSMsgType.ERROR:
+                                msg = f"WebSocket error in {direction}: {source.exception()}"
+                                self.logger.error(msg)
                                 break
                     except Exception:
-                        self.logger.debug(f"WebSocket connection reset in {direction}.")
+                        msg = f"WebSocket connection reset in {direction}."
+                        self.logger.debug(msg)
                         raise
 
                 to_printer = self.hass.async_create_task(
@@ -301,7 +301,8 @@ class ElegooPrinterServer:
                         raise task.exception()  # noqa: TRY301
 
         except (TimeoutError, aiohttp.ClientError) as e:
-            self.logger.warning(f"WebSocket connection to printer failed: {e}")
+            msg = f"WebSocket connection to printer failed: {e}"
+            self.logger.warning(msg)
             self._is_connected = False
         except Exception:
             self.logger.exception("WebSocket proxy error")
@@ -377,7 +378,8 @@ class ElegooPrinterServer:
                 await client_response.write_eof()
                 return client_response
         except aiohttp.ClientError as e:
-            self.logger.exception(f"HTTP proxy error connecting to {target_url}")
+            msg = f"HTTP proxy error connecting to {target_url}"
+            self.logger.exception(msg)
             return web.Response(status=502, text=f"Bad Gateway: {e}")
 
     async def _http_file_proxy_passthrough_handler(
@@ -458,12 +460,12 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         try:
             message = data.decode("utf-8", errors="ignore").strip()
         except Exception as e:  # noqa: BLE001
-            self.logger.debug(
-                f"Ignoring undecodable discovery datagram from {addr}: {e}"
-            )
+            msg = f"Ignoring undecodable discovery datagram from {addr}: {e}"
+            self.logger.debug(msg)
             return
         if message == DISCOVERY_MESSAGE:
-            self.logger.debug(f"Discovery request received from {addr}, responding.")
+            msg = f"Discovery request received from {addr}, responding."
+            self.logger.debug(msg)
             response_payload = {
                 "Id": getattr(self.printer, "connection", os.urandom(8).hex()),
                 "Data": {
@@ -482,4 +484,5 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
 
     def error_received(self, exc: Exception) -> None:
         """Call when an error is received."""
-        self.logger.error(f"UDP Discovery Server Error: {exc}")
+        msg = f"UDP Discovery Server Error: {exc}"
+        self.logger.error(msg)

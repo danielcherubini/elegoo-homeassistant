@@ -51,7 +51,7 @@ def _get_current_coord_value(printer_data, index: int) -> float | None:
 
 
 async def _async_noop() -> None:
-    """Async no-op function"""
+    """Async no-op function."""
 
 
 @dataclass

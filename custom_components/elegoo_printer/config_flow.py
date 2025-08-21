@@ -141,7 +141,7 @@ async def _async_validate_input(
             validated_printer = await _async_test_connection(
                 hass, printer_object, user_input
             )
-            return {"printer": validated_printer, "errors": None}
+            return {"printer": validated_printer, "errors": None}  # noqa: TRY300
         except ElegooConfigFlowConnectionError as exception:
             LOGGER.error("Config Flow: Connection error: %s", exception)
             _errors["base"] = "connection"
@@ -175,7 +175,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """Initiates the configuration flow by attempting to discover available Elegoo printers.
+        """Initiate the configuration flow by attempting to discover available Elegoo printers.
 
         If printers are discovered, proceeds to the printer selection step; otherwise,
         prompts the user to manually enter a printer IP address.
@@ -294,7 +294,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """Handles the configuration flow step for manually entering a printer's IP address.
+        """Handle the configuration flow step for manually entering a printer's IP address.
 
         If user input is provided, validates the IP and attempts to connect to the
         printer. On successful validation, creates a new configuration entry for the

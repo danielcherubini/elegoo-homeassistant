@@ -1,3 +1,5 @@
+"""Button platform for Elegoo printer."""
+
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -65,8 +67,7 @@ class ElegooSimpleButton(ElegooPrinterEntity, ButtonEntity):
 
     @property
     def available(self) -> bool:
-        """Return whether the button entity is currently available.
-        """
+        """Return whether the button entity is currently available."""
         if not super().available:
             return False
         return self.entity_description.available_fn(self._elegoo_printer_client)

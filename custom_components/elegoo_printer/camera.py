@@ -1,3 +1,5 @@
+"""Camera platform for Elegoo printer."""
+
 from http import HTTPStatus
 
 from aiohttp import web
@@ -201,7 +203,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     @staticmethod
     def _normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
-        """Checks if video_object.video_url starts with 'http://' and adds it if missing.
+        """Check if video_object.video_url starts with 'http://' and adds it if missing.
 
         Args:
             video_object: The video object to normalize.

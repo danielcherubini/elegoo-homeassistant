@@ -1,3 +1,5 @@
+"""API client for Elegoo printer."""
+
 from __future__ import annotations
 
 from io import BytesIO
@@ -107,7 +109,7 @@ class ElegooPrinterApiClient:
                     await self.client.disconnect()
                 return None
             logger.info("Polling Started")
-            return self
+            return self  # noqa: TRY300
         except Exception:
             if self.server:
                 await self.server.stop()
@@ -131,7 +133,7 @@ class ElegooPrinterApiClient:
         await self.client.disconnect()
 
     async def elegoo_stop_proxy(self) -> None:
-        """Stops the proxy server if it is running."""
+        """Stop the proxy server if it is running."""
         if self.server:
             await self.server.stop()
 
@@ -156,7 +158,7 @@ class ElegooPrinterApiClient:
         return self.printer_data
 
     async def async_is_thumbnail_available(self) -> bool:
-        """Checks if the current print job's thumbnail image exists and returns a bool.
+        """Check if the current print job's thumbnail image exists and returns a bool.
 
         Returns:
             bool: True if thumbnail image is available, or False otherwise.
@@ -229,13 +231,12 @@ class ElegooPrinterApiClient:
                         rgb_img.save(output, format="PNG")
                         png_bytes = output.getvalue()
                         LOGGER.debug("get_thumbnail converted image to png")
-                        thumbnail_image = ElegooImage(
+                        return ElegooImage(
                             image_url=task.thumbnail,
                             image_bytes=png_bytes,
                             last_updated_timestamp=task.begin_time.timestamp(),
                             content_type="image/png",
                         )
-                        return thumbnail_image
             except Exception as e:
                 LOGGER.error("Error fetching thumbnail: %s", e)
                 return None
@@ -258,6 +259,15 @@ class ElegooPrinterApiClient:
     async def async_get_task(
         self, include_last_task: bool
     ) -> PrintHistoryDetail | None:
+        """Asynchronously retrieves the current or last print task from the printer.
+
+        Arguments:
+            include_last_task (bool): Whether to include the last print task if no current task is active.
+
+        Returns:
+            PrintHistoryDetail | None: The current or last print task, or None if no task is available.
+
+        """
         if current_task := await self.client.async_get_printer_current_task():
             return current_task
         if include_last_task:

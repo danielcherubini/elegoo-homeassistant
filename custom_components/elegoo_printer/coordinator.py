@@ -54,7 +54,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             self.online = True
             if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
-            return self.data
+            return self.data  # noqa: TRY300
         except (
             ElegooPrinterConnectionError,
             ElegooPrinterNotConnectedError,
@@ -85,14 +85,13 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
     def generate_unique_id(self, key: str) -> str:
         """Create a unique identifier for an entity by combining the sanitized printer name or machine ID with a specified key.
 
-        If the printer name is unavailable or empty, the machine ID is used as the prefix. Otherwise, the printer name is converted to lowercase and spaces are replaced with underscores before appending the key.
+        If the printer name is unavailable or empty, the machine ID is used as the prefix.
+        Otherwise, the printer name is converted to lowercase and spaces are replaced with underscores before appending the key.
 
-        Parameters
-        ----------
+        Arguments:
             key (str): Suffix to ensure uniqueness for the entity.
 
-        Returns
-        -------
+        Returns:
             str: The generated unique identifier.
 
         """

@@ -1,3 +1,5 @@
+"""Platform for light integration."""
+
 from typing import Any
 
 from homeassistant.components.light import LightEntity
@@ -68,8 +70,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
 
     @property
     def light_status(self) -> LightStatus:
-        """Returns the current light status from the latest printer data.
-        """
+        """Returns the current light status from the latest printer data."""
         return self._elegoo_printer_client.printer_data.status.light_status
 
     @property

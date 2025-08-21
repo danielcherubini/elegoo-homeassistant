@@ -1,3 +1,5 @@
+"""Number platform for Elegoo printer."""
+
 from homeassistant.components.number import NumberEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -15,8 +17,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Asynchronously sets up Elegoo printer number entities in Home Assistant.
-    """
+    """Asynchronously sets up Elegoo printer number entities in Home Assistant."""
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
     entities: list[ElegooNumber] = []
 
@@ -24,7 +25,7 @@ async def async_setup_entry(
 
     if printer_type == PrinterType.FDM:
         for description in PRINTER_NUMBER_TYPES:
-            entities.append(ElegooNumber(coordinator, description))
+            entities.extend(ElegooNumber(coordinator, description))
 
     if entities:
         async_add_entities(entities, update_before_add=True)
@@ -38,8 +39,7 @@ class ElegooNumber(ElegooPrinterEntity, NumberEntity):
         coordinator: ElegooDataUpdateCoordinator,
         description: ElegooPrinterNumberEntityDescription,
     ) -> None:
-        """Initialize an Elegoo printer number entity.
-        """
+        """Initialize an Elegoo printer number entity."""
         super().__init__(coordinator)
         self.entity_description: ElegooPrinterNumberEntityDescription = description
 
@@ -54,22 +54,19 @@ class ElegooNumber(ElegooPrinterEntity, NumberEntity):
         self._attr_mode = description.mode
 
     async def async_added_to_hass(self) -> None:
-        """Run when entity about to be added to hass.
-        """
+        """Run when entity about to be added to hass."""
         await super().async_added_to_hass()
         self._api = self.coordinator.config_entry.runtime_data.api
 
     @property
     def native_value(self):
-        """Returns the current value.
-        """
+        """Returns the current value."""
         if self.coordinator.data:
             return self.entity_description.value_fn(self.coordinator.data)
         return None
 
     async def async_set_native_value(self, value: float) -> None:
-        """Asynchronously sets the value.
-        """
+        """Asynchronously sets the value."""
         if self._api:
             await self.entity_description.set_value_fn(self._api, int(value))
             await self.coordinator.async_request_refresh()
