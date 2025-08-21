@@ -14,6 +14,7 @@ from homeassistant.components.mjpeg.camera import MjpegCamera
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_stream
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from propcache.api import cached_property
 
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
@@ -96,12 +97,12 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
     def _is_over_capacity(self) -> bool:
         """Check if the printer is over capacity."""
-        attrs = self.coordinator.api.client.printer_data.attributes
+        attrs = self.coordinator.config_entry.runtime_data.api.client.printer_data.attributes  # noqa: E501
         num_connected = getattr(attrs, "num_video_stream_connected", 0) or 0
         max_allowed = getattr(attrs, "max_video_stream_allowed", 0) or 0
         return num_connected >= max_allowed
 
-    @property
+    @cached_property
     def supported_features(self) -> CameraEntityFeature:
         """Return supported features."""
         return self._attr_supported_features
@@ -207,7 +208,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     def _is_over_capacity(self) -> bool:
         """Check if the printer is over capacity."""
-        attrs = self.coordinator.api.client.printer_data.attributes
+        attrs = self.coordinator.config_entry.runtime_data.api.client.printer_data.attributes  # noqa: E501
         num_connected = getattr(attrs, "num_video_stream_connected", 0) or 0
         max_allowed = getattr(attrs, "max_video_stream_allowed", 0) or 0
         return num_connected >= max_allowed

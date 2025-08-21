@@ -32,7 +32,6 @@ class ElegooPrinterEntity(CoordinatorEntity[ElegooDataUpdateCoordinator]):
     def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
         """Initialize."""
         super().__init__(coordinator)
-        self.coordinator = coordinator
         printer_type: PrinterType = coordinator.config_entry.data[CONF_PRINTER_TYPE]
         proxy_enabled: bool = coordinator.config_entry.data.get(
             CONF_PROXY_ENABLED, False
