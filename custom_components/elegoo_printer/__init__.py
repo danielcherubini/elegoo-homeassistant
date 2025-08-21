@@ -59,6 +59,7 @@ async def async_setup_entry(
 
     Returns:
         bool: True if the integration is set up successfully.
+
     """
     coordinator = ElegooDataUpdateCoordinator(hass=hass, entry=entry)
 

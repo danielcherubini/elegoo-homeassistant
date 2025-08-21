@@ -26,13 +26,13 @@ from custom_components.elegoo_printer.definitions import (
     PRINTER_MJPEG_CAMERAS,
     ElegooPrinterSensorEntityDescription,
 )
-from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
+from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooVideoStatus,
     PrinterType,
 )
 from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
-from custom_components.elegoo_printer.entity import ElegooPrinterEntity
+from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 from .coordinator import ElegooDataUpdateCoordinator
 
@@ -96,7 +96,6 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
     async def _get_stream_url(self) -> str | None:
         """Get the stream URL, from cache if recent."""
-
         if not self._printer_client.is_connected:
             return None
         video = await self._printer_client.get_printer_video(enable=True)
@@ -178,12 +177,14 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         coordinator: ElegooDataUpdateCoordinator,
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
-        """Initialize an Elegoo MJPEG camera entity.
+        """
+        Initialize an Elegoo MJPEG camera entity.
 
         Args:
             hass: The Home Assistant instance.
             coordinator: The data update coordinator.
             description: The entity description.
+
         """
         MjpegCamera.__init__(
             self,
@@ -201,10 +202,12 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     @staticmethod
     def _normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
-        """Checks if video_object.video_url starts with 'http://' and adds it if missing.
+        """
+        Checks if video_object.video_url starts with 'http://' and adds it if missing.
 
         Args:
             video_object: The video object to normalize.
+
         """
         if not video_object.video_url.startswith("http://"):
             video_object.video_url = "http://" + video_object.video_url
@@ -214,7 +217,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     async def _update_stream_url(self) -> None:
         """Update the MJPEG stream URL."""
         if not self._printer_client.is_connected:
-            return None
+            return
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug("stream_source: Video is OK, getting stream source")
@@ -249,7 +252,8 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     @property
     def available(self) -> bool:
-        """Return whether the camera entity is currently available.
+        """
+        Return whether the camera entity is currently available.
 
         If the entity description specifies an availability function, this function is
         used to determine availability based on the printer's video data. Otherwise,

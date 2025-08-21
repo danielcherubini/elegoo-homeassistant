@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 class Printer:
     """
     Represent a printer with various attributes.
-
 
     Attributes:
         connection (str): The connection ID of the printer.
@@ -57,21 +56,21 @@ class Printer:
 
     """
 
-    connection: Optional[str]
+    connection: str | None
     name: str
-    model: Optional[str]
-    brand: Optional[str]
-    ip_address: Optional[str]
-    protocol: Optional[str]
-    firmware: Optional[str]
-    id: Optional[str]
-    printer_type: Optional[PrinterType]
+    model: str | None
+    brand: str | None
+    ip_address: str | None
+    protocol: str | None
+    firmware: str | None
+    id: str | None
+    printer_type: PrinterType | None
     proxy_enabled: bool
     camera_enabled: bool
 
     def __init__(
         self,
-        json_string: Optional[str] = None,
+        json_string: str | None = None,
         config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
         """
@@ -91,7 +90,7 @@ class Printer:
             self.printer_type = None
         else:
             try:
-                j: Dict[str, Any] = json.loads(json_string)  # Decode the JSON string
+                j: dict[str, Any] = json.loads(json_string)  # Decode the JSON string
                 self.connection = j.get("Id")
                 data_dict = j.get("Data", j)
                 self.name = data_dict.get("Name")
@@ -122,7 +121,7 @@ class Printer:
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
         self.camera_enabled = config.get(CONF_CAMERA_ENABLED, False)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Return a dictionary containing all attributes of the Printer instance.
         """
@@ -143,9 +142,9 @@ class Printer:
     @classmethod
     def from_dict(
         cls,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         config: MappingProxyType[str, Any] = MappingProxyType({}),
-    ) -> "Printer":
+    ) -> Printer:
         """
         Create a Printer instance from a dictionary.
         """
@@ -182,6 +181,7 @@ class PrinterData:
         print_history (dict[str, PrintHistoryDetail | None]): The print history of the printer.
         current_job (PrintHistoryDetail | None): The current print job of the printer.
         video (ElegooVideo): The video object of the printer.
+
     """
 
     print_history: dict[str, PrintHistoryDetail | None]
@@ -208,7 +208,7 @@ class PrinterData:
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
         """Round datetime object to minutes"""
         if date is None:
-            date = datetime.now(timezone.utc)
+            date = datetime.now(UTC)
 
         if not isinstance(round_to, int) or round_to <= 0:
             raise ValueError("round_to must be a positive integer")
@@ -224,7 +224,7 @@ class PrinterData:
             and self.status.print_info.remaining_ticks > 0
             and self.current_job
         ):
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             total_seconds_remaining = self.status.print_info.remaining_ticks / 1000
             target_datetime = now + timedelta(seconds=total_seconds_remaining)
             # Round to nearest minute by adding a 30s bias before flooring

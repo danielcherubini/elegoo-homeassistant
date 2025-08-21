@@ -143,8 +143,8 @@ class ElegooPrinterApiClient:
 
         Returns:
             PrinterData: The latest status data of the printer.
-        """
 
+        """
         self.printer_data = await self.client.get_printer_status()
         return self.printer_data
 
@@ -154,6 +154,7 @@ class ElegooPrinterApiClient:
 
         Returns:
             PrinterData: The latest attribute information for the printer.
+
         """
         self.printer_data = await self.client.get_printer_attributes()
         return self.printer_data
@@ -164,8 +165,8 @@ class ElegooPrinterApiClient:
 
         Returns:
             bool: True if thumbnail image is available, or False otherwise.
-        """
 
+        """
         thumbnail = await self.client.async_get_current_print_thumbnail()
         return thumbnail is not None
 
@@ -177,6 +178,7 @@ class ElegooPrinterApiClient:
 
         Returns:
             str | None: The thumbnail image if available, or None if there is no active print job or thumbnail.
+
         """
         if task := await self.async_get_task(include_last_task=include_history):
             return task.thumbnail
@@ -190,6 +192,7 @@ class ElegooPrinterApiClient:
 
         Returns:
             Image | None: The thumbnail image if available, or None if there is no active print job or thumbnail.
+
         """
         if task is None:
             LOGGER.debug("get_thumbnail no task, getting task")
@@ -253,6 +256,7 @@ class ElegooPrinterApiClient:
 
         Returns:
             bytes | None: The thumbnail image if available, or None if there is no active print job or thumbnail.
+
         """
         if thumbnail_image := await self.async_get_thumbnail_image():
             return thumbnail_image.get_bytes()
@@ -264,7 +268,7 @@ class ElegooPrinterApiClient:
     ) -> PrintHistoryDetail | None:
         if current_task := await self.client.async_get_printer_current_task():
             return current_task
-        elif include_last_task:
+        if include_last_task:
             if last_task := await self.client.async_get_printer_last_task():
                 return last_task
 
@@ -276,6 +280,7 @@ class ElegooPrinterApiClient:
 
         Returns:
             A list of PrintHistoryDetail objects representing the current print task, or None if no task is active.
+
         """
         current_task = await self.client.async_get_printer_current_task()
         if current_task:
@@ -292,6 +297,7 @@ class ElegooPrinterApiClient:
 
         Returns:
             A list of PrintHistoryDetail objects representing the print history, or None if no history is available.
+
         """
         return await self.client.async_get_printer_historical_tasks()
 
@@ -301,6 +307,7 @@ class ElegooPrinterApiClient:
 
         Returns:
             bool: True if reconnection is successful, False otherwise.
+
         """
         printer = self.printer
         session = async_get_clientsession(self.hass)
@@ -345,6 +352,7 @@ class ElegooPrinterApiClient:
 
         Returns:
             PrinterData: The latest attribute information for the printer.
+
         """
         await self.async_get_attributes()
         await self.async_get_status()

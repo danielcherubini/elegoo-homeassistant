@@ -15,8 +15,8 @@ from .definitions import (
     PRINTER_STATUS_RESIN,
     ElegooPrinterSensorEntityDescription,
 )
-from .sdcp.models.enums import PrinterType
 from .entity import ElegooPrinterEntity
+from .sdcp.models.enums import PrinterType
 
 if TYPE_CHECKING:
     from datetime import datetime

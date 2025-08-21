@@ -100,7 +100,7 @@ class ElegooPrinterFan(ElegooPrinterEntity, FanEntity):
         percentage = self.percentage
         if percentage == 0:
             return "Off"
-        elif percentage == 100:
+        if percentage == 100:
             return "On"
         return None
 

@@ -46,6 +46,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
 
         Raises:
             UpdateFailed: If communication with the printer fails.
+
         """
         try:
             self.data = (
@@ -88,11 +89,14 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
 
         If the printer name is unavailable or empty, the machine ID is used as the prefix. Otherwise, the printer name is converted to lowercase and spaces are replaced with underscores before appending the key.
 
-        Parameters:
+        Parameters
+        ----------
             key (str): Suffix to ensure uniqueness for the entity.
 
-        Returns:
+        Returns
+        -------
             str: The generated unique identifier.
+
         """
         machine_id = self.config_entry.data["id"]
 

@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import socket
-from typing import Any, List
+from typing import Any
 
 import aiohttp
 from aiohttp import ClientSession, WSMsgType, web
@@ -32,7 +32,7 @@ class ElegooPrinterServer:
     This server runs on the main Home Assistant event loop.
     """
 
-    _instances: List["ElegooPrinterServer"] = []
+    _instances: list[ElegooPrinterServer] = []
 
     def __init__(
         self,
@@ -46,7 +46,7 @@ class ElegooPrinterServer:
         self.logger = logger
         self.hass = hass
         self.session = session
-        self.runners: List[web.AppRunner] = []
+        self.runners: list[web.AppRunner] = []
         self._is_connected = False
         self.datagram_transport: asyncio.DatagramTransport | None = None
 
@@ -62,7 +62,7 @@ class ElegooPrinterServer:
         logger: Any,
         hass: HomeAssistant,
         session: ClientSession,
-    ) -> "ElegooPrinterServer":
+    ) -> ElegooPrinterServer:
         """Asynchronously creates and starts the server."""
         self = cls(printer, logger, hass, session)
         await self.start()
@@ -230,7 +230,7 @@ class ElegooPrinterServer:
                         f"An unexpected error occurred during video streaming: {e}"
                     )
                 return response
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        except (TimeoutError, aiohttp.ClientError) as e:
             self.logger.error(f"Error proxying video stream: {e}")
             return web.Response(status=502, text="Bad Gateway")
 
@@ -296,7 +296,7 @@ class ElegooPrinterServer:
                     if task.exception():
                         raise task.exception()
 
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        except (TimeoutError, aiohttp.ClientError) as e:
             self.logger.warning(f"WebSocket connection to printer failed: {e}")
             self._is_connected = False
         except Exception as e:

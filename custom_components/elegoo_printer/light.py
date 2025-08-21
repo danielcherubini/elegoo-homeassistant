@@ -11,10 +11,10 @@ from custom_components.elegoo_printer.definitions import (
     PRINTER_FDM_LIGHTS,
     ElegooPrinterLightEntityDescription,
 )
-from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
+from custom_components.elegoo_printer.entity import ElegooPrinterEntity
 from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
 from custom_components.elegoo_printer.sdcp.models.status import LightStatus
-from custom_components.elegoo_printer.entity import ElegooPrinterEntity
+from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 from .const import LOGGER
 
@@ -82,6 +82,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
 
         Returns:
             True if the light is on, False if it is off, or None if the light status is unavailable.
+
         """
         # For the standard on/off light
         return self.entity_description.value_fn(self.light_status)

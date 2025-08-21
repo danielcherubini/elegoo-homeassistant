@@ -1,7 +1,7 @@
 """Models for the Elegoo printer."""
 
 import json
-from typing import Any, List
+from typing import Any
 
 from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus, PrinterType
 
@@ -25,13 +25,15 @@ class LightStatus:
         """
         Initialize a LightStatus instance with secondary and RGB light values.
 
-        Parameters:
+        Parameters
+        ----------
             data (dict[str, Any] | None): Optional dictionary containing "SecondLight" and "RgbLight" keys. Defaults to all lights off if not provided.
+
         """
         if data is None:
             data = {}
         self.second_light: int | None = data.get("SecondLight")
-        self.rgb_light: List[int] | None = data.get("RgbLight")
+        self.rgb_light: list[int] | None = data.get("RgbLight")
 
     def to_dict(self) -> dict[str, Any]:
         """
@@ -39,6 +41,7 @@ class LightStatus:
 
         Returns:
             dict: A dictionary with keys "LightStatus", "SecondLight", and "RgbLight" reflecting the current light status.
+
         """
         return {
             "LightStatus": {
@@ -80,6 +83,7 @@ class PrintInfo:
         filename (str): Print File Name.
         error_number (ElegooPrintError): Error Number (refer to documentation).
         task_id (str): Current Task ID.
+
     """
 
     def __init__(
@@ -94,6 +98,7 @@ class PrintInfo:
         Args:
             data (Dict[str, Any], optional): A dictionary containing print info data.
                                             Defaults to an empty dictionary.
+
         """
         if data is None:
             data = {}
@@ -121,13 +126,12 @@ class PrintInfo:
             # If the printer is not idle, we can update progress
             if self.progress is not None:
                 percent_complete = int(self.progress)
+            elif self.total_layers > 0:
+                percent_complete = int(
+                    (self.current_layer / self.total_layers) * 100
+                )
             else:
-                if self.total_layers > 0:
-                    percent_complete = int(
-                        (self.current_layer / self.total_layers) * 100
-                    )
-                else:
-                    percent_complete = 0
+                percent_complete = 0
             self.percent_complete = max(0, min(100, percent_complete))
         else:
             self.percent_complete = 0
@@ -161,6 +165,7 @@ class PrinterStatus:
         current_fan_speed (CurrentFanSpeed): The current fan speed.
         light_status (LightStatus): The status of the lights.
         print_info (PrintInfo): Information about the current print job.
+
     """
 
     def __init__(

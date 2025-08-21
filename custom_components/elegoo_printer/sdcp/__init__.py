@@ -11,8 +11,8 @@ from .exceptions import (
 __all__ = [
     "DEBUG",
     "LOGGER",
+    "ElegooConfigFlowConnectionError",
+    "ElegooConfigFlowGeneralError",
     "ElegooPrinterConnectionError",
     "ElegooPrinterNotConnectedError",
-    "ElegooConfigFlowGeneralError",
-    "ElegooConfigFlowConnectionError",
 ]

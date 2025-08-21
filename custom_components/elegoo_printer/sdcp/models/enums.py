@@ -21,6 +21,7 @@ class ElegooMachineStatus(Enum):
         <ElegooMachineStatus.IDLE: 0>
         >>> ElegooMachineStatus.from_int(1)
         <ElegooMachineStatus.PRINTING: 1>
+
     """
 
     IDLE = 0
@@ -94,6 +95,7 @@ class ElegooPrintStatus(Enum):
         <ElegooPrintStatus.IDLE: 0>
         >>> ElegooPrintStatus.from_int(3)
         <ElegooPrintStatus.PRINTING: 3>
+
     """
 
     IDLE = 0
@@ -150,6 +152,7 @@ class ElegooPrintError(Enum):
         <ElegooPrintError.NONE: 0>
         >>> ElegooPrintError.from_int(1)
         <ElegooPrintError.CHECK: 1>
+
     """  # noqa: E501
 
     NONE = 0
@@ -166,7 +169,8 @@ class ElegooPrintError(Enum):
 
         Returns:
             The matching ElegooPrintError member if the integer is valid, or None if it does not correspond to any defined error.
-        """  # noqa: D401
+
+        """
         try:
             return cls(status_int)  # Use cls() to create enum members
         except ValueError:
@@ -188,6 +192,7 @@ class ElegooVideoStatus(Enum):
         <ElegooVideoStatus.SUCCESS: 0>
         >>> ElegooVideoStatus.from_int(1)
         <ElegooVideoStatus.EXCEEDED_MAX_STREAMING_LIMIT: 1>
+
     """
 
     SUCCESS = 0
@@ -202,6 +207,7 @@ class ElegooVideoStatus(Enum):
 
         Returns:
             ElegooVideoStatus: The matching enum member if the integer is valid, otherwise None.
+
         """
         try:
             return cls(status_int)
@@ -240,7 +246,8 @@ class ElegooErrorStatusReason(Enum):
         <ElegooErrorStatusReason.OK: 0>
         >>> ElegooErrorStatusReason.from_int(1)
         <ElegooErrorStatusReason.TEMP_ERROR: 1>
-    """  # noqa: E501
+
+    """
 
     OK = 0
     TEMP_ERROR = 1
@@ -270,6 +277,7 @@ class ElegooErrorStatusReason(Enum):
 
         Returns:
             The matching ElegooErrorStatusReason member if the integer is valid; otherwise, None.
+
         """
         try:
             return cls(status_int)
@@ -285,6 +293,7 @@ class ElegooFan(Enum):
         MODEL_FAN: The fan that cools the model.
         AUXILIARY_FAN: The auxiliary fan.
         BOX_FAN: The fan that cools the enclosure.
+
     """
 
     MODEL_FAN = "ModelFan"
@@ -293,10 +302,12 @@ class ElegooFan(Enum):
 
     @classmethod
     def from_key(cls, key: str) -> Optional["ElegooFan"] | None:
-        """Convert a key to the corresponding ElegooFan enum member.
+        """
+        Convert a key to the corresponding ElegooFan enum member.
 
         Returns:
             ElegooFan: The matching enum member if the key is valid, otherwise None.
+
         """
         pascal_case_string = key.replace("_", " ").title().replace(" ", "")
         for fan_name in cls:
@@ -312,21 +323,25 @@ class PrinterType(Enum):
     Attributes:
         RESIN: A resin-based 3D printer.
         FDM: A fused deposition modeling (FDM) 3D printer.
+
     """
 
     RESIN = "resin"
     FDM = "fdm"
 
     @classmethod
-    def from_model(cls, model: Optional[str]) -> Optional["PrinterType"]:
+    def from_model(cls, model: str | None) -> Optional["PrinterType"]:
         """
         Returns the printer type (RESIN or FDM) based on the provided model name.
 
-        Parameters:
+        Parameters
+        ----------
             model (str): The printer model name to evaluate.
 
-        Returns:
+        Returns
+        -------
             PrinterType or None: The corresponding printer type if the model matches a known FDM or resin printer, otherwise None.
+
         """
         if model is None:
             return None

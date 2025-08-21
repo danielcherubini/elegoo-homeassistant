@@ -1,8 +1,7 @@
 """Print History Detail for Elegoo SDCP."""
 
+from datetime import UTC, datetime
 from typing import Any
-
-from datetime import datetime, timezone
 
 from .enums import ElegooErrorStatusReason
 
@@ -20,13 +19,13 @@ class PrintHistoryDetail:
         self.task_name: str | None = data.get("TaskName")
         begin_time_ts = data.get("BeginTime")
         self.begin_time: datetime | None = (
-            datetime.fromtimestamp(begin_time_ts, tz=timezone.utc)
+            datetime.fromtimestamp(begin_time_ts, tz=UTC)
             if begin_time_ts is not None
             else None
         )
         end_time_ts = data.get("EndTime")
         self.end_time: datetime | None = (
-            datetime.fromtimestamp(end_time_ts, tz=timezone.utc)
+            datetime.fromtimestamp(end_time_ts, tz=UTC)
             if end_time_ts is not None
             else None
         )
@@ -112,6 +111,7 @@ class SliceInformation:
         normal_layer_rest_time_after_drop (int): The rest time after drop of the normal layers.
         normal_layer_rest_time_after_lift (int): The rest time after lift of the normal layers.
         normal_layer_rest_time_before_lift (int): The rest time before lift of the normal layers.
+
     """
 
     def __init__(self, data: dict[str, Any]) -> None:  # noqa: PLR0915
