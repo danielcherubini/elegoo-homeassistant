@@ -1,13 +1,11 @@
 [project]
 name = "elegoo_printer"
 version = "2.2.1b1"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 description = "Home Assistant Addon for Elegoo Printers"
 dependencies = [
     "colorlog>=6.9.0",
-    "homeassistant==2025.4.0",
     "loguru>=0.7.3",
-    "ruff>=0.9.10",
     "websocket-client>=1.8.0",
     "websockets>=15.0.1",
 ]
@@ -15,13 +13,18 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
+    "ruff>=0.9.10",
 ]
 [tool.ruff]
 target-version = "py313"
-[lint]
+exclude = [
+  "scripts",
+  "debug.py",
+]
+
+[tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-    "ANN101",
     "ANN401",
     "D203",
     "D212",
@@ -29,15 +32,17 @@ ignore = [
     "ISC001",
     "G004",
 ]
-[flake8-pytest-style]
+
+[tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
-[pyupgrade]
+
+[tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
-[mccabe]
+
+[tool.ruff.lint.mccabe]
 max-complexity = 25
 
 [tool.pytest.ini_options]
 pythonpath = [
   "."
 ]
-
