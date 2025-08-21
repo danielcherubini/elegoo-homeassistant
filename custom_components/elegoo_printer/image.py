@@ -7,9 +7,6 @@ from typing import TYPE_CHECKING
 from homeassistant.components.image import Image, ImageEntity
 
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
-from custom_components.elegoo_printer.sdcp.models.enums import (
-    ElegooMachineStatus,
-)
 
 from .const import LOGGER
 from .definitions import PRINTER_IMAGES
@@ -89,14 +86,3 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
             return self._cached_image.content
 
         return None
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return (
-            super().available
-            and self.coordinator.data
-            and self.coordinator.data.status
-            and self.coordinator.data.status.current_status
-            == ElegooMachineStatus.PRINTING
-        )

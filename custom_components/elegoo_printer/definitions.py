@@ -337,18 +337,14 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         key="filename",
         name="File Name",
         icon="mdi:file",
-        value_fn=lambda printer_data: printer_data.status.print_info.filename,
-        available_fn=lambda printer_data: printer_data.status
-        and printer_data.status.print_info.filename != "",
+        value_fn=lambda printer_data: printer_data.status.print_info.filename or None,
     ),
     ElegooPrinterSensorEntityDescription(
         key="task_id",
         name="Task ID",
         icon="mdi:identifier",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.status.print_info.task_id,
-        available_fn=lambda printer_data: printer_data.status
-        and printer_data.status.print_info.task_id is not None,
+        value_fn=lambda printer_data: printer_data.status.print_info.task_id or None,
     ),
     ElegooPrinterSensorEntityDescription(
         key="current_status",

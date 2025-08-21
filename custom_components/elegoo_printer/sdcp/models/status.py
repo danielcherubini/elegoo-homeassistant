@@ -131,7 +131,7 @@ class PrintInfo:
         else:
             self.percent_complete = 0
 
-        self.filename = data.get("Filename", "")
+        self.filename = data.get("Filename")
         error_number_int = data.get("ErrorNumber", 0)
         self.error_number = ElegooPrintError.from_int(error_number_int)
         self.task_id = data.get("TaskId")
