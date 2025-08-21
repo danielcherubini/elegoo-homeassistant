@@ -21,8 +21,7 @@ if TYPE_CHECKING:
 
 
 class Printer:
-    """
-    Represent a printer with various attributes.
+    """Represent a printer with various attributes.
 
     Attributes:
         connection (str): The connection ID of the printer.
@@ -73,8 +72,7 @@ class Printer:
         json_string: str | None = None,
         config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> None:
-        """
-        Initialize a Printer instance from a JSON string and configuration mapping.
+        """Initialize a Printer instance from a JSON string and configuration mapping.
         """
         if TYPE_CHECKING:
             from .enums import PrinterType
@@ -122,8 +120,7 @@ class Printer:
         self.camera_enabled = config.get(CONF_CAMERA_ENABLED, False)
 
     def to_dict(self) -> dict[str, Any]:
-        """
-        Return a dictionary containing all attributes of the Printer instance.
+        """Return a dictionary containing all attributes of the Printer instance.
         """
         return {
             "connection": self.connection,
@@ -145,8 +142,7 @@ class Printer:
         data: dict[str, Any],
         config: MappingProxyType[str, Any] = MappingProxyType({}),
     ) -> Printer:
-        """
-        Create a Printer instance from a dictionary.
+        """Create a Printer instance from a dictionary.
         """
         printer = cls(config=config)
         printer.connection = data.get("Id", data.get("connection"))
@@ -171,8 +167,7 @@ class Printer:
 
 
 class PrinterData:
-    """
-    Data object for printer information.
+    """Data object for printer information.
 
     Attributes:
         status (PrinterStatus): The status of the printer.
@@ -195,8 +190,7 @@ class PrinterData:
         printer: Printer | None = None,
         print_history: dict[str, PrintHistoryDetail | None] | None = None,
     ) -> None:
-        """
-        Initialize a PrinterData instance with optional printer-related data.
+        """Initialize a PrinterData instance with optional printer-related data.
         """
         self.status: PrinterStatus = status or PrinterStatus()
         self.attributes: PrinterAttributes = attributes or PrinterAttributes()

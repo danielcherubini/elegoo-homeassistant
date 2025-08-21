@@ -1,14 +1,15 @@
+"""Elegoo Printer Proxy Server."""
+
 from __future__ import annotations
 
 import asyncio
 import json
 import os
 import socket
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from aiohttp import ClientSession, WSMsgType, web
-from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from custom_components.elegoo_printer.const import (
@@ -21,12 +22,14 @@ from custom_components.elegoo_printer.const import (
 )
 from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
 INADDR_ANY = "0.0.0.0"
 
 
 class ElegooPrinterServer:
-    """
-    Manages local proxy servers for an Elegoo printer.
+    """Manages local proxy servers for an Elegoo printer.
 
     This includes WebSocket, UDP discovery, and a full HTTP reverse proxy.
     This server runs on the main Home Assistant event loop.
@@ -40,8 +43,8 @@ class ElegooPrinterServer:
         logger: Any,
         hass: HomeAssistant,
         session: ClientSession,
-    ):
-        """Initializes the Elegoo printer proxy server."""
+    ) -> None:
+        """Initialize the Elegoo printer proxy server."""
         self.printer = printer
         self.logger = logger
         self.hass = hass
@@ -73,8 +76,8 @@ class ElegooPrinterServer:
         """Return true if the proxy is connected to the printer."""
         return self._is_connected
 
-    async def start(self):
-        """Starts the proxy server on the Home Assistant event loop."""
+    async def start(self) -> None:
+        """Start the proxy server on the Home Assistant event loop."""
         if not self._check_ports_are_available():
             self.logger.info("Required proxy ports are in use; failing initialization.")
             raise ConfigEntryNotReady("Proxy server ports are in use.")
@@ -107,7 +110,7 @@ class ElegooPrinterServer:
                 f"Video Proxy running on http://{self.get_local_ip()}:{VIDEO_PORT}"
             )
 
-            def discovery_factory():
+            def discovery_factory() -> DiscoveryProtocol:
                 return DiscoveryProtocol(self.logger, self.printer, self.get_local_ip())
 
             transport, _ = await self.hass.loop.create_datagram_endpoint(
@@ -117,16 +120,17 @@ class ElegooPrinterServer:
             self.logger.info(f"Discovery Proxy listening on UDP port {DISCOVERY_PORT}")
 
         except OSError as e:
-            self.logger.error(f"Failed to start proxy server component: {e}")
+            msg = f"Failed to start proxy server: {e}"
+            self.logger.exception(msg)
             await self.stop()
-            raise ConfigEntryNotReady(f"Failed to start proxy server: {e}") from e
+            raise ConfigEntryNotReady(msg) from e
 
-        self.__class__._instances.append(self)
+        self.__class__._instances.append(self)  # noqa: SLF001
         self.logger.info("Proxy server has started successfully.")
 
     @classmethod
-    async def stop_all(cls):
-        """Stops all running proxy server instances."""
+    async def stop_all(cls) -> None:
+        """Stop all running proxy server instances."""
         for instance in list(cls._instances):
             await instance.stop()
         cls._instances.clear()
@@ -149,8 +153,8 @@ class ElegooPrinterServer:
                 return False
         return True
 
-    async def stop(self):
-        """Stops the proxy server and cleans up all associated resources."""
+    async def stop(self) -> None:
+        """Stop the proxy server and cleans up all associated resources."""
         self.logger.info("Stopping proxy server...")
         self._is_connected = False
 
@@ -162,8 +166,8 @@ class ElegooPrinterServer:
             await runner.cleanup()
         self.runners.clear()
 
-        if self in self.__class__._instances:
-            self.__class__._instances.remove(self)
+        if self in self.__class__._instances:  # noqa: SLF001
+            self.__class__._instances.remove(self)  # noqa: SLF001
 
         self.logger.info("Proxy server stopped.")
 
@@ -179,7 +183,7 @@ class ElegooPrinterServer:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.connect((self.printer.ip_address or DEFAULT_FALLBACK_IP, 1))
                 return s.getsockname()[0]
-        except Exception:
+        except Exception:  # noqa: BLE001
             return PROXY_HOST
 
     async def _http_handler(self, request: web.Request) -> web.StreamResponse:
@@ -225,13 +229,13 @@ class ElegooPrinterServer:
                     await response.write_eof()
                 except (ConnectionResetError, asyncio.CancelledError) as e:
                     self.logger.debug(f"Video stream stopped: {e}")
-                except Exception as e:
-                    self.logger.error(
-                        f"An unexpected error occurred during video streaming: {e}"
+                except Exception:
+                    self.logger.exception(
+                        "An unexpected error occurred during video streaming"
                     )
                 return response
-        except (TimeoutError, aiohttp.ClientError) as e:
-            self.logger.error(f"Error proxying video stream: {e}")
+        except (TimeoutError, aiohttp.ClientError):
+            self.logger.exception("Error proxying video stream")
             return web.Response(status=502, text="Bad Gateway")
 
     async def _websocket_handler(self, request: web.Request) -> web.WebSocketResponse:
@@ -263,7 +267,7 @@ class ElegooPrinterServer:
             ) as remote_ws:
                 self._is_connected = True
 
-                async def forward(source, dest, direction):
+                async def forward(source, dest, direction) -> None:
                     try:
                         async for msg in source:
                             if msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
@@ -294,13 +298,13 @@ class ElegooPrinterServer:
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                 for task in done:
                     if task.exception():
-                        raise task.exception()
+                        raise task.exception()  # noqa: TRY301
 
         except (TimeoutError, aiohttp.ClientError) as e:
             self.logger.warning(f"WebSocket connection to printer failed: {e}")
             self._is_connected = False
-        except Exception as e:
-            self.logger.error(f"WebSocket proxy error: {e}")
+        except Exception:
+            self.logger.exception("WebSocket proxy error")
             self._is_connected = False
         finally:
             # Ensure connected state is reset on normal closure as well
@@ -373,7 +377,7 @@ class ElegooPrinterServer:
                 await client_response.write_eof()
                 return client_response
         except aiohttp.ClientError as e:
-            self.logger.error(f"HTTP proxy error connecting to {target_url}: {e}")
+            self.logger.exception(f"HTTP proxy error connecting to {target_url}")
             return web.Response(status=502, text=f"Bad Gateway: {e}")
 
     async def _http_file_proxy_passthrough_handler(
@@ -430,28 +434,30 @@ class ElegooPrinterServer:
                     body=content, status=response.status, headers=resp_headers
                 )
         except Exception as e:
-            self.logger.error(f"HTTP file passthrough proxy error: {e}")
+            self.logger.exception("HTTP file passthrough proxy error")
             return web.Response(status=502, text=f"Bad Gateway: {e}")
 
 
 class DiscoveryProtocol(asyncio.DatagramProtocol):
     """Protocol to handle UDP discovery broadcasts."""
 
-    def __init__(self, logger: Any, printer: Printer, proxy_ip: str):
+    def __init__(self, logger: Any, printer: Printer, proxy_ip: str) -> None:
+        """Initialize the discovery protocol."""
         super().__init__()
         self.logger = logger
         self.printer = printer
         self.proxy_ip = proxy_ip
-        self.transport = None
+        self.transport = asyncio.DatagramTransport | None
 
-    def connection_made(self, transport):
+    def connection_made(self, transport: asyncio.DatagramTransport) -> None:
+        """Call when a connection is made."""
         self.transport = transport
 
-    def datagram_received(self, data, addr):
-        """Handles incoming UDP datagrams for discovery."""
+    def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+        """Handle incoming UDP datagrams for discovery."""
         try:
             message = data.decode("utf-8", errors="ignore").strip()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.logger.debug(
                 f"Ignoring undecodable discovery datagram from {addr}: {e}"
             )
@@ -470,10 +476,10 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                     "FirmwareVersion": getattr(self.printer, "firmware", "V1.0.0"),
                 },
             }
-            # self.logger.debug(response_payload)
             json_string = json.dumps(response_payload)
             if self.transport:
                 self.transport.sendto(json_string.encode(), addr)
 
-    def error_received(self, exc):
+    def error_received(self, exc: Exception) -> None:
+        """Call when an error is received."""
         self.logger.error(f"UDP Discovery Server Error: {exc}")

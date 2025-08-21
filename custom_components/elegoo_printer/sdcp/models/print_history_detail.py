@@ -10,8 +10,7 @@ class PrintHistoryDetail:
     """Represents the details of a print history entry."""
 
     def __init__(self, data: dict[str, Any]) -> None:
-        """
-        Initialize a PrintHistoryDetail instance with print job details from a dictionary.
+        """Initialize a PrintHistoryDetail instance with print job details from a dictionary.
 
         The input dictionary should contain keys corresponding to print job attributes such as thumbnail, task name, timing, status, slice information, print layers, task ID, MD5 hash, current layer volume, time-lapse video details, and error status reason. Missing keys default to None or zero where applicable.
         """
@@ -50,15 +49,13 @@ class PrintHistoryDetail:
         )
 
     def __repr__(self) -> str:
-        """
-        Return a string representation of the instance's attributes as a dictionary.
+        """Return a string representation of the instance's attributes as a dictionary.
         """
         return str(self.__dict__)
 
 
 class SliceInformation:
-    """
-    Represent the slice information of a print job.
+    """Represent the slice information of a print job.
 
     Attributes:
         resolution_x (int): The resolution of the print in the x-axis.
@@ -114,9 +111,8 @@ class SliceInformation:
 
     """
 
-    def __init__(self, data: dict[str, Any]) -> None:  # noqa: PLR0915
-        """
-        Initialize a SliceInformation object.
+    def __init__(self, data: dict[str, Any]) -> None:
+        """Initialize a SliceInformation object.
 
         Args:
             data: A dictionary containing the slice information data.
@@ -214,8 +210,7 @@ class SliceInformation:
         )
 
     def __repr__(self) -> str:
-        """
-        Return a string representation of the object.
+        """Return a string representation of the object.
 
         Returns:
             A string representation of the object's attributes.

@@ -1,11 +1,11 @@
 """Attributes models for Elegoo Printer."""
 
+import json
 from typing import Any
 
 
 class PrinterAttributes:
-    """
-    Represents the attributes of a 3D printer.
+    """Represents the attributes of a 3D printer.
 
     Attributes:
         name (str): The name of the printer.
@@ -94,13 +94,12 @@ class PrinterAttributes:
     >>> printer_attributes = PrinterAttributes.from_json(printer_data_json)
     >>> print(printer_attributes.name)  # Output: PrinterName
 
-    """  # noqa: E501
+    """
 
     def __init__(
         self, data: dict[str, Any] | None = None
     ) -> None:  # Make 'data' optional
-        """
-        Initialize a new PrinterAttributes object from a dictionary.
+        """Initialize a new PrinterAttributes object from a dictionary.
 
         Args:
             data (Dict[str, Any], optional): A dictionary containing printer attribute
@@ -152,8 +151,7 @@ class PrinterAttributes:
 
     @classmethod
     def from_json(cls, json_string: str) -> "PrinterAttributes":
-        """
-        Create a PrinterAttributes object from a JSON string.
+        """Create a PrinterAttributes object from a JSON string.
 
         Args:
             json_string (str): A JSON string containing printer attribute data.
@@ -162,8 +160,6 @@ class PrinterAttributes:
             PrinterAttributes: A new PrinterAttributes object.
 
         """
-        import json
-
         try:
             data: dict[str, Any] = json.loads(json_string)
         except json.JSONDecodeError:

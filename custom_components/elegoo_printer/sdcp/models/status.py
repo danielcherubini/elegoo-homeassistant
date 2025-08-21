@@ -22,8 +22,7 @@ class LightStatus:
     """Represents the status of the printer's lights."""
 
     def __init__(self, data: dict[str, Any] | None = None) -> None:
-        """
-        Initialize a LightStatus instance with secondary and RGB light values.
+        """Initialize a LightStatus instance with secondary and RGB light values.
 
         Parameters
         ----------
@@ -36,8 +35,7 @@ class LightStatus:
         self.rgb_light: list[int] | None = data.get("RgbLight")
 
     def to_dict(self) -> dict[str, Any]:
-        """
-        Return a dictionary representation of the LightStatus instance in the original JSON format.
+        """Return a dictionary representation of the LightStatus instance in the original JSON format.
 
         Returns:
             dict: A dictionary with keys "LightStatus", "SecondLight", and "RgbLight" reflecting the current light status.
@@ -51,23 +49,20 @@ class LightStatus:
         }
 
     def __repr__(self) -> str:
-        """
-        Return a developer-oriented string representation of the LightStatus instance, showing the values of second_light and rgb_light.
+        """Return a developer-oriented string representation of the LightStatus instance, showing the values of second_light and rgb_light.
         """
         return (
             f"LightStatus(second_light={self.second_light}, rgb_light={self.rgb_light})"
         )
 
     def __str__(self) -> str:
-        """
-        Return a user-friendly string describing the secondary light status and RGB light values.
+        """Return a user-friendly string describing the secondary light status and RGB light values.
         """
         return f"Secondary Light: {'On' if self.second_light else 'Off'}, RGB: {self.rgb_light}"
 
 
 class PrintInfo:
-    """
-    Represents information about a print job.
+    """Represents information about a print job.
 
     Attributes:
         status (ElegooPrintStatus): Printing Sub-status.
@@ -92,8 +87,7 @@ class PrintInfo:
         printer_type: PrinterType | None = None,
         current_status: ElegooMachineStatus | None = None,
     ) -> None:
-        """
-        Initialize a new PrintInfo object.
+        """Initialize a new PrintInfo object.
 
         Args:
             data (Dict[str, Any], optional): A dictionary containing print info data.
@@ -143,8 +137,7 @@ class PrintInfo:
 
 
 class PrinterStatus:
-    """
-    Represents the status of a 3D printer.
+    """Represents the status of a 3D printer.
 
     Attributes:
         current_status (ElegooMachineStatus): The current status of the machine.
@@ -173,8 +166,7 @@ class PrinterStatus:
         data: dict[str, Any] | None = None,
         printer_type: PrinterType | None = None,
     ) -> None:
-        """
-        Initialize a new PrinterStatus object from a dictionary.
+        """Initialize a new PrinterStatus object from a dictionary.
         """
         if data is None:
             data = {}
@@ -220,8 +212,7 @@ class PrinterStatus:
     def from_json(
         cls, json_string: str, printer_type: PrinterType | None = None
     ) -> "PrinterStatus":
-        """
-        Create a PrinterStatus object from a JSON string.
+        """Create a PrinterStatus object from a JSON string.
         """
         try:
             data = json.loads(json_string)

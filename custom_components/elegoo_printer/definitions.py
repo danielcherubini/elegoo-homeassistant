@@ -146,7 +146,7 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:camera",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.attributes.num_video_stream_connected,  # noqa: E501
+        value_fn=lambda printer_data: printer_data.attributes.num_video_stream_connected,
     ),
     ElegooPrinterSensorEntityDescription(
         key="video_stream_max",

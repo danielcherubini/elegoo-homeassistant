@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,  # noqa: ARG001
+    hass: HomeAssistant,
     entry: ElegooPrinterConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:

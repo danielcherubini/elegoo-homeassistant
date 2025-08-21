@@ -1,7 +1,7 @@
 """Image model for Elegoo printers."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from homeassistant.components.image import Image
 
@@ -16,17 +16,18 @@ class ElegooImage:
         image_bytes: bytes,
         last_updated_timestamp: int,
         content_type: str,
-    ):
+    ) -> None:
         """Initialize an ElegooImage object."""
         self._image_url = image_url
         self._bytes = image_bytes
         self._content_type = content_type
         try:
             self._image_last_updated = datetime.fromtimestamp(
-                float(last_updated_timestamp)
+                float(last_updated_timestamp), UTC
             )
         except (ValueError, TypeError, OSError) as e:
-            raise ValueError(f"Invalid timestamp: {last_updated_timestamp}") from e
+            msg = f"Invalid timestamp: {last_updated_timestamp}"
+            raise ValueError(msg) from e
 
     def get_bytes(self) -> bytes:
         """Return the image as bytes."""

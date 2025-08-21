@@ -177,8 +177,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         coordinator: ElegooDataUpdateCoordinator,
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
-        """
-        Initialize an Elegoo MJPEG camera entity.
+        """Initialize an Elegoo MJPEG camera entity.
 
         Args:
             hass: The Home Assistant instance.
@@ -202,8 +201,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     @staticmethod
     def _normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
-        """
-        Checks if video_object.video_url starts with 'http://' and adds it if missing.
+        """Checks if video_object.video_url starts with 'http://' and adds it if missing.
 
         Args:
             video_object: The video object to normalize.
@@ -252,8 +250,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     @property
     def available(self) -> bool:
-        """
-        Return whether the camera entity is currently available.
+        """Return whether the camera entity is currently available.
 
         If the entity description specifies an availability function, this function is
         used to determine availability based on the printer's video data. Otherwise,

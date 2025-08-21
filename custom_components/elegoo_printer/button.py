@@ -19,8 +19,7 @@ async def async_setup_entry(
     config_entry: ElegooPrinterConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """
-    Asynchronously sets up Elegoo printer button entities in Home Assistant.
+    """Asynchronously sets up Elegoo printer button entities in Home Assistant.
 
     Creates and adds a button entity for pausing the current print job if the connected printer is identified as an FDM model.
     """
@@ -41,8 +40,7 @@ class ElegooSimpleButton(ElegooPrinterEntity, ButtonEntity):
         coordinator: ElegooDataUpdateCoordinator,
         description: ElegooPrinterButtonEntityDescription,
     ) -> None:
-        """
-        Initialize an Elegoo printer pause button entity with the given data coordinator.
+        """Initialize an Elegoo printer pause button entity with the given data coordinator.
 
         Configures the entity's unique ID, display name, and icon.
         """
@@ -58,8 +56,7 @@ class ElegooSimpleButton(ElegooPrinterEntity, ButtonEntity):
         self._attr_name = f"{description.name}"
 
     async def async_press(self) -> None:
-        """
-        Asynchronously presses the button.
+        """Asynchronously presses the button.
 
         Calls the printer's action function and requests a state refresh.
         """
@@ -68,8 +65,7 @@ class ElegooSimpleButton(ElegooPrinterEntity, ButtonEntity):
 
     @property
     def available(self) -> bool:
-        """
-        Return whether the button entity is currently available.
+        """Return whether the button entity is currently available.
         """
         if not super().available:
             return False
