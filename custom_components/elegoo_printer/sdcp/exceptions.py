@@ -25,3 +25,7 @@ class ElegooPrinterConnectionError(ElegooSDCPError):
 
 class ElegooPrinterNotConnectedError(ElegooSDCPError):
     """Exception to indicate that the Elegoo printer is not connected."""
+
+
+class ElegooPrinterTimeoutError(ElegooPrinterConnectionError):
+    """Exception to indicate a timeout error with the Elegoo printer."""

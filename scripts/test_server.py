@@ -243,7 +243,7 @@ async def simulate_printing():
 
 
 async def handler(websocket):
-    print(f"Client connected from {websocket.remote_address}")
+    # print(f"Client connected from {websocket.remote_address}")
     connected_clients.add(websocket)
     try:
         # On connect, send initial status and attributes

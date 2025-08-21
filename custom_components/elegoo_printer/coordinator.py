@@ -11,6 +11,7 @@ from custom_components.elegoo_printer.const import LOGGER
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
+    ElegooPrinterTimeoutError,
 )
 
 if TYPE_CHECKING:
@@ -38,17 +39,15 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         """
         Asynchronously fetches and updates the latest attributes and status from the Elegoo printer.
 
-        Dynamically adjusts the polling interval based on connection status. If the printer is disconnected, attempts to reconnect and modifies the update interval accordingly.
+        If the printer is disconnected, it attempts to reconnect and adjusts the update interval.
 
         Returns:
             The most recent printer data retrieved from the client.
 
         Raises:
-            UpdateFailed: If a connection or operating system error prevents data retrieval.
+            UpdateFailed: If communication with the printer fails.
         """
         try:
-            if not self.config_entry.runtime_data.api.client.is_connected:
-                await self.config_entry.runtime_data.api.reconnect()
             self.data = (
                 await self.config_entry.runtime_data.api.async_get_printer_data()
             )
@@ -56,12 +55,24 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
             return self.data
-        except (ElegooPrinterConnectionError, ElegooPrinterNotConnectedError) as e:
+        except (
+            ElegooPrinterConnectionError,
+            ElegooPrinterNotConnectedError,
+            ElegooPrinterTimeoutError,
+        ) as e:
             self.online = False
+            LOGGER.info(
+                "Connection to Elegoo printer lost: %s. Attempting to reconnect.", e
+            )
             if self.update_interval != timedelta(seconds=30):
                 self.update_interval = timedelta(seconds=30)
-            LOGGER.info("Elegoo printer is not connected: %s", e)
-            return self.data  # Return last known data
+
+            try:
+                await self.config_entry.runtime_data.api.reconnect()
+            except Exception as recon_e:
+                LOGGER.warning("Error during reconnect attempt: %s", recon_e)
+
+            raise UpdateFailed(f"Failed to communicate with printer: {e}") from e
         except OSError as e:
             self.online = False
             LOGGER.warning(

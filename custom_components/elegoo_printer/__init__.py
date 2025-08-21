@@ -101,7 +101,7 @@ async def async_unload_entry(
         if client := entry.runtime_data.api:
             await client.elegoo_disconnect()
             if client.printer and client.printer.proxy_enabled:
-                await hass.async_add_executor_job(client.elegoo_stop_proxy)
+                await client.elegoo_stop_proxy()
 
     return unload_ok
 
