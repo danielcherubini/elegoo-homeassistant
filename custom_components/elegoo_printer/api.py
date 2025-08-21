@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from io import BytesIO
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.httpx_client import get_async_client
 from PIL import Image as PILImage
@@ -14,16 +12,20 @@ from PIL import UnidentifiedImageError
 
 from .const import CONF_PROXY_ENABLED, LOGGER
 from .sdcp.models.elegoo_image import ElegooImage
-from .sdcp.models.enums import ElegooFan
-from .sdcp.models.print_history_detail import (
-    PrintHistoryDetail,
-)
 from .sdcp.models.printer import Printer, PrinterData
 from .websocket.client import ElegooPrinterClient
 from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
     from logging import Logger
+    from types import MappingProxyType
+
+    from homeassistant.core import HomeAssistant
+
+    from .sdcp.models.enums import ElegooFan
+    from .sdcp.models.print_history_detail import (
+        PrintHistoryDetail,
+    )
 
 
 class ElegooPrinterApiClient:
@@ -47,7 +49,7 @@ class ElegooPrinterApiClient:
         Initialize the ElegooPrinterApiClient with a Printer object, configuration, and logger.
 
         Creates an internal ElegooPrinterClient for communication with the specified printer and sets up proxy server usage based on the configuration.
-        """
+        """  # noqa: E501
         self._ip_address = printer.ip_address
         self._proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
         self._logger = logger
@@ -86,7 +88,7 @@ class ElegooPrinterApiClient:
                 printer.proxy_enabled = proxy_server_enabled
             except (ConnectionError, TimeoutError) as e:
                 logger.warning(
-                    "Failed to start proxy server: %s. Falling back to direct connection.",
+                    "Failed to start proxy server: %s. Falling back to direct conn.",
                     e,
                 )
                 self.server = None
@@ -104,7 +106,9 @@ class ElegooPrinterApiClient:
                 logger=logger,
                 session=session,
             )
-            connected = await self.client.connect_printer(printer, proxy_server_enabled)
+            connected = await self.client.connect_printer(
+                printer, proxy_enabled=proxy_server_enabled
+            )
             if not connected:
                 if self.server:
                     await self.server.stop()
@@ -147,7 +151,7 @@ class ElegooPrinterApiClient:
         Returns:
             PrinterData: The latest status data of the printer.
 
-        """
+        """  # noqa: E501
         self.printer_data = await self.client.get_printer_status()
         return self.printer_data
 
@@ -174,7 +178,7 @@ class ElegooPrinterApiClient:
         return thumbnail is not None
 
     async def async_get_thumbnail_url(
-        self, include_history: bool = False
+        self, *, include_history: bool = False
     ) -> str | None:
         """
         Asynchronously retrieves the current print job's thumbnail image as a string.
@@ -182,7 +186,7 @@ class ElegooPrinterApiClient:
         Returns:
             str | None: The thumbnail image if available, or None if there is no active print job or thumbnail.
 
-        """
+        """  # noqa: E501
         if task := await self.async_get_task(include_last_task=include_history):
             return task.thumbnail
         return None
@@ -196,7 +200,7 @@ class ElegooPrinterApiClient:
         Returns:
             Image | None: The thumbnail image if available, or None if there is no active print job or thumbnail.
 
-        """
+        """  # noqa: E501
         if task is None:
             LOGGER.debug("get_thumbnail no task, getting task")
             task = await self.async_get_task(include_last_task=False)
@@ -261,14 +265,14 @@ class ElegooPrinterApiClient:
         Returns:
             bytes | None: The thumbnail image if available, or None if there is no active print job or thumbnail.
 
-        """
+        """  # noqa: E501
         if thumbnail_image := await self.async_get_thumbnail_image():
             return thumbnail_image.get_bytes()
 
         return None
 
     async def async_get_task(
-        self, include_last_task: bool
+        self, *, include_last_task: bool
     ) -> PrintHistoryDetail | None:
         """
         Asynchronously retrieves the current or last print task from the printer.
@@ -279,12 +283,13 @@ class ElegooPrinterApiClient:
         Returns:
             PrintHistoryDetail | None: The current or last print task, or None if no task is available.
 
-        """
+        """  # noqa: E501
         if current_task := await self.client.async_get_printer_current_task():
             return current_task
-        if include_last_task:
-            if last_task := await self.client.async_get_printer_last_task():
-                return last_task
+        if include_last_task and (
+            last_task := await self.client.async_get_printer_last_task()
+        ):
+            return last_task
 
         return None
 
@@ -295,7 +300,7 @@ class ElegooPrinterApiClient:
         Returns:
             A list of PrintHistoryDetail objects representing the current print task, or None if no task is active.
 
-        """
+        """  # noqa: E501
         current_task = await self.client.async_get_printer_current_task()
         if current_task:
             self.printer_data.current_job = current_task
@@ -312,7 +317,7 @@ class ElegooPrinterApiClient:
         Returns:
             A list of PrintHistoryDetail objects representing the print history, or None if no history is available.
 
-        """
+        """  # noqa: E501
         return await self.client.async_get_printer_historical_tasks()
 
     async def reconnect(self) -> bool:
@@ -322,7 +327,7 @@ class ElegooPrinterApiClient:
         Returns:
             bool: True if reconnection is successful, False otherwise.
 
-        """
+        """  # noqa: E501
         printer = self.printer
         session = async_get_clientsession(self.hass)
         if self._proxy_server_enabled:
@@ -333,8 +338,8 @@ class ElegooPrinterApiClient:
                     printer, logger=self._logger, hass=self.hass, session=session
                 )
                 printer = self.server.get_printer()
-            except (ConnectionError, TimeoutError) as e:
-                self._logger.error("Failed to (re)create proxy server: %s", e)
+            except (ConnectionError, TimeoutError):
+                self._logger.exception("Failed to (re)create proxy server")
                 self.server = None
 
         self._logger.debug(
@@ -342,7 +347,9 @@ class ElegooPrinterApiClient:
             printer.ip_address,
             self._proxy_server_enabled,
         )
-        return await self.client.connect_printer(printer, self._proxy_server_enabled)
+        return await self.client.connect_printer(
+            printer, proxy_enabled=self._proxy_server_enabled
+        )
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """Set the speed of a fan."""

@@ -1,5 +1,7 @@
 """Button platform for Elegoo printer."""
 
+from typing import TYPE_CHECKING
+
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -11,20 +13,23 @@ from custom_components.elegoo_printer.definitions import (
     ElegooPrinterButtonEntityDescription,
 )
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
-from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 from .const import LOGGER
 
+if TYPE_CHECKING:
+    from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
+
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    hass: HomeAssistant,  # noqa: ARG001
     config_entry: ElegooPrinterConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """
     Asynchronously sets up Elegoo printer button entities in Home Assistant.
 
-    Creates and adds a button entity for pausing the current print job if the connected printer is identified as an FDM model.
+    Creates and adds a button entity for pausing the current print job
+    if the connected printer is identified as an FDM model.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
 
@@ -47,7 +52,7 @@ class ElegooSimpleButton(ElegooPrinterEntity, ButtonEntity):
         Initialize an Elegoo printer pause button entity with the given data coordinator.
 
         Configures the entity's unique ID, display name, and icon.
-        """
+        """  # noqa: E501
         super().__init__(coordinator)
         self.entity_description: ElegooPrinterButtonEntityDescription = description
         self._elegoo_printer_client: ElegooPrinterClient = (

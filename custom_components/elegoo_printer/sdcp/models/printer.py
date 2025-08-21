@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
@@ -15,9 +15,11 @@ from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStat
 
 from .attributes import PrinterAttributes
 from .enums import PrinterType
-from .print_history_detail import PrintHistoryDetail
 from .status import PrinterStatus
 from .video import ElegooVideo
+
+if TYPE_CHECKING:
+    from .print_history_detail import PrintHistoryDetail
 
 
 class Printer:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -12,7 +12,6 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.selector import SelectOptionDict
 
 from .const import CONF_CAMERA_ENABLED, CONF_PROXY_ENABLED, DOMAIN, LOGGER
 from .sdcp.exceptions import (
@@ -22,6 +21,9 @@ from .sdcp.exceptions import (
 from .sdcp.models.enums import PrinterType
 from .sdcp.models.printer import Printer
 from .websocket.client import ElegooPrinterClient
+
+if TYPE_CHECKING:
+    from homeassistant.helpers.selector import SelectOptionDict
 
 OPTIONS_SCHEMA = vol.Schema(
     {
@@ -61,9 +63,8 @@ async def _async_test_connection(
 
     """
     if printer_object.ip_address is None:
-        raise ElegooConfigFlowGeneralError(
-            "IP address is required to connect to the printer"
-        )
+        msg = "IP address is required to connect to the printer"
+        raise ElegooConfigFlowGeneralError(msg)
 
     elegoo_printer = ElegooPrinterClient(
         printer_object.ip_address,
@@ -80,15 +81,14 @@ async def _async_test_connection(
         printer_object.proxy_enabled,
     )
     if await elegoo_printer.connect_printer(
-        printer_object, printer_object.proxy_enabled
+        printer_object, proxy_enabled=printer_object.proxy_enabled
     ):
         return printer_object
-    raise ElegooConfigFlowConnectionError(
-        f"Failed to connect to printer {printer_object.name} at {printer_object.ip_address}"
-    )
+    msg = f"Failed to connect to printer {printer_object.name} at {printer_object.ip_address}"  # noqa: E501
+    raise ElegooConfigFlowConnectionError(msg)
 
 
-async def _async_validate_input(
+async def _async_validate_input(  # noqa: PLR0912
     hass: HomeAssistant,
     user_input: dict[str, Any],
     discovered_printers: list[Printer] | None = None,
@@ -139,7 +139,7 @@ async def _async_validate_input(
             _errors["base"] = "no_printer_found"
     if printer_object:
         try:
-            # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled
+            # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled  # noqa: E501
             validated_printer = await _async_test_connection(
                 hass, printer_object, user_input
             )
@@ -175,7 +175,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self,
-        user_input: dict[str, Any] | None = None,
+        user_input: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> config_entries.ConfigFlowResult:
         """
         Initiate the configuration flow by attempting to discover available Elegoo printers.
@@ -189,10 +189,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         Returns:
             The result of the configuration flow step.
 
-        """
+        """  # noqa: E501
         # Initiate discovery
         elegoo_printer_client = ElegooPrinterClient(
-            "0.0.0.0", logger=LOGGER, session=async_get_clientsession(self.hass)
+            "0.0.0.0",  # noqa: S104
+            logger=LOGGER,
+            session=async_get_clientsession(self.hass),
         )  # IP doesn't matter for discovery
         self.discovered_printers = await self.hass.async_add_executor_job(
             elegoo_printer_client.discover_printer
@@ -337,13 +339,13 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """Handle the configuration of additional options for a discovered Elegoo printer."""
+        """Handle the configuration of additional options for a discovered Elegoo printer."""  # noqa: E501
         _errors = {}
         if user_input is not None and self.selected_printer:
             printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
             printer_to_validate.camera_enabled = user_input[CONF_CAMERA_ENABLED]
             try:
-                # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled
+                # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled  # noqa: E501
                 validated_printer = await _async_test_connection(
                     self.hass, printer_to_validate, user_input
                 )
@@ -383,13 +385,13 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """Handle the configuration of additional options for a discovered Elegoo printer."""
+        """Handle the configuration of additional options for a discovered Elegoo printer."""  # noqa: E501
         _errors = {}
         if user_input is not None and self.selected_printer:
             printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
             printer_to_validate.proxy_enabled = user_input[CONF_PROXY_ENABLED]
             try:
-                # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled
+                # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled  # noqa: E501
                 validated_printer = await _async_test_connection(
                     self.hass, printer_to_validate, user_input
                 )
@@ -447,7 +449,8 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     @classmethod
     @callback
     def async_supports_options_flow(
-        cls, config_entry: config_entries.ConfigEntry
+        cls,
+        config_entry: config_entries.ConfigEntry,  # noqa: ARG003
     ) -> bool:
         """Return options flow support for this handler."""
         return True
@@ -463,7 +466,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         Args:
             config_entry: The configuration entry for which the options are being managed.
 
-        """
+        """  # noqa: E501
         self.config_entry = config_entry
 
     async def async_step_init(
@@ -483,7 +486,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         Returns:
             The result of the configuration flow step.
 
-        """
+        """  # noqa: E501
         _errors = {}
         # Create a dictionary of the current settings by merging data and options.
         # This ensures the form is always populated with the current effective values.

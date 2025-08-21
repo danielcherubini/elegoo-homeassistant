@@ -25,7 +25,14 @@ from homeassistant.loader import async_get_loaded_integration
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 from .api import ElegooPrinterApiClient
-from .const import CONF_PROXY_ENABLED, DOMAIN, LOGGER
+from .const import (
+    CONF_PROXY_ENABLED,
+    CONFIG_VERSION_1,
+    CONFIG_VERSION_2,
+    CONFIG_VERSION_3,
+    DOMAIN,
+    LOGGER,
+)
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
 
@@ -55,7 +62,10 @@ async def async_setup_entry(
     """
     Asynchronously sets up the Elegoo printer integration from a configuration entry.
 
-    Initializes the data update coordinator and printer API client, performs the first data refresh, forwards setup to supported platforms, and registers a listener for entry updates. Raises ConfigEntryNotReady if the printer cannot be reached.
+    Initializes the data update coordinator and printer API client,
+    performs the first data refresh, forwards setup to supported platforms,
+    and registers a listener for entry updates.
+    Raises ConfigEntryNotReady if the printer cannot be reached.
 
     Returns:
         bool: True if the integration is set up successfully.
@@ -75,7 +85,8 @@ async def async_setup_entry(
     )
 
     if client is None:
-        raise ConfigEntryNotReady("Failed to connect to the printer")
+        msg = "Failed to connect to the printer"
+        raise ConfigEntryNotReady(msg)
 
     entry.runtime_data = ElegooPrinterData(
         api=client,
@@ -98,11 +109,10 @@ async def async_unload_entry(
 ) -> bool:
     """Handle removal of an entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        if client := entry.runtime_data.api:
-            await client.elegoo_disconnect()
-            if client.printer and client.printer.proxy_enabled:
-                await client.elegoo_stop_proxy()
+    if unload_ok and (client := entry.runtime_data.api):
+        await client.elegoo_disconnect()
+        if client.printer and client.printer.proxy_enabled:
+            await client.elegoo_stop_proxy()
 
     return unload_ok
 
@@ -115,11 +125,11 @@ async def async_reload_entry(
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def async_migrate_entry(
+async def async_migrate_entry(  # noqa: PLR0911, PLR0912, PLR0915
     hass: HomeAssistant, config_entry: ElegooPrinterConfigEntry
 ) -> bool:
     """Migrate old entry."""
-    if config_entry.version == 1:
+    if config_entry.version == CONFIG_VERSION_1:
         try:
             # Migrating data by removing printer and re-adding it
             config = {
@@ -161,23 +171,25 @@ async def async_migrate_entry(
             LOGGER.error(f"Error migrating config entry: {e}")
             return False
 
-    if config_entry.version == 2:
-        # Migrate to version 3: Update native_unit_of_measurement for remaining_print_time
+    if config_entry.version == CONFIG_VERSION_2:
+        # Migrate to version 3: Update native_unit_of_measurement for remaining_print_time  # noqa: E501
         entity_registry: EntityRegistry = async_get(hass)
         entries = entity_registry.entities.get_entries_for_config_entry_id(
             config_entry.entry_id
         )
         for entry in entries:
-            if entry.device_class == SensorDeviceClass.DURATION:
-                if entry.native_unit_of_measurement == UnitOfTime.SECONDS:
-                    entity_registry.async_update_entity(
-                        entry.entity_id,
-                        native_unit_of_measurement=UnitOfTime.MILLISECONDS,
-                    )
+            if (
+                entry.device_class == SensorDeviceClass.DURATION
+                and entry.native_unit_of_measurement == UnitOfTime.SECONDS
+            ):
+                entity_registry.async_update_entity(
+                    entry.entity_id,
+                    native_unit_of_measurement=UnitOfTime.MILLISECONDS,
+                )
         hass.config_entries.async_update_entry(config_entry, version=3)
         LOGGER.debug("Migration to version 3 successful")
 
-    if config_entry.version == 3:
+    if config_entry.version == CONFIG_VERSION_3:
         LOGGER.debug("Migrating to version 4: updating unique IDs from 'name' to 'id'.")
         try:
             # --- 1. Get Old and New Identifiers ---
@@ -192,7 +204,7 @@ async def async_migrate_entry(
 
             if not old_identifier_name or not new_identifier:
                 LOGGER.error(
-                    "Migration v3->v4 failed: 'name' or 'id' field is missing from config."
+                    "Migration v3->v4 failed: 'name' or 'id' field is missing."
                 )
                 return False
 
@@ -204,7 +216,7 @@ async def async_migrate_entry(
 
             if not old_identifier_slug or not new_identifier:
                 LOGGER.error(
-                    "Migration v3->v4 failed: 'name' or 'id' field is missing from config."
+                    "Migration v3->v4 failed: 'name' or 'id' field is missing."
                 )
                 return False
 
@@ -241,7 +253,7 @@ async def async_migrate_entry(
                 # If it's the camera entity, remove it so it can be recreated cleanly.
                 if entry.domain == "camera":
                     LOGGER.debug(
-                        "Removing old camera entity '%s' to allow for clean re-creation.",
+                        "Removing old camera entity '%s' to allow for clean re-creation.",  # noqa: E501
                         entry.entity_id,
                     )
                     entity_registry.async_remove(entry.entity_id)

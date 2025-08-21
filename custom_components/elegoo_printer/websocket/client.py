@@ -9,7 +9,7 @@ import secrets
 import socket
 import time
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from aiohttp import ClientWebSocketResponse
@@ -42,7 +42,6 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterTimeoutError,
 )
 from custom_components.elegoo_printer.sdcp.models.attributes import PrinterAttributes
-from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
 from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
@@ -56,6 +55,9 @@ from custom_components.elegoo_printer.sdcp.models.status import (
 )
 from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
+if TYPE_CHECKING:
+    from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
+
 logging.getLogger("websocket").setLevel(logging.CRITICAL)
 
 DISCOVERY_TIMEOUT = 5
@@ -68,7 +70,7 @@ class ElegooPrinterClient:
 
     Uses the SDCP Protocol (https://github.com/cbd-tech/SDCP-Smart-Device-Control-Protocol-V3.0.0).
     Includes a local websocket proxy to allow multiple local clients to communicate with one printer.
-    """
+    """  # noqa: E501
 
     def __init__(
         self,
@@ -88,9 +90,8 @@ class ElegooPrinterClient:
 
         """
         if ip_address is None:
-            raise ElegooPrinterConfigurationError(
-                "IP address is required but not provided"
-            )
+            msg = "IP address is required but not provided"
+            raise ElegooPrinterConfigurationError(msg)
         self.ip_address: str = ip_address
         self.printer_websocket: ClientWebSocketResponse | None = None
         self.config = config
@@ -154,7 +155,7 @@ class ElegooPrinterClient:
         """
         await self._send_printer_cmd(CMD_SET_VIDEO_STREAM, {"Enable": int(enable)})
 
-    async def get_printer_video(self, enable: bool = False) -> ElegooVideo:
+    async def get_printer_video(self, *, enable: bool = False) -> ElegooVideo:
         """
         Enable the printer's video stream and retrieve the current video stream information.
 
@@ -164,7 +165,7 @@ class ElegooPrinterClient:
         Returns:
             The current video stream information from the printer.
 
-        """
+        """  # noqa: E501
         await self.set_printer_video_stream(enable=enable)
         msg = f"Sending printer video: {self.printer_data.video.to_dict()}"
         self.logger.debug(msg)
@@ -173,7 +174,7 @@ class ElegooPrinterClient:
     async def async_get_printer_historical_tasks(
         self,
     ) -> dict[str, PrintHistoryDetail | None] | None:
-        """Asynchronously requests the list of historical print tasks from the printer."""
+        """Asynchronously gets the list of historical print tasks from the printer."""
         await self._send_printer_cmd(CMD_RETRIEVE_HISTORICAL_TASKS)
         return self.printer_data.print_history
 
@@ -230,10 +231,11 @@ class ElegooPrinterClient:
 
     def get_current_print_thumbnail(self) -> str | None:
         """
-        Return the thumbnail URL of the current print task, or None if no thumbnail is available.
+        Return the thumbnail URL of the current print task, or None if no thumbnail.
 
         Returns:
-            The URL of the current print task's thumbnail image, or None if there is no active task or thumbnail.
+            The URL of the current print task's thumbnail image,
+            or None if there is no active task or thumbnail.
 
         """
         task = self.get_printer_current_task()
@@ -329,7 +331,7 @@ class ElegooPrinterClient:
         """
         Set the speed of a fan.
 
-        percentage: 0–100
+        percentage: 0 to 100
         """
         pct = max(0, min(100, int(percentage)))
         data = {"TargetFanSpeed": {fan.value: pct}}
@@ -339,7 +341,7 @@ class ElegooPrinterClient:
         """
         Set the print speed.
 
-        percentage: 0–160
+        percentage: 0 to 160
         """
         pct = max(0, min(160, int(percentage)))
         data = {"PrintSpeedPct": pct}
@@ -369,14 +371,13 @@ class ElegooPrinterClient:
 
         Raises:
             ElegooPrinterNotConnectedError: If the printer is not connected.
-            ElegooPrinterConnectionError: If a WebSocket error or timeout occurs during sending.
+            ElegooPrinterConnectionError: If a WebSocket error or timeout occurs.
             OSError: If an operating system error occurs while sending the command.
 
         """
         if not self.is_connected:
-            raise ElegooPrinterNotConnectedError(
-                "Printer not connected, cannot send command."
-            )
+            msg = "Printer not connected, cannot send command."
+            raise ElegooPrinterNotConnectedError(msg)
         ts = int(time.time())
         data = data or {}
         request_id = secrets.token_hex(8)
@@ -420,13 +421,14 @@ class ElegooPrinterClient:
                 async with self._response_lock:
                     self._response_events.pop(request_id, None)
         else:
-            raise ElegooPrinterNotConnectedError("Not connected")
+            msg = "Not connected"
+            raise ElegooPrinterNotConnectedError(msg)
 
     def discover_printer(
         self, broadcast_address: str = DEFAULT_BROADCAST_ADDRESS
     ) -> list[Printer]:
         """
-        Broadcasts a UDP discovery message to locate Elegoo printers or proxies on the local network.
+        Broadcasts a UDP discovery message to locate Elegoo printers or proxies.
 
         Sends a discovery request and collects responses within a timeout period,
         returning a list of discovered printers. If no printers are found or a
@@ -470,7 +472,7 @@ class ElegooPrinterClient:
             msg = f"Discovered {len(discovered_printers)} printer(s)."
             self.logger.debug(msg)
 
-        # Filter out printers on the same IP as the server with "None" or "Proxy" in the name
+        # Filter out printers on the same IP as the server with "None" or "Proxy"
         local_ip = self.get_local_ip()
         return [
             p
@@ -529,7 +531,7 @@ class ElegooPrinterClient:
 
         return None
 
-    async def connect_printer(self, printer: Printer, proxy_enabled: bool) -> bool:
+    async def connect_printer(self, printer: Printer, *, proxy_enabled: bool) -> bool:
         """Establish an asynchronous connection to the Elegoo printer."""
         if self.is_connected:
             self.logger.debug("Already connected")
@@ -539,7 +541,7 @@ class ElegooPrinterClient:
 
         self.printer = printer
         self.printer.proxy_enabled = proxy_enabled
-        msg = f"Connecting to printer: {self.printer.name} at {self.printer.ip_address} proxy_enabled: {proxy_enabled}"
+        msg = f"Connecting to printer: {self.printer.name} at {self.printer.ip_address} proxy_enabled: {proxy_enabled}"  # noqa: E501
         self.logger.info(msg)
 
         url = f"ws://{self.printer.ip_address}:{WEBSOCKET_PORT}/websocket"
@@ -550,7 +552,7 @@ class ElegooPrinterClient:
             )
             self._is_connected = True
             self._listener_task = asyncio.create_task(self._ws_listener())
-            msg = f"Client successfully connected to: {self.printer.name}, via proxy: {proxy_enabled}"
+            msg = f"Client successfully connected to: {self.printer.name}, via proxy: {proxy_enabled}"  # noqa: E501
             self.logger.info(msg)
             return True  # noqa: TRY300
         except (TimeoutError, aiohttp.ClientError) as e:
@@ -574,14 +576,14 @@ class ElegooPrinterClient:
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     self._parse_response(msg.data)
                 elif msg.type == aiohttp.WSMsgType.ERROR:
-                    error_str = f"WebSocket connection error: {self.printer_websocket.exception()}"
+                    error_str = f"WebSocket connection error: {self.printer_websocket.exception()}"  # noqa: E501
                     self.logger.info(error_str)
                     raise ElegooPrinterConnectionError(error_str)  # noqa: TRY301
         except asyncio.CancelledError:
             self.logger.debug("WebSocket listener cancelled.")
         except Exception as e:
             msg = f"WebSocket listener exception: {e}"
-            self.logger.error(msg)
+            self.logger.exception(msg)
             raise ElegooPrinterConnectionError from e
         finally:
             self._is_connected = False
@@ -637,7 +639,7 @@ class ElegooPrinterClient:
         Arguments:
             data: The response data.
 
-        """
+        """  # noqa: E501
         if DEBUG:
             msg = f"response >> \n{json.dumps(data, indent=5)}"
             self.logger.debug(msg)
@@ -667,7 +669,7 @@ class ElegooPrinterClient:
         Arguments:
             data: Dictionary containing the printer status information in JSON-compatible format.
 
-        """
+        """  # noqa: E501
         if DEBUG:
             msg = f"status >> \n{json.dumps(data, indent=5)}"
             self.logger.info(msg)
@@ -691,7 +693,7 @@ class ElegooPrinterClient:
         self.printer_data.attributes = printer_attributes
 
     def _print_history_handler(self, data_data: dict[str, Any]) -> None:
-        """Parse and updates the printer's print history details from the provided data."""
+        """Parse and updates the printer's print history details from the data."""
         history_data_list = data_data.get("HistoryData")
         if history_data_list:
             for task_id in history_data_list:
@@ -726,7 +728,7 @@ class ElegooPrinterClient:
         """
         self.printer_data.video = ElegooVideo(data_data)
 
-    async def _set_response_event(self, request_id: str):
+    async def _set_response_event(self, request_id: str) -> asyncio.Event:
         """Set the event for a given request ID."""
         async with self._response_lock:
             if event := self._response_events.get(request_id):

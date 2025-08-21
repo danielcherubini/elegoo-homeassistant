@@ -13,7 +13,7 @@ from .entity import ElegooPrinterEntity
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    hass: HomeAssistant,  # noqa: ARG001
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
@@ -25,7 +25,7 @@ async def async_setup_entry(
 
     if printer_type == PrinterType.FDM:
         for description in PRINTER_NUMBER_TYPES:
-            entities.extend(ElegooNumber(coordinator, description))
+            entities.append(ElegooNumber(coordinator, description))  # noqa: PERF401
 
     if entities:
         async_add_entities(entities, update_before_add=True)
@@ -59,7 +59,7 @@ class ElegooNumber(ElegooPrinterEntity, NumberEntity):
         self._api = self.coordinator.config_entry.runtime_data.api
 
     @property
-    def native_value(self):
+    def native_value(self) -> None:
         """Returns the current value."""
         if self.coordinator.data:
             return self.entity_description.value_fn(self.coordinator.data)

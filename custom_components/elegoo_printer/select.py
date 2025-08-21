@@ -13,7 +13,7 @@ from .entity import ElegooPrinterEntity
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    hass: HomeAssistant,  # noqa: ARG001
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
@@ -52,13 +52,13 @@ class ElegooPrintSpeedSelect(ElegooPrinterEntity, SelectEntity):
         self._api = self.coordinator.config_entry.runtime_data.api
 
     @property
-    def current_option(self):
+    def current_option(self) -> None:
         """Returns the current selected option."""
         if self.coordinator.data:
             return self.entity_description.current_option_fn(self.coordinator.data)
         return None
 
-    async def async_select_option(self, option: str):
+    async def async_select_option(self, option: str) -> None:
         """Asynchronously selects an option."""
         value = self.entity_description.options_map.get(option)
         if self._api:

@@ -1,6 +1,7 @@
 """Camera platform for Elegoo printer."""
 
 from http import HTTPStatus
+from typing import TYPE_CHECKING
 
 from aiohttp import web
 from haffmpeg.camera import CameraMjpeg
@@ -34,9 +35,11 @@ from custom_components.elegoo_printer.sdcp.models.enums import (
     PrinterType,
 )
 from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
-from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 from .coordinator import ElegooDataUpdateCoordinator
+
+if TYPE_CHECKING:
+    from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 
 async def async_setup_entry(
@@ -68,7 +71,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        hass: HomeAssistant,  # noqa: ARG002
         coordinator: ElegooDataUpdateCoordinator,
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
@@ -103,7 +106,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug(
-                f"stream_source: Video is OK, using printer video url: {video.video_url}"
+                f"stream_source: Video is OK, printer video url: {video.video_url}"
             )
             return video.video_url
 
@@ -142,7 +145,9 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         return await self._get_stream_url()
 
     async def async_camera_image(
-        self, width: int | None = None, height: int | None = None
+        self,
+        width: int | None = None,  # noqa: ARG002
+        height: int | None = None,  # noqa: ARG002
     ) -> bytes | None:
         """Return a still image response from the camera."""
         stream_url = await self._get_stream_url()
@@ -166,7 +171,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         return (
             super().available
             and self._printer_client.printer_data.attributes.num_video_stream_connected
-            <= 2
+            <= 2  # noqa: PLR2004
         )
 
 
@@ -175,7 +180,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     def __init__(
         self,
-        hass: HomeAssistant,
+        hass: HomeAssistant,  # noqa: ARG002
         coordinator: ElegooDataUpdateCoordinator,
         description: ElegooPrinterSensorEntityDescription,
     ) -> None:
@@ -192,7 +197,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             self,
             name=f"{description.name}",
             mjpeg_url=f"http://{PROXY_HOST}:{VIDEO_PORT}/{VIDEO_ENDPOINT}",
-            still_image_url=None,  # This camera does not have a separate still image URL
+            still_image_url=None,  # This camera does not have a separate still URL
             unique_id=coordinator.generate_unique_id(description.key),
         )
 
@@ -239,7 +244,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Asynchronously retrieves the current MJPEG stream URL for the printer camera."""
+        """Asynchronously gets the current MJPEG stream URL for the printer camera."""
         await self._update_stream_url()
         if not self._mjpeg_url:
             return None

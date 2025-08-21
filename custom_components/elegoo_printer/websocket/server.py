@@ -25,7 +25,7 @@ from custom_components.elegoo_printer.sdcp.models.printer import Printer
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-INADDR_ANY = "0.0.0.0"
+INADDR_ANY = "0.0.0.0"  # noqa: S104
 
 
 class ElegooPrinterServer:
@@ -36,7 +36,7 @@ class ElegooPrinterServer:
     This server runs on the main Home Assistant event loop.
     """
 
-    _instances: list[ElegooPrinterServer] = []
+    _instances: list[ElegooPrinterServer] = []  # noqa: RUF012
 
     def __init__(
         self,
@@ -55,9 +55,8 @@ class ElegooPrinterServer:
         self.datagram_transport: asyncio.DatagramTransport | None = None
 
         if not self.printer.ip_address:
-            raise ConfigEntryNotReady(
-                "Printer IP address is not set. Cannot start proxy server."
-            )
+            msg = "Printer IP address is not set. Cannot start proxy server."
+            raise ConfigEntryNotReady(msg)
 
     @classmethod
     async def async_create(
@@ -80,8 +79,9 @@ class ElegooPrinterServer:
     async def start(self) -> None:
         """Start the proxy server on the Home Assistant event loop."""
         if not self._check_ports_are_available():
-            self.logger.info("Required proxy ports are in use; failing initialization.")
-            raise ConfigEntryNotReady("Proxy server ports are in use.")
+            msg = "Proxy server ports are in use."
+            self.logger.info(msg)
+            raise ConfigEntryNotReady(msg)
 
         msg = f"Initializing proxy server for remote printer {self.printer.ip_address}"
         self.logger.info(msg)
@@ -280,7 +280,7 @@ class ElegooPrinterServer:
                             elif message.type == WSMsgType.CLOSE:
                                 break
                             elif message.type == WSMsgType.ERROR:
-                                msg = f"WebSocket error in {direction}: {source.exception()}"
+                                msg = f"WebSocket error in {direction}: {source.exception()}"  # noqa: E501
                                 self.logger.error(msg)
                                 break
                     except Exception:

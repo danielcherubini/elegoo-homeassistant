@@ -23,6 +23,8 @@ from homeassistant.const import (
 )
 from homeassistant.helpers.typing import StateType
 
+from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
+
 from .sdcp.models.enums import (
     ElegooErrorStatusReason,
     ElegooMachineStatus,
@@ -30,17 +32,18 @@ from .sdcp.models.enums import (
     ElegooPrintStatus,
     ElegooVideoStatus,
 )
+from .sdcp.models.printer import PrinterData
 
 
-def _has_valid_current_coords(printer_data) -> bool:
+def _has_valid_current_coords(printer_data: PrinterData) -> bool:
     """Check if current_coord is valid."""
     if printer_data.status.current_coord is None:
         return False
     coords = printer_data.status.current_coord.split(",")
-    return len(coords) == 3
+    return len(coords) == 3  # noqa: PLR2004
 
 
-def _get_current_coord_value(printer_data, index: int) -> float | None:
+def _get_current_coord_value(printer_data: PrinterData, index: int) -> float | None:
     """Get a coordinate value from current_coord."""
     if not _has_valid_current_coords(printer_data):
         return None
@@ -117,7 +120,7 @@ class ElegooPrinterFanEntityDescription(
     extra_attributes: Callable[..., dict] = lambda _: {}
     icon_fn: Callable[..., str] = lambda _: "mdi:fan"
     percentage_fn: Callable[..., int | None] = lambda _: None
-    supported_features: FanEntityFeature = FanEntityFeature(0)
+    supported_features: FanEntityFeature = FanEntityFeature(0)  # noqa: RUF009
 
 
 @dataclass(kw_only=True)
@@ -146,7 +149,7 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:camera",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.attributes.num_video_stream_connected,
+        value_fn=lambda printer_data: printer_data.attributes.num_video_stream_connected,  # noqa: E501
     ),
     ElegooPrinterSensorEntityDescription(
         key="video_stream_max",
@@ -188,7 +191,7 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:cloud-check",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.attributes.num_cloud_sdcp_services_connected,
+        value_fn=lambda printer_data: printer_data.attributes.num_cloud_sdcp_services_connected,  # noqa: E501
     ),
     ElegooPrinterSensorEntityDescription(
         key="max_cloud_sdcp_services_allowed",
@@ -196,7 +199,7 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:cloud-lock",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.attributes.max_cloud_sdcp_services_allowed,
+        value_fn=lambda printer_data: printer_data.attributes.max_cloud_sdcp_services_allowed,  # noqa: E501
     ),
 )
 
@@ -365,7 +368,7 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:file",
         device_class=SensorDeviceClass.ENUM,
         options=[status.name.lower() for status in ElegooPrintStatus],
-        value_fn=lambda printer_data: printer_data.status.print_info.status.name.lower(),
+        value_fn=lambda printer_data: printer_data.status.print_info.status.name.lower(),  # noqa: E501
         available_fn=lambda printer_data: printer_data.status.print_info.status
         is not None,
     ),
@@ -377,7 +380,7 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENUM,
         entity_category=EntityCategory.DIAGNOSTIC,
         options=[error.name.lower() for error in ElegooPrintError],
-        value_fn=lambda printer_data: printer_data.status.print_info.error_number.name.lower(),
+        value_fn=lambda printer_data: printer_data.status.print_info.error_number.name.lower(),  # noqa: E501
         available_fn=lambda printer_data: printer_data.status.print_info.error_number
         is not None,
     ),
@@ -515,7 +518,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         # Correct path to auxiliary_fan inside the nested object
         available_fn=lambda printer_data: printer_data.status.current_fan_speed
         is not None,
-        value_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan,
+        value_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan,  # noqa: E501
     ),
     # --- Box/Enclosure Fan Speed Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -659,17 +662,17 @@ PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
 )
 
 
-async def _pause_print_action(client):
+async def _pause_print_action(client: ElegooPrinterClient) -> None:
     """Pause print action."""
     return await client.print_pause()
 
 
-async def _resume_print_action(client):
+async def _resume_print_action(client: ElegooPrinterClient) -> None:
     """Resume print action."""
     return await client.print_resume()
 
 
-async def _stop_print_action(client):
+async def _stop_print_action(client: ElegooPrinterClient) -> None:
     """Stop print action."""
     return await client.print_stop()
 
@@ -712,7 +715,7 @@ FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
         | FanEntityFeature.TURN_OFF,
         value_fn=lambda printer_data: printer_data.status.current_fan_speed.model_fan
         > 0,
-        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.model_fan,
+        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.model_fan,  # noqa: E501
     ),
     ElegooPrinterFanEntityDescription(
         key="auxiliary_fan",
@@ -721,9 +724,9 @@ FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
         supported_features=FanEntityFeature.SET_SPEED
         | FanEntityFeature.TURN_ON
         | FanEntityFeature.TURN_OFF,
-        value_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan
+        value_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan  # noqa: E501
         > 0,
-        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan,
+        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan,  # noqa: E501
     ),
     ElegooPrinterFanEntityDescription(
         key="box_fan",
@@ -733,6 +736,6 @@ FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
         | FanEntityFeature.TURN_ON
         | FanEntityFeature.TURN_OFF,
         value_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan > 0,
-        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan,
+        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan,  # noqa: E501
     ),
 )

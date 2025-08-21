@@ -16,7 +16,7 @@ class PrintHistoryDetail:
         The input dictionary should contain keys corresponding to print job attributes such as thumbnail,
         task name, timing, status, slice information, print layers, task ID, MD5 hash, current layer volume,
         time-lapse video details, and error status reason. Missing keys default to None or zero where applicable.
-        """
+        """  # noqa: E501
         self.thumbnail: str | None = data.get("Thumbnail")
         self.task_name: str | None = data.get("TaskName")
         begin_time_ts = data.get("BeginTime")
@@ -52,7 +52,7 @@ class PrintHistoryDetail:
         )
 
     def __repr__(self) -> str:
-        """Return a string representation of the instance's attributes as a dictionary."""
+        """Return a string representation of the instance's attributes as a dict."""
         return str(self.__dict__)
 
 
@@ -112,9 +112,9 @@ class SliceInformation:
         normal_layer_rest_time_after_lift (int): The rest time after lift of the normal layers.
         normal_layer_rest_time_before_lift (int): The rest time before lift of the normal layers.
 
-    """
+    """  # noqa: E501
 
-    def __init__(self, data: dict[str, Any]) -> None:
+    def __init__(self, data: dict[str, Any]) -> None:  # noqa: PLR0915
         """
         Initialize a SliceInformation object.
 

@@ -5,8 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.fan import FanEntity, FanEntityFeature
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooFan,
@@ -17,12 +15,15 @@ from .definitions import FANS, ElegooPrinterFanEntityDescription
 from .entity import ElegooPrinterEntity
 
 if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
     from .coordinator import ElegooDataUpdateCoordinator
     from .data import ElegooPrinterConfigEntry
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    hass: HomeAssistant,  # noqa: ARG001
     entry: ElegooPrinterConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
@@ -59,8 +60,8 @@ class ElegooPrinterFan(ElegooPrinterEntity, FanEntity):
     async def async_turn_on(
         self,
         percentage: int | None = None,
-        preset_mode: str | None = None,
-        **kwargs: Any,
+        preset_mode: str | None = None,  # noqa: ARG002
+        **kwargs: Any,  # noqa: ARG002
     ) -> None:
         """Turn the fan on."""
         if percentage is None:
@@ -70,7 +71,7 @@ class ElegooPrinterFan(ElegooPrinterEntity, FanEntity):
         )
         await self.coordinator.async_request_refresh()
 
-    async def async_turn_off(self, **kwargs: Any) -> None:
+    async def async_turn_off(self, **kwargs: Any) -> None:  # noqa: ARG002
         """Turn the fan off."""
         await self.coordinator.config_entry.runtime_data.api.set_fan_speed(
             0, ElegooFan.from_key(self.entity_description.key)
@@ -100,7 +101,7 @@ class ElegooPrinterFan(ElegooPrinterEntity, FanEntity):
         percentage = self.percentage
         if percentage == 0:
             return "Off"
-        if percentage == 100:
+        if percentage == 100:  # noqa: PLR2004
             return "On"
         return None
 

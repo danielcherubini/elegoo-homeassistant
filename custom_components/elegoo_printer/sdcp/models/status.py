@@ -26,7 +26,8 @@ class LightStatus:
         Initialize a LightStatus instance with secondary and RGB light values.
 
         Arguments:
-            data (dict[str, Any] | None): Optional dictionary containing "SecondLight" and "RgbLight" keys. Defaults to all lights off if not provided.
+            data (dict[str, Any] | None): Optional dictionary containing "SecondLight"
+            and "RgbLight" keys. Defaults to all lights off if not provided.
 
         """
         if data is None:
@@ -36,10 +37,10 @@ class LightStatus:
 
     def to_dict(self) -> dict[str, Any]:
         """
-        Return a dictionary representation of the LightStatus instance in the original JSON format.
+        Return a dictionary representation of the LightStatus instance.
 
         Returns:
-            dict: A dictionary with keys "LightStatus", "SecondLight", and "RgbLight" reflecting the current light status.
+            dict: A dictionary with keys "LightStatus", "SecondLight", and "RgbLight".
 
         """
         return {
@@ -50,14 +51,14 @@ class LightStatus:
         }
 
     def __repr__(self) -> str:
-        """Return a developer-oriented string representation of the LightStatus instance, showing the values of second_light and rgb_light."""
+        """Return a string representation of the LightStatus instance."""
         return (
             f"LightStatus(second_light={self.second_light}, rgb_light={self.rgb_light})"
         )
 
     def __str__(self) -> str:
-        """Return a user-friendly string describing the secondary light status and RGB light values."""
-        return f"Secondary Light: {'On' if self.second_light else 'Off'}, RGB: {self.rgb_light}"
+        """Return a string describing the secondary light status and RGB light values."""  # noqa: E501
+        return f"Secondary Light: {'On' if self.second_light else 'Off'}, RGB: {self.rgb_light}"  # noqa: E501
 
 
 class PrintInfo:
@@ -95,7 +96,7 @@ class PrintInfo:
             printer_type: (PrinterType, optional): The type of printer.
             current_status: (ElegooMachineStatus, optional): The current status of the printer.
 
-        """
+        """  # noqa: E501
         if data is None:
             data = {}
         status_int: int = data.get("Status", 0)

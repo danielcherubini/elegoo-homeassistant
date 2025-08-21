@@ -95,7 +95,7 @@ class PrinterAttributes:
     >>> printer_attributes = PrinterAttributes.from_json(printer_data_json)
     >>> print(printer_attributes.name)  # Output: PrinterName
 
-    """
+    """  # noqa: E501
 
     def __init__(
         self, data: dict[str, Any] | None = None

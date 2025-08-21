@@ -43,7 +43,7 @@ async def main() -> None:
                     printer[0].proxy_enabled,
                 )
                 connected = await elegoo_printer.connect_printer(
-                    printer[0], printer[0].proxy_enabled
+                    printer[0], proxy_enabled=printer[0].proxy_enabled
                 )
                 if connected:
                     logger.debug("Polling Started")
