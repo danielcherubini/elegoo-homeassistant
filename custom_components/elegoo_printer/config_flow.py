@@ -151,7 +151,7 @@ async def _async_validate_input(
         except PlatformNotReady as exception:
             LOGGER.error(exception)
             _errors["base"] = "connection"
-        except (OSError, Exception) as exception:
+        except OSError as exception:
             LOGGER.exception(exception)
             _errors["base"] = "unknown"
     else:
@@ -357,7 +357,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             except PlatformNotReady as exception:
                 LOGGER.error(exception)
                 _errors["base"] = "connection"
-            except (OSError, Exception) as exception:
+            except OSError as exception:
                 LOGGER.exception(exception)
                 _errors["base"] = "unknown"
 
@@ -403,7 +403,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             except PlatformNotReady as exception:
                 LOGGER.error(exception)
                 _errors["base"] = "connection"
-            except (OSError, Exception) as exception:
+            except OSError as exception:
                 LOGGER.exception(exception)
                 _errors["base"] = "unknown"
 
@@ -506,7 +506,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             except PlatformNotReady as exception:
                 LOGGER.error(exception)
                 _errors["base"] = "connection"
-            except (OSError, Exception) as exception:
+            except OSError as exception:
                 LOGGER.exception(exception)
                 _errors["base"] = "unknown"
 

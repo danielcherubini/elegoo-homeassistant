@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.httpx_client import get_async_client
 from PIL import Image as PILImage
+from PIL import UnidentifiedImageError
 
 from .const import CONF_PROXY_ENABLED, LOGGER
 from .sdcp.models.elegoo_image import ElegooImage
@@ -81,7 +82,7 @@ class ElegooPrinterApiClient:
                 )
                 printer = self.server.get_printer()
                 printer.proxy_enabled = proxy_server_enabled
-            except Exception as e:
+            except (ConnectionError, TimeoutError) as e:
                 logger.warning(
                     "Failed to start proxy server: %s. Falling back to direct connection.",
                     e,
@@ -110,7 +111,7 @@ class ElegooPrinterApiClient:
                 return None
             logger.info("Polling Started")
             return self  # noqa: TRY300
-        except Exception:
+        except (ConnectionError, TimeoutError):
             if self.server:
                 await self.server.stop()
             if self.client:
@@ -225,19 +226,21 @@ class ElegooPrinterApiClient:
                         content_type=content_type or "image/png",
                     )
 
-                with PILImage.open(BytesIO(response.content)) as img:
-                    with BytesIO() as output:
-                        rgb_img = img.convert("RGB")
-                        rgb_img.save(output, format="PNG")
-                        png_bytes = output.getvalue()
-                        LOGGER.debug("get_thumbnail converted image to png")
-                        return ElegooImage(
-                            image_url=task.thumbnail,
-                            image_bytes=png_bytes,
-                            last_updated_timestamp=task.begin_time.timestamp(),
-                            content_type="image/png",
-                        )
-            except Exception as e:
+                with (
+                    PILImage.open(BytesIO(response.content)) as img,
+                    BytesIO() as output,
+                ):
+                    rgb_img = img.convert("RGB")
+                    rgb_img.save(output, format="PNG")
+                    png_bytes = output.getvalue()
+                    LOGGER.debug("get_thumbnail converted image to png")
+                    return ElegooImage(
+                        image_url=task.thumbnail,
+                        image_bytes=png_bytes,
+                        last_updated_timestamp=task.begin_time.timestamp(),
+                        content_type="image/png",
+                    )
+            except (ConnectionError, TimeoutError, UnidentifiedImageError) as e:
                 LOGGER.error("Error fetching thumbnail: %s", e)
                 return None
 
@@ -318,7 +321,7 @@ class ElegooPrinterApiClient:
                     printer, logger=self._logger, hass=self.hass, session=session
                 )
                 printer = self.server.get_printer()
-            except Exception as e:
+            except (ConnectionError, TimeoutError) as e:
                 self._logger.error("Failed to (re)create proxy server: %s", e)
                 self.server = None
 

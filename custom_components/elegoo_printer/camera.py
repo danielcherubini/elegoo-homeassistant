@@ -154,7 +154,7 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
                 self.hass,
                 input_source=stream_url,
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LOGGER.error(
                 "Failed to get camera image via ffmpeg (ffmpeg may be missing): %s", e
             )

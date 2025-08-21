@@ -479,7 +479,7 @@ class ElegooPrinterClient:
                 # Doesn't have to be reachable
                 s.connect((self.ip_address or DEFAULT_FALLBACK_IP, 1))
                 return s.getsockname()[0]
-        except Exception:
+        except (socket.gaierror, OSError):
             return "127.0.0.1"
 
     def _save_discovered_printer(self, data: bytes) -> Printer | None:

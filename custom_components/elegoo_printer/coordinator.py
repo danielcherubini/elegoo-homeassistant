@@ -69,7 +69,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
 
             try:
                 await self.config_entry.runtime_data.api.reconnect()
-            except Exception as recon_e:
+            except (ConnectionError, TimeoutError) as recon_e:
                 LOGGER.warning("Error during reconnect attempt: %s", recon_e)
 
             raise UpdateFailed(f"Failed to communicate with printer: {e}") from e

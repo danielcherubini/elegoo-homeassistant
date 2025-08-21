@@ -155,7 +155,7 @@ async def async_migrate_entry(
             else:
                 LOGGER.error("Config migration failed, no printer found")
                 return False
-        except Exception as e:
+        except (ConnectionError, IndexError, KeyError) as e:
             LOGGER.error(f"Error migrating config entry: {e}")
             return False
 
@@ -267,7 +267,7 @@ async def async_migrate_entry(
                 "Migration to version 4 successful for printer ID %s", new_identifier
             )
 
-        except Exception as e:
+        except (KeyError, ValueError) as e:
             LOGGER.error(
                 "Error migrating config entry to version 4: %s", e, exc_info=True
             )
