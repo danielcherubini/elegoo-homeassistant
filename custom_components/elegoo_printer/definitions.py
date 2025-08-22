@@ -451,18 +451,6 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         if printer_data and printer_data.status
         else None,
     ),
-    # --- Target Enclosure/Box Temperature Sensor ---
-    ElegooPrinterSensorEntityDescription(
-        key="temp_target_box",
-        name="Box Target Temp",
-        icon="mdi:thermometer",
-        device_class=SensorDeviceClass.TEMPERATURE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda printer_data: printer_data.status.temp_target_box
-        if printer_data and printer_data.status
-        else None,
-    ),
     # --- Nozzle Temperature Sensor ---
     ElegooPrinterSensorEntityDescription(
         key="nozzle_temp",
