@@ -118,16 +118,3 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         await self._elegoo_printer_client.set_light_status(light_status)
 
         await self.coordinator.async_request_refresh()
-
-    @property
-    def available(self) -> bool:
-        """
-        Return whether the light entity is currently available.
-
-        If the entity description provides an availability function,
-        uses it with the current light status;
-        otherwise, falls back to the base class availability check.
-        """
-        if not super().available:
-            return False
-        return self.entity_description.available_fn(self.light_status)

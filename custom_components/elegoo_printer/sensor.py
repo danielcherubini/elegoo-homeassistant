@@ -100,12 +100,3 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         if self.coordinator.data:
             return self.entity_description.value_fn(self.coordinator.data)
         return None
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return (
-            super().available
-            and self.coordinator.data
-            and self.entity_description.available_fn(self.coordinator.data)
-        )

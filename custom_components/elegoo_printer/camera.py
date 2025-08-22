@@ -14,6 +14,7 @@ from homeassistant.components.mjpeg.camera import MjpegCamera
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_stream
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from propcache.api import cached_property
 
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
@@ -94,14 +95,21 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
             "-rtsp_transport udp -fflags nobuffer -err_detect ignore_err"
         )
 
-    @property
+    def _is_over_capacity(self) -> bool:
+        """Check if the printer is over capacity."""
+        attrs = self._printer_client.printer_data.attributes
+        num_connected = getattr(attrs, "num_video_stream_connected", 0) or 0
+        max_allowed = getattr(attrs, "max_video_stream_allowed", 0) or 0
+        return num_connected >= max_allowed
+
+    @cached_property
     def supported_features(self) -> CameraEntityFeature:
         """Return supported features."""
         return self._attr_supported_features
 
     async def _get_stream_url(self) -> str | None:
         """Get the stream URL, from cache if recent."""
-        if not self._printer_client.is_connected:
+        if (not self._printer_client.is_connected) or self._is_over_capacity():
             return None
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
@@ -165,15 +173,6 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
             )
             return None
 
-    @property
-    def available(self) -> bool:
-        """Return whether the camera entity is currently available."""
-        return (
-            super().available
-            and self._printer_client.printer_data.attributes.num_video_stream_connected
-            <= 2  # noqa: PLR2004
-        )
-
 
 class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     """Representation of an MjpegCamera."""
@@ -207,6 +206,13 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             coordinator.config_entry.runtime_data.api.client
         )
 
+    def _is_over_capacity(self) -> bool:
+        """Check if the printer is over capacity."""
+        attrs = self._printer_client.printer_data.attributes
+        num_connected = getattr(attrs, "num_video_stream_connected", 0) or 0
+        max_allowed = getattr(attrs, "max_video_stream_allowed", 0) or 0
+        return num_connected >= max_allowed
+
     @staticmethod
     def _normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
         """
@@ -223,7 +229,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
 
     async def _update_stream_url(self) -> None:
         """Update the MJPEG stream URL."""
-        if not self._printer_client.is_connected:
+        if (not self._printer_client.is_connected) or self._is_over_capacity():
             return
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
@@ -246,7 +252,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     ) -> bytes | None:
         """Asynchronously gets the current MJPEG stream URL for the printer camera."""
         await self._update_stream_url()
-        if not self._mjpeg_url:
+        if (not self._mjpeg_url) or self._is_over_capacity():
             return None
         return await super().async_camera_image(width=width, height=height)
 
@@ -256,16 +262,3 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         """Generate an HTTP MJPEG stream from the camera."""
         await self._update_stream_url()
         return await super().handle_async_mjpeg_stream(request)
-
-    @property
-    def available(self) -> bool:
-        """
-        Return whether the camera entity is currently available.
-
-        If the entity description specifies an availability function, this function is
-        used to determine availability based on the printer's video data. Otherwise,
-        falls back to the default availability check.
-        """
-        return super().available and self.entity_description.available_fn(
-            self._printer_client.printer_data.video
-        )
