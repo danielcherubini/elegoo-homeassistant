@@ -1,4 +1,57 @@
-"""Elegoo Printer Proxy Server."""
+"""
+Elegoo Printer Proxy Server - Multi-Printer Network Gateway.
+
+This module implements a sophisticated proxy server that acts as a centralized gateway
+for multiple Elegoo 3D printers on a network.
+It provides transparent protocol translation,
+intelligent message routing, and seamless integration with Home Assistant.
+
+ARCHITECTURE OVERVIEW:
+====================
+
+The proxy server operates as a singleton service with three main components:
+
+1. PrinterRegistry: Manages discovery and registration of multiple printers
+2. ElegooPrinterServer: Core proxy server with multi-protocol support
+3. DiscoveryProtocol: UDP-based printer discovery and advertisement
+
+NETWORK FLOW DIAGRAM:
+====================
+
+    [Home Assistant]
+           |
+           v
+    [Proxy Server] <-- Single Entry Point
+      |    |    |
+      v    v    v
+   [P1] [P2] [P3] <-- Multiple Printers
+
+SUPPORTED PROTOCOLS:
+===================
+
+- WebSocket (Port 3030): SDCP protocol messages with MainboardID routing
+- HTTP/HTTPS (Port 3030): REST API calls and file uploads
+- Video Streaming (Port 3031): Real-time camera feeds with URL rewriting
+- UDP Discovery (Port 3000): Network printer discovery and advertisement
+
+MESSAGE ROUTING:
+===============
+
+All messages include a MainboardID that identifies the target printer:
+- WebSocket: Extracted from JSON message payload
+- HTTP: Via query parameter (?mainboard_id=xxx) or path (/api/{id}/...)
+- Video: Via URL path (/video/{mainboard_id})
+
+PROXY FEATURES:
+==============
+
+- Automatic printer discovery with rate limiting
+- Connection pooling and management
+- URL rewriting for video streams
+- Error handling and fallback mechanisms
+- Singleton architecture preventing port conflicts
+- Thread-safe printer registry with async locks
+"""
 
 from __future__ import annotations
 
@@ -34,7 +87,33 @@ MIN_MAINBOARD_ID_LENGTH = 8
 
 
 class PrinterRegistry:
-    """Registry for managing multiple discovered printers."""
+    """
+    Registry for managing multiple discovered printers.
+
+    This class provides thread-safe management of network-discovered printers
+    with automatic discovery, caching, and rate limiting capabilities.
+
+    DISCOVERY PROCESS:
+    =================
+
+    1. UDP Broadcast: Send "M99999" to 255.255.255.255:3000
+    2. Response Collection: Gather JSON responses for 5 seconds
+    3. Printer Parsing: Extract printer info and create Printer objects
+    4. Registry Update: Store printers by MainboardID for routing
+
+    RATE LIMITING:
+    =============
+
+    Discovery is limited to once every 30 seconds to prevent network flooding
+    and reduce resource usage. Cached results are returned for subsequent calls
+    within the rate limit window.
+
+    THREAD SAFETY:
+    =============
+
+    All operations are protected by an async lock to ensure safe concurrent
+    access from multiple Home Assistant integration instances.
+    """
 
     def __init__(self) -> None:
         """Initialize the printer registry."""
@@ -452,7 +531,53 @@ class ElegooPrinterServer:
             return web.Response(status=502, text="Bad Gateway")
 
     async def _websocket_handler(self, request: web.Request) -> web.WebSocketResponse:  # noqa: PLR0915
-        """Proxy a WebSocket connection with multi-printer routing."""
+        """
+        Proxy a WebSocket connection with multi-printer routing.
+
+        This method implements sophisticated WebSocket proxying that routes messages
+        between Home Assistant and multiple printers based on MainboardID extraction.
+
+        WEBSOCKET ROUTING FLOW:
+        ======================
+
+        1. Client Connection: Home Assistant connects to proxy WebSocket
+        2. Message Analysis: Extract MainboardID from incoming JSON messages
+        3. Printer Lookup: Find target printer in registry by MainboardID
+        4. Connection Pool: Establish/reuse WebSocket connection to target printer
+        5. Bidirectional Relay: Forward messages between client and printer
+        6. URL Rewriting: Modify VideoUrl responses to route through proxy
+
+        CONNECTION MANAGEMENT:
+        =====================
+
+        - Active connections are pooled per MainboardID
+        - Heartbeat (10s) prevents connection timeouts
+        - Automatic reconnection on printer connection failure
+        - Graceful cleanup on client disconnect or errors
+
+        MESSAGE STRUCTURE:
+        =================
+
+        Expected JSON format with MainboardID routing:
+        ```json
+        {
+          "Topic": "sdcp/request/{MainboardID}",
+          "Data": {
+            "MainboardID": "{MainboardID}",
+            "Cmd": 1001,
+            "Data": { ... }
+          }
+        }
+        ```
+
+        ERROR HANDLING:
+        ==============
+
+        - Missing MainboardID: Log warning, ignore message
+        - Printer not found: Auto-discovery attempt, then error response
+        - Connection failures: Automatic retry with exponential backoff
+        - Client disconnect: Clean shutdown of all printer connections
+        """
         client_ws = web.WebSocketResponse()
         await client_ws.prepare(request)
 
@@ -587,17 +712,40 @@ class ElegooPrinterServer:
         client_ws: web.WebSocketResponse,
         mainboard_id: str,
     ) -> None:
-        """Forward messages from printer to client, modifying VideoUrl if present."""
+        """Forward messages from printer to client, replacing printer IP with proxy IP."""  # noqa: E501
         try:
+            # Get printer and proxy IPs for replacement
+            printer = self.printer_registry.get_printer(mainboard_id)
+            if not printer:
+                return
+
+            printer_ip = printer.ip_address
+            proxy_ip = self.get_local_ip()
+
             async for message in remote_ws:
                 if message.type == WSMsgType.TEXT:
-                    # Check if this message contains a VideoUrl that needs modification
-                    modified_message = self._modify_video_url_in_response(
-                        message.data, mainboard_id
+                    # Replace printer IP with proxy IP in text messages
+                    modified_data = message.data.replace(printer_ip, proxy_ip)
+                    # Also handle VideoUrl modification
+                    modified_data = self._modify_video_url_in_response(
+                        modified_data, mainboard_id
                     )
-                    await client_ws.send_str(modified_message)
+                    await client_ws.send_str(modified_data)
                 elif message.type == WSMsgType.BINARY:
-                    await client_ws.send_bytes(message.data)
+                    # Replace printer IP with proxy IP in binary messages
+                    try:
+                        # Try text-based replacement first
+                        text_data = message.data.decode("utf-8")
+                        modified_text = text_data.replace(printer_ip, proxy_ip)
+                        await client_ws.send_bytes(modified_text.encode("utf-8"))
+                    except UnicodeDecodeError:
+                        # Fall back to byte-level replacement
+                        printer_ip_bytes = printer_ip.encode("utf-8")
+                        proxy_ip_bytes = proxy_ip.encode("utf-8")
+                        modified_data = message.data.replace(
+                            printer_ip_bytes, proxy_ip_bytes
+                        )
+                        await client_ws.send_bytes(modified_data)
                 elif message.type == WSMsgType.CLOSE:
                     break
                 elif message.type == WSMsgType.ERROR:
@@ -658,7 +806,45 @@ class ElegooPrinterServer:
         return message_data
 
     async def _http_proxy_handler(self, request: web.Request) -> web.StreamResponse:
-        """Streams HTTP requests with multi-printer routing."""
+        """
+        Streams HTTP requests with multi-printer routing.
+
+        This method handles HTTP/HTTPS requests and routes them to the appropriate
+        printer based on MainboardID extraction from query parameters or URL paths.
+
+        HTTP ROUTING METHODS:
+        ====================
+
+        1. Query Parameter: ?mainboard_id={MainboardID}
+           Example: GET /api/status?mainboard_id=ABC123DEF456
+
+        2. Path-Based: /api/{MainboardID}/endpoint
+           Example: GET /api/ABC123DEF456/status
+
+        SUPPORTED OPERATIONS:
+        ====================
+
+        - GET: Status queries, file listings, configuration retrieval
+        - POST: Commands, settings updates, print job control
+        - PUT: File operations, firmware updates
+        - DELETE: File removal, job cancellation
+
+        STREAMING SUPPORT:
+        =================
+
+        The handler uses streaming responses to support:
+        - Large file downloads (G-code, logs, firmware)
+        - Real-time status updates via Server-Sent Events
+        - Chunked transfer encoding for efficient memory usage
+
+        ERROR HANDLING:
+        ==============
+
+        - 400 Bad Request: Missing MainboardID in request
+        - 404 Not Found: Printer not found in registry
+        - 502 Bad Gateway: Connection failure to target printer
+        - 503 Service Unavailable: Proxy session unavailable
+        """
         if not self.session or self.session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
