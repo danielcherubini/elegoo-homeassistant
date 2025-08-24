@@ -58,8 +58,8 @@ variables:
   notification_group: >-
     {{ device_attr(printer_device, 'name') | slugify }}
   # Get other entities from the same device
-  remaining_print_time_entity: >-
-    {{ device_entities(printer_device) | select('search', '_remaining_print_time') |
+  end_time_entity: >-
+    {{ device_entities(printer_device) | select('search', '_end_time') |
     first }}
   file_name_entity: >-
     {{ device_entities(printer_device) | select('search', '_file_name') |
@@ -116,8 +116,7 @@ action:
             message: "{{ states(file_name_entity)|default('Unknown file', true) }}"
             data:
               chronometer: true
-              when: "{{ (states(remaining_print_time_entity)|float(0) * 60)|int if remaining_print_time_entity != none else 0 }}"
-              when_relative: true
+              when: "{{ as_timestamp(states(end_time_entity))|int if end_time_entity != none and states(end_time_entity) not in ['unknown', 'unavailable'] else 0 }}"
               progress: "{{ states(percent_complete_entity)|int }}"
               progress_max: 100
               image: "{{ ('/api/camera_proxy/' ~ camera_entity) if (camera_entity|default('', true)) != '' else '' }}"
