@@ -18,7 +18,6 @@ from propcache.api import cached_property
 
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
-    CONF_PROXY_ENABLED,
     LOGGER,
     PROXY_HOST,
     VIDEO_ENDPOINT,
@@ -35,7 +34,6 @@ from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooVideoStatus,
     PrinterType,
 )
-from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
 from .coordinator import ElegooDataUpdateCoordinator
 
@@ -216,18 +214,28 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         return num_connected >= max_allowed
 
     @staticmethod
-    def _normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
+    def _normalize_video_url(video_url: str | None) -> str | None:
         """
-        Check if video_object.video_url starts with 'http://' and adds it if missing.
+        Check if video_url starts with 'http://' and adds it if missing.
 
         Arguments:
-            video_object: The video object to normalize.
+            video_url: The video URL to normalize.
+
+        Returns:
+            Normalized video URL string, or None if invalid/empty.
 
         """
-        if not video_object.video_url.startswith("http://"):
-            video_object.video_url = "http://" + video_object.video_url
+        if not video_url:
+            return None
 
-        return video_object
+        video_url = video_url.strip()
+        if not video_url:
+            return None
+
+        if not video_url.startswith("http://"):
+            video_url = "http://" + video_url
+
+        return video_url
 
     async def _update_stream_url(self) -> None:
         """Update the MJPEG stream URL."""
@@ -236,26 +244,16 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug("stream_source: Video is OK, getting stream source")
-            video_url = self._normalize_video_url(video).video_url
-            if (
-                self._printer_client.printer.proxy_enabled
-                or self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False)
-            ):
-                # When proxy is enabled, construct proxy URL with MainboardID routing
-                mainboard_id = self._printer_client.printer.id
-                proxy_url = f"http://{PROXY_HOST}:{VIDEO_PORT}/video/{mainboard_id}"
-                LOGGER.debug(
-                    "Proxy enabled using proxy URL: %s (original: %s)",
-                    proxy_url,
-                    video_url,
-                )
-                self._mjpeg_url = proxy_url
-            else:
-                LOGGER.debug(
-                    "stream_source: Proxy is disabled using printer video url: %s",
-                    video_url,
-                )
-                self._mjpeg_url = video_url
+            # Normalize without mutating the ElegooVideo object
+            video_url = self._normalize_video_url(video.video_url)
+            if not video_url:
+                LOGGER.debug("stream_source: Empty or invalid video URL from printer")
+                self._mjpeg_url = None
+                return
+
+            # Video URL is already rewritten by proxy server if enabled
+            LOGGER.debug("stream_source: Using video URL: %s", video_url)
+            self._mjpeg_url = video_url
         else:
             LOGGER.debug("stream_source: Failed to get video stream: %s", video.status)
             self._mjpeg_url = None
