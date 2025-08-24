@@ -61,6 +61,7 @@ import os
 import socket
 import time
 from typing import TYPE_CHECKING, Any
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import aiohttp
 from aiohttp import ClientSession, WSMsgType, web
@@ -150,7 +151,7 @@ class PrinterRegistry:
         """Discover all printers on the network via UDP broadcast."""
         async with self._discovery_lock:
             # Rate limit discovery to once every 30 seconds
-            current_time = time.time()
+            current_time = time.monotonic()
             if current_time - self._last_discovery < DISCOVERY_RATE_LIMIT_SECONDS:
                 logger.debug("Discovery rate limited, returning cached printers")
                 return self.get_all_printers()
@@ -173,23 +174,40 @@ class PrinterRegistry:
                     sock.sendto(msg, (broadcast_address, DISCOVERY_PORT))
 
                     # Collect responses
-                    start_time = time.time()
-                    while time.time() - start_time < DISCOVERY_TIMEOUT:
+                    start_time = time.monotonic()
+                    while time.monotonic() - start_time < DISCOVERY_TIMEOUT:
                         try:
                             data, addr = sock.recvfrom(8192)
                             printer = self._parse_discovery_response(data, logger)
                             if printer and printer.id:
                                 discovered_printers[printer.id] = printer
                                 self.add_printer(printer)
-                                msg = (
-                                    f"Discovered printer: {printer.name} "
-                                    f"({printer.ip_address}) ID: {printer.id}"
+                                logger.info(
+                                    "Discovered printer: %s (%s) ID: %s",
+                                    printer.name,
+                                    printer.ip_address,
+                                    printer.id,
                                 )
-                                logger.info(msg)
                         except TimeoutError:
+                            # Socket timeout is expected, continue polling
+                            continue
+                        except OSError as e:
+                            # Handle socket-level errors (connection reset, etc.)
+                            logger.debug("Socket error during discovery receive: %s", e)
+                            continue
+                        except (
+                            UnicodeDecodeError,
+                            json.JSONDecodeError,
+                            ValueError,
+                        ) as e:
+                            # Handle data parsing errors
+                            logger.debug(
+                                "Error parsing discovery response from %s: %s", addr, e
+                            )
                             continue
                         except Exception as e:  # noqa: BLE001
-                            logger.debug("Error parsing discovery response: %s", e)
+                            # Catch any other unexpected errors
+                            logger.debug("Unexpected error during discovery: %s", e)
                             continue
 
             except OSError:
@@ -877,10 +895,33 @@ class ElegooPrinterServer:
                     status=404, text=f"Printer {mainboard_id} not found"
                 )
 
-        # Remove MainboardID from path when forwarding if it was in the path
-        forwarded_path = request.path_qs
-        if f"/{mainboard_id}" in forwarded_path:
-            forwarded_path = forwarded_path.replace(f"/{mainboard_id}", "", 1)
+        # Parse URL to properly remove MainboardID from path and query parameters
+        parsed_url = urlparse(request.path_qs)
+
+        # Remove mainboard_id as a discrete path segment
+        path_parts = [part for part in parsed_url.path.split("/") if part]
+        if mainboard_id in path_parts:
+            path_parts.remove(mainboard_id)
+
+        # Rebuild path with single leading slash and no double slashes
+        cleaned_path = "/" + "/".join(path_parts) if path_parts else "/"
+
+        # Remove mainboard_id from query parameters
+        query_params = parse_qs(parsed_url.query, keep_blank_values=True)
+        query_params.pop("mainboard_id", None)
+        cleaned_query = urlencode(query_params, doseq=True)
+
+        # Reconstruct the forwarded path
+        forwarded_path = urlunparse(
+            (
+                "",
+                "",
+                cleaned_path,
+                parsed_url.params,
+                cleaned_query,
+                parsed_url.fragment,
+            )
+        )
 
         target_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{forwarded_path}"
         headers = {
