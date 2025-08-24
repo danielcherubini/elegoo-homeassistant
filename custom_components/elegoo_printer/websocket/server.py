@@ -265,6 +265,7 @@ class ElegooPrinterServer:
     """
 
     _instance: ElegooPrinterServer | None = None
+    _creation_lock = asyncio.Lock()
 
     def __init__(
         self,
@@ -290,49 +291,55 @@ class ElegooPrinterServer:
         printer: Printer | None = None,
     ) -> ElegooPrinterServer:
         """Asynchronously creates and starts the multi-printer server (singleton)."""
-        # Return existing instance if already created
-        if cls._instance is not None:
+        async with cls._creation_lock:
+            # Return existing instance if already created (check again inside the lock)
+            if cls._instance is not None:
+                if printer:
+                    # Add the new printer to the existing server's registry
+                    cls._instance.printer_registry.add_printer(printer)
+                    logger.debug(
+                        "Added printer %s (%s) to existing proxy server",
+                        printer.name,
+                        printer.id,
+                    )
+                else:
+                    logger.debug("Reusing existing proxy server instance")
+                return cls._instance
+
+            # Create new instance
+            logger.debug("Creating new proxy server instance")
+            self = cls(logger, hass, session)
             if printer:
-                # Add the new printer to the existing server's registry
-                cls._instance.printer_registry.add_printer(printer)
+                # Add the initial printer to the registry
+                self.printer_registry.add_printer(printer)
                 logger.debug(
-                    "Added printer %s (%s) to existing proxy server",
+                    "Added printer %s (%s) to new proxy server",
                     printer.name,
                     printer.id,
                 )
-            return cls._instance
 
-        # Create new instance
-        self = cls(logger, hass, session)
-        if printer:
-            # Add the initial printer to the registry
-            self.printer_registry.add_printer(printer)
-            logger.debug(
-                "Added printer %s (%s) to new proxy server", printer.name, printer.id
-            )
+            # Set instance BEFORE starting to prevent race condition
+            cls._instance = self
 
-        # Set instance BEFORE starting to prevent race condition
-        cls._instance = self
+            try:
+                # Start the server for the new instance
+                await self.start()
 
-        try:
-            # Start the server for the new instance
-            await self.start()
+                # Only perform network discovery if no printers were provided via config
+                if self.printer_registry.count() == 0:
+                    logger.debug("No configured printers, performing network discovery")
+                    await self.printer_registry.discover_printers(logger)
+                else:
+                    logger.debug(
+                        "Using %d printer(s) from Home Assistant config",
+                        self.printer_registry.count(),
+                    )
+            except Exception:
+                # Clear instance if startup fails
+                cls._instance = None
+                raise
 
-            # Only perform network discovery if no printers were provided via config
-            if self.printer_registry.count() == 0:
-                logger.debug("No configured printers, performing network discovery")
-                await self.printer_registry.discover_printers(logger)
-            else:
-                logger.debug(
-                    "Using %d printer(s) from Home Assistant config",
-                    self.printer_registry.count(),
-                )
-        except Exception:
-            # Clear instance if startup fails
-            cls._instance = None
-            raise
-
-        return self
+            return self
 
     @property
     def is_connected(self) -> bool:
@@ -342,9 +349,13 @@ class ElegooPrinterServer:
     async def start(self) -> None:
         """Start the proxy server on the Home Assistant event loop."""
         if not self._check_ports_are_available():
-            msg = "Proxy server ports are in use."
-            self.logger.info(msg)
-            raise ConfigEntryNotReady(msg)
+            msg = "Proxy server ports are in use, likely by another instance."
+            self.logger.debug(msg)
+            # Don't raise an exception if another instance is already running
+            # The singleton pattern should handle this gracefully
+            # Mark as connected since we're relying on the existing singleton
+            self._is_connected = True
+            return
 
         self.logger.info("Initializing multi-printer proxy server")
 
@@ -401,6 +412,12 @@ class ElegooPrinterServer:
 
     def _check_ports_are_available(self) -> bool:
         """Check if the required TCP and UDP ports for the proxy server are free."""
+        # If there's already an instance running, we don't need new ports
+        if self.__class__._instance is not None and self.__class__._instance != self:  # noqa: SLF001
+            self.logger.debug(
+                "Proxy server already running, skipping port availability check"
+            )
+            return True
         for port, proto, name in [
             (WEBSOCKET_PORT, socket.SOCK_STREAM, "TCP"),
             (VIDEO_PORT, socket.SOCK_STREAM, "Video TCP"),
@@ -414,7 +431,7 @@ class ElegooPrinterServer:
                 msg = (
                     f"{name} port {port} is already in use. Proxy server cannot start."
                 )
-                self.logger.warning(msg)
+                self.logger.debug(msg)  # Changed from warning to debug for less noise
                 return False
         return True
 
