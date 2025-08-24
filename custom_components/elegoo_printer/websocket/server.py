@@ -235,21 +235,9 @@ class PrinterRegistry:
         """Parse discovery response bytes and create a Printer object if valid."""
         try:
             response = json.loads(data.decode("utf-8"))
-            printer_data = response.get("Data", {})
-
-            # Create a printer info string in the expected format
-            printer_info_parts = [
-                printer_data.get("Name", "Unknown"),
-                printer_data.get("MachineName", "Unknown"),
-                printer_data.get("BrandName", "Unknown"),
-                printer_data.get("MainboardIP", ""),
-                printer_data.get("MainboardID", ""),
-                printer_data.get("ProtocolVersion", "V3.0.0"),
-                printer_data.get("FirmwareVersion", "V1.0.0"),
-            ]
-            printer_info = "|".join(printer_info_parts)
-
-            return Printer(printer_info)
+            # Construct Printer from the parsed dict to ensure proper field mapping
+            printer = Printer.from_dict(response)
+            return printer
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as e:
             logger.debug("Error parsing discovery response: %s", e)
             return None
