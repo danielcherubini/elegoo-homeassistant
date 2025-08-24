@@ -376,6 +376,7 @@ class ElegooPrinterServer:
             raise ConfigEntryNotReady(msg) from e
 
         # Note: singleton instance is set in async_create
+        self._is_connected = True
         self.logger.info("Proxy server has started successfully.")
 
     @classmethod
