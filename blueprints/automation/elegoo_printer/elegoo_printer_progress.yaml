@@ -1,21 +1,14 @@
 blueprint:
-  name: Elegoo Printer Progress Notification (v2)
+  name: Elegoo Printer Progress Notification (v3)
   description: Sends a notification with the progress of an Elegoo printer.
   author: Daniel Cherubini
   homeassistant:
     min_version: 2024.6.0
   domain: automation
   input:
-    percent_complete_sensor:
-      name: Percent Complete Sensor
-      description: The printer's percent complete sensor.
-      selector:
-        entity:
-          domain: sensor
-          integration: elegoo_printer
-    remaining_print_time_entity:
-      name: Remaining Print Time Sensor
-      description: The printer's remaining print time sensor.
+    percent_complete_entity:
+      name: Percent Complete Entity
+      description: The percent complete sensor for the Elegoo printer (look for entities ending in '_percent_complete').
       selector:
         entity:
           domain: sensor
@@ -39,67 +32,88 @@ blueprint:
             - "5"
       default: "5"
     camera_entity:
-      name: Printer Camera
-      description: The camera entity for the printer.
+      name: Printer Camera (Optional)
+      description: Override the default camera entity for the printer. Leave blank to use the default camera from the printer device.
+      default: ""
       selector:
         entity:
           domain: camera
     dashboard_url:
       name: Dashboard URL (Optional)
-      description: The URL to open when the notification is clicked.
+      description: The path to open when the notification is clicked (e.g., '/dashboard-example/example', not the full URL).
       default: ""
-    notification_group:
-      name: Notification Group
-      description: A unique name for the notification group, channel, and tag.
-      default: "elegoo-printer"
 
 mode: single
 max_exceeded: silent
 
 variables:
-  percent_complete_entity: !input percent_complete_sensor
-  remaining_print_time_entity: !input remaining_print_time_entity
-  elegoo_printer_device: "{{ device_id(percent_complete_entity) }}"
+  percent_complete_entity: !input percent_complete_entity
   notify_device: !input notify_device
   percentage_divisor: !input percentage_divisor
-  camera_entity: !input camera_entity
+  camera_entity_input: !input camera_entity
   dashboard_url: !input dashboard_url
-  notification_group: !input notification_group
+  # Get the device from the percent complete entity
+  printer_device: >-
+    {{ device_id(percent_complete_entity) }}
+  notification_group: >-
+    {{ device_attr(printer_device, 'name') | slugify }}
+  # Get other entities from the same device
+  end_time_entity: >-
+    {{ device_entities(printer_device) | select('search', '_end_time') |
+    first }}
   file_name_entity: >-
-    {{ device_entities(elegoo_printer_device) | select('search', '_file_name') |
+    {{ device_entities(printer_device) | select('search', '_file_name') |
+    first }}
+  current_status_entity: >-
+    {{ device_entities(printer_device) | select('search', '_current_status') |
+    first }}
+  current_layer_entity: >-
+    {{ device_entities(printer_device) | select('search', '_current_layer') |
+    first }}
+  total_layers_entity: >-
+    {{ device_entities(printer_device) | select('search', '_total_layers') |
+    first }}
+  camera_entity: >-
+    {{ (camera_entity_input
+        if camera_entity_input != ''
+        else (device_entities(printer_device) | select('match', '^camera\.') | first))
+       | default('', true) }}
+  print_status_entity: >-
+    {{ device_entities(printer_device) | select('search', '_print_status') |
     first }}
 
 trigger:
   - platform: state
-    entity_id: !input percent_complete_sensor
+    entity_id: !input percent_complete_entity
 
 condition: []
 
 action:
   - if:
-      - condition: numeric_state
-        entity_id: !input percent_complete_sensor
-        below: 100
+      - condition: template
+        value_template: "{{ states(percent_complete_entity) | int < 100 }}"
     then:
       - if:
           - condition: template
             value_template: >-
               {{ states(percent_complete_entity) | int % (percentage_divisor | int) == 0 }}
           - condition: template
+            value_template: >-
+              {{ current_status_entity != none and states(current_status_entity) == 'printing' }}
+          - condition: template
             value_template: "{{ notify_device != '' }}"
         then:
           - device_id: !input notify_device
             domain: mobile_app
             type: notify
-            title: "Printing: {{ states(percent_complete_entity) }}%"
-            message: "{{ states(file_name_entity) }}"
+            title: "Printing: {{ states(percent_complete_entity) }}%\nLayer: {{ (states(current_layer_entity)|default('?', true)) }}/{{ (states(total_layers_entity)|default('?', true)) }}"
+            message: "{{ states(file_name_entity)|default('Unknown file', true) }}"
             data:
               chronometer: true
-              when: "{{ (states(remaining_print_time_entity)|float(0) * 60)|int }}"
-              when_relative: true
+              when: "{{ as_timestamp(states(end_time_entity))|int if end_time_entity != none and states(end_time_entity) not in ['unknown', 'unavailable'] else 0 }}"
               progress: "{{ states(percent_complete_entity)|int }}"
               progress_max: 100
-              image: "/api/camera_proxy/{{ camera_entity }}"
+              image: "{{ ('/api/camera_proxy/' ~ camera_entity) if (camera_entity|default('', true)) != '' else '' }}"
               url: "{{ dashboard_url }}"
               clickAction: "{{ dashboard_url }}"
               group: "{{ notification_group }}"
@@ -111,6 +125,8 @@ action:
       - if:
           - condition: template
             value_template: "{{ notify_device != '' }}"
+          - condition: template
+            value_template: "{{ print_status_entity != none and states(print_status_entity) == 'complete' }}"
         then:
           - device_id: !input notify_device
             domain: mobile_app
