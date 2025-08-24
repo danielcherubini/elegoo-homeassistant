@@ -858,33 +858,40 @@ class ElegooPrinterServer:
                             "Found VideoUrl in response: %s", original_url
                         )
 
-                        # Replace the printer's IP with our proxy IP
-                        # and add MainboardID to path
-                        # Original: http://192.168.1.2:3031/video
-                        # Modified: http://proxy_ip:3031/video/{mainboard_id}
+                        # Only rewrite HTTP URLs, preserve RTSP and other protocols
                         parts = urlsplit(original_url)
-                        # Keep scheme and port; replace netloc host with proxy_ip
-                        proxy_ip = self.get_local_ip()
-                        host, _, port = parts.netloc.partition(":")
-                        port = port or "3031"
-                        new_netloc = f"{proxy_ip}:{port}"
-                        # Force /video/{id} path, preserve query and fragment
-                        new_path = f"/video/{mainboard_id}"
-                        modified_url = urlunsplit(
-                            (
-                                parts.scheme or "http",
-                                new_netloc,
-                                new_path,
-                                parts.query,
-                                parts.fragment,
+                        if parts.scheme.lower() == "http":
+                            # Replace the printer's IP with our proxy IP
+                            # and add MainboardID to path
+                            # Original: http://192.168.1.2:3031/video
+                            # Modified: http://proxy_ip:3031/video/{mainboard_id}
+                            proxy_ip = self.get_local_ip()
+                            host, _, port = parts.netloc.partition(":")
+                            port = port or "3031"
+                            new_netloc = f"{proxy_ip}:{port}"
+                            # Force /video/{id} path, preserve query and fragment
+                            new_path = f"/video/{mainboard_id}"
+                            modified_url = urlunsplit(
+                                (
+                                    parts.scheme,
+                                    new_netloc,
+                                    new_path,
+                                    parts.query,
+                                    parts.fragment,
+                                )
                             )
-                        )
-                        response_data["VideoUrl"] = modified_url
-                        self.logger.debug(
-                            "Modified VideoUrl from %s to %s",
-                            original_url,
-                            modified_url,
-                        )
+                            response_data["VideoUrl"] = modified_url
+                            self.logger.debug(
+                                "Modified HTTP VideoUrl from %s to %s",
+                                original_url,
+                                modified_url,
+                            )
+                        else:
+                            self.logger.debug(
+                                "Preserving non-HTTP VideoUrl (%s): %s",
+                                parts.scheme.upper(),
+                                original_url,
+                            )
                         return json.dumps(data)
 
         except (json.JSONDecodeError, KeyError, AttributeError) as e:
