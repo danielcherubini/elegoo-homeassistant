@@ -56,7 +56,7 @@ variables:
   printer_device: >-
     {{ device_id(percent_complete_entity) }}
   notification_group: >-
-    {{ device_attr(printer_device, 'name') | lower | replace(' ', '-') | replace('_', '-') }}
+    {{ device_attr(printer_device, 'name') | slugify }}
   # Get other entities from the same device
   remaining_print_time_entity: >-
     {{ device_entities(printer_device) | select('search', '_remaining_print_time') |
@@ -74,19 +74,23 @@ variables:
     {{ device_entities(printer_device) | select('search', '_total_layers') |
     first }}
   camera_entity: >-
-    {{ camera_entity_input if camera_entity_input != '' else 
-       (device_entities(printer_device) | select('match', 'camera\.') | first) }}
+    {{ (camera_entity_input
+        if camera_entity_input != ''
+        else (device_entities(printer_device) | select('match', '^camera\.') | first))
+       | default('', true) }}
   print_status_entity: >-
     {{ device_entities(printer_device) | select('search', '_print_status') |
     first }}
 
 trigger:
-  - platform: state
+  - id: percent_progress
+    platform: state
     entity_id: !input percent_complete_entity
+  - id: completion_status
+    platform: template
+    value_template: "{{ print_status_entity != none and is_state(print_status_entity, 'complete') }}"
 
-condition:
-  - condition: template
-    value_template: "{{ trigger.entity_id == percent_complete_entity }}"
+condition: []
 
 action:
   - if:
@@ -94,6 +98,8 @@ action:
         value_template: "{{ states(percent_complete_entity) | int < 100 }}"
     then:
       - if:
+          - condition: template
+            value_template: "{{ trigger.id == 'percent_progress' }}"
           - condition: template
             value_template: >-
               {{ states(percent_complete_entity) | int % (percentage_divisor | int) == 0 }}
@@ -106,15 +112,15 @@ action:
           - device_id: !input notify_device
             domain: mobile_app
             type: notify
-            title: "Printing: {{ states(percent_complete_entity) }}% - Layer {{ states(current_layer_entity) if current_layer_entity != none else '?' }}/{{ states(total_layers_entity) if total_layers_entity != none else '?' }}"
-            message: "{{ states(file_name_entity) if file_name_entity != none else 'Unknown file' }}"
+            title: "Printing: {{ states(percent_complete_entity) }}% - Layer {{ (states(current_layer_entity)|default('?', true)) }}/{{ (states(total_layers_entity)|default('?', true)) }}"
+            message: "{{ states(file_name_entity)|default('Unknown file', true) }}"
             data:
               chronometer: true
-              when: "{{ ((states(remaining_print_time_entity)|float(0) * 60)|int) if remaining_print_time_entity != none else 0 }}"
+              when: "{{ (states(remaining_print_time_entity)|float(0) * 60)|int if remaining_print_time_entity != none else 0 }}"
               when_relative: true
               progress: "{{ states(percent_complete_entity)|int }}"
               progress_max: 100
-              image: "{{ '/api/camera_proxy/' ~ camera_entity if camera_entity != none and camera_entity != '' else '' }}"
+              image: "{{ ('/api/camera_proxy/' ~ camera_entity) if (camera_entity|default('', true)) != '' else '' }}"
               url: "{{ dashboard_url }}"
               clickAction: "{{ dashboard_url }}"
               group: "{{ notification_group }}"
@@ -127,7 +133,7 @@ action:
           - condition: template
             value_template: "{{ notify_device != '' }}"
           - condition: template
-            value_template: "{{ print_status_entity != none and states(print_status_entity) == 'complete' }}"
+            value_template: "{{ trigger.id == 'completion_status' }}"
         then:
           - device_id: !input notify_device
             domain: mobile_app
