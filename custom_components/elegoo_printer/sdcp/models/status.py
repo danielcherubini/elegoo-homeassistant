@@ -67,12 +67,12 @@ class PrintInfo:
 
     Attributes:
         status (ElegooPrintStatus): Printing Sub-status.
-        current_layer (int): Current Printing Layer.
-        total_layers (int): Total Number of Print Layers.
-        remaining_layers (int): Remaining layers to print
-        current_ticks (int): Current Print Time (ms).
-        total_ticks (int): Estimated Total Print Time(ms).
-        remaining_ticks (int): Remaining Print Time(ms).
+        current_layer (int | None): Current Printing Layer.
+        total_layers (int | None): Total Number of Print Layers.
+        remaining_layers (int | None): Remaining layers to print
+        current_ticks (int | None): Current Print Time (ms).
+        total_ticks (int | None): Estimated Total Print Time(ms).
+        remaining_ticks (int | None): Remaining Print Time(ms).
         progress (int): Print Progress (%).
         percent_complete (int): Percentage Complete.
         print_speed_pct (int): The current print speed as a percentage.
@@ -86,7 +86,6 @@ class PrintInfo:
         self,
         data: dict[str, Any] | None = None,
         printer_type: PrinterType | None = None,
-        current_status: ElegooMachineStatus | None = None,
     ) -> None:
         """
         Initialize a new PrintInfo object.
@@ -94,42 +93,50 @@ class PrintInfo:
         Arguments:
             data (Dict[str, Any], optional): A dictionary containing print info data.
             printer_type: (PrinterType, optional): The type of printer.
-            current_status: (ElegooMachineStatus, optional): The current status of the printer.
 
-        """  # noqa: E501
+        """
         if data is None:
             data = {}
         status_int: int = data.get("Status", 0)
         self.status: ElegooPrintStatus | None = ElegooPrintStatus.from_int(status_int)
-        self.current_layer: int = data.get("CurrentLayer", 0)
-        self.total_layers: int = data.get("TotalLayer", 0)
-        self.remaining_layers: int = max(0, self.total_layers - self.current_layer)
-        self.current_ticks: int = int(data.get("CurrentTicks", 0))
-        self.total_ticks: int = int(data.get("TotalTicks", 0))
-        if printer_type == PrinterType.FDM:
-            self.current_ticks *= 1000
-            self.total_ticks *= 1000
-        self.remaining_ticks: int = max(0, self.total_ticks - self.current_ticks)
+        self.current_layer: int | None = data.get("CurrentLayer")
+        self.total_layers: int | None = data.get("TotalLayer")
+        if self.current_layer is not None and self.total_layers is not None:
+            self.remaining_layers: int | None = max(
+                0, self.total_layers - self.current_layer
+            )
+        else:
+            self.remaining_layers = None
+        self.current_ticks: int | None = data.get("CurrentTicks")
+        self.total_ticks: int | None = data.get("TotalTicks")
+        if self.current_ticks is not None and self.total_ticks is not None:
+            if printer_type == PrinterType.FDM:
+                self.current_ticks *= 1000
+                self.total_ticks *= 1000
+            self.remaining_ticks: int | None = max(
+                0, self.total_ticks - self.current_ticks
+            )
+        else:
+            self.remaining_ticks = None
         self.progress: int | None = data.get("Progress")
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
         self.end_time = None
 
-        # Bug where printer sends 0 for percent and current layer if print finished
-        if self.status == ElegooPrintStatus.COMPLETE:
-            self.percent_complete = 100
-            self.current_layer = self.total_layers
-            self.remaining_layers = 0
-        elif current_status is not None and current_status != ElegooMachineStatus.IDLE:
-            # If the printer is not idle, we can update progress
-            if self.progress is not None:
-                percent_complete = int(self.progress)
-            elif self.total_layers > 0:
-                percent_complete = int((self.current_layer / self.total_layers) * 100)
-            else:
-                percent_complete = 0
+        percent_complete = None
+        # If the printer is not idle, we can update progress
+        if self.progress is not None:
+            percent_complete = int(self.progress)
+        elif (
+            self.total_layers is not None
+            and self.total_layers > 0
+            and self.current_layer is not None
+        ):
+            percent_complete = int((self.current_layer / self.total_layers) * 100)
+
+        if percent_complete is not None:
             self.percent_complete = max(0, min(100, percent_complete))
         else:
-            self.percent_complete = 0
+            self.percent_complete = percent_complete
 
         self.filename = data.get("Filename")
         error_number_int = data.get("ErrorNumber", 0)
@@ -205,9 +212,7 @@ class PrinterStatus:
         self.light_status = LightStatus(light_status_data)
 
         print_info_data = status.get("PrintInfo", {})
-        self.print_info: PrintInfo = PrintInfo(
-            print_info_data, printer_type, self.current_status
-        )
+        self.print_info: PrintInfo = PrintInfo(print_info_data, printer_type)
 
     @classmethod
     def from_json(
