@@ -83,12 +83,8 @@ variables:
     first }}
 
 trigger:
-  - id: percent_progress
-    platform: state
+  - platform: state
     entity_id: !input percent_complete_entity
-  - id: completion_status
-    platform: template
-    value_template: "{{ print_status_entity != none and is_state(print_status_entity, 'complete') }}"
 
 condition: []
 
@@ -98,8 +94,6 @@ action:
         value_template: "{{ states(percent_complete_entity) | int < 100 }}"
     then:
       - if:
-          - condition: template
-            value_template: "{{ trigger.id == 'percent_progress' }}"
           - condition: template
             value_template: >-
               {{ states(percent_complete_entity) | int % (percentage_divisor | int) == 0 }}
@@ -132,7 +126,7 @@ action:
           - condition: template
             value_template: "{{ notify_device != '' }}"
           - condition: template
-            value_template: "{{ trigger.id == 'completion_status' }}"
+            value_template: "{{ print_status_entity != none and states(print_status_entity) == 'complete' }}"
         then:
           - device_id: !input notify_device
             domain: mobile_app
