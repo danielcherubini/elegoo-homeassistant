@@ -141,9 +141,11 @@ class ElegooPrinterApiClient:
         await self.client.disconnect()
 
     async def elegoo_stop_proxy(self) -> None:
-        """Stop the proxy server if it is running."""
-        if self.server:
-            await self.server.stop()
+        """Remove this printer from the proxy server or stop if no printers remain."""
+        if self.server and self.printer:
+            await ElegooPrinterServer.remove_printer_from_server(
+                self.printer, self._logger
+            )
 
     async def async_get_status(self) -> PrinterData:
         """

@@ -61,7 +61,7 @@ import os
 import socket
 import time
 from typing import TYPE_CHECKING, Any
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlsplit, urlunparse, urlunsplit
 
 import aiohttp
 from aiohttp import ClientSession, WSMsgType, web
@@ -138,6 +138,19 @@ class PrinterRegistry:
     def count(self) -> int:
         """Get the number of registered printers."""
         return len(self._printers)
+
+    def remove_printer(self, mainboard_id: str) -> bool:
+        """
+        Remove a printer from the registry by MainboardID.
+
+        Returns:
+            True if printer was removed, False if not found.
+
+        """
+        if mainboard_id in self._printers:
+            del self._printers[mainboard_id]
+            return True
+        return False
 
     def clear(self) -> None:
         """Clear all registered printers."""
@@ -404,6 +417,41 @@ class ElegooPrinterServer:
                 self.logger.warning(msg)
                 return False
         return True
+
+    @classmethod
+    async def remove_printer_from_server(cls, printer: Printer, logger: Any) -> bool:
+        """
+        Remove a printer from the server registry.
+
+        Returns:
+            True if server should be stopped (no more printers), False if server
+            should continue.
+
+        """
+        if cls._instance is None:
+            return False  # No server to remove from
+
+        if printer.id:
+            removed = cls._instance.printer_registry.remove_printer(printer.id)
+            if removed:
+                logger.debug(
+                    "Removed printer %s (%s) from proxy server",
+                    printer.name,
+                    printer.id,
+                )
+
+            # Check if any printers remain
+            if cls._instance.printer_registry.count() == 0:
+                logger.info("No printers remain in proxy server, stopping server")
+                await cls._instance.stop()
+                return True
+            logger.debug(
+                "Proxy server continues with %d printers remaining",
+                cls._instance.printer_registry.count(),
+            )
+            return False
+
+        return False
 
     async def stop(self) -> None:
         """Stop the proxy server and cleans up all associated resources."""
@@ -797,24 +845,29 @@ class ElegooPrinterServer:
                         # and add MainboardID to path
                         # Original: http://192.168.1.2:3031/video
                         # Modified: http://proxy_ip:3031/video/{mainboard_id}
-                        from urllib.parse import urlsplit, urlunsplit
                         parts = urlsplit(original_url)
                         # Keep scheme and port; replace netloc host with proxy_ip
                         proxy_ip = self.get_local_ip()
                         host, _, port = parts.netloc.partition(":")
                         port = port or "3031"
                         new_netloc = f"{proxy_ip}:{port}"
-                        # Force /video/{id} path, but preserve original query and fragment
+                        # Force /video/{id} path, preserve query and fragment
                         new_path = f"/video/{mainboard_id}"
-                        modified_url = urlunsplit((
-                            parts.scheme or "http",
-                            new_netloc,
-                            new_path,
-                            parts.query,
-                            parts.fragment
-                        ))
+                        modified_url = urlunsplit(
+                            (
+                                parts.scheme or "http",
+                                new_netloc,
+                                new_path,
+                                parts.query,
+                                parts.fragment,
+                            )
+                        )
                         response_data["VideoUrl"] = modified_url
-                        self.logger.debug("Modified VideoUrl from %s to %s", original_url, modified_url)
+                        self.logger.debug(
+                            "Modified VideoUrl from %s to %s",
+                            original_url,
+                            modified_url,
+                        )
                         return json.dumps(data)
 
         except (json.JSONDecodeError, KeyError, AttributeError) as e:
