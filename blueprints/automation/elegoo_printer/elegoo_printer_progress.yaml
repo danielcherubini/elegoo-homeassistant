@@ -112,7 +112,7 @@ action:
           - device_id: !input notify_device
             domain: mobile_app
             type: notify
-            title: "Printing: {{ states(percent_complete_entity) }}% - Layer {{ (states(current_layer_entity)|default('?', true)) }}/{{ (states(total_layers_entity)|default('?', true)) }}"
+            title: "Printing: {{ states(percent_complete_entity) }}%\nLayer: {{ (states(current_layer_entity)|default('?', true)) }}/{{ (states(total_layers_entity)|default('?', true)) }}"
             message: "{{ states(file_name_entity)|default('Unknown file', true) }}"
             data:
               chronometer: true
