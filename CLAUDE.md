@@ -28,6 +28,15 @@ make format         # Format code with Ruff
 make fix            # Auto-fix code issues
 ```
 
+**Version Management:**
+When asked to "bump the version to xxx", follow this process:
+1. Update version in `pyproject.toml`
+2. Update version in `custom_components/elegoo_printer/manifest.json`
+3. Run `make format` (code formatting)
+4. Run `make lint` (linting checks)
+5. Stage the modified files with `git add`
+6. Create commit with descriptive message including the version change
+
 **Package Manager:** Uses `uv` (modern Python package manager) with `pyproject.toml`
 
 ## Architecture Overview
