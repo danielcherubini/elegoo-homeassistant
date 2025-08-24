@@ -82,9 +82,10 @@ class ElegooPrinterApiClient:
             logger.debug("Proxy server is enabled, attempting to create proxy server.")
             try:
                 self.server = await ElegooPrinterServer.async_create(
-                    printer, logger=logger, hass=hass, session=session
+                    logger=logger, hass=hass, session=session, printer=printer
                 )
-                printer = self.server.get_printer()
+                # For multi-printer server, we'll use the original printer config
+                # but note that proxy is enabled
                 printer.proxy_enabled = proxy_server_enabled
             except (ConnectionError, TimeoutError) as e:
                 logger.warning(
@@ -335,9 +336,11 @@ class ElegooPrinterApiClient:
                 await self.server.stop()
             try:
                 self.server = await ElegooPrinterServer.async_create(
-                    printer, logger=self._logger, hass=self.hass, session=session
+                    logger=self._logger,
+                    hass=self.hass,
+                    session=session,
+                    printer=printer,
                 )
-                printer = self.server.get_printer()
             except (ConnectionError, TimeoutError):
                 self._logger.exception("Failed to (re)create proxy server")
                 self.server = None

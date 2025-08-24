@@ -113,8 +113,10 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
             return None
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
+            # Resin printers use RTSP feeds - bypass proxy and use direct URL
             LOGGER.debug(
-                f"stream_source: Video is OK, printer video url: {video.video_url}"
+                "stream_source: Resin printer video (RTSP), using direct URL: %s",
+                video.video_url,
             )
             return video.video_url
 
@@ -234,15 +236,26 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug("stream_source: Video is OK, getting stream source")
-            if self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False):
-                LOGGER.debug("stream_source: Proxy is enabled using local video")
-                self._mjpeg_url = f"http://{PROXY_HOST}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"
+            video_url = self._normalize_video_url(video).video_url
+            if (
+                self._printer_client.printer.proxy_enabled
+                or self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False)
+            ):
+                # When proxy is enabled, construct proxy URL with MainboardID routing
+                mainboard_id = self._printer_client.printer.id
+                proxy_url = f"http://{PROXY_HOST}:{VIDEO_PORT}/video/{mainboard_id}"
+                LOGGER.debug(
+                    "Proxy enabled using proxy URL: %s (original: %s)",
+                    proxy_url,
+                    video_url,
+                )
+                self._mjpeg_url = proxy_url
             else:
                 LOGGER.debug(
                     "stream_source: Proxy is disabled using printer video url: %s",
-                    video.video_url,
+                    video_url,
                 )
-                self._mjpeg_url = self._normalize_video_url(video).video_url
+                self._mjpeg_url = video_url
         else:
             LOGGER.debug("stream_source: Failed to get video stream: %s", video.status)
             self._mjpeg_url = None
