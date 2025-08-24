@@ -101,35 +101,38 @@ class PrintInfo:
             data = {}
         status_int: int = data.get("Status", 0)
         self.status: ElegooPrintStatus | None = ElegooPrintStatus.from_int(status_int)
-        self.current_layer: int = data.get("CurrentLayer", 0)
-        self.total_layers: int = data.get("TotalLayer", 0)
-        self.remaining_layers: int = max(0, self.total_layers - self.current_layer)
-        self.current_ticks: int = int(data.get("CurrentTicks", 0))
-        self.total_ticks: int = int(data.get("TotalTicks", 0))
-        if printer_type == PrinterType.FDM:
-            self.current_ticks *= 1000
-            self.total_ticks *= 1000
-        self.remaining_ticks: int = max(0, self.total_ticks - self.current_ticks)
+        self.current_layer: int | None = data.get("CurrentLayer")
+        self.total_layers: int | None = data.get("TotalLayer")
+        if self.current_layer is not None and self.total_layers is not None:
+            self.remaining_layers: int | None = max(
+                0, self.total_layers - self.current_layer
+            )
+        else:
+            self.remaining_layers = None
+        self.current_ticks: int | None = data.get("CurrentTicks")
+        self.total_ticks: int | None = data.get("TotalTicks")
+        if self.current_ticks is not None and self.total_ticks is not None:
+            if printer_type == PrinterType.FDM:
+                self.current_ticks *= 1000
+                self.total_ticks *= 1000
+            self.remaining_ticks: int = max(0, self.total_ticks - self.current_ticks)
+        else:
+            self.remaining_ticks = None
         self.progress: int | None = data.get("Progress")
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
         self.end_time = None
 
-        # Bug where printer sends 0 for percent and current layer if print finished
-        if self.status == ElegooPrintStatus.COMPLETE:
-            self.percent_complete = 100
-            self.current_layer = self.total_layers
-            self.remaining_layers = 0
-        elif current_status is not None and current_status != ElegooMachineStatus.IDLE:
-            # If the printer is not idle, we can update progress
-            if self.progress is not None:
-                percent_complete = int(self.progress)
-            elif self.total_layers > 0:
-                percent_complete = int((self.current_layer / self.total_layers) * 100)
-            else:
-                percent_complete = 0
+        percent_complete = None
+        # If the printer is not idle, we can update progress
+        if self.progress is not None:
+            percent_complete = int(self.progress)
+        elif self.total_layers is not None and self.total_layers > 0:
+            percent_complete = int((self.current_layer / self.total_layers) * 100)
+
+        if percent_complete is not None:
             self.percent_complete = max(0, min(100, percent_complete))
         else:
-            self.percent_complete = 0
+            self.percent_complete = percent_complete
 
         self.filename = data.get("Filename")
         error_number_int = data.get("ErrorNumber", 0)
