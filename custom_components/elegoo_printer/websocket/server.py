@@ -716,6 +716,7 @@ class ElegooPrinterServer:
                     allowed_headers = {
                         "sec-websocket-version",
                         "sec-websocket-key",
+                        "sec-websocket-protocol",
                         "upgrade",
                         "connection",
                     }
@@ -1142,7 +1143,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         self.logger = logger
         self.printer_registry = printer_registry
         self.proxy_ip = proxy_ip
-        self.transport = asyncio.DatagramTransport | None
+        self.transport: asyncio.DatagramTransport | None = None
 
     def connection_made(self, transport: asyncio.DatagramTransport) -> None:
         """Call when a connection is made."""
