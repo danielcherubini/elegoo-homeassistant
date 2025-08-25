@@ -3,6 +3,7 @@
 import asyncio
 import os
 import sys
+from typing import Any
 
 import aiohttp
 from loguru import logger
@@ -11,13 +12,14 @@ from custom_components.elegoo_printer.websocket.client import ElegooPrinterClien
 from custom_components.elegoo_printer.sdcp.const import DEBUG
 
 LOG_LEVEL = "INFO"
-PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.114")
 
 logger.remove()
 logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)
 
 
-async def monitor_printer(printer, session, stop_event):
+async def monitor_printer(
+    printer: Any, session: aiohttp.ClientSession, stop_event: asyncio.Event
+):
     """Monitor a single printer."""
     elegoo_printer = ElegooPrinterClient(
         ip_address=printer.ip_address, session=session, logger=logger
@@ -69,7 +71,7 @@ async def main() -> None:
     try:
         async with aiohttp.ClientSession() as session:
             elegoo_printer = ElegooPrinterClient(
-                ip_address="0.0.0.0", session=session, logger=logger
+                ip_address=None, session=session, logger=logger
             )
             
             # Discover all printers (broadcast discovery)

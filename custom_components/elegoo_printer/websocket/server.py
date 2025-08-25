@@ -235,12 +235,12 @@ class PrinterRegistry:
         """Parse discovery response bytes and create a Printer object if valid."""
         try:
             response = json.loads(data.decode("utf-8"))
-            # Construct Printer from the parsed dict to ensure proper field mapping
-            printer = Printer.from_dict(response)
-            return printer
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as e:
             logger.debug("Error parsing discovery response: %s", e)
             return None
+        else:
+            # Construct Printer from the parsed dict to ensure proper field mapping
+            return Printer.from_dict(response)
 
 
 class ElegooPrinterServer:

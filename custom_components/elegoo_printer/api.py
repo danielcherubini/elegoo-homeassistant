@@ -112,7 +112,12 @@ class ElegooPrinterApiClient:
             )
             if not connected:
                 if self.server:
-                    await self.server.stop()
+                    removed = await ElegooPrinterServer.remove_printer_from_server(
+                        self.printer, logger
+                    )
+                    if removed:
+                        # Server stopped because no printers remained
+                        self.server = None
                 if self.client:
                     await self.client.disconnect()
                 return None
@@ -120,7 +125,11 @@ class ElegooPrinterApiClient:
             return self  # noqa: TRY300
         except (ConnectionError, TimeoutError):
             if self.server:
-                await self.server.stop()
+                removed = await ElegooPrinterServer.remove_printer_from_server(
+                    self.printer, logger
+                )
+                if removed:
+                    self.server = None
             if self.client:
                 await self.client.disconnect()
             return None
@@ -143,9 +152,11 @@ class ElegooPrinterApiClient:
     async def elegoo_stop_proxy(self) -> None:
         """Remove this printer from the proxy server or stop if no printers remain."""
         if self.server and self.printer:
-            await ElegooPrinterServer.remove_printer_from_server(
+            removed = await ElegooPrinterServer.remove_printer_from_server(
                 self.printer, self._logger
             )
+            if removed:
+                self.server = None
 
     async def async_get_status(self) -> PrinterData:
         """
@@ -334,8 +345,6 @@ class ElegooPrinterApiClient:
         printer = self.printer
         session = async_get_clientsession(self.hass)
         if self._proxy_server_enabled:
-            if self.server:
-                await self.server.stop()
             try:
                 self.server = await ElegooPrinterServer.async_create(
                     logger=self._logger,
