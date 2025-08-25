@@ -82,9 +82,10 @@ class ElegooPrinterApiClient:
             logger.debug("Proxy server is enabled, attempting to create proxy server.")
             try:
                 self.server = await ElegooPrinterServer.async_create(
-                    printer, logger=logger, hass=hass, session=session
+                    logger=logger, hass=hass, session=session, printer=printer
                 )
-                printer = self.server.get_printer()
+                # For multi-printer server, we'll use the original printer config
+                # but note that proxy is enabled
                 printer.proxy_enabled = proxy_server_enabled
             except (ConnectionError, TimeoutError) as e:
                 logger.warning(
@@ -111,7 +112,12 @@ class ElegooPrinterApiClient:
             )
             if not connected:
                 if self.server:
-                    await self.server.stop()
+                    removed = await ElegooPrinterServer.remove_printer_from_server(
+                        self.printer, logger
+                    )
+                    if removed:
+                        # Server stopped because no printers remained
+                        self.server = None
                 if self.client:
                     await self.client.disconnect()
                 return None
@@ -119,7 +125,11 @@ class ElegooPrinterApiClient:
             return self  # noqa: TRY300
         except (ConnectionError, TimeoutError):
             if self.server:
-                await self.server.stop()
+                removed = await ElegooPrinterServer.remove_printer_from_server(
+                    self.printer, logger
+                )
+                if removed:
+                    self.server = None
             if self.client:
                 await self.client.disconnect()
             return None
@@ -140,9 +150,13 @@ class ElegooPrinterApiClient:
         await self.client.disconnect()
 
     async def elegoo_stop_proxy(self) -> None:
-        """Stop the proxy server if it is running."""
-        if self.server:
-            await self.server.stop()
+        """Remove this printer from the proxy server or stop if no printers remain."""
+        if self.server and self.printer:
+            removed = await ElegooPrinterServer.remove_printer_from_server(
+                self.printer, self._logger
+            )
+            if removed:
+                self.server = None
 
     async def async_get_status(self) -> PrinterData:
         """
@@ -331,13 +345,13 @@ class ElegooPrinterApiClient:
         printer = self.printer
         session = async_get_clientsession(self.hass)
         if self._proxy_server_enabled:
-            if self.server:
-                await self.server.stop()
             try:
                 self.server = await ElegooPrinterServer.async_create(
-                    printer, logger=self._logger, hass=self.hass, session=session
+                    logger=self._logger,
+                    hass=self.hass,
+                    session=session,
+                    printer=printer,
                 )
-                printer = self.server.get_printer()
             except (ConnectionError, TimeoutError):
                 self._logger.exception("Failed to (re)create proxy server")
                 self.server = None

@@ -74,7 +74,7 @@ class PrintInfo:
         total_ticks (int): Estimated Total Print Time(ms).
         remaining_ticks (int): Remaining Print Time(ms).
         progress (int): Print Progress (%).
-        percent_complete (int): Percentage Complete.
+        percent_complete (int | None): Percentage Complete, or None when idle.
         print_speed_pct (int): The current print speed as a percentage.
         filename (str): Print File Name.
         error_number (ElegooPrintError): Error Number (refer to documentation).
@@ -113,6 +113,8 @@ class PrintInfo:
         self.progress: int | None = data.get("Progress")
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
         self.end_time = None
+        # percent_complete is optional when printer is idle/unknown
+        self.percent_complete: int | None = None
 
         # Bug where printer sends 0 for percent and current layer if print finished
         if self.status == ElegooPrintStatus.COMPLETE:
@@ -129,7 +131,7 @@ class PrintInfo:
                 percent_complete = 0
             self.percent_complete = max(0, min(100, percent_complete))
         else:
-            self.percent_complete = 0
+            self.percent_complete = None
 
         self.filename = data.get("Filename")
         error_number_int = data.get("ErrorNumber", 0)
