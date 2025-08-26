@@ -520,7 +520,10 @@ class ElegooPrinterServer:
         """Dispatches incoming HTTP requests."""
         if request.headers.get("Upgrade", "").lower() == "websocket":
             return await self._websocket_handler(request)
-        if request.method == "POST" and request.path == "/uploadFile/upload":
+        if request.method == "POST" and (
+            request.path == "/uploadFile/upload"
+            or request.path.endswith("/uploadFile/upload")
+        ):
             return await self._http_file_proxy_passthrough_handler(request)
         return await self._http_proxy_handler(request)
 
@@ -889,6 +892,66 @@ class ElegooPrinterServer:
         # Return original message if no modification needed or error occurred
         return message_data
 
+
+    def _extract_mainboard_id_from_referer(self, request: web.Request) -> str | None:
+        """Extract MainboardID from HTTP Referer header."""
+        referer = request.headers.get('Referer')
+        if not referer:
+            return None
+        
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(referer)
+            path_parts = parsed.path.strip("/").split("/")
+            
+            if len(path_parts) >= 1 and path_parts[0]:
+                potential_id = path_parts[0]
+                
+                # Check if first path segment looks like a MainboardID (hex, 8+ chars)
+                if len(potential_id) >= MIN_MAINBOARD_ID_LENGTH and all(
+                    c in "0123456789abcdefABCDEF" for c in potential_id
+                ):
+                    return potential_id
+        except Exception:
+            # If parsing fails, return None
+            pass
+        
+        return None
+
+
+    def _extract_mainboard_id_from_http_request(
+        self, request: web.Request
+    ) -> str | None:
+        """Extract MainboardID from HTTP request query parameters, path, or Referer header."""
+        # First try query parameters (highest priority)
+        mainboard_id = request.query.get("mainboard_id")
+        if mainboard_id:
+            return mainboard_id
+
+        # If no MainboardID in query, try path-based routing (medium priority)
+        path_parts = request.path.strip("/").split("/")
+        
+        if len(path_parts) >= 1 and path_parts[0]:
+            potential_id = path_parts[0]
+            
+            # Check if first path segment looks like a MainboardID (hex, 8+ chars)
+            if len(potential_id) >= MIN_MAINBOARD_ID_LENGTH and all(
+                c in "0123456789abcdefABCDEF" for c in potential_id
+            ):
+                return potential_id
+
+        # Fallback: try /api/{mainboard_id}/... pattern for compatibility
+        if len(path_parts) > 1 and path_parts[0] == "api":
+            potential_id = path_parts[1]
+            # Check if this looks like a MainboardID (hex, 8+ chars)
+            if len(potential_id) >= MIN_MAINBOARD_ID_LENGTH and all(
+                c in "0123456789abcdefABCDEF" for c in potential_id
+            ):
+                return potential_id
+        
+        # Final fallback: try extracting from Referer header (lowest priority)
+        return self._extract_mainboard_id_from_referer(request)
+
     async def _http_proxy_handler(self, request: web.Request) -> web.StreamResponse:
         """
         Streams HTTP requests with multi-printer routing.
@@ -902,7 +965,10 @@ class ElegooPrinterServer:
         1. Query Parameter: ?mainboard_id={MainboardID}
            Example: GET /api/status?mainboard_id=ABC123DEF456
 
-        2. Path-Based: /api/{MainboardID}/endpoint
+        2. Root Path-Based: /{MainboardID} or /{MainboardID}/endpoint
+           Example: GET /ABC123DEF456 or GET /ABC123DEF456/api/status
+
+        3. API Path-Based: /api/{MainboardID}/endpoint (legacy compatibility)
            Example: GET /api/ABC123DEF456/status
 
         SUPPORTED OPERATIONS:
@@ -932,23 +998,20 @@ class ElegooPrinterServer:
         if not self.session or self.session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
-        # For HTTP requests, try to extract MainboardID from query parameters or path
-        mainboard_id = request.query.get("mainboard_id")
-
-        # If no MainboardID in query, try path-based routing /api/{mainboard_id}/...
-        if not mainboard_id and request.path.startswith("/api/"):
-            path_parts = request.path.strip("/").split("/")
-            if len(path_parts) > 1:
-                potential_id = path_parts[1]
-                # Check if this looks like a MainboardID (hex string, at least 8 chars)
-                if len(potential_id) >= MIN_MAINBOARD_ID_LENGTH and all(
-                    c in "0123456789abcdefABCDEF" for c in potential_id
-                ):
-                    mainboard_id = potential_id
+        # Extract MainboardID from query parameters or path
+        mainboard_id = self._extract_mainboard_id_from_http_request(request)
+        
+        self.logger.debug(
+            "HTTP proxy request: %s %s, extracted mainboard_id: %s",
+            request.method,
+            request.path_qs,
+            mainboard_id,
+        )
 
         if not mainboard_id:
             return web.Response(
-                status=400, text="MainboardID required for HTTP proxy routing"
+                status=400, 
+                text="MainboardID required for HTTP proxy routing. Ensure URL includes mainboard_id in path or query parameter, or that Referer header is set."
             )
 
         printer = self.printer_registry.get_printer(mainboard_id)
@@ -989,7 +1052,10 @@ class ElegooPrinterServer:
             )
         )
 
-        target_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{forwarded_path}"
+        # Add mainboard_id as query parameter for the target printer
+        separator = "&" if "?" in forwarded_path else "?"
+        target_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{forwarded_path}{separator}mainboard_id={mainboard_id}"
+        
         headers = {
             k: v
             for k, v in request.headers.items()
@@ -1043,6 +1109,8 @@ class ElegooPrinterServer:
         except aiohttp.ClientError as e:
             msg = f"HTTP proxy error connecting to {target_url}"
             self.logger.exception(msg)
+            # Temporary debug logging
+            self.logger.error("DEBUG: aiohttp.ClientError: %s", e)
             return web.Response(status=502, text=f"Bad Gateway: {e}")
 
     async def _http_file_proxy_passthrough_handler(
@@ -1052,8 +1120,8 @@ class ElegooPrinterServer:
         if not self.session or self.session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
-        # Extract MainboardID from query parameters for file uploads
-        mainboard_id = request.query.get("mainboard_id")
+        # Extract MainboardID from query parameters or path for file uploads
+        mainboard_id = self._extract_mainboard_id_from_http_request(request)
 
         if not mainboard_id:
             return web.Response(
@@ -1070,7 +1138,25 @@ class ElegooPrinterServer:
                     status=404, text=f"Printer {mainboard_id} not found"
                 )
 
-        remote_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
+        # Clean the path by removing mainboard_id if present
+        parsed_url = urlparse(request.path_qs)
+        path_parts = [part for part in parsed_url.path.split("/") if part]
+        if mainboard_id in path_parts:
+            path_parts.remove(mainboard_id)
+
+        # Rebuild path with single leading slash and no double slashes
+        cleaned_path = "/" + "/".join(path_parts) if path_parts else "/"
+
+        # Remove mainboard_id from query parameters
+        query_params = parse_qs(parsed_url.query, keep_blank_values=True)
+        query_params.pop("mainboard_id", None)
+        cleaned_query = urlencode(query_params, doseq=True)
+
+        # Construct final URL
+        if cleaned_query:
+            remote_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{cleaned_path}?{cleaned_query}"
+        else:
+            remote_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{cleaned_path}"
 
         headers = {
             k: v
