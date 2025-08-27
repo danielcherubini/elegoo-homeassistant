@@ -27,7 +27,6 @@ class ElegooPrinterEntity(CoordinatorEntity[ElegooDataUpdateCoordinator]):
     _attr_attribution = ATTRIBUTION
     _attr_has_entity_name = True
 
-
     def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
         """Initialize."""
         super().__init__(coordinator)

@@ -99,5 +99,3 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         if self.coordinator.data:
             return self.entity_description.value_fn(self.coordinator.data)
         return None
-
-

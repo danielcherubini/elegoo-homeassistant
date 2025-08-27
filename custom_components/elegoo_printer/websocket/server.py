@@ -61,7 +61,6 @@ import os
 import socket
 import time
 from typing import TYPE_CHECKING, Any
-from urllib.parse import parse_qs, urlencode, urlparse, urlsplit, urlunparse, urlunsplit
 
 import aiohttp
 from aiohttp import ClientSession, WSMsgType, web
@@ -89,10 +88,19 @@ MIN_MAINBOARD_ID_LENGTH = 8
 
 class PrinterRegistry:
     """
-    Registry for managing multiple discovered printers.
+    Registry for managing multiple discovered printers with port-based routing.
 
     This class provides thread-safe management of network-discovered printers
-    with automatic discovery, caching, and rate limiting capabilities.
+    with automatic discovery, caching, rate limiting, and port assignment.
+
+    PORT ALLOCATION STRATEGY:
+    ========================
+
+    Printers are assigned unique port pairs based on registration order:
+    - Printer 1: WebSocket=3030, Video=3031
+    - Printer 2: WebSocket=3032, Video=3033
+    - Printer 3: WebSocket=3034, Video=3035
+    - Formula: WebSocket = 3030 + (index)*2, Video = 3031 + (index)*2
 
     DISCOVERY PROCESS:
     =================
@@ -100,7 +108,7 @@ class PrinterRegistry:
     1. UDP Broadcast: Send "M99999" to 255.255.255.255:3000
     2. Response Collection: Gather JSON responses for 5 seconds
     3. Printer Parsing: Extract printer info and create Printer objects
-    4. Registry Update: Store printers by MainboardID for routing
+    4. Registry Update: Store printers by IP address with port assignment
 
     RATE LIMITING:
     =============
@@ -118,43 +126,85 @@ class PrinterRegistry:
 
     def __init__(self) -> None:
         """Initialize the printer registry."""
-        self._printers: dict[str, Printer] = {}
+        self._printers: dict[str, Printer] = {}  # IP -> Printer mapping
+        self._printer_ports: dict[
+            str, tuple[int, int]
+        ] = {}  # IP -> (ws_port, video_port)
+        self._next_index: int = 0
         self._last_discovery: float = 0
         self._discovery_lock = asyncio.Lock()
 
-    def add_printer(self, printer: Printer) -> None:
-        """Add a printer to the registry by MainboardID."""
-        if printer.id:
-            self._printers[printer.id] = printer
+    def add_printer(self, printer: Printer) -> tuple[int, int]:
+        """
+        Add a printer to the registry by IP address and assign ports.
 
-    def get_printer(self, mainboard_id: str) -> Printer | None:
-        """Get a printer by MainboardID."""
-        return self._printers.get(mainboard_id)
+        Returns:
+            Tuple of (websocket_port, video_port) assigned to this printer.
+
+        """
+        if not printer.ip_address:
+            raise ValueError("Printer must have an IP address")
+
+        # If printer already exists, return existing ports
+        if printer.ip_address in self._printers:
+            return self._printer_ports[printer.ip_address]
+
+        # Assign new ports for this printer
+        ws_port = WEBSOCKET_PORT + (self._next_index * 2)
+        video_port = VIDEO_PORT + (self._next_index * 2)
+
+        self._printers[printer.ip_address] = printer
+        self._printer_ports[printer.ip_address] = (ws_port, video_port)
+        self._next_index += 1
+
+        return (ws_port, video_port)
+
+    def get_printer_by_ip(self, ip_address: str) -> Printer | None:
+        """Get a printer by IP address."""
+        return self._printers.get(ip_address)
+
+    def get_printer_by_port(self, port: int) -> Printer | None:
+        """Get a printer by its assigned websocket or video port."""
+        for ip, (ws_port, video_port) in self._printer_ports.items():
+            if port == ws_port or port == video_port:
+                return self._printers.get(ip)
+        return None
+
+    def get_printer_ports(self, ip_address: str) -> tuple[int, int] | None:
+        """Get the assigned ports for a printer by IP address."""
+        return self._printer_ports.get(ip_address)
 
     def get_all_printers(self) -> dict[str, Printer]:
-        """Get all registered printers."""
+        """Get all registered printers mapped by IP address."""
         return self._printers.copy()
+
+    def get_all_printer_ports(self) -> dict[str, tuple[int, int]]:
+        """Get all printer port assignments mapped by IP address."""
+        return self._printer_ports.copy()
 
     def count(self) -> int:
         """Get the number of registered printers."""
         return len(self._printers)
 
-    def remove_printer(self, mainboard_id: str) -> bool:
+    def remove_printer(self, ip_address: str) -> bool:
         """
-        Remove a printer from the registry by MainboardID.
+        Remove a printer from the registry by IP address.
 
         Returns:
             True if printer was removed, False if not found.
 
         """
-        if mainboard_id in self._printers:
-            del self._printers[mainboard_id]
+        if ip_address in self._printers:
+            del self._printers[ip_address]
+            del self._printer_ports[ip_address]
             return True
         return False
 
     def clear(self) -> None:
         """Clear all registered printers."""
         self._printers.clear()
+        self._printer_ports.clear()
+        self._next_index = 0
 
     async def discover_printers(
         self,
@@ -192,14 +242,15 @@ class PrinterRegistry:
                         try:
                             data, addr = sock.recvfrom(8192)
                             printer = self._parse_discovery_response(data, logger)
-                            if printer and printer.id:
-                                discovered_printers[printer.id] = printer
-                                self.add_printer(printer)
+                            if printer and printer.ip_address:
+                                discovered_printers[printer.ip_address] = printer
+                                ws_port, video_port = self.add_printer(printer)
                                 logger.info(
-                                    "Discovered printer: %s (%s) ID: %s",
+                                    "Discovered printer: %s (%s) assigned ports WS:%d Video:%d",
                                     printer.name,
                                     printer.ip_address,
-                                    printer.id,
+                                    ws_port,
+                                    video_port,
                                 )
                         except TimeoutError:
                             # Socket timeout is expected, continue polling
@@ -283,12 +334,19 @@ class ElegooPrinterServer:
             # Return existing instance if already created (check again inside the lock)
             if cls._instance is not None:
                 if printer:
-                    # Add the new printer to the existing server's registry
-                    cls._instance.printer_registry.add_printer(printer)
+                    # Add the new printer to the existing server's registry and start server for it
+                    ws_port, video_port = cls._instance.printer_registry.add_printer(
+                        printer
+                    )
+                    await cls._instance._start_printer_servers(
+                        printer, ws_port, video_port
+                    )
                     logger.debug(
-                        "Added printer %s (%s) to existing proxy server",
+                        "Added printer %s (%s) to existing proxy server on ports WS:%d Video:%d",
                         printer.name,
-                        printer.id,
+                        printer.ip_address,
+                        ws_port,
+                        video_port,
                     )
                 else:
                     logger.debug("Reusing existing proxy server instance")
@@ -299,29 +357,35 @@ class ElegooPrinterServer:
             self = cls(logger, hass, session)
             if printer:
                 # Add the initial printer to the registry
-                self.printer_registry.add_printer(printer)
+                ws_port, video_port = self.printer_registry.add_printer(printer)
                 logger.debug(
-                    "Added printer %s (%s) to new proxy server",
+                    "Added printer %s (%s) to new proxy server on ports WS:%d Video:%d",
                     printer.name,
-                    printer.id,
+                    printer.ip_address,
+                    ws_port,
+                    video_port,
                 )
 
             # Set instance BEFORE starting to prevent race condition
             cls._instance = self
 
             try:
-                # Start the server for the new instance
+                # Start the discovery server and printer-specific servers
                 await self.start()
 
                 # Only perform network discovery if no printers were provided via config
                 if self.printer_registry.count() == 0:
                     logger.debug("No configured printers, performing network discovery")
                     await self.printer_registry.discover_printers(logger)
+                    # Start servers for discovered printers
+                    await self._start_servers_for_all_printers()
                 else:
                     logger.debug(
                         "Using %d printer(s) from Home Assistant config",
                         self.printer_registry.count(),
                     )
+                    # Start servers for configured printers
+                    await self._start_servers_for_all_printers()
             except Exception:
                 # Clear instance if startup fails
                 cls._instance = None
@@ -335,40 +399,13 @@ class ElegooPrinterServer:
         return self._is_connected
 
     async def start(self) -> None:
-        """Start the proxy server on the Home Assistant event loop."""
-        if not self._check_ports_are_available():
-            msg = "Proxy server ports are in use, likely by another instance."
-            self.logger.debug(msg)
-            # Don't raise an exception if another instance is already running
-            # The singleton pattern should handle this gracefully
-            # Mark as connected since we're relying on the existing singleton
-            self._is_connected = True
-            return
-
-        self.logger.info("Initializing multi-printer proxy server")
+        """Start the discovery server (UDP only for printer discovery)."""
+        self.logger.info(
+            "Initializing multi-printer proxy server with port-based routing"
+        )
 
         try:
-            # Allow large uploads (streamed), keep headroom for typical print files.
-            main_app = web.Application(client_max_size=1024 * 1024 * 1024)  # 1 GiB
-            main_app.router.add_route("*", "/{path:.*}", self._http_handler)
-            main_runner = web.AppRunner(main_app)
-            await main_runner.setup()
-            main_site = web.TCPSite(main_runner, INADDR_ANY, WEBSOCKET_PORT)
-            await main_site.start()
-            self.runners.append(main_runner)
-            msg = f"Main HTTP/WebSocket Proxy running on http://{self.get_local_ip()}:{WEBSOCKET_PORT}"
-            self.logger.info(msg)
-
-            video_app = web.Application()
-            video_app.router.add_route("*", "/{path:.*}", self._video_proxy_handler)
-            video_runner = web.AppRunner(video_app)
-            await video_runner.setup()
-            video_site = web.TCPSite(video_runner, INADDR_ANY, VIDEO_PORT)
-            await video_site.start()
-            self.runners.append(video_runner)
-            msg = f"Video Proxy running on http://{self.get_local_ip()}:{VIDEO_PORT}"
-            self.logger.info(msg)
-
+            # Start UDP discovery server
             def discovery_factory() -> DiscoveryProtocol:
                 return DiscoveryProtocol(
                     self.logger, self.printer_registry, self.get_local_ip()
@@ -382,14 +419,75 @@ class ElegooPrinterServer:
             self.logger.info(msg)
 
         except OSError as e:
-            msg = f"Failed to start proxy server: {e}"
+            msg = f"Failed to start discovery server: {e}"
             self.logger.exception(msg)
             await self.stop()
             raise ConfigEntryNotReady(msg) from e
 
-        # Note: singleton instance is set in async_create
         self._is_connected = True
-        self.logger.info("Proxy server has started successfully.")
+        self.logger.info("Discovery server has started successfully.")
+
+    async def _start_servers_for_all_printers(self) -> None:
+        """Start HTTP/WebSocket servers for all registered printers."""
+        for ip, printer in self.printer_registry.get_all_printers().items():
+            ports = self.printer_registry.get_printer_ports(ip)
+            if ports:
+                ws_port, video_port = ports
+                await self._start_printer_servers(printer, ws_port, video_port)
+
+    async def _start_printer_servers(
+        self, printer: Printer, ws_port: int, video_port: int
+    ) -> None:
+        """Start HTTP/WebSocket and video servers for a specific printer."""
+        try:
+            # Check if ports are available
+            if not self._check_printer_ports_available(ws_port, video_port):
+                self.logger.warning(
+                    "Ports %d/%d already in use for printer %s, skipping server start",
+                    ws_port,
+                    video_port,
+                    printer.ip_address,
+                )
+                return
+
+            # Start WebSocket/HTTP server for this printer
+            ws_app = web.Application(client_max_size=1024 * 1024 * 1024)  # 1 GiB
+            ws_app.router.add_route(
+                "*", "/{path:.*}", lambda req: self._printer_http_handler(req, printer)
+            )
+            ws_runner = web.AppRunner(ws_app)
+            await ws_runner.setup()
+            ws_site = web.TCPSite(ws_runner, INADDR_ANY, ws_port)
+            await ws_site.start()
+            self.runners.append(ws_runner)
+
+            # Start Video server for this printer
+            video_app = web.Application()
+            video_app.router.add_route(
+                "*", "/{path:.*}", lambda req: self._printer_video_handler(req, printer)
+            )
+            video_runner = web.AppRunner(video_app)
+            await video_runner.setup()
+            video_site = web.TCPSite(video_runner, INADDR_ANY, video_port)
+            await video_site.start()
+            self.runners.append(video_runner)
+
+            self.logger.info(
+                "Started servers for printer %s (%s) on ports WS:%d Video:%d",
+                printer.name,
+                printer.ip_address,
+                ws_port,
+                video_port,
+            )
+
+        except OSError as e:
+            self.logger.exception(
+                "Failed to start servers for printer %s on ports WS:%d Video:%d: %s",
+                printer.ip_address,
+                ws_port,
+                video_port,
+                e,
+            )
 
     @classmethod
     async def stop_all(cls) -> None:
@@ -398,28 +496,15 @@ class ElegooPrinterServer:
             await cls._instance.stop()
             cls._instance = None
 
-    def _check_ports_are_available(self) -> bool:
-        """Check if the required TCP and UDP ports for the proxy server are free."""
-        # If there's already an instance running, we don't need new ports
-        if self.__class__._instance is not None and self.__class__._instance != self:  # noqa: SLF001
-            self.logger.debug(
-                "Proxy server already running, skipping port availability check"
-            )
-            return True
-        for port, proto, name in [
-            (WEBSOCKET_PORT, socket.SOCK_STREAM, "TCP"),
-            (VIDEO_PORT, socket.SOCK_STREAM, "Video TCP"),
-            (DISCOVERY_PORT, socket.SOCK_DGRAM, "UDP"),
-        ]:
+    def _check_printer_ports_available(self, ws_port: int, video_port: int) -> bool:
+        """Check if the specified ports are available for a printer."""
+        for port, name in [(ws_port, "WebSocket"), (video_port, "Video")]:
             try:
-                with socket.socket(socket.AF_INET, proto) as s:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     s.bind((INADDR_ANY, port))
             except OSError:
-                msg = (
-                    f"{name} port {port} is already in use. Proxy server cannot start."
-                )
-                self.logger.debug(msg)  # Changed from warning to debug for less noise
+                self.logger.debug(f"{name} port {port} is already in use")
                 return False
         return True
 
@@ -436,13 +521,13 @@ class ElegooPrinterServer:
         if cls._instance is None:
             return False  # No server to remove from
 
-        if printer.id:
-            removed = cls._instance.printer_registry.remove_printer(printer.id)
+        if printer.ip_address:
+            removed = cls._instance.printer_registry.remove_printer(printer.ip_address)
             if removed:
                 logger.debug(
                     "Removed printer %s (%s) from proxy server",
                     printer.name,
-                    printer.id,
+                    printer.ip_address,
                 )
 
             # Check if any printers remain
@@ -477,94 +562,28 @@ class ElegooPrinterServer:
 
         self.logger.info("Proxy server stopped.")
 
-    def _extract_mainboard_id_from_request(
-        self, request_data: str | bytes
-    ) -> str | None:
-        """Extract MainboardID from SDCP request data."""
-        try:
-            if isinstance(request_data, bytes):
-                request_data = request_data.decode("utf-8")
-
-            data = json.loads(request_data)
-
-            # Try to get MainboardID from Data.MainboardID
-            if isinstance(data, dict):
-                inner_data = data.get("Data", {})
-                if isinstance(inner_data, dict):
-                    mainboard_id = inner_data.get("MainboardID")
-                    if mainboard_id:
-                        return mainboard_id
-
-                # Also check Topic for MainboardID (sdcp/request/{MainboardID})
-                topic = data.get("Topic", "")
-                if topic and "/" in topic:
-                    parts = topic.split("/")
-                    if len(parts) >= 3:  # noqa: PLR2004
-                        return parts[-1]  # Last part should be MainboardID
-
-        except (json.JSONDecodeError, AttributeError, KeyError) as e:
-            self.logger.debug("Error extracting MainboardID from request: %s", e)
-
-        return None
-
-    def get_local_ip(self) -> str:
-        """Determine the local IP address for outbound communication."""
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                s.connect((DEFAULT_FALLBACK_IP, 1))
-                return s.getsockname()[0]
-        except Exception:  # noqa: BLE001
-            return PROXY_HOST
-
-    async def _http_handler(self, request: web.Request) -> web.StreamResponse:
-        """Dispatches incoming HTTP requests."""
+    async def _printer_http_handler(
+        self, request: web.Request, printer: Printer
+    ) -> web.StreamResponse:
+        """Handle HTTP requests for a specific printer (direct pass-through)."""
         if request.headers.get("Upgrade", "").lower() == "websocket":
-            return await self._websocket_handler(request)
+            return await self._printer_websocket_handler(request, printer)
         if request.method == "POST" and (
             request.path == "/uploadFile/upload"
             or request.path.endswith("/uploadFile/upload")
         ):
-            return await self._http_file_proxy_passthrough_handler(request)
-        return await self._http_proxy_handler(request)
+            return await self._printer_file_handler(request, printer)
+        return await self._printer_http_proxy_handler(request, printer)
 
-    async def _video_proxy_handler(self, request: web.Request) -> web.StreamResponse:  # noqa: PLR0912
-        """Proxies video stream requests with MainboardID routing from modified URLs."""
-        # Extract MainboardID from path like /video/{mainboard_id}
-        mainboard_id = None
-
-        if request.path.startswith("/video/"):
-            path_parts = request.path.strip("/").split("/")
-            if len(path_parts) >= 2:  # noqa: PLR2004
-                potential_id = path_parts[1]
-                # Check if this looks like a MainboardID (hex string, at least 8 chars)
-                if len(potential_id) >= MIN_MAINBOARD_ID_LENGTH and all(
-                    c in "0123456789abcdefABCDEF" for c in potential_id
-                ):
-                    mainboard_id = potential_id
-
-        if not mainboard_id:
-            return web.Response(
-                status=400, text="MainboardID required in video URL path"
-            )
-
-        printer = self.printer_registry.get_printer(mainboard_id)
-        if not printer:
-            # Try to rediscover printers
-            await self.printer_registry.discover_printers(self.logger)
-            printer = self.printer_registry.get_printer(mainboard_id)
-            if not printer:
-                return web.Response(
-                    status=404, text=f"Printer {mainboard_id} not found"
-                )
-
-        # Forward to the printer's /video endpoint (original path without MainboardID)
-        forwarded_path = "/video"
-        if request.query_string:
-            forwarded_path += f"?{request.query_string}"
-
-        remote_url = f"http://{printer.ip_address}:{VIDEO_PORT}{forwarded_path}"
+    async def _printer_video_handler(
+        self, request: web.Request, printer: Printer
+    ) -> web.StreamResponse:
+        """Handle video requests for a specific printer (direct pass-through)."""
         if not self.session or self.session.closed:
             return web.Response(status=503, text="Session not available.")
+
+        # Forward directly to printer's video endpoint
+        remote_url = f"http://{printer.ip_address}:{VIDEO_PORT}{request.path_qs}"
 
         headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
         try:
@@ -594,65 +613,31 @@ class ElegooPrinterServer:
                         await response.write(chunk)
                     await response.write_eof()
                 except (ConnectionResetError, asyncio.CancelledError) as e:
-                    msg = f"Video stream stopped: {e}"
-                    self.logger.debug(msg)
+                    self.logger.debug(f"Video stream stopped: {e}")
                 except Exception:
                     self.logger.exception(
                         "An unexpected error occurred during video streaming"
                     )
                 return response
         except (TimeoutError, aiohttp.ClientError):
-            self.logger.exception("Error proxying video stream")
+            self.logger.exception(
+                "Error proxying video stream to %s", printer.ip_address
+            )
             return web.Response(status=502, text="Bad Gateway")
 
-    async def _websocket_handler(self, request: web.Request) -> web.WebSocketResponse:  # noqa: PLR0915
-        """
-        Proxy a WebSocket connection with multi-printer routing.
+    def get_local_ip(self) -> str:
+        """Determine the local IP address for outbound communication."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect((DEFAULT_FALLBACK_IP, 1))
+                return s.getsockname()[0]
+        except Exception:  # noqa: BLE001
+            return PROXY_HOST
 
-        This method implements sophisticated WebSocket proxying that routes messages
-        between Home Assistant and multiple printers based on MainboardID extraction.
-
-        WEBSOCKET ROUTING FLOW:
-        ======================
-
-        1. Client Connection: Home Assistant connects to proxy WebSocket
-        2. Message Analysis: Extract MainboardID from incoming JSON messages
-        3. Printer Lookup: Find target printer in registry by MainboardID
-        4. Connection Pool: Establish/reuse WebSocket connection to target printer
-        5. Bidirectional Relay: Forward messages between client and printer
-        6. URL Rewriting: Modify VideoUrl responses to route through proxy
-
-        CONNECTION MANAGEMENT:
-        =====================
-
-        - Active connections are pooled per MainboardID
-        - Heartbeat (10s) prevents connection timeouts
-        - Automatic reconnection on printer connection failure
-        - Graceful cleanup on client disconnect or errors
-
-        MESSAGE STRUCTURE:
-        =================
-
-        Expected JSON format with MainboardID routing:
-        ```json
-        {
-          "Topic": "sdcp/request/{MainboardID}",
-          "Data": {
-            "MainboardID": "{MainboardID}",
-            "Cmd": 1001,
-            "Data": { ... }
-          }
-        }
-        ```
-
-        ERROR HANDLING:
-        ==============
-
-        - Missing MainboardID: Log warning, ignore message
-        - Printer not found: Auto-discovery attempt, then error response
-        - Connection failures: Automatic retry with exponential backoff
-        - Client disconnect: Clean shutdown of all printer connections
-        """
+    async def _printer_websocket_handler(
+        self, request: web.Request, printer: Printer
+    ) -> web.WebSocketResponse:
+        """Handle WebSocket connections for a specific printer (direct pass-through)."""
         client_ws = web.WebSocketResponse()
         await client_ws.prepare(request)
 
@@ -660,402 +645,70 @@ class ElegooPrinterServer:
             await client_ws.close(code=1011, message=b"Upstream connection failed")
             return client_ws
 
-        # Store active connections for routing messages
-        active_connections: dict[str, aiohttp.ClientWebSocketResponse] = {}
-        tasks = set()
+        # Connect directly to printer's WebSocket
+        remote_ws_url = f"ws://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
+        allowed_headers = {
+            "sec-websocket-version",
+            "sec-websocket-key",
+            "sec-websocket-protocol",
+            "upgrade",
+            "connection",
+        }
+        filtered_headers = {
+            k: v for k, v in request.headers.items() if k.lower() in allowed_headers
+        }
 
         try:
+            remote_ws = await self.session.ws_connect(
+                remote_ws_url, headers=filtered_headers, heartbeat=10.0
+            )
 
-            async def route_message(
-                message_data: str,
-                client_ws: web.WebSocketResponse,
-            ) -> None:
-                """Route message to appropriate printer based on MainboardID."""
-                mainboard_id = self._extract_mainboard_id_from_request(message_data)
-                if not mainboard_id:
-                    self.logger.warning("No MainboardID found in message, cannot route")
-                    return
+            # Bidirectional message forwarding
+            async def forward_to_remote():
+                async for message in client_ws:
+                    if message.type == WSMsgType.TEXT:
+                        await remote_ws.send_str(message.data)
+                    elif message.type == WSMsgType.BINARY:
+                        await remote_ws.send_bytes(message.data)
+                    elif message.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                        break
 
-                printer = self.printer_registry.get_printer(mainboard_id)
-                if not printer:
-                    self.logger.warning(
-                        f"No printer found for MainboardID: {mainboard_id}"  # noqa: G004
-                    )
-                    # Try to rediscover printers
-                    await self.printer_registry.discover_printers(self.logger)
-                    printer = self.printer_registry.get_printer(mainboard_id)
-                    if not printer:
-                        error_response = {
-                            "Id": "proxy-error",
-                            "Data": {
-                                "Cmd": 0,
-                                "Data": {"Error": f"Printer {mainboard_id} not found"},
-                                "RequestID": "error",
-                                "MainboardID": mainboard_id,
-                                "TimeStamp": int(time.time()),
-                            },
-                            "Topic": f"sdcp/error/{mainboard_id}",
-                        }
-                        await client_ws.send_str(json.dumps(error_response))
-                        return
+            async def forward_to_client():
+                async for message in remote_ws:
+                    if message.type == WSMsgType.TEXT:
+                        await client_ws.send_str(message.data)
+                    elif message.type == WSMsgType.BINARY:
+                        await client_ws.send_bytes(message.data)
+                    elif message.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                        break
 
-                # Get or create connection to printer
-                if mainboard_id not in active_connections:
-                    remote_ws_url = (
-                        f"ws://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
-                    )
-                    allowed_headers = {
-                        "sec-websocket-version",
-                        "sec-websocket-key",
-                        "sec-websocket-protocol",
-                        "upgrade",
-                        "connection",
-                    }
-                    filtered_headers = {
-                        k: v
-                        for k, v in request.headers.items()
-                        if k.lower() in allowed_headers
-                    }
-
-                    try:
-                        remote_ws = await self.session.ws_connect(
-                            remote_ws_url, headers=filtered_headers, heartbeat=10.0
-                        )
-                        active_connections[mainboard_id] = remote_ws
-                        self.logger.info(
-                            f"Established WebSocket connection to printer {mainboard_id} at {printer.ip_address}"  # noqa: E501, G004
-                        )
-
-                        # Start forwarding messages from printer to client
-                        forward_task = self.hass.async_create_task(
-                            self._forward_from_printer(
-                                remote_ws, client_ws, mainboard_id
-                            )
-                        )
-                        tasks.add(forward_task)
-
-                    except Exception:
-                        self.logger.exception(
-                            "Failed to connect to printer %s", mainboard_id
-                        )
-                        return
-
-                # Forward message to printer
-                remote_ws = active_connections[mainboard_id]
-                if not remote_ws.closed:
-                    await remote_ws.send_str(message_data)
-                else:
-                    # Connection closed, remove it
-                    del active_connections[mainboard_id]
-                    self.logger.warning(
-                        f"Connection to printer {mainboard_id} was closed"  # noqa: G004
-                    )
-
-            # Handle messages from client
-            async for message in client_ws:
-                if message.type == WSMsgType.TEXT:
-                    await route_message(message.data, client_ws)
-                elif message.type == WSMsgType.CLOSE:
-                    break
-                elif message.type == WSMsgType.ERROR:
-                    self.logger.error(
-                        f"WebSocket error from client: {client_ws.exception()}"  # noqa: G004
-                    )
-                    break
+            # Run both forwarding tasks concurrently
+            await asyncio.gather(
+                forward_to_remote(), forward_to_client(), return_exceptions=True
+            )
 
         except Exception:
-            self.logger.exception("WebSocket handler error")
+            self.logger.exception(
+                "Failed to establish WebSocket connection to printer %s",
+                printer.ip_address,
+            )
         finally:
-            # Clean up all connections
-            for remote_ws in active_connections.values():
-                if not remote_ws.closed:
-                    await remote_ws.close()
-
-            # Cancel all tasks
-            for task in tasks:
-                task.cancel()
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-
+            if not remote_ws.closed:
+                await remote_ws.close()
             if not client_ws.closed:
                 await client_ws.close()
 
         return client_ws
 
-    async def _forward_from_printer(
-        self,
-        remote_ws: aiohttp.ClientWebSocketResponse,
-        client_ws: web.WebSocketResponse,
-        mainboard_id: str,
-    ) -> None:
-        """Forward messages from printer to client, replacing printer IP with proxy IP."""  # noqa: E501
-        try:
-            # Get printer and proxy IPs for replacement
-            printer = self.printer_registry.get_printer(mainboard_id)
-            if not printer:
-                return
-
-            printer_ip = printer.ip_address
-            proxy_ip = self.get_local_ip()
-
-            async for message in remote_ws:
-                if message.type == WSMsgType.TEXT:
-                    # Replace printer IP with proxy IP in text messages
-                    modified_data = message.data.replace(printer_ip, proxy_ip)
-                    # Also handle VideoUrl modification
-                    modified_data = self._modify_video_url_in_response(
-                        modified_data, mainboard_id
-                    )
-                    await client_ws.send_str(modified_data)
-                elif message.type == WSMsgType.BINARY:
-                    # Replace printer IP with proxy IP in binary messages
-                    try:
-                        # Try text-based replacement first
-                        text_data = message.data.decode("utf-8")
-                        modified_text = text_data.replace(printer_ip, proxy_ip)
-                        await client_ws.send_bytes(modified_text.encode("utf-8"))
-                    except UnicodeDecodeError:
-                        # Fall back to byte-level replacement
-                        printer_ip_bytes = printer_ip.encode("utf-8")
-                        proxy_ip_bytes = proxy_ip.encode("utf-8")
-                        modified_data = message.data.replace(
-                            printer_ip_bytes, proxy_ip_bytes
-                        )
-                        await client_ws.send_bytes(modified_data)
-                elif message.type == WSMsgType.CLOSE:
-                    break
-                elif message.type == WSMsgType.ERROR:
-                    self.logger.error(
-                        f"WebSocket error from printer {mainboard_id}: {remote_ws.exception()}"  # noqa: E501, G004
-                    )
-                    break
-        except Exception as e:  # noqa: BLE001
-            self.logger.debug("Forward from printer %s stopped: %s", mainboard_id, e)
-
-    def _modify_video_url_in_response(
-        self, message_data: str, mainboard_id: str
-    ) -> str:
-        """Modify VideoUrl in response to include MainboardID for routing."""
-        try:
-            data = json.loads(message_data)
-
-            # Check if this is a response with VideoUrl
-            if isinstance(data, dict):
-                inner_data = data.get("Data", {})
-                if isinstance(inner_data, dict):
-                    response_data = inner_data.get("Data", {})
-                    if isinstance(response_data, dict) and "VideoUrl" in response_data:
-                        original_url = response_data["VideoUrl"]
-                        self.logger.debug(
-                            "Found VideoUrl in response: %s", original_url
-                        )
-
-                        # Only rewrite HTTP URLs, preserve RTSP and other protocols
-                        parts = urlsplit(original_url)
-                        if parts.scheme.lower() == "http":
-                            # Replace the printer's IP with our proxy IP
-                            # and add MainboardID to path
-                            # Original: http://192.168.1.2:3031/video
-                            # Modified: http://proxy_ip:3031/video/{mainboard_id}
-                            proxy_ip = self.get_local_ip()
-                            host, _, port = parts.netloc.partition(":")
-                            port = port or "3031"
-                            new_netloc = f"{proxy_ip}:{port}"
-                            # Force /video/{id} path, preserve query and fragment
-                            new_path = f"/video/{mainboard_id}"
-                            modified_url = urlunsplit(
-                                (
-                                    parts.scheme,
-                                    new_netloc,
-                                    new_path,
-                                    parts.query,
-                                    parts.fragment,
-                                )
-                            )
-                            response_data["VideoUrl"] = modified_url
-                            self.logger.debug(
-                                "Modified HTTP VideoUrl from %s to %s",
-                                original_url,
-                                modified_url,
-                            )
-                        else:
-                            self.logger.debug(
-                                "Preserving non-HTTP VideoUrl (%s): %s",
-                                parts.scheme.upper(),
-                                original_url,
-                            )
-                        return json.dumps(data)
-
-        except (json.JSONDecodeError, KeyError, AttributeError) as e:
-            self.logger.debug("Error modifying VideoUrl in response: %s", e)
-
-        # Return original message if no modification needed or error occurred
-        return message_data
-
-
-    def _extract_mainboard_id_from_referer(self, request: web.Request) -> str | None:
-        """Extract MainboardID from HTTP Referer header."""
-        referer = request.headers.get("Referer")
-        if not referer:
-            return None
-
-        try:
-            parsed = urlparse(referer)
-            path_parts = parsed.path.strip("/").split("/")
-
-            if len(path_parts) >= 1 and path_parts[0]:
-                potential_id = path_parts[0]
-
-                # Check if first path segment looks like a MainboardID (hex, 8+ chars)
-                if len(potential_id) >= MIN_MAINBOARD_ID_LENGTH and all(
-                    c in "0123456789abcdefABCDEF" for c in potential_id
-                ):
-                    return potential_id
-        except (ValueError, AttributeError) as e:
-            # If parsing fails, return None
-            self.logger.debug("Failed to parse Referer header: %s", e)
-
-        return None
-
-
-    def _extract_mainboard_id_from_http_request(
-        self, request: web.Request
-    ) -> str | None:
-        """Extract MainboardID from HTTP request query parameters, path, or Referer."""
-        # First try query parameters (highest priority)
-        mainboard_id = request.query.get("mainboard_id")
-        if mainboard_id:
-            return mainboard_id
-
-        # If no MainboardID in query, try path-based routing (medium priority)
-        path_parts = request.path.strip("/").split("/")
-
-        if len(path_parts) >= 1 and path_parts[0]:
-            potential_id = path_parts[0]
-
-            # Check if first path segment looks like a MainboardID (hex, 8+ chars)
-            if len(potential_id) >= MIN_MAINBOARD_ID_LENGTH and all(
-                c in "0123456789abcdefABCDEF" for c in potential_id
-            ):
-                return potential_id
-
-        # Fallback: try /api/{mainboard_id}/... pattern for compatibility
-        if len(path_parts) > 1 and path_parts[0] == "api":
-            potential_id = path_parts[1]
-            # Check if this looks like a MainboardID (hex, 8+ chars)
-            if len(potential_id) >= MIN_MAINBOARD_ID_LENGTH and all(
-                c in "0123456789abcdefABCDEF" for c in potential_id
-            ):
-                return potential_id
-
-        # Final fallback: try extracting from Referer header (lowest priority)
-        return self._extract_mainboard_id_from_referer(request)
-
-    async def _http_proxy_handler(self, request: web.Request) -> web.StreamResponse:
-        """
-        Streams HTTP requests with multi-printer routing.
-
-        This method handles HTTP/HTTPS requests and routes them to the appropriate
-        printer based on MainboardID extraction from query parameters or URL paths.
-
-        HTTP ROUTING METHODS:
-        ====================
-
-        1. Query Parameter: ?mainboard_id={MainboardID}
-           Example: GET /api/status?mainboard_id=ABC123DEF456
-
-        2. Root Path-Based: /{MainboardID} or /{MainboardID}/endpoint
-           Example: GET /ABC123DEF456 or GET /ABC123DEF456/api/status
-
-        3. API Path-Based: /api/{MainboardID}/endpoint (legacy compatibility)
-           Example: GET /api/ABC123DEF456/status
-
-        SUPPORTED OPERATIONS:
-        ====================
-
-        - GET: Status queries, file listings, configuration retrieval
-        - POST: Commands, settings updates, print job control
-        - PUT: File operations, firmware updates
-        - DELETE: File removal, job cancellation
-
-        STREAMING SUPPORT:
-        =================
-
-        The handler uses streaming responses to support:
-        - Large file downloads (G-code, logs, firmware)
-        - Real-time status updates via Server-Sent Events
-        - Chunked transfer encoding for efficient memory usage
-
-        ERROR HANDLING:
-        ==============
-
-        - 400 Bad Request: Missing MainboardID in request
-        - 404 Not Found: Printer not found in registry
-        - 502 Bad Gateway: Connection failure to target printer
-        - 503 Service Unavailable: Proxy session unavailable
-        """
+    async def _printer_http_proxy_handler(
+        self, request: web.Request, printer: Printer
+    ) -> web.StreamResponse:
+        """Handle HTTP requests for a specific printer (direct pass-through)."""
         if not self.session or self.session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
-        # Extract MainboardID from query parameters or path
-        mainboard_id = self._extract_mainboard_id_from_http_request(request)
-
-        self.logger.debug(
-            "HTTP proxy request: %s %s, extracted mainboard_id: %s",
-            request.method,
-            request.path_qs,
-            mainboard_id,
-        )
-
-        if not mainboard_id:
-            return web.Response(
-                status=400,
-                text="MainboardID required for HTTP proxy routing. "
-                "Ensure URL includes mainboard_id in path or query parameter, "
-                "or that Referer header is set."
-            )
-
-        printer = self.printer_registry.get_printer(mainboard_id)
-        if not printer:
-            # Try to rediscover printers
-            await self.printer_registry.discover_printers(self.logger)
-            printer = self.printer_registry.get_printer(mainboard_id)
-            if not printer:
-                return web.Response(
-                    status=404, text=f"Printer {mainboard_id} not found"
-                )
-
-        # Parse URL to properly remove MainboardID from path and query parameters
-        parsed_url = urlparse(request.path_qs)
-
-        # Remove mainboard_id as a discrete path segment
-        path_parts = [part for part in parsed_url.path.split("/") if part]
-        if mainboard_id in path_parts:
-            path_parts.remove(mainboard_id)
-
-        # Rebuild path with single leading slash and no double slashes
-        cleaned_path = "/" + "/".join(path_parts) if path_parts else "/"
-
-        # Remove mainboard_id from query parameters
-        query_params = parse_qs(parsed_url.query, keep_blank_values=True)
-        query_params.pop("mainboard_id", None)
-        cleaned_query = urlencode(query_params, doseq=True)
-
-        # Reconstruct the forwarded path
-        forwarded_path = urlunparse(
-            (
-                "",
-                "",
-                cleaned_path,
-                parsed_url.params,
-                cleaned_query,
-                parsed_url.fragment,
-            )
-        )
-
-        # Add mainboard_id as query parameter for the target printer
-        separator = "&" if "?" in forwarded_path else "?"
-        target_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{forwarded_path}{separator}mainboard_id={mainboard_id}"
+        # Forward directly to printer
+        target_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
 
         headers = {
             k: v
@@ -1092,13 +745,9 @@ class ElegooPrinterServer:
                     "Transfer-Encoding",
                     "Connection",
                     "Keep-Alive",
-                    "Proxy-Authenticate",
-                    "Proxy-Authorization",
-                    "TE",
-                    "Trailer",
-                    "Upgrade",
                 ):
                     response_headers.pop(h, None)
+
                 client_response = web.StreamResponse(
                     status=upstream_response.status, headers=response_headers
                 )
@@ -1107,57 +756,22 @@ class ElegooPrinterServer:
                     await client_response.write(chunk)
                 await client_response.write_eof()
                 return client_response
+
         except aiohttp.ClientError as e:
-            msg = f"HTTP proxy error connecting to {target_url}"
-            self.logger.exception(msg)
-            # Temporary debug logging
-            self.logger.exception("DEBUG: aiohttp.ClientError")
+            self.logger.exception(
+                "HTTP proxy error connecting to printer %s", printer.ip_address
+            )
             return web.Response(status=502, text=f"Bad Gateway: {e}")
 
-    async def _http_file_proxy_passthrough_handler(
-        self, request: web.Request
+    async def _printer_file_handler(
+        self, request: web.Request, printer: Printer
     ) -> web.Response:
-        """Proxies multipart file upload requests with multi-printer routing."""
+        """Handle file upload requests for a specific printer (direct pass-through)."""
         if not self.session or self.session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
-        # Extract MainboardID from query parameters or path for file uploads
-        mainboard_id = self._extract_mainboard_id_from_http_request(request)
-
-        if not mainboard_id:
-            return web.Response(
-                status=400, text="MainboardID required for file upload routing"
-            )
-
-        printer = self.printer_registry.get_printer(mainboard_id)
-        if not printer:
-            # Try to rediscover printers
-            await self.printer_registry.discover_printers(self.logger)
-            printer = self.printer_registry.get_printer(mainboard_id)
-            if not printer:
-                return web.Response(
-                    status=404, text=f"Printer {mainboard_id} not found"
-                )
-
-        # Clean the path by removing mainboard_id if present
-        parsed_url = urlparse(request.path_qs)
-        path_parts = [part for part in parsed_url.path.split("/") if part]
-        if mainboard_id in path_parts:
-            path_parts.remove(mainboard_id)
-
-        # Rebuild path with single leading slash and no double slashes
-        cleaned_path = "/" + "/".join(path_parts) if path_parts else "/"
-
-        # Remove mainboard_id from query parameters
-        query_params = parse_qs(parsed_url.query, keep_blank_values=True)
-        query_params.pop("mainboard_id", None)
-        cleaned_query = urlencode(query_params, doseq=True)
-
-        # Construct final URL
-        if cleaned_query:
-            remote_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{cleaned_path}?{cleaned_query}"
-        else:
-            remote_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{cleaned_path}"
+        # Forward directly to printer's file upload endpoint
+        remote_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
 
         headers = {
             k: v
@@ -1176,6 +790,7 @@ class ElegooPrinterServer:
                 "upgrade",
             )
         }
+
         try:
             async with self.session.post(
                 remote_url,
@@ -1192,18 +807,15 @@ class ElegooPrinterServer:
                     "Transfer-Encoding",
                     "Connection",
                     "Keep-Alive",
-                    "Proxy-Authenticate",
-                    "Proxy-Authorization",
-                    "TE",
-                    "Trailer",
-                    "Upgrade",
                 ):
                     resp_headers.pop(h, None)
                 return web.Response(
                     body=content, status=response.status, headers=resp_headers
                 )
         except Exception as e:
-            self.logger.exception("HTTP file passthrough proxy error")
+            self.logger.exception(
+                "HTTP file proxy error for printer %s", printer.ip_address
+            )
             return web.Response(status=502, text=f"Bad Gateway: {e}")
 
 
@@ -1228,7 +840,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         """
         Handle incoming UDP datagrams for discovery.
 
-        Respond for each discovered printer.
+        Respond for each discovered printer with port-based routing information.
         """
         try:
             message = data.decode("utf-8", errors="ignore").strip()
@@ -1244,6 +856,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
 
             # Get all discovered printers
             printers = self.printer_registry.get_all_printers()
+            printer_ports = self.printer_registry.get_all_printer_ports()
 
             if not printers:
                 # If no printers discovered, send a generic proxy response
@@ -1262,30 +875,40 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                 json_string = json.dumps(response_payload)
                 if self.transport:
                     self.transport.sendto(json_string.encode(), addr)
-                    msg = "Sent proxy discovery response (no printers found)"
-                    self.logger.debug(msg)
+                    self.logger.debug(
+                        "Sent proxy discovery response (no printers found)"
+                    )
             else:
-                # Send a response for each discovered printer
-                for mainboard_id, printer in printers.items():
+                # Send a response for each discovered printer with port information
+                for ip, printer in printers.items():
+                    ports = printer_ports.get(ip)
+                    if not ports:
+                        continue
+
+                    ws_port, video_port = ports
                     response_payload = {
                         "Id": getattr(printer, "connection", os.urandom(8).hex()),
                         "Data": {
-                            "Name": f"{getattr(printer, 'name', 'Elegoo')} (via Proxy)",
-                            "MachineName": (
-                                f"{getattr(printer, 'name', 'Elegoo')} (via Proxy)"
-                            ),
+                            "Name": f"{getattr(printer, 'name', 'Elegoo')} (Port {ws_port})",
+                            "MachineName": f"{getattr(printer, 'name', 'Elegoo')} (Port {ws_port})",
                             "BrandName": getattr(printer, "brand", "Elegoo"),
                             "MainboardIP": self.proxy_ip,  # Point to our proxy
-                            "MainboardID": mainboard_id,
+                            "MainboardID": f"{ip}:{ws_port}",  # Use IP:port as identifier
                             "ProtocolVersion": getattr(printer, "protocol", "V3.0.0"),
                             "FirmwareVersion": getattr(printer, "firmware", "V1.0.0"),
+                            # Add custom fields for port-based routing
+                            "ProxyWebSocketPort": ws_port,
+                            "ProxyVideoPort": video_port,
                         },
                     }
                     json_string = json.dumps(response_payload)
                     if self.transport:
                         self.transport.sendto(json_string.encode(), addr)
                         self.logger.debug(
-                            "Sent discovery response for printer %s", mainboard_id
+                            "Sent discovery response for printer %s on ports WS:%d Video:%d",
+                            ip,
+                            ws_port,
+                            video_port,
                         )
 
     def error_received(self, exc: Exception) -> None:

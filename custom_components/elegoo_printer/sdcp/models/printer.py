@@ -252,9 +252,37 @@ class PrinterData:
         if not self.printer or not self.printer.ip_address:
             return None
 
-        if self.printer.proxy_enabled and self.printer.id:
-            # Use proxy URL with mainboard_id path
+        if self.printer.proxy_enabled:
+            # Use proxy URL with port-based routing
             proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
-            return f"http://{proxy_ip}:{WEBSOCKET_PORT}/{self.printer.id}"
+            assigned_port = self._get_assigned_proxy_port()
+            if assigned_port:
+                return f"http://{proxy_ip}:{assigned_port}"
+
         # Use direct printer URL
         return f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}"
+
+    def _get_assigned_proxy_port(self) -> int | None:
+        """Get the assigned proxy port for this printer."""
+        if not self.printer or not self.printer.ip_address:
+            return None
+
+        # Try to get port from server registry if available
+        try:
+            from custom_components.elegoo_printer.websocket.server import (
+                ElegooPrinterServer,
+            )
+
+            if ElegooPrinterServer._instance:
+                ports = (
+                    ElegooPrinterServer._instance.printer_registry.get_printer_ports(
+                        self.printer.ip_address
+                    )
+                )
+                if ports:
+                    return ports[0]  # Return WebSocket port
+        except ImportError:
+            # Server module not available
+            pass
+
+        return None

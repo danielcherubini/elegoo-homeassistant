@@ -58,7 +58,6 @@ class ElegooPrinterApiClient:
         self.server: ElegooPrinterServer | None = None
         self.hass: HomeAssistant = hass
 
-
     @classmethod
     async def async_create(
         cls,
