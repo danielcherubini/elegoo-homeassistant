@@ -432,9 +432,8 @@ class ElegooPrinterServer:
                     ws_port, video_port = cls._instance.printer_registry.add_printer(
                         printer
                     )
-                    # Start printer servers - accessing private method
-                    # for singleton coordination
-                    await cls._instance._start_printer_servers(  # noqa: SLF001
+                    # Start printer servers for singleton coordination
+                    await cls._instance.start_printer_servers(
                         printer, ws_port, video_port
                     )
                     logger.debug(
@@ -533,9 +532,9 @@ class ElegooPrinterServer:
             ports = self.printer_registry.get_printer_ports(ip)
             if ports:
                 ws_port, video_port = ports
-                await self._start_printer_servers(printer, ws_port, video_port)
+                await self.start_printer_servers(printer, ws_port, video_port)
 
-    async def _start_printer_servers(
+    async def start_printer_servers(
         self, printer: Printer, ws_port: int, video_port: int
     ) -> None:
         """Start HTTP/WebSocket and video servers for a specific printer."""
