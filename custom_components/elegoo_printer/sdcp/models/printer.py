@@ -71,6 +71,8 @@ class Printer:
     printer_type: PrinterType | None
     proxy_enabled: bool
     camera_enabled: bool
+    proxy_websocket_port: int | None
+    proxy_video_port: int | None
 
     def __init__(
         self,
@@ -119,6 +121,8 @@ class Printer:
         # Initialize config-based attributes for all instances
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
         self.camera_enabled = config.get(CONF_CAMERA_ENABLED, False)
+        self.proxy_websocket_port = None
+        self.proxy_video_port = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a dictionary containing all attributes of the Printer instance."""
@@ -134,6 +138,8 @@ class Printer:
             "printer_type": self.printer_type.value if self.printer_type else None,
             "proxy_enabled": self.proxy_enabled,
             "camera_enabled": self.camera_enabled,
+            "proxy_websocket_port": self.proxy_websocket_port,
+            "proxy_video_port": self.proxy_video_port,
         }
 
     @classmethod
@@ -161,6 +167,8 @@ class Printer:
         printer.camera_enabled = data_dict.get(
             CONF_CAMERA_ENABLED, data_dict.get("camera_enabled", False)
         )
+        printer.proxy_websocket_port = data_dict.get("proxy_websocket_port")
+        printer.proxy_video_port = data_dict.get("proxy_video_port")
         return printer
 
 
@@ -253,29 +261,36 @@ class PrinterData:
             return None
 
         if self.printer.proxy_enabled:
-            # Use proxy URL with port-based routing
-            proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
+            # Use stored proxy port if available
+            if self.printer.proxy_websocket_port:
+                proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
+                return f"http://{proxy_ip}:{self.printer.proxy_websocket_port}"
+
+            # Fallback: try to get port from server registry
             assigned_port = self._get_assigned_proxy_port()
             if assigned_port:
+                proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
                 return f"http://{proxy_ip}:{assigned_port}"
 
         # Use direct printer URL
         return f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}"
 
     def _get_assigned_proxy_port(self) -> int | None:
-        """Get the assigned proxy port for this printer."""
+        """Get the assigned proxy port for this printer (fallback method)."""
         if not self.printer or not self.printer.ip_address:
             return None
 
         # Try to get port from server registry if available
         try:
-            from custom_components.elegoo_printer.websocket.server import (
+            # Import here to avoid circular dependency
+            from custom_components.elegoo_printer.websocket.server import (  # noqa: PLC0415
                 ElegooPrinterServer,
             )
 
-            if ElegooPrinterServer._instance:
+            # Access singleton instance - this is intentional for server coordination
+            if ElegooPrinterServer._instance:  # noqa: SLF001
                 ports = (
-                    ElegooPrinterServer._instance.printer_registry.get_printer_ports(
+                    ElegooPrinterServer._instance.printer_registry.get_printer_ports(  # noqa: SLF001
                         self.printer.ip_address
                     )
                 )

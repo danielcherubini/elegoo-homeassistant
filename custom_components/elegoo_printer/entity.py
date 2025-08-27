@@ -14,6 +14,7 @@ from .const import (
     CONF_MODEL,
     CONF_NAME,
     CONF_PROXY_ENABLED,
+    CONF_PROXY_WEBSOCKET_PORT,
     DOMAIN,
     WEBSOCKET_PORT,
 )
@@ -34,11 +35,17 @@ class ElegooPrinterEntity(CoordinatorEntity[ElegooDataUpdateCoordinator]):
             CONF_PROXY_ENABLED, False
         )
         ip_address = coordinator.config_entry.data[CONF_IP]
-        mainboard_id = coordinator.config_entry.data[CONF_ID]
 
         if proxy_enabled:
-            ip_address = PrinterData.get_local_ip(ip_address)
-            configuration_url = f"http://{ip_address}:{WEBSOCKET_PORT}/{mainboard_id}"
+            # Use stored proxy port if available
+            proxy_port = coordinator.config_entry.data.get(CONF_PROXY_WEBSOCKET_PORT)
+            if proxy_port:
+                proxy_ip = PrinterData.get_local_ip(ip_address)
+                configuration_url = f"http://{proxy_ip}:{proxy_port}"
+            else:
+                # Fallback for legacy configs without stored ports
+                proxy_ip = PrinterData.get_local_ip(ip_address)
+                configuration_url = f"http://{proxy_ip}:{WEBSOCKET_PORT}"
         else:
             configuration_url = f"http://{ip_address}:{WEBSOCKET_PORT}"
 

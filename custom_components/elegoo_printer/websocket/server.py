@@ -67,10 +67,13 @@ from aiohttp import ClientSession, WSMsgType, web
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from custom_components.elegoo_printer.const import (
+    CONF_PROXY_VIDEO_PORT,
+    CONF_PROXY_WEBSOCKET_PORT,
     DEFAULT_BROADCAST_ADDRESS,
     DEFAULT_FALLBACK_IP,
     DISCOVERY_MESSAGE,
     DISCOVERY_PORT,
+    DOMAIN,
     PROXY_HOST,
     VIDEO_PORT,
     WEBSOCKET_PORT,
@@ -150,15 +153,74 @@ class PrinterRegistry:
         if printer.ip_address in self._printers:
             return self._printer_ports[printer.ip_address]
 
-        # Assign new ports for this printer
-        ws_port = WEBSOCKET_PORT + (self._next_index * 2)
-        video_port = VIDEO_PORT + (self._next_index * 2)
+        # Use stored ports if available (from config)
+        if printer.proxy_websocket_port and printer.proxy_video_port:
+            ws_port = printer.proxy_websocket_port
+            video_port = printer.proxy_video_port
+        else:
+            # Fallback to auto-assignment for legacy configs
+            ws_port = WEBSOCKET_PORT + (self._next_index * 2)
+            video_port = VIDEO_PORT + (self._next_index * 2)
+            self._next_index += 1
 
         self._printers[printer.ip_address] = printer
         self._printer_ports[printer.ip_address] = (ws_port, video_port)
-        self._next_index += 1
 
         return (ws_port, video_port)
+
+    @staticmethod
+    async def ensure_printer_ports_assigned(
+        printer: Printer, hass: HomeAssistant, logger: Any
+    ) -> None:
+        """
+        Ensure printer has assigned ports, updating config entry if needed.
+
+        This method checks if a printer with proxy enabled is missing port assignments
+        and updates the Home Assistant configuration entry with newly assigned ports.
+        """
+        if printer.proxy_enabled and (
+            not printer.proxy_websocket_port or not printer.proxy_video_port
+        ):
+            logger.debug(
+                "Printer %s proxy enabled but ports missing. "
+                "Assigning and updating config.",
+                printer.ip_address,
+            )
+
+            # Get next available ports
+            ws_port, video_port = ElegooPrinterServer.get_next_available_ports()
+            printer.proxy_websocket_port = ws_port
+            printer.proxy_video_port = video_port
+
+            # Find and update the config entry
+            try:
+                # Find config entry for this printer by mainboard ID
+                for entry in hass.config_entries.async_entries(DOMAIN):
+                    if entry.data.get("id") == printer.id:
+                        new_data = dict(entry.data)
+                        new_data[CONF_PROXY_WEBSOCKET_PORT] = ws_port
+                        new_data[CONF_PROXY_VIDEO_PORT] = video_port
+
+                        hass.config_entries.async_update_entry(entry, data=new_data)
+                        logger.debug(
+                            "Updated config entry for printer %s with ports "
+                            "WS:%d Video:%d",
+                            printer.id,
+                            ws_port,
+                            video_port,
+                        )
+                        break
+                else:
+                    logger.warning(
+                        "Could not find config entry for printer %s to update ports",
+                        printer.id,
+                    )
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "Failed to update config entry for printer %s: %s",
+                    printer.id,
+                    e,
+                )
 
     def get_printer_by_ip(self, ip_address: str) -> Printer | None:
         """Get a printer by IP address."""
@@ -323,6 +385,33 @@ class ElegooPrinterServer:
         self.printer_registry = PrinterRegistry()
 
     @classmethod
+    def get_next_available_ports(cls) -> tuple[int, int]:
+        """
+        Get the next available port pair for a new printer.
+
+        This is used during config flow to assign ports before the server starts.
+
+        Returns:
+            Tuple of (websocket_port, video_port) for the new printer.
+
+        """
+        if cls._instance and cls._instance.printer_registry:
+            # Get current max index from existing ports
+            max_index = -1
+            for (
+                ws_port,
+                _,
+            ) in cls._instance.printer_registry.get_all_printer_ports().values():
+                index = (ws_port - WEBSOCKET_PORT) // 2
+                max_index = max(max_index, index)
+            next_index = max_index + 1
+        else:
+            # No server running, start from 0
+            next_index = 0
+
+        return (WEBSOCKET_PORT + (next_index * 2), VIDEO_PORT + (next_index * 2))
+
+    @classmethod
     async def async_create(
         cls,
         logger: Any,
@@ -335,11 +424,17 @@ class ElegooPrinterServer:
             # Return existing instance if already created (check again inside the lock)
             if cls._instance is not None:
                 if printer:
+                    # Check and assign ports if needed, update config
+                    await PrinterRegistry.ensure_printer_ports_assigned(
+                        printer, hass, logger
+                    )
                     # Add printer to existing server's registry and start server for it
                     ws_port, video_port = cls._instance.printer_registry.add_printer(
                         printer
                     )
-                    await cls._instance._start_printer_servers(
+                    # Start printer servers - accessing private method
+                    # for singleton coordination
+                    await cls._instance._start_printer_servers(  # noqa: SLF001
                         printer, ws_port, video_port
                     )
                     logger.debug(
@@ -357,6 +452,10 @@ class ElegooPrinterServer:
             logger.debug("Creating new proxy server instance")
             self = cls(logger, hass, session)
             if printer:
+                # Check and assign ports if needed, update config
+                await PrinterRegistry.ensure_printer_ports_assigned(
+                    printer, hass, logger
+                )
                 # Add the initial printer to the registry
                 ws_port, video_port = self.printer_registry.add_printer(printer)
                 logger.debug(

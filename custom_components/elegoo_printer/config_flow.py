@@ -21,6 +21,7 @@ from .sdcp.exceptions import (
 from .sdcp.models.enums import PrinterType
 from .sdcp.models.printer import Printer
 from .websocket.client import ElegooPrinterClient
+from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
     from homeassistant.helpers.selector import SelectOptionDict
@@ -138,6 +139,15 @@ async def _async_validate_input(  # noqa: PLR0912
         else:
             _errors["base"] = "no_printer_found"
     if printer_object:
+        # Assign ports if proxy is enabled
+        if user_input.get(CONF_PROXY_ENABLED, False):
+            ws_port, video_port = ElegooPrinterServer.get_next_available_ports()
+            printer_object.proxy_websocket_port = ws_port
+            printer_object.proxy_video_port = video_port
+            LOGGER.debug(
+                "Assigned ports for proxy: WS:%d Video:%d", ws_port, video_port
+            )
+
         try:
             # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled  # noqa: E501
             validated_printer = await _async_test_connection(
@@ -390,6 +400,16 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None and self.selected_printer:
             printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
             printer_to_validate.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+
+            # Assign ports if proxy is enabled
+            if user_input[CONF_PROXY_ENABLED]:
+                ws_port, video_port = ElegooPrinterServer.get_next_available_ports()
+                printer_to_validate.proxy_websocket_port = ws_port
+                printer_to_validate.proxy_video_port = video_port
+                LOGGER.debug(
+                    "Assigned ports for proxy: WS:%d Video:%d", ws_port, video_port
+                )
+
             try:
                 # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled  # noqa: E501
                 validated_printer = await _async_test_connection(
@@ -498,6 +518,21 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         LOGGER.debug("data: %s", self.config_entry.data)
         LOGGER.debug("options: %s", self.config_entry.options)
         if user_input is not None:
+            # Assign ports if proxy is enabled and not already assigned
+            if user_input[CONF_PROXY_ENABLED] and not (
+                printer.proxy_websocket_port and printer.proxy_video_port
+            ):
+                ws_port, video_port = ElegooPrinterServer.get_next_available_ports()
+                printer.proxy_websocket_port = ws_port
+                printer.proxy_video_port = video_port
+                LOGGER.debug(
+                    "Assigned ports for proxy: WS:%d Video:%d", ws_port, video_port
+                )
+            elif not user_input[CONF_PROXY_ENABLED]:
+                # Clear ports if proxy is disabled
+                printer.proxy_websocket_port = None
+                printer.proxy_video_port = None
+
             try:
                 tested_printer = await _async_test_connection(
                     self.hass, printer, user_input
