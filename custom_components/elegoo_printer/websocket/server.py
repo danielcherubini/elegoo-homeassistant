@@ -143,7 +143,8 @@ class PrinterRegistry:
 
         """
         if not printer.ip_address:
-            raise ValueError("Printer must have an IP address")
+            msg = "Printer must have an IP address"
+            raise ValueError(msg)
 
         # If printer already exists, return existing ports
         if printer.ip_address in self._printers:
@@ -166,7 +167,7 @@ class PrinterRegistry:
     def get_printer_by_port(self, port: int) -> Printer | None:
         """Get a printer by its assigned websocket or video port."""
         for ip, (ws_port, video_port) in self._printer_ports.items():
-            if port == ws_port or port == video_port:
+            if port in (ws_port, video_port):
                 return self._printers.get(ip)
         return None
 
@@ -246,7 +247,7 @@ class PrinterRegistry:
                                 discovered_printers[printer.ip_address] = printer
                                 ws_port, video_port = self.add_printer(printer)
                                 logger.info(
-                                    "Discovered printer: %s (%s) assigned ports WS:%d Video:%d",
+                                    "Discovered %s (%s) assigned WS:%d Video:%d",
                                     printer.name,
                                     printer.ip_address,
                                     ws_port,
@@ -334,7 +335,7 @@ class ElegooPrinterServer:
             # Return existing instance if already created (check again inside the lock)
             if cls._instance is not None:
                 if printer:
-                    # Add the new printer to the existing server's registry and start server for it
+                    # Add printer to existing server's registry and start server for it
                     ws_port, video_port = cls._instance.printer_registry.add_printer(
                         printer
                     )
@@ -342,7 +343,7 @@ class ElegooPrinterServer:
                         printer, ws_port, video_port
                     )
                     logger.debug(
-                        "Added printer %s (%s) to existing proxy server on ports WS:%d Video:%d",
+                        "Added printer %s (%s) to proxy server on ports WS:%d Video:%d",
                         printer.name,
                         printer.ip_address,
                         ws_port,
@@ -480,13 +481,12 @@ class ElegooPrinterServer:
                 video_port,
             )
 
-        except OSError as e:
+        except OSError:
             self.logger.exception(
-                "Failed to start servers for printer %s on ports WS:%d Video:%d: %s",
+                "Failed to start servers for printer %s on ports WS:%d Video:%d",
                 printer.ip_address,
                 ws_port,
                 video_port,
-                e,
             )
 
     @classmethod
@@ -504,7 +504,7 @@ class ElegooPrinterServer:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     s.bind((INADDR_ANY, port))
             except OSError:
-                self.logger.debug(f"{name} port {port} is already in use")
+                self.logger.debug("%s port %d is already in use", name, port)
                 return False
         return True
 
@@ -613,7 +613,7 @@ class ElegooPrinterServer:
                         await response.write(chunk)
                     await response.write_eof()
                 except (ConnectionResetError, asyncio.CancelledError) as e:
-                    self.logger.debug(f"Video stream stopped: {e}")
+                    self.logger.debug("Video stream stopped: %s", e)
                 except Exception:
                     self.logger.exception(
                         "An unexpected error occurred during video streaming"
@@ -664,7 +664,7 @@ class ElegooPrinterServer:
             )
 
             # Bidirectional message forwarding
-            async def forward_to_remote():
+            async def forward_to_remote() -> None:
                 async for message in client_ws:
                     if message.type == WSMsgType.TEXT:
                         await remote_ws.send_str(message.data)
@@ -673,7 +673,7 @@ class ElegooPrinterServer:
                     elif message.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
                         break
 
-            async def forward_to_client():
+            async def forward_to_client() -> None:
                 async for message in remote_ws:
                     if message.type == WSMsgType.TEXT:
                         await client_ws.send_str(message.data)
@@ -886,14 +886,16 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                         continue
 
                     ws_port, video_port = ports
+                    printer_name = getattr(printer, "name", "Elegoo")
+                    display_name = f"{printer_name} (Port {ws_port})"
                     response_payload = {
                         "Id": getattr(printer, "connection", os.urandom(8).hex()),
                         "Data": {
-                            "Name": f"{getattr(printer, 'name', 'Elegoo')} (Port {ws_port})",
-                            "MachineName": f"{getattr(printer, 'name', 'Elegoo')} (Port {ws_port})",
+                            "Name": display_name,
+                            "MachineName": display_name,
                             "BrandName": getattr(printer, "brand", "Elegoo"),
                             "MainboardIP": self.proxy_ip,  # Point to our proxy
-                            "MainboardID": f"{ip}:{ws_port}",  # Use IP:port as identifier
+                            "MainboardID": f"{ip}:{ws_port}",  # Use IP:port as ID
                             "ProtocolVersion": getattr(printer, "protocol", "V3.0.0"),
                             "FirmwareVersion": getattr(printer, "firmware", "V1.0.0"),
                             # Add custom fields for port-based routing
@@ -905,7 +907,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                     if self.transport:
                         self.transport.sendto(json_string.encode(), addr)
                         self.logger.debug(
-                            "Sent discovery response for printer %s on ports WS:%d Video:%d",
+                            "Sent discovery response for %s on ports WS:%d Video:%d",
                             ip,
                             ws_port,
                             video_port,
