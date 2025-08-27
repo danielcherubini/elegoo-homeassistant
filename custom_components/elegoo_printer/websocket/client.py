@@ -96,7 +96,7 @@ class ElegooPrinterClient:
         self.printer_websocket: ClientWebSocketResponse | None = None
         self.config = config
         self.printer: Printer = Printer.from_dict(dict(config))
-        self.printer_data = PrinterData()
+        self.printer_data = PrinterData(printer=self.printer)
         self.logger = logger
         self._is_connected: bool = False
         self._listener_task: asyncio.Task | None = None

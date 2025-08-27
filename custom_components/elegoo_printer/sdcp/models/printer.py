@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socket
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -10,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
     CONF_PROXY_ENABLED,
+    WEBSOCKET_PORT,
 )
 from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStatus
 
@@ -223,3 +225,36 @@ class PrinterData:
             self.current_job.end_time = self.round_minute(
                 target_datetime + timedelta(seconds=30), 1
             )
+
+    @staticmethod
+    def get_local_ip(target_ip: str) -> str:
+        """
+        Determine the local IP address used for outbound communication.
+
+        Args:
+            target_ip: The target IP to determine the route to.
+
+        Returns:
+            The local IP address, or "127.0.0.1" if detection fails.
+
+        """
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                # Doesn't have to be reachable
+                s.connect((target_ip or "8.8.8.8", 1))
+                return s.getsockname()[0]
+        except (socket.gaierror, OSError):
+            return "127.0.0.1"
+
+    @property
+    def printer_url(self) -> str | None:
+        """Get the printer URL based on proxy configuration."""
+        if not self.printer or not self.printer.ip_address:
+            return None
+
+        if self.printer.proxy_enabled and self.printer.id:
+            # Use proxy URL with mainboard_id path
+            proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
+            return f"http://{proxy_ip}:{WEBSOCKET_PORT}/{self.printer.id}"
+        # Use direct printer URL
+        return f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}"

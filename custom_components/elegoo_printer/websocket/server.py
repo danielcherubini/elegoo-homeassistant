@@ -895,34 +895,33 @@ class ElegooPrinterServer:
 
     def _extract_mainboard_id_from_referer(self, request: web.Request) -> str | None:
         """Extract MainboardID from HTTP Referer header."""
-        referer = request.headers.get('Referer')
+        referer = request.headers.get("Referer")
         if not referer:
             return None
-        
+
         try:
-            from urllib.parse import urlparse
             parsed = urlparse(referer)
             path_parts = parsed.path.strip("/").split("/")
-            
+
             if len(path_parts) >= 1 and path_parts[0]:
                 potential_id = path_parts[0]
-                
+
                 # Check if first path segment looks like a MainboardID (hex, 8+ chars)
                 if len(potential_id) >= MIN_MAINBOARD_ID_LENGTH and all(
                     c in "0123456789abcdefABCDEF" for c in potential_id
                 ):
                     return potential_id
-        except Exception:
+        except (ValueError, AttributeError) as e:
             # If parsing fails, return None
-            pass
-        
+            self.logger.debug("Failed to parse Referer header: %s", e)
+
         return None
 
 
     def _extract_mainboard_id_from_http_request(
         self, request: web.Request
     ) -> str | None:
-        """Extract MainboardID from HTTP request query parameters, path, or Referer header."""
+        """Extract MainboardID from HTTP request query parameters, path, or Referer."""
         # First try query parameters (highest priority)
         mainboard_id = request.query.get("mainboard_id")
         if mainboard_id:
@@ -930,10 +929,10 @@ class ElegooPrinterServer:
 
         # If no MainboardID in query, try path-based routing (medium priority)
         path_parts = request.path.strip("/").split("/")
-        
+
         if len(path_parts) >= 1 and path_parts[0]:
             potential_id = path_parts[0]
-            
+
             # Check if first path segment looks like a MainboardID (hex, 8+ chars)
             if len(potential_id) >= MIN_MAINBOARD_ID_LENGTH and all(
                 c in "0123456789abcdefABCDEF" for c in potential_id
@@ -948,7 +947,7 @@ class ElegooPrinterServer:
                 c in "0123456789abcdefABCDEF" for c in potential_id
             ):
                 return potential_id
-        
+
         # Final fallback: try extracting from Referer header (lowest priority)
         return self._extract_mainboard_id_from_referer(request)
 
@@ -1000,7 +999,7 @@ class ElegooPrinterServer:
 
         # Extract MainboardID from query parameters or path
         mainboard_id = self._extract_mainboard_id_from_http_request(request)
-        
+
         self.logger.debug(
             "HTTP proxy request: %s %s, extracted mainboard_id: %s",
             request.method,
@@ -1010,8 +1009,10 @@ class ElegooPrinterServer:
 
         if not mainboard_id:
             return web.Response(
-                status=400, 
-                text="MainboardID required for HTTP proxy routing. Ensure URL includes mainboard_id in path or query parameter, or that Referer header is set."
+                status=400,
+                text="MainboardID required for HTTP proxy routing. "
+                "Ensure URL includes mainboard_id in path or query parameter, "
+                "or that Referer header is set."
             )
 
         printer = self.printer_registry.get_printer(mainboard_id)
@@ -1055,7 +1056,7 @@ class ElegooPrinterServer:
         # Add mainboard_id as query parameter for the target printer
         separator = "&" if "?" in forwarded_path else "?"
         target_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{forwarded_path}{separator}mainboard_id={mainboard_id}"
-        
+
         headers = {
             k: v
             for k, v in request.headers.items()
@@ -1110,7 +1111,7 @@ class ElegooPrinterServer:
             msg = f"HTTP proxy error connecting to {target_url}"
             self.logger.exception(msg)
             # Temporary debug logging
-            self.logger.error("DEBUG: aiohttp.ClientError: %s", e)
+            self.logger.exception("DEBUG: aiohttp.ClientError")
             return web.Response(status=502, text=f"Bad Gateway: {e}")
 
     async def _http_file_proxy_passthrough_handler(

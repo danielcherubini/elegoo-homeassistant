@@ -54,16 +54,15 @@ async def async_setup_entry(
         sensors.extend(PRINTER_ATTRIBUTES_RESIN)
 
     LOGGER.debug(f"Adding {len(sensors)} sensor entities")
-    async_add_entities(
-        [
-            ElegooPrinterSensor(
-                coordinator=coordinator,
-                entity_description=entity_description,
-            )
-            for entity_description in sensors
-        ],
-        update_before_add=True,
-    )
+    entities = [
+        ElegooPrinterSensor(
+            coordinator=coordinator,
+            entity_description=entity_description,
+        )
+        for entity_description in sensors
+    ]
+
+    async_add_entities(entities, update_before_add=True)
 
 
 class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
@@ -100,3 +99,5 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         if self.coordinator.data:
             return self.entity_description.value_fn(self.coordinator.data)
         return None
+
+

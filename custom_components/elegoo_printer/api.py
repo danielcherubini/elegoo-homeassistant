@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import socket
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
@@ -11,7 +10,7 @@ from homeassistant.helpers.httpx_client import get_async_client
 from PIL import Image as PILImage
 from PIL import UnidentifiedImageError
 
-from .const import CONF_PROXY_ENABLED, DEFAULT_FALLBACK_IP, LOGGER
+from .const import CONF_PROXY_ENABLED, LOGGER
 from .sdcp.models.elegoo_image import ElegooImage
 from .sdcp.models.printer import Printer, PrinterData
 from .websocket.client import ElegooPrinterClient
@@ -59,24 +58,6 @@ class ElegooPrinterApiClient:
         self.server: ElegooPrinterServer | None = None
         self.hass: HomeAssistant = hass
 
-    def _get_local_ip(self, target_ip: str) -> str:
-        """
-        Determine the local IP address used for outbound communication.
-
-        Args:
-            target_ip: The target IP to determine the route to.
-
-        Returns:
-            The local IP address, or "127.0.0.1" if detection fails.
-
-        """
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                # Doesn't have to be reachable
-                s.connect((target_ip or DEFAULT_FALLBACK_IP, 1))
-                return s.getsockname()[0]
-        except (socket.gaierror, OSError):
-            return "127.0.0.1"
 
     @classmethod
     async def async_create(
@@ -258,7 +239,7 @@ class ElegooPrinterApiClient:
             ):
                 # Replace printer IP with proxy IP and add mainboard_id to path
                 try:
-                    proxy_ip = self._get_local_ip(self.printer.ip_address)
+                    proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
                     thumbnail_url = thumbnail_url.replace(
                         f"http://{self.printer.ip_address}:3030",
                         f"http://{proxy_ip}:3030/{self.printer.id}",
