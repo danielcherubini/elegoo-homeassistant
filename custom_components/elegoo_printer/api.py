@@ -236,21 +236,37 @@ class ElegooPrinterApiClient:
             if self.printer.proxy_enabled and thumbnail_url.startswith(
                 f"http://{self.printer.ip_address}"
             ):
-                # Replace printer IP with proxy IP and add mainboard_id to path
+                # Replace printer IP with proxy IP and use assigned proxy port
                 try:
                     proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
-                    thumbnail_url = thumbnail_url.replace(
-                        f"http://{self.printer.ip_address}:3030",
-                        f"http://{proxy_ip}:3030/{self.printer.id}",
-                        1,
-                    )
-                    # Also handle cases without explicit port
-                    if thumbnail_url == task.thumbnail:  # No replacement happened
+                    if self.printer.proxy_websocket_port:
+                        # Use stored proxy port for port-based routing
                         thumbnail_url = thumbnail_url.replace(
-                            f"http://{self.printer.ip_address}",
+                            f"http://{self.printer.ip_address}:3030",
+                            f"http://{proxy_ip}:{self.printer.proxy_websocket_port}",
+                            1,
+                        )
+                        # Also handle cases without explicit port
+                        if thumbnail_url == task.thumbnail:  # No replacement happened
+                            thumbnail_url = thumbnail_url.replace(
+                                f"http://{self.printer.ip_address}",
+                                f"http://{proxy_ip}:{self.printer.proxy_websocket_port}",
+                                1,
+                            )
+                    else:
+                        # Fallback to mainboard_id routing for legacy configurations
+                        thumbnail_url = thumbnail_url.replace(
+                            f"http://{self.printer.ip_address}:3030",
                             f"http://{proxy_ip}:3030/{self.printer.id}",
                             1,
                         )
+                        # Also handle cases without explicit port
+                        if thumbnail_url == task.thumbnail:  # No replacement happened
+                            thumbnail_url = thumbnail_url.replace(
+                                f"http://{self.printer.ip_address}",
+                                f"http://{proxy_ip}:3030/{self.printer.id}",
+                                1,
+                            )
                     LOGGER.debug(
                         "Rewritten thumbnail URL from %s to %s",
                         task.thumbnail,

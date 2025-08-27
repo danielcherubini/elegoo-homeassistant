@@ -34,6 +34,7 @@ from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooVideoStatus,
     PrinterType,
 )
+from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
 
 from .coordinator import ElegooDataUpdateCoordinator
 
@@ -192,10 +193,18 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             description: The entity description.
 
         """
+        # Use stored proxy video port if available, otherwise fallback to default
+        printer = coordinator.config_entry.runtime_data.api.printer
+        if printer.proxy_enabled and printer.proxy_video_port:
+            proxy_ip = PrinterData.get_local_ip(printer.ip_address)
+            mjpeg_url = f"http://{proxy_ip}:{printer.proxy_video_port}/{VIDEO_ENDPOINT}"
+        else:
+            mjpeg_url = f"http://{PROXY_HOST}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"
+
         MjpegCamera.__init__(
             self,
             name=f"{description.name}",
-            mjpeg_url=f"http://{PROXY_HOST}:{VIDEO_PORT}/{VIDEO_ENDPOINT}",
+            mjpeg_url=mjpeg_url,
             still_image_url=None,  # This camera does not have a separate still URL
             unique_id=coordinator.generate_unique_id(description.key),
         )
