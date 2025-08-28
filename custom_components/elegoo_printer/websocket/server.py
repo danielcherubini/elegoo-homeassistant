@@ -277,7 +277,12 @@ class ElegooPrinterServer:
                         async for message in source:
                             if message.type in (WSMsgType.TEXT, WSMsgType.BINARY):
                                 await dest.send_str(
-                                    message.data
+                                    message.data.replace(
+                                        self.printer.ip_address, self.get_local_ip()
+                                    ).replace(
+                                        f"{self.get_local_ip()}/",
+                                        f"{self.get_local_ip()}:{WEBSOCKET_PORT}/",
+                                    )
                                 ) if message.type == WSMsgType.TEXT else await (
                                     dest.send_bytes(message.data)
                                 )
