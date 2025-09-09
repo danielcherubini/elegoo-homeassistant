@@ -235,7 +235,7 @@ class ElegooPrinterServer:
                         "An unexpected error occurred during video streaming"
                     )
                 return response
-        except (asyncio.TimeoutError, aiohttp.ClientError):
+        except (TimeoutError, aiohttp.ClientError):
             self.logger.exception("Error proxying video stream")
             return web.Response(status=502, text="Bad Gateway")
 
@@ -313,7 +313,7 @@ class ElegooPrinterServer:
                     if task.exception():
                         raise task.exception()  # noqa: TRY301
 
-        except (asyncio.TimeoutError, aiohttp.ClientError):
+        except (TimeoutError, aiohttp.ClientError) as e:
             msg = f"WebSocket connection to printer failed: {e}"
             self.logger.warning(msg)
             self._is_connected = False
