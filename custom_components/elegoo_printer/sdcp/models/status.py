@@ -67,14 +67,16 @@ class PrintInfo:
 
     Attributes:
         status (ElegooPrintStatus): Printing Sub-status.
-        current_layer (int | None): Current Printing Layer.
-        total_layers (int | None): Total Number of Print Layers.
-        remaining_layers (int | None): Remaining layers to print
-        current_ticks (int | None): Current Print Time (ms).
-        total_ticks (int | None): Estimated Total Print Time(ms).
-        remaining_ticks (int | None): Remaining Print Time(ms).
-        progress (int): Print Progress (%).
-        percent_complete (int): Percentage Complete.
+        current_layer (int | None): Current printing layer, or None if unknown.
+        total_layers (int | None): Total number of print layers, or None if unknown.
+        remaining_layers (int | None): Remaining layers to print, or None if unknown.
+        current_ticks (int | None): Current print time in ms, or None if unknown.
+        total_ticks (int | None): Estimated total print time in ms, or None if unknown.
+        remaining_ticks (int | None): Remaining print time in ms, or None if unknown.
+        progress (int | None): Device-reported print progress (0-100), or None
+            if unknown.
+        percent_complete (int | None): Percentage complete, clamped to [0, 100], or None
+            if unknown.
         print_speed_pct (int): The current print speed as a percentage.
         filename (str): Print File Name.
         error_number (ElegooPrintError): Error Number (refer to documentation).
@@ -91,8 +93,8 @@ class PrintInfo:
         Initialize a new PrintInfo object.
 
         Arguments:
-            data (Dict[str, Any], optional): A dictionary containing print info data.
-            printer_type: (PrinterType, optional): The type of printer.
+            data (dict[str, Any], optional): A dictionary containing print info data.
+            printer_type (PrinterType, optional): The type of printer.
 
         """
         if data is None:
@@ -101,23 +103,18 @@ class PrintInfo:
         self.status: ElegooPrintStatus | None = ElegooPrintStatus.from_int(status_int)
         self.current_layer: int | None = data.get("CurrentLayer")
         self.total_layers: int | None = data.get("TotalLayer")
+        self.remaining_layers: int | None = None
         if self.current_layer is not None and self.total_layers is not None:
-            self.remaining_layers: int | None = max(
-                0, self.total_layers - self.current_layer
-            )
-        else:
-            self.remaining_layers = None
+            self.remaining_layers = max(0, self.total_layers - self.current_layer)
+
         self.current_ticks: int | None = data.get("CurrentTicks")
         self.total_ticks: int | None = data.get("TotalTicks")
+        self.remaining_ticks: int | None = None
         if self.current_ticks is not None and self.total_ticks is not None:
             if printer_type == PrinterType.FDM:
                 self.current_ticks *= 1000
                 self.total_ticks *= 1000
-            self.remaining_ticks: int | None = max(
-                0, self.total_ticks - self.current_ticks
-            )
-        else:
-            self.remaining_ticks = None
+            self.remaining_ticks = max(0, self.total_ticks - self.current_ticks)
         self.progress: int | None = data.get("Progress")
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
         self.end_time = None
