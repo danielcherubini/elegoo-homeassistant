@@ -305,7 +305,7 @@ class ElegooPrinterServer:
                 tasks.add(to_printer)
                 to_client = asyncio.create_task(
                     forward(remote_ws, client_ws, "printer-to-client"),
-                    name="elegoo_ws:printer-to-client",
+                    name="elegoo_ws:printer_to_client",
                 )
                 tasks.add(to_client)
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
