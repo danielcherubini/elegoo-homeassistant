@@ -297,11 +297,11 @@ class ElegooPrinterServer:
                         self.logger.debug(msg)
                         raise
 
-                to_printer = self.hass.async_create_task(
+                to_printer = asyncio.create_task(
                     forward(client_ws, remote_ws, "client-to-printer")
                 )
                 tasks.add(to_printer)
-                to_client = self.hass.async_create_task(
+                to_client = asyncio.create_task(
                     forward(remote_ws, client_ws, "printer-to-client")
                 )
                 tasks.add(to_client)
