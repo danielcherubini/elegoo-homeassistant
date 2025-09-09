@@ -213,6 +213,7 @@ class PrinterData:
         """Calculate the estimated end time of the print job."""
         if (
             self.status.current_status == ElegooMachineStatus.PRINTING
+            and self.status.print_info.remaining_ticks is not None
             and self.status.print_info.remaining_ticks > 0
             and self.current_job
         ):

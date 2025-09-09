@@ -93,8 +93,9 @@ class PrintInfo:
         Initialize a new PrintInfo object.
 
         Arguments:
-            data (dict[str, Any], optional): A dictionary containing print info data.
-            printer_type (PrinterType, optional): The type of printer.
+            data (dict[str, Any] | None, optional): A dictionary containing print
+                info data.
+            printer_type (PrinterType | None, optional): The type of printer.
 
         """
         if data is None:
@@ -120,20 +121,26 @@ class PrintInfo:
         self.end_time = None
 
         percent_complete = None
-        # If the printer is not idle, we can update progress
-        if self.progress is not None:
+        # Only report progress during an active job; avoid leaking stale values.
+        if self.status in (
+            ElegooPrintStatus.IDLE,
+            ElegooPrintStatus.COMPLETE,
+            ElegooPrintStatus.STOPPED,
+        ):
+            percent_complete = None
+        elif self.progress is not None:
             percent_complete = int(self.progress)
         elif (
-            self.total_layers is not None
+            self.current_layer is not None
+            and self.total_layers is not None
             and self.total_layers > 0
-            and self.current_layer is not None
         ):
             percent_complete = int((self.current_layer / self.total_layers) * 100)
 
         if percent_complete is not None:
             self.percent_complete = max(0, min(100, percent_complete))
         else:
-            self.percent_complete = 0
+            self.percent_complete = None
 
         self.filename = data.get("Filename")
         error_number_int = data.get("ErrorNumber", 0)
