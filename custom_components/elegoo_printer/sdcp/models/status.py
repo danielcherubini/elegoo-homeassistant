@@ -136,7 +136,7 @@ class PrintInfo:
         if percent_complete is not None:
             self.percent_complete = max(0, min(100, percent_complete))
         else:
-            self.percent_complete = percent_complete
+            self.percent_complete = 0
 
         self.filename = data.get("Filename")
         error_number_int = data.get("ErrorNumber", 0)
