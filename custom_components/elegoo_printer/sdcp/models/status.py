@@ -111,10 +111,12 @@ class PrintInfo:
         self.current_ticks: int | None = data.get("CurrentTicks")
         self.total_ticks: int | None = data.get("TotalTicks")
         self.remaining_ticks: int | None = None
-        if self.current_ticks is not None and self.total_ticks is not None:
-            if printer_type == PrinterType.FDM:
+        if printer_type == PrinterType.FDM:
+            if self.current_ticks is not None:
                 self.current_ticks *= 1000
+            if self.total_ticks is not None:
                 self.total_ticks *= 1000
+        if self.current_ticks is not None and self.total_ticks is not None:
             self.remaining_ticks = max(0, self.total_ticks - self.current_ticks)
         self.progress: int | None = data.get("Progress")
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
