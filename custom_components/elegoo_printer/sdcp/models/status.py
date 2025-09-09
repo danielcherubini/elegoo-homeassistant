@@ -123,21 +123,28 @@ class PrintInfo:
         self.end_time = None
 
         percent_complete = None
-        # Only report progress during an active job; avoid leaking stale values.
-        if self.status in (
-            ElegooPrintStatus.IDLE,
-            ElegooPrintStatus.COMPLETE,
-            ElegooPrintStatus.STOPPED,
-        ):
+        # Report progress only during an active job to avoid leaking stale values.
+        active_statuses = {
+            ElegooPrintStatus.PRINTING,
+            ElegooPrintStatus.PAUSED,
+            ElegooPrintStatus.PAUSING,
+            ElegooPrintStatus.LIFTING,
+            ElegooPrintStatus.DROPPING,
+            ElegooPrintStatus.RECOVERY,
+            ElegooPrintStatus.PRINTING_RECOVERY,
+        }
+        if self.status in active_statuses:
+            if self.progress is not None:
+                percent_complete = int(self.progress)
+            elif (
+                self.current_layer is not None
+                and self.total_layers is not None
+                and self.total_layers > 0
+            ):
+                # Optional: round to reduce downward bias from truncation
+                percent_complete = round((self.current_layer / self.total_layers) * 100)
+        else:
             percent_complete = None
-        elif self.progress is not None:
-            percent_complete = int(self.progress)
-        elif (
-            self.current_layer is not None
-            and self.total_layers is not None
-            and self.total_layers > 0
-        ):
-            percent_complete = int((self.current_layer / self.total_layers) * 100)
 
         if percent_complete is not None:
             self.percent_complete = max(0, min(100, percent_complete))
