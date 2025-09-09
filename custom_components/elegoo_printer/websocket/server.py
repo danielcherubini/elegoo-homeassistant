@@ -235,7 +235,7 @@ class ElegooPrinterServer:
                         "An unexpected error occurred during video streaming"
                     )
                 return response
-        except (TimeoutError, aiohttp.ClientError):
+        except (asyncio.TimeoutError, aiohttp.ClientError):
             self.logger.exception("Error proxying video stream")
             return web.Response(status=502, text="Bad Gateway")
 
@@ -287,6 +287,7 @@ class ElegooPrinterServer:
                                     dest.send_bytes(message.data)
                                 )
                             elif message.type == WSMsgType.CLOSE:
+                                await dest.close()
                                 break
                             elif message.type == WSMsgType.ERROR:
                                 msg = f"WebSocket error in {direction}: {source.exception()}"  # noqa: E501
@@ -298,11 +299,13 @@ class ElegooPrinterServer:
                         raise
 
                 to_printer = asyncio.create_task(
-                    forward(client_ws, remote_ws, "client-to-printer")
+                    forward(client_ws, remote_ws, "client-to-printer"),
+                    name="elegoo_ws:client_to_printer",
                 )
                 tasks.add(to_printer)
                 to_client = asyncio.create_task(
-                    forward(remote_ws, client_ws, "printer-to-client")
+                    forward(remote_ws, client_ws, "printer-to-client"),
+                    name="elegoo_ws:printer-to-client",
                 )
                 tasks.add(to_client)
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -310,7 +313,7 @@ class ElegooPrinterServer:
                     if task.exception():
                         raise task.exception()  # noqa: TRY301
 
-        except (TimeoutError, aiohttp.ClientError) as e:
+        except (asyncio.TimeoutError, aiohttp.ClientError):
             msg = f"WebSocket connection to printer failed: {e}"
             self.logger.warning(msg)
             self._is_connected = False
