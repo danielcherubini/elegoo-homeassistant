@@ -277,11 +277,17 @@ class ElegooPrinterServer:
                         async for message in source:
                             if message.type in (WSMsgType.TEXT, WSMsgType.BINARY):
                                 await dest.send_str(
-                                    message.data
+                                    message.data.replace(
+                                        self.printer.ip_address, self.get_local_ip()
+                                    ).replace(
+                                        f"{self.get_local_ip()}/",
+                                        f"{self.get_local_ip()}:{WEBSOCKET_PORT}/",
+                                    )
                                 ) if message.type == WSMsgType.TEXT else await (
                                     dest.send_bytes(message.data)
                                 )
                             elif message.type == WSMsgType.CLOSE:
+                                await dest.close()
                                 break
                             elif message.type == WSMsgType.ERROR:
                                 msg = f"WebSocket error in {direction}: {source.exception()}"  # noqa: E501
@@ -292,12 +298,14 @@ class ElegooPrinterServer:
                         self.logger.debug(msg)
                         raise
 
-                to_printer = self.hass.async_create_task(
-                    forward(client_ws, remote_ws, "client-to-printer")
+                to_printer = asyncio.create_task(
+                    forward(client_ws, remote_ws, "client-to-printer"),
+                    name="elegoo_ws:client_to_printer",
                 )
                 tasks.add(to_printer)
-                to_client = self.hass.async_create_task(
-                    forward(remote_ws, client_ws, "printer-to-client")
+                to_client = asyncio.create_task(
+                    forward(remote_ws, client_ws, "printer-to-client"),
+                    name="elegoo_ws:printer_to_client",
                 )
                 tasks.add(to_client)
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
