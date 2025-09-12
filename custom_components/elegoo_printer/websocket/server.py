@@ -24,8 +24,42 @@ from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from multidict import CIMultiDictProxy
 
 INADDR_ANY = "0.0.0.0"  # noqa: S104
+
+ALLOWED_REQUEST_HEADERS = {
+    "GET": [
+        "accept",
+        "accept-language",
+        "accept-encoding",
+        "connection",
+        "priority",
+        "user-agent",
+    ],
+    "POST": [
+        "user-agent",
+        "accept",
+        "accept-language",
+        "accept-encoding",
+        "connection",
+        "content-length",
+        "content-type",
+    ],
+    "WS": [
+        "connection",
+        "sec-websocket-extensions",
+        "sec-websocket-key",
+        "sec-websocket-protocol",
+        "sec-websocket-version",
+        "upgrade",
+    ],
+}
+
+ALLOWED_RESPONSE_HEADERS = {
+    "GET": ["content-length", "content-type", "etag"],
+    "POST": ["content-length"],
+}
 
 
 class ElegooPrinterServer:
@@ -186,6 +220,28 @@ class ElegooPrinterServer:
         except Exception:  # noqa: BLE001
             return PROXY_HOST
 
+    def _get_filtered_request_headers(
+        self, method: str, headers: CIMultiDictProxy[str]
+    ) -> dict[str, str]:
+        allowed_headers = ALLOWED_REQUEST_HEADERS[method]
+        return self._get_filtered_headers(allowed_headers, headers)
+
+    def _get_filtered_response_headers(
+        self, method: str, headers: CIMultiDictProxy[str]
+    ) -> dict[str, str]:
+        allowed_headers = ALLOWED_RESPONSE_HEADERS[method]
+        return self._get_filtered_headers(allowed_headers, headers)
+
+    def _get_filtered_headers(
+        self, allowed_headers: list[str], headers: CIMultiDictProxy[str]
+    ) -> dict[str, str]:
+        """Build a header dict that is filtered to just the allowed headers."""
+        filtered_headers = {}
+        for h in allowed_headers:
+            if h in headers:
+                filtered_headers[h] = headers[h]
+        return filtered_headers
+
     async def _http_handler(self, request: web.Request) -> web.StreamResponse:
         """Dispatches incoming HTTP requests."""
         if request.headers.get("Upgrade", "").lower() == "websocket":
@@ -200,22 +256,20 @@ class ElegooPrinterServer:
         if not self.session or self.session.closed:
             return web.Response(status=503, text="Session not available.")
 
-        headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
         try:
             async with self.session.get(
                 remote_url,
                 timeout=aiohttp.ClientTimeout(
                     total=None, sock_connect=10, sock_read=None
                 ),
-                headers=headers,
+                headers=self._get_filtered_request_headers("GET", request.headers),
             ) as proxy_response:
-                response_headers = proxy_response.headers.copy()
-                for h in ("Content-Length", "Transfer-Encoding", "Connection"):
-                    response_headers.pop(h, None)
                 response = web.StreamResponse(
                     status=proxy_response.status,
                     reason=proxy_response.reason,
-                    headers=response_headers,
+                    headers=self._get_filtered_response_headers(
+                        "GET", proxy_response.headers
+                    ),
                 )
                 await response.prepare(request)
                 try:
@@ -251,20 +305,13 @@ class ElegooPrinterServer:
         remote_ws_url = (
             f"ws://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
         )
-        allowed_headers = {
-            "sec-websocket-version",
-            "sec-websocket-key",
-            "upgrade",
-            "connection",
-        }
-        filtered_headers = {
-            k: v for k, v in request.headers.items() if k.lower() in allowed_headers
-        }
 
         tasks = set()
         try:
             async with self.session.ws_connect(
-                remote_ws_url, headers=filtered_headers, heartbeat=10.0
+                remote_ws_url,
+                headers=self._get_filtered_request_headers("WS", request.headers),
+                heartbeat=10.0,
             ) as remote_ws:
                 self._is_connected = True
 
@@ -340,50 +387,25 @@ class ElegooPrinterServer:
         target_url = (
             f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
         )
-        headers = {
-            k: v
-            for k, v in request.headers.items()
-            if k.lower()
-            not in (
-                "host",
-                "content-length",
-                "transfer-encoding",
-                "connection",
-                "keep-alive",
-                "proxy-authenticate",
-                "proxy-authorization",
-                "te",
-                "trailer",
-                "upgrade",
-            )
-        }
 
         try:
             async with self.session.request(
                 request.method,
                 target_url,
-                headers=headers,
+                headers=self._get_filtered_request_headers(
+                    request.method, request.headers
+                ),
                 data=request.content,
                 allow_redirects=False,
                 timeout=aiohttp.ClientTimeout(
                     total=None, sock_connect=10, sock_read=None
                 ),
             ) as upstream_response:
-                response_headers = upstream_response.headers.copy()
-                for h in (
-                    "Content-Length",
-                    "Transfer-Encoding",
-                    "Connection",
-                    "Keep-Alive",
-                    "Proxy-Authenticate",
-                    "Proxy-Authorization",
-                    "TE",
-                    "Trailer",
-                    "Upgrade",
-                ):
-                    response_headers.pop(h, None)
                 client_response = web.StreamResponse(
-                    status=upstream_response.status, headers=response_headers
+                    status=upstream_response.status,
+                    headers=self._get_filtered_response_headers(
+                        request.method, upstream_response.headers
+                    ),
                 )
                 await client_response.prepare(request)
                 async for chunk in upstream_response.content.iter_any():
@@ -405,48 +427,22 @@ class ElegooPrinterServer:
         if not self.session or self.session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
-        headers = {
-            k: v
-            for k, v in request.headers.items()
-            if k.lower()
-            not in (
-                "host",
-                "content-length",
-                "transfer-encoding",
-                "connection",
-                "keep-alive",
-                "proxy-authenticate",
-                "proxy-authorization",
-                "te",
-                "trailer",
-                "upgrade",
-            )
-        }
         try:
             async with self.session.post(
                 remote_url,
-                headers=headers,
+                headers=self._get_filtered_request_headers("POST", request.headers),
                 data=request.content,
                 timeout=aiohttp.ClientTimeout(
                     total=None, sock_connect=10, sock_read=None
                 ),
             ) as response:
                 content = await response.read()
-                resp_headers = response.headers.copy()
-                for h in (
-                    "Content-Length",
-                    "Transfer-Encoding",
-                    "Connection",
-                    "Keep-Alive",
-                    "Proxy-Authenticate",
-                    "Proxy-Authorization",
-                    "TE",
-                    "Trailer",
-                    "Upgrade",
-                ):
-                    resp_headers.pop(h, None)
                 return web.Response(
-                    body=content, status=response.status, headers=resp_headers
+                    body=content,
+                    status=response.status,
+                    headers=self._get_filtered_response_headers(
+                        "POST", response.headers
+                    ),
                 )
         except Exception as e:
             self.logger.exception("HTTP file passthrough proxy error")
