@@ -92,7 +92,7 @@ async def _async_validate_input(  # noqa: PLR0912
     hass: HomeAssistant,
     user_input: dict[str, Any],
     discovered_printers: list[Printer] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """
     Asynchronously validates user input for Elegoo printer configuration.
 
@@ -137,6 +137,7 @@ async def _async_validate_input(  # noqa: PLR0912
             printer_object = printers[0]
         else:
             _errors["base"] = "no_printer_found"
+            return {"printer": None, "errors": _errors}
     if printer_object:
         try:
             # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled  # noqa: E501
