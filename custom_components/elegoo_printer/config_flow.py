@@ -92,7 +92,7 @@ async def _async_validate_input(  # noqa: PLR0912
     hass: HomeAssistant,
     user_input: dict[str, Any],
     discovered_printers: list[Printer] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """
     Asynchronously validates user input for Elegoo printer configuration.
 
