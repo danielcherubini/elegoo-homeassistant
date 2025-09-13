@@ -137,6 +137,7 @@ async def _async_validate_input(  # noqa: PLR0912
             printer_object = printers[0]
         else:
             _errors["base"] = "no_printer_found"
+            return {"printer": None, "errors": _errors}
     if printer_object:
         try:
             # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled  # noqa: E501
