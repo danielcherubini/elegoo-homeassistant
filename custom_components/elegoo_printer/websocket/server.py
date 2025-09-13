@@ -33,32 +33,74 @@ ALLOWED_REQUEST_HEADERS = {
         "accept",
         "accept-language",
         "accept-encoding",
-        "connection",
         "priority",
         "user-agent",
+        "range",
+        "if-none-match",
+        "if-modified-since",
+    ],
+    "HEAD": [
+        "accept",
+        "accept-language",
+        "accept-encoding",
+        "priority",
+        "user-agent",
+        "range",
+        "if-none-match",
+        "if-modified-since",
+    ],
+    "OPTIONS": [
+        "origin",
+        "access-control-request-method",
+        "access-control-request-headers",
     ],
     "POST": [
         "user-agent",
         "accept",
         "accept-language",
         "accept-encoding",
-        "connection",
         "content-length",
         "content-type",
+        "origin",
     ],
     "WS": [
         "connection",
+        "upgrade",
+        "origin",
         "sec-websocket-extensions",
         "sec-websocket-key",
         "sec-websocket-protocol",
         "sec-websocket-version",
-        "upgrade",
     ],
 }
 
 ALLOWED_RESPONSE_HEADERS = {
-    "GET": ["content-length", "content-type", "etag"],
-    "POST": ["content-length"],
+    "GET": [
+        "content-length",
+        "content-type",
+        "content-encoding",
+        "etag",
+        "cache-control",
+        "last-modified",
+        "accept-ranges",
+    ],
+    "HEAD": [
+        "content-length",
+        "content-type",
+        "content-encoding",
+        "etag",
+        "cache-control",
+        "last-modified",
+        "accept-ranges",
+    ],
+    "OPTIONS": [
+        "access-control-allow-origin",
+        "access-control-allow-methods",
+        "access-control-allow-headers",
+        "access-control-max-age",
+        "content-length",
+    ],
+    "POST": ["content-length", "content-type", "content-encoding"],
 }
 
 
@@ -220,16 +262,19 @@ class ElegooPrinterServer:
         except Exception:  # noqa: BLE001
             return PROXY_HOST
 
-    def _get_filtered_request_headers(
+    def _get_request_headers(
         self, method: str, headers: CIMultiDictProxy[str]
     ) -> dict[str, str]:
-        allowed_headers = ALLOWED_REQUEST_HEADERS[method]
-        return self._get_filtered_headers(allowed_headers, headers)
+        allowed_headers = ALLOWED_REQUEST_HEADERS.get(method.upper(), [])
+        request_headers = {}
+        request_headers["connection"] = "keep-alive"
+        request_headers.update(self._get_filtered_headers(allowed_headers, headers))
+        return request_headers
 
-    def _get_filtered_response_headers(
+    def _get_response_headers(
         self, method: str, headers: CIMultiDictProxy[str]
     ) -> dict[str, str]:
-        allowed_headers = ALLOWED_RESPONSE_HEADERS[method]
+        allowed_headers = ALLOWED_RESPONSE_HEADERS.get(method.upper(), [])
         return self._get_filtered_headers(allowed_headers, headers)
 
     def _get_filtered_headers(
@@ -262,14 +307,14 @@ class ElegooPrinterServer:
                 timeout=aiohttp.ClientTimeout(
                     total=None, sock_connect=10, sock_read=None
                 ),
-                headers=self._get_filtered_request_headers("GET", request.headers),
+                headers=self._get_request_headers("GET", request.headers),
             ) as proxy_response:
+                resp_headers = self._get_response_headers("GET", proxy_response.headers)
+                resp_headers.pop("content-length", None)
                 response = web.StreamResponse(
                     status=proxy_response.status,
                     reason=proxy_response.reason,
-                    headers=self._get_filtered_response_headers(
-                        "GET", proxy_response.headers
-                    ),
+                    headers=resp_headers,
                 )
                 await response.prepare(request)
                 try:
@@ -310,7 +355,7 @@ class ElegooPrinterServer:
         try:
             async with self.session.ws_connect(
                 remote_ws_url,
-                headers=self._get_filtered_request_headers("WS", request.headers),
+                headers=self._get_request_headers("WS", request.headers),
                 heartbeat=10.0,
             ) as remote_ws:
                 self._is_connected = True
@@ -392,9 +437,7 @@ class ElegooPrinterServer:
             async with self.session.request(
                 request.method,
                 target_url,
-                headers=self._get_filtered_request_headers(
-                    request.method, request.headers
-                ),
+                headers=self._get_request_headers(request.method, request.headers),
                 data=request.content,
                 allow_redirects=False,
                 timeout=aiohttp.ClientTimeout(
@@ -403,7 +446,7 @@ class ElegooPrinterServer:
             ) as upstream_response:
                 client_response = web.StreamResponse(
                     status=upstream_response.status,
-                    headers=self._get_filtered_response_headers(
+                    headers=self._get_response_headers(
                         request.method, upstream_response.headers
                     ),
                 )
@@ -430,7 +473,7 @@ class ElegooPrinterServer:
         try:
             async with self.session.post(
                 remote_url,
-                headers=self._get_filtered_request_headers("POST", request.headers),
+                headers=self._get_request_headers("POST", request.headers),
                 data=request.content,
                 timeout=aiohttp.ClientTimeout(
                     total=None, sock_connect=10, sock_read=None
@@ -440,9 +483,7 @@ class ElegooPrinterServer:
                 return web.Response(
                     body=content,
                     status=response.status,
-                    headers=self._get_filtered_response_headers(
-                        "POST", response.headers
-                    ),
+                    headers=self._get_response_headers("POST", response.headers),
                 )
         except Exception as e:
             self.logger.exception("HTTP file passthrough proxy error")
