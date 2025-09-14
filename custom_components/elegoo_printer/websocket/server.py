@@ -290,13 +290,14 @@ class ElegooPrinterServer:
         self, method: str, headers: CIMultiDictProxy[str]
     ) -> dict[str, str]:
         allowed_headers = ALLOWED_RESPONSE_HEADERS.get(method.upper(), [])
-        return self._set_caching_headers(
-            self._get_filtered_headers(allowed_headers, headers)
-        )
+        filtered_headers = self._get_filtered_headers(allowed_headers, headers)
+        if method.upper() in ("GET", "HEAD"):
+            return self._set_caching_headers(filtered_headers)
+        return filtered_headers
 
     def _set_caching_headers(self, headers: dict[str, str]) -> dict[str, str]:
         content_type = headers.get("content-type", "").split(";")[0]
-        if content_type in CACHEABLE_MIME_TYPES:
+        if content_type in CACHEABLE_MIME_TYPES and "cache-control" not in headers:
             headers["cache-control"] = "public, max-age=31536000"
         return headers
 
