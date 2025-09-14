@@ -121,6 +121,8 @@ action:
               tag: "{{ notification_group }}"
               alert_once: true
               sticky: true
+              push:
+                interruption-level: passive
     else:
       - if:
           - condition: template
@@ -140,3 +142,5 @@ action:
               tag: "{{ notification_group }}"
               sticky: true
               alert_once: false
+              push:
+                interruption-level: time-sensitive
