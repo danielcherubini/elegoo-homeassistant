@@ -103,6 +103,21 @@ ALLOWED_RESPONSE_HEADERS = {
     "POST": ["content-length", "content-type", "content-encoding"],
 }
 
+CACHEABLE_MIME_TYPES = [
+    "text/plain",
+    "text/css",
+    "text/html",
+    "text/javascript",
+    "application/json",
+    "image/apng",
+    "image/avif",
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/svg+xml",
+    "image/webp",
+]
+
 
 class ElegooPrinterServer:
     """
@@ -275,7 +290,16 @@ class ElegooPrinterServer:
         self, method: str, headers: CIMultiDictProxy[str]
     ) -> dict[str, str]:
         allowed_headers = ALLOWED_RESPONSE_HEADERS.get(method.upper(), [])
-        return self._get_filtered_headers(allowed_headers, headers)
+        filtered_headers = self._get_filtered_headers(allowed_headers, headers)
+        if method.upper() in ("GET", "HEAD"):
+            return self._set_caching_headers(filtered_headers)
+        return filtered_headers
+
+    def _set_caching_headers(self, headers: dict[str, str]) -> dict[str, str]:
+        content_type = headers.get("content-type", "").split(";")[0]
+        if content_type in CACHEABLE_MIME_TYPES and "cache-control" not in headers:
+            headers["cache-control"] = "public, max-age=31536000"
+        return headers
 
     def _get_filtered_headers(
         self, allowed_headers: list[str], headers: CIMultiDictProxy[str]
