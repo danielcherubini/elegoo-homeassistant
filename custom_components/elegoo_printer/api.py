@@ -78,50 +78,84 @@ class ElegooPrinterApiClient:
         self = ElegooPrinterApiClient(printer, config=config, logger=logger, hass=hass)
         session = async_get_clientsession(hass)
 
+        # First, test if printer is reachable before starting proxy server
+        logger.debug(
+            "Testing connectivity to printer: %s at %s",
+            printer.name,
+            printer.ip_address,
+        )
+        self.client = ElegooPrinterClient(
+            printer.ip_address,
+            config=config,
+            logger=logger,
+            session=session,
+        )
+
+        # Ping the printer to check if it's available
+        printer_reachable = await self.client.ping_printer(timeout=5.0)
+
+        if not printer_reachable:
+            logger.warning(
+                "Printer %s at %s is not reachable. Not starting proxy server.",
+                printer.name,
+                printer.ip_address,
+            )
+            await self.client.disconnect()
+            await ElegooPrinterServer.stop_all()
+            return None
+
+        # Printer is reachable, now set up proxy if enabled
         if proxy_server_enabled:
-            logger.debug("Proxy server is enabled, attempting to create proxy server.")
+            logger.debug("Printer is reachable. Starting proxy server.")
             try:
                 self.server = await ElegooPrinterServer.async_create(
                     printer, logger=logger, hass=hass, session=session
                 )
                 printer = self.server.get_printer()
                 printer.proxy_enabled = proxy_server_enabled
-            except (ConnectionError, TimeoutError) as e:
-                logger.warning(
-                    "Failed to start proxy server: %s. Falling back to direct conn.",
-                    e,
-                )
+            except Exception as e:  # Catch all exceptions including ConfigEntryNotReady
+                if "already in use" in str(e) or "port" in str(e).lower():
+                    logger.info(
+                        "Proxy server ports already in use (possibly from previous instance). "
+                        "Continuing with direct connection to printer."
+                    )
+                else:
+                    logger.warning(
+                        "Failed to start proxy server: %s. Falling back to direct conn.",
+                        e,
+                    )
                 self.server = None
+                proxy_server_enabled = False
+                # Continue with proxy configuration even if server isn't running
 
+        # Now connect to the printer (either direct or through proxy)
         logger.debug(
             "Connecting to printer: %s at %s with proxy enabled %s",
             printer.name,
-            printer.ip_address,
+            printer.ip_address
+            if not proxy_server_enabled
+            else self.get_local_ip()
+            if self.server
+            else printer.ip_address,
             proxy_server_enabled,
         )
         try:
-            self.client = ElegooPrinterClient(
-                printer.ip_address,
-                config=config,
-                logger=logger,
-                session=session,
-            )
             connected = await self.client.connect_printer(
                 printer, proxy_enabled=proxy_server_enabled
             )
             if not connected:
-                if self.server:
-                    await self.server.stop()
-                if self.client:
-                    await self.client.disconnect()
+                # Stop ALL server instances to ensure clean state
+                await ElegooPrinterServer.stop_all()
+                self.server = None
+                await self.client.disconnect()
                 return None
             logger.info("Polling Started")
             return self  # noqa: TRY300
         except (ConnectionError, TimeoutError):
-            if self.server:
-                await self.server.stop()
-            if self.client:
-                await self.client.disconnect()
+            # Stop ALL server instances to ensure clean state
+            await ElegooPrinterServer.stop_all()
+            self.server = None
+            await self.client.disconnect()
             return None
 
     @property
@@ -141,8 +175,79 @@ class ElegooPrinterApiClient:
 
     async def elegoo_stop_proxy(self) -> None:
         """Stop the proxy server if it is running."""
+        # Stop ALL instances to ensure complete cleanup
+        await ElegooPrinterServer.stop_all()
+        self.server = None
+
+    def get_local_ip(self) -> str:
+        """Get the local IP address for the proxy server."""
         if self.server:
-            await self.server.stop()
+            return self.server.get_local_ip()
+        return self.printer.ip_address
+
+    async def reconnect(self) -> bool:
+        """
+        Asynchronously attempts to reconnect to the printer, using a proxy server if enabled.
+
+        Returns:
+            bool: True if reconnection is successful, False otherwise.
+
+        """  # noqa: E501
+        printer = self.printer
+        session = async_get_clientsession(self.hass)
+
+        # First, test if printer is reachable
+        self._logger.debug(
+            "Testing connectivity before reconnect to printer: %s at %s",
+            printer.name,
+            printer.ip_address,
+        )
+
+        # Ping the printer to check if it's available
+        printer_reachable = await self.client.ping_printer(timeout=5.0)
+
+        if not printer_reachable:
+            self._logger.debug(
+                "Printer %s at %s is not reachable during reconnect. Stopping any running proxies.",
+                printer.name,
+                printer.ip_address,
+            )
+            # Stop ALL server instances since printer is unreachable
+            await ElegooPrinterServer.stop_all()
+            self.server = None
+            return False
+
+        # Printer is reachable, handle proxy server if enabled
+        if self._proxy_server_enabled:
+            # Stop ALL existing server instances for clean restart
+            await ElegooPrinterServer.stop_all()
+            self.server = None
+
+            self._logger.debug("Printer is reachable. Restarting proxy server.")
+            # First, ensure any existing instances are cleaned up
+            await ElegooPrinterServer.stop_all()
+            try:
+                self.server = await ElegooPrinterServer.async_create(
+                    printer, logger=self._logger, hass=self.hass, session=session
+                )
+                printer = self.server.get_printer()
+            except (ConnectionError, TimeoutError) as e:
+                self._logger.warning(
+                    "Failed to (re)create proxy server during reconnect: %s",
+                    e,
+                )
+                self.server = None
+                # Continue with direct connection
+
+        self._logger.debug(
+            "Reconnecting to printer: %s proxy_enabled %s",
+            printer.ip_address,
+            self._proxy_server_enabled and self.server is not None,
+        )
+        return await self.client.connect_printer(
+            printer,
+            proxy_enabled=self._proxy_server_enabled and self.server is not None,
+        )
 
     async def async_get_status(self) -> PrinterData:
         """
@@ -319,37 +424,6 @@ class ElegooPrinterApiClient:
 
         """  # noqa: E501
         return await self.client.async_get_printer_historical_tasks()
-
-    async def reconnect(self) -> bool:
-        """
-        Asynchronously attempts to reconnect to the printer, using a proxy server if enabled.
-
-        Returns:
-            bool: True if reconnection is successful, False otherwise.
-
-        """  # noqa: E501
-        printer = self.printer
-        session = async_get_clientsession(self.hass)
-        if self._proxy_server_enabled:
-            if self.server:
-                await self.server.stop()
-            try:
-                self.server = await ElegooPrinterServer.async_create(
-                    printer, logger=self._logger, hass=self.hass, session=session
-                )
-                printer = self.server.get_printer()
-            except (ConnectionError, TimeoutError):
-                self._logger.exception("Failed to (re)create proxy server")
-                self.server = None
-
-        self._logger.debug(
-            "Reconnecting to printer: %s proxy_enabled %s",
-            printer.ip_address,
-            self._proxy_server_enabled,
-        )
-        return await self.client.connect_printer(
-            printer, proxy_enabled=self._proxy_server_enabled
-        )
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """Set the speed of a fan."""

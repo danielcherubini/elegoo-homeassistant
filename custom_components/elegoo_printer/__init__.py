@@ -110,9 +110,25 @@ async def async_unload_entry(
     """Handle removal of an entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok and (client := entry.runtime_data.api):
-        await client.elegoo_disconnect()
-        if client.printer and client.printer.proxy_enabled:
-            await client.elegoo_stop_proxy()
+        # Disconnect client first
+        try:
+            await client.elegoo_disconnect()
+        except Exception as e:
+            LOGGER.warning("Error disconnecting client: %s", e)
+
+        # Stop proxy server if enabled
+        if client.server:
+            try:
+                await client.elegoo_stop_proxy()
+            except Exception as e:
+                LOGGER.warning("Error stopping proxy server: %s", e)
+
+        # Ensure ALL server instances are stopped (cleanup orphaned instances)
+        try:
+            from .websocket.server import ElegooPrinterServer
+            await ElegooPrinterServer.stop_all()
+        except Exception as e:
+            LOGGER.warning("Error stopping all proxy server instances: %s", e)
 
     return unload_ok
 

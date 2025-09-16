@@ -531,6 +531,48 @@ class ElegooPrinterClient:
 
         return None
 
+    async def ping_printer(self, timeout: float = 5.0) -> bool:
+        """Test if printer is reachable by checking TCP port connectivity.
+
+        Args:
+            timeout: Connection timeout in seconds
+
+        Returns:
+            bool: True if printer is reachable, False otherwise
+        """
+        # Try port 80 first (HTTP), then 3030 (WebSocket)
+        ports_to_check = [80, WEBSOCKET_PORT]
+
+        for port in ports_to_check:
+            try:
+                # Simple TCP connection test
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(self.printer.ip_address, port),
+                    timeout=timeout / len(ports_to_check)  # Split timeout across ports
+                )
+                writer.close()
+                await writer.wait_closed()
+                self.logger.debug(
+                    "Printer ping successful at %s:%s",
+                    self.printer.ip_address,
+                    port
+                )
+                return True
+            except (asyncio.TimeoutError, ConnectionRefusedError, OSError) as e:
+                self.logger.debug(
+                    "Printer ping failed at %s:%s - %s",
+                    self.printer.ip_address,
+                    port,
+                    type(e).__name__
+                )
+                continue
+
+        self.logger.debug(
+            "Printer at %s is not reachable on any port",
+            self.printer.ip_address
+        )
+        return False
+
     async def connect_printer(self, printer: Printer, *, proxy_enabled: bool) -> bool:
         """Establish an asynchronous connection to the Elegoo printer."""
         if self.is_connected:
