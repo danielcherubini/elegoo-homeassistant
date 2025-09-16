@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import socket
+from math import floor
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
-from aiohttp import ClientSession, WSMsgType, web
+from aiohttp import ClientResponse, ClientSession, WSMsgType, web
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from custom_components.elegoo_printer.const import (
@@ -103,6 +105,14 @@ ALLOWED_RESPONSE_HEADERS = {
     "POST": ["content-length", "content-type", "content-encoding"],
 }
 
+TRANSFORMABLE_MIME_TYPES = [
+    "text/plain",
+    "text/css",
+    "text/html",
+    "text/javascript",
+    "application/json",
+]
+
 CACHEABLE_MIME_TYPES = [
     "text/plain",
     "text/css",
@@ -187,16 +197,6 @@ class ElegooPrinterServer:
             await main_site.start()
             self.runners.append(main_runner)
             msg = f"Main HTTP/WebSocket Proxy running on http://{self.get_local_ip()}:{WEBSOCKET_PORT}"
-            self.logger.info(msg)
-
-            video_app = web.Application()
-            video_app.router.add_route("*", "/{path:.*}", self._video_proxy_handler)
-            video_runner = web.AppRunner(video_app)
-            await video_runner.setup()
-            video_site = web.TCPSite(video_runner, INADDR_ANY, VIDEO_PORT)
-            await video_site.start()
-            self.runners.append(video_runner)
-            msg = f"Video Proxy running on http://{self.get_local_ip()}:{VIDEO_PORT}"
             self.logger.info(msg)
 
             def discovery_factory() -> DiscoveryProtocol:
@@ -313,6 +313,8 @@ class ElegooPrinterServer:
 
     async def _http_handler(self, request: web.Request) -> web.StreamResponse:
         """Dispatches incoming HTTP requests."""
+        if request.path == "/video":
+            return await self._video_proxy_handler(request)
         if request.headers.get("Upgrade", "").lower() == "websocket":
             return await self._websocket_handler(request)
         if request.method == "POST" and request.path == "/uploadFile/upload":
@@ -393,12 +395,7 @@ class ElegooPrinterServer:
                         async for message in source:
                             if message.type in (WSMsgType.TEXT, WSMsgType.BINARY):
                                 await dest.send_str(
-                                    message.data.replace(
-                                        self.printer.ip_address, self.get_local_ip()
-                                    ).replace(
-                                        f"{self.get_local_ip()}/",
-                                        f"{self.get_local_ip()}:{WEBSOCKET_PORT}/",
-                                    )
+                                    self._process_replacements(message.data)
                                 ) if message.type == WSMsgType.TEXT else await (
                                     dest.send_bytes(message.data)
                                 )
@@ -468,21 +465,88 @@ class ElegooPrinterServer:
                     total=None, sock_connect=10, sock_read=None
                 ),
             ) as upstream_response:
+                response_headers = self._get_response_headers(
+                    request.method, upstream_response.headers
+                )
                 client_response = web.StreamResponse(
                     status=upstream_response.status,
-                    headers=self._get_response_headers(
-                        request.method, upstream_response.headers
-                    ),
+                    headers=response_headers,
                 )
-                await client_response.prepare(request)
-                async for chunk in upstream_response.content.iter_any():
-                    await client_response.write(chunk)
-                await client_response.write_eof()
-                return client_response
+                content_type = response_headers.get("content-type", "").split(";")[0]
+                if content_type in TRANSFORMABLE_MIME_TYPES:
+                    return await self._transformed_streamed_response(
+                        request, client_response, upstream_response
+                    )
+                return await self._streamed_response(
+                    request, client_response, upstream_response
+                )
         except aiohttp.ClientError as e:
             msg = f"HTTP proxy error connecting to {target_url}"
             self.logger.exception(msg)
             return web.Response(status=502, text=f"Bad Gateway: {e}")
+
+    async def _transformed_streamed_response(
+        self,
+        request: web.Request,
+        client_response: web.StreamResponse,
+        upstream_response: ClientResponse,
+    ) -> web.StreamResponse:
+        client_response.headers.pop("content-length")
+        await client_response.prepare(request)
+        encoding = "utf-8"
+        content_type = client_response.headers.get("content-type")
+        if content_type:
+            matches = re.search(r"charset=(.+?)(;|$)", content_type)
+            if matches and matches[1]:
+                encoding = matches[1]
+        previous = ""
+        async for chunk in upstream_response.content.iter_any():
+            current = chunk.decode(encoding)
+            previous_length = len(previous)
+            if previous_length > 0:
+                combined = previous + current
+                replaced = self._process_replacements(combined)
+                half_len = floor(len(replaced) / 2)
+                replaced_previous = replaced[:half_len]
+                await client_response.write(replaced_previous.encode(encoding))
+                previous = replaced[half_len:]
+            else:
+                previous = current
+
+        await client_response.write(previous.encode(encoding))
+        await client_response.write_eof()
+        return client_response
+
+    async def _streamed_response(
+        self,
+        request: web.Request,
+        client_response: web.StreamResponse,
+        upstream_response: ClientResponse,
+    ) -> web.StreamResponse:
+        await client_response.prepare(request)
+        async for chunk in upstream_response.content.iter_any():
+            await client_response.write(chunk)
+        await client_response.write_eof()
+        return client_response
+
+    def _process_replacements(self, content: str) -> str:
+        return (
+            content.replace(
+                self.printer.ip_address or DEFAULT_FALLBACK_IP, self.get_local_ip()
+            )
+            .replace(
+                f"{self.get_local_ip()}/",
+                f"{self.get_local_ip()}:{WEBSOCKET_PORT}/",
+            )
+            .replace(
+                f"{self.get_local_ip()}:{VIDEO_PORT}/",
+                f"{self.get_local_ip()}:{WEBSOCKET_PORT}/",
+            )
+            .replace(
+                "${this.webSocketService.hostName}:80",
+                "${this.webSocketService.hostName}:" + f"{WEBSOCKET_PORT}",
+            )
+        )
 
     async def _http_file_proxy_passthrough_handler(
         self, request: web.Request
