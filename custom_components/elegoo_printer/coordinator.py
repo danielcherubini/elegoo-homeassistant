@@ -65,10 +65,15 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             ):
                 LOGGER.debug("Checking for firmware updates")
                 api = self.config_entry.runtime_data.api
-                firmware_info = await api.async_get_firmware_update_info()
-                self.data.firmware_update_info = firmware_info
-                self._last_firmware_check = now
-
+                try:
+                    firmware_info = await api.async_get_firmware_update_info()
+                    if firmware_info:
+                        self.data.firmware_update_info = firmware_info
+                except Exception as fw_err:  # narrow if needed (e.g., httpx.HTTPError)
+                    LOGGER.debug("Firmware update check failed: %s", fw_err)
+                finally:
+                    # Rate-limit even on failure to avoid hammering the endpoint
+                    self._last_firmware_check = now
             self.online = True
             if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
