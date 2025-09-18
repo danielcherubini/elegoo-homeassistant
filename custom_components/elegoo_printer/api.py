@@ -6,10 +6,12 @@ import re
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.httpx_client import get_async_client
+from httpx import HTTPStatusError, RequestError
 from PIL import Image as PILImage
 from PIL import UnidentifiedImageError
+
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.httpx_client import get_async_client
 
 from .const import CONF_PROXY_ENABLED, LOGGER
 from .sdcp.models.elegoo_image import ElegooImage
@@ -252,7 +254,13 @@ class ElegooPrinterApiClient:
                         last_updated_timestamp=task.begin_time.timestamp(),
                         content_type="image/png",
                     )
-            except (ConnectionError, TimeoutError, UnidentifiedImageError) as e:
+            except (
+                ConnectionError,
+                TimeoutError,
+                UnidentifiedImageError,
+                HTTPStatusError,
+                RequestError,
+            ) as e:
                 LOGGER.error("Error fetching thumbnail: %s", e)
                 return None
 
@@ -472,7 +480,7 @@ class ElegooPrinterApiClient:
             elif isinstance(data, str) and "格式" in data:
                 LOGGER.warning("Firmware update API returned format error: %s", data)
 
-        except (ConnectionError, TimeoutError) as err:
+        except (ConnectionError, TimeoutError, HTTPStatusError, RequestError) as err:
             LOGGER.error("Network error checking for firmware updates: %s", err)
             return None
         except (ValueError, KeyError) as err:
