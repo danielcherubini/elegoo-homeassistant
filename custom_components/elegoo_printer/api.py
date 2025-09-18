@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from __future__ import annotations
+
 import re
+import httpx
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
