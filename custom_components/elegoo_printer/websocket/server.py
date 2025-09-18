@@ -253,15 +253,15 @@ class ElegooPrinterServer:
                 # Create and immediately close a socket to force cleanup
                 with socket.socket(socket.AF_INET, proto) as s:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                    if proto == socket.SOCK_STREAM:
+                    if proto == socket.SOCK_STREAM and hasattr(socket, "SO_REUSEPORT"):
                         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                     try:
-                        s.bind(("127.0.0.1", port))  # Bind to localhost only
-                        logger.debug("Port %d is now available", port)
+                        s.bind(("localhost", port))  # Bind to localhost only
+                        logger.debug("Port %s is now available", port)
                     except OSError:
-                        logger.debug("Port %d still in use after cleanup", port)
+                        logger.debug("Port %s still in use after cleanup", port)
             except OSError as e:
-                logger.debug("Error during port %d cleanup: %s", port, e)
+                logger.debug("Error during port %s cleanup: %s", port, e)
 
     def _check_ports_are_available(self) -> bool:
         """Check if the required TCP and UDP ports for the proxy server are free."""
@@ -274,12 +274,11 @@ class ElegooPrinterServer:
                 with socket.socket(socket.AF_INET, proto) as s:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     s.bind((INADDR_ANY, port))
-            except OSError as e:
+            except OSError:
                 self.logger.exception(
-                    ("%s port %s is already in use. Proxy server cannot start."),
+                    "%s port %s is already in use. Proxy server cannot start.",
                     name,
                     port,
-                    exc_info=e,
                 )
                 return False
         return True

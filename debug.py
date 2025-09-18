@@ -31,7 +31,7 @@ async def main() -> None:
             )
             # Test the new ping functionality first
             logger.info(f"Testing ping to printer at {PRINTER_IP}...")
-            ping_result = await elegoo_printer.ping_printer(ping_timeout=3.0)
+            ping_result = await elegoo_printer.ping_printer(timeout_s=3.0)
             if ping_result:
                 logger.info("✓ Ping successful - printer WebSocket is reachable")
 
