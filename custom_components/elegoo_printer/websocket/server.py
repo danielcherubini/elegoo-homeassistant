@@ -16,6 +16,7 @@ from custom_components.elegoo_printer.const import (
     DEFAULT_FALLBACK_IP,
     DISCOVERY_MESSAGE,
     DISCOVERY_PORT,
+    LOGGER,
     PROXY_HOST,
     VIDEO_PORT,
     WEBSOCKET_PORT,
@@ -224,9 +225,7 @@ class ElegooPrinterServer:
     @classmethod
     async def stop_all(cls) -> None:
         """Stop all running proxy server instances."""
-        import asyncio
-        from custom_components.elegoo_printer.const import LOGGER
-        LOGGER.debug(f"stop_all called, found {len(cls._instances)} instances")
+        LOGGER.debug("stop_all called, found %d instances", len(cls._instances))
         for instance in list(cls._instances):
             LOGGER.debug("Stopping server instance...")
             await instance.stop()
@@ -240,11 +239,8 @@ class ElegooPrinterServer:
         LOGGER.debug("stop_all completed")
 
     @classmethod
-    async def _force_cleanup_ports(cls, logger) -> None:
+    async def _force_cleanup_ports(cls, logger: Any) -> None:
         """Force cleanup of any lingering socket connections on our ports."""
-        import socket
-        from custom_components.elegoo_printer.const import WEBSOCKET_PORT, VIDEO_PORT, DISCOVERY_PORT
-
         ports_to_cleanup = [
             (WEBSOCKET_PORT, socket.SOCK_STREAM),
             (VIDEO_PORT, socket.SOCK_STREAM),
@@ -259,12 +255,12 @@ class ElegooPrinterServer:
                     if proto == socket.SOCK_STREAM:
                         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                     try:
-                        s.bind(("0.0.0.0", port))
-                        logger.debug(f"Port {port} is now available")
+                        s.bind(("127.0.0.1", port))  # Bind to localhost only
+                        logger.debug("Port %d is now available", port)
                     except OSError:
-                        logger.debug(f"Port {port} still in use after cleanup")
-            except Exception as e:
-                logger.debug(f"Error during port {port} cleanup: {e}")
+                        logger.debug("Port %d still in use after cleanup", port)
+            except OSError as e:
+                logger.debug("Error during port %d cleanup: %s", port, e)
 
     def _check_ports_are_available(self) -> bool:
         """Check if the required TCP and UDP ports for the proxy server are free."""
@@ -278,7 +274,7 @@ class ElegooPrinterServer:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     s.bind((INADDR_ANY, port))
             except OSError as e:
-                msg = f"{name} port {port} is already in use. Proxy server cannot start. Error: {e}"
+                msg = f"{name} port {port} is already in use. Error: {e}"
                 self.logger.exception(msg)
                 return False
         return True
@@ -292,8 +288,8 @@ class ElegooPrinterServer:
         if self.datagram_transport:
             try:
                 self.datagram_transport.close()
-            except Exception as e:
-                self.logger.warning(f"Error closing datagram transport: {e}")
+            except OSError as e:
+                self.logger.warning("Error closing datagram transport: %s", e)
             finally:
                 self.datagram_transport = None
 
@@ -301,8 +297,8 @@ class ElegooPrinterServer:
         for runner in self.runners:
             try:
                 await runner.cleanup()
-            except Exception as e:
-                self.logger.warning(f"Error cleaning up runner: {e}")
+            except OSError as e:
+                self.logger.warning("Error cleaning up runner: %s", e)
         self.runners.clear()
 
         # Remove from instances list

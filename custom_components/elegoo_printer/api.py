@@ -92,7 +92,7 @@ class ElegooPrinterApiClient:
         )
 
         # Ping the printer to check if it's available
-        printer_reachable = await self.client.ping_printer(timeout=5.0)
+        printer_reachable = await self.client.ping_printer(ping_timeout=5.0)
 
         if not printer_reachable:
             logger.warning(
@@ -113,15 +113,15 @@ class ElegooPrinterApiClient:
                 )
                 printer = self.server.get_printer()
                 printer.proxy_enabled = proxy_server_enabled
-            except Exception as e:  # Catch all exceptions including ConfigEntryNotReady
+            except OSError as e:
                 if "already in use" in str(e) or "port" in str(e).lower():
                     logger.info(
-                        "Proxy server ports already in use (possibly from previous instance). "
+                        "Proxy server ports already in use. "
                         "Continuing with direct connection to printer."
                     )
                 else:
                     logger.warning(
-                        "Failed to start proxy server: %s. Falling back to direct conn.",
+                        "Failed to start proxy server: %s. Falling back to direct.",
                         e,
                     )
                 self.server = None
@@ -204,11 +204,11 @@ class ElegooPrinterApiClient:
         )
 
         # Ping the printer to check if it's available
-        printer_reachable = await self.client.ping_printer(timeout=5.0)
+        printer_reachable = await self.client.ping_printer(ping_timeout=5.0)
 
         if not printer_reachable:
             self._logger.debug(
-                "Printer %s at %s is not reachable during reconnect. Stopping any running proxies.",
+                "Printer %s at %s is not reachable during reconnect. Stopping proxies.",
                 printer.name,
                 printer.ip_address,
             )
