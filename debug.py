@@ -69,7 +69,7 @@ async def main() -> None:
                             await asyncio.sleep(4)
 
                 else:
-                    logger.exception("No printers discovered.")
+                    logger.warning("No printers discovered.")
             else:
                 logger.warning("✗ Ping failed - printer WebSocket is not reachable")
                 logger.info("This is expected if printer is off or WebSocket service not running")

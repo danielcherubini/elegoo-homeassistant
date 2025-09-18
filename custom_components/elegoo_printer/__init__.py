@@ -7,9 +7,11 @@ https://github.com/danielcherubini/elegoo-homeassistant
 
 from __future__ import annotations
 
+import asyncio
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from aiohttp import ClientError
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import CONF_IP_ADDRESS, Platform, UnitOfTime
 from homeassistant.exceptions import ConfigEntryNotReady
@@ -113,22 +115,17 @@ async def async_unload_entry(
     if unload_ok and (client := entry.runtime_data.api):
         # Disconnect client first
         try:
-            await client.elegoo_disconnect()
-        except OSError as e:
-            LOGGER.warning("Error disconnecting client: %s", e)
-
-        # Stop proxy server if enabled
-        if client.server:
-            try:
-                await client.elegoo_stop_proxy()
-            except OSError as e:
-                LOGGER.warning("Error stopping proxy server: %s", e)
+            await asyncio.shield(client.elegoo_disconnect())
+        except (asyncio.CancelledError, ClientError, OSError, RuntimeError) as e:
+            LOGGER.warning("Error disconnecting client: %s", e, exc_info=True)
 
         # Ensure ALL server instances are stopped (cleanup orphaned instances)
         try:
-            await ElegooPrinterServer.stop_all()
-        except OSError as e:
-            LOGGER.warning("Error stopping all proxy server instances: %s", e)
+            await asyncio.shield(ElegooPrinterServer.stop_all())
+        except (asyncio.CancelledError, OSError, RuntimeError) as e:
+            LOGGER.warning(
+                "Error stopping all proxy server instances: %s", e, exc_info=True
+            )
 
     return unload_ok
 

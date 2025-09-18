@@ -171,6 +171,7 @@ class ElegooPrinterServer:
     async def start(self) -> None:
         """Start the proxy server on the Home Assistant event loop."""
         # First try to cleanup any orphaned servers on our ports
+        # This assumes only one proxy instance is active at a time.
         await self.__class__.stop_all()
 
         if not self._check_ports_are_available():
@@ -274,8 +275,12 @@ class ElegooPrinterServer:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     s.bind((INADDR_ANY, port))
             except OSError as e:
-                msg = f"{name} port {port} is already in use. Error: {e}"
-                self.logger.exception(msg)
+                self.logger.exception(
+                    ("%s port %s is already in use. Proxy server cannot start."),
+                    name,
+                    port,
+                    exc_info=e,
+                )
                 return False
         return True
 
@@ -297,7 +302,7 @@ class ElegooPrinterServer:
         for runner in self.runners:
             try:
                 await runner.cleanup()
-            except OSError as e:
+            except (RuntimeError, OSError) as e:
                 self.logger.warning("Error cleaning up runner: %s", e)
         self.runners.clear()
 
@@ -571,7 +576,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         self.logger = logger
         self.printer = printer
         self.proxy_ip = proxy_ip
-        self.transport = asyncio.DatagramTransport | None
+        self.transport: asyncio.DatagramTransport | None = None
 
     def connection_made(self, transport: asyncio.DatagramTransport) -> None:
         """Call when a connection is made."""

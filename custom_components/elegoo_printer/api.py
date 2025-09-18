@@ -129,14 +129,11 @@ class ElegooPrinterApiClient:
                 # Continue with proxy configuration even if server isn't running
 
         # Now connect to the printer (either direct or through proxy)
+        target_ip = self.get_local_ip() if self.server else printer.ip_address
         logger.debug(
             "Connecting to printer: %s at %s with proxy enabled %s",
             printer.name,
-            printer.ip_address
-            if not proxy_server_enabled
-            else self.get_local_ip()
-            if self.server
-            else printer.ip_address,
+            target_ip,
             proxy_server_enabled,
         )
         try:
@@ -148,6 +145,7 @@ class ElegooPrinterApiClient:
                 await ElegooPrinterServer.stop_all()
                 self.server = None
                 await self.client.disconnect()
+                self._proxy_server_enabled = False
                 return None
             logger.info("Polling Started")
             return self  # noqa: TRY300
@@ -156,6 +154,7 @@ class ElegooPrinterApiClient:
             await ElegooPrinterServer.stop_all()
             self.server = None
             await self.client.disconnect()
+            self._proxy_server_enabled = False
             return None
 
     @property
@@ -180,7 +179,7 @@ class ElegooPrinterApiClient:
         self.server = None
 
     def get_local_ip(self) -> str:
-        """Get the local IP address for the proxy server."""
+        """Get the local IP for the proxy server, falling back to the printer's IP."""
         if self.server:
             return self.server.get_local_ip()
         return self.printer.ip_address
