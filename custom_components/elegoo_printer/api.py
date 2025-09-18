@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from __future__ import annotations
-
 import re
-import httpx
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
@@ -378,7 +375,7 @@ class ElegooPrinterApiClient:
         The API expects format x.x.x where each x can be up to 5 digits.
         """
         if not version:
-            return "1.0.0"
+            return "1.1.0"
 
         # Remove any non-numeric characters except dots
         cleaned = re.sub(r"[^0-9.]", "", version)
@@ -492,10 +489,8 @@ class ElegooPrinterApiClient:
             bool: True if update is available, False otherwise.
 
         """
-        update_data = await self.async_check_firmware_update()
-        if update_data:
-            return update_data.get("update", False)
-        return False
+        info = await self.async_get_firmware_update_info()
+        return bool(info.get("update_available")) if info else False
 
     async def async_get_firmware_update_info(self) -> dict[str, Any]:
         """

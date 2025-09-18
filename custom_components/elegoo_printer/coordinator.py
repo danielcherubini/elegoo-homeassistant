@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+import httpx
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from custom_components.elegoo_printer.const import LOGGER
@@ -69,7 +70,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                     firmware_info = await api.async_get_firmware_update_info()
                     if firmware_info:
                         self.data.firmware_update_info = firmware_info
-                except Exception as fw_err:  # narrow if needed (e.g., httpx.HTTPError)
+                except httpx.HTTPError as fw_err:
                     LOGGER.debug("Firmware update check failed: %s", fw_err)
                 finally:
                     # Rate-limit even on failure to avoid hammering the endpoint
