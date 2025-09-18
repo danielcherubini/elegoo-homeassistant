@@ -256,8 +256,7 @@ PRINTER_ATTRIBUTES_BINARY_COMMON: tuple[
                     "changelog"
                 ),
             }
-            if entity.coordinator.data
-            and entity.coordinator.data.firmware_update_info
+            if entity.coordinator.data and entity.coordinator.data.firmware_update_info
             else {}
         ),
     ),
