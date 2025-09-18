@@ -6,12 +6,11 @@ import re
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.httpx_client import get_async_client
 from httpx import HTTPStatusError, RequestError
 from PIL import Image as PILImage
 from PIL import UnidentifiedImageError
-
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.httpx_client import get_async_client
 
 from .const import CONF_PROXY_ENABLED, LOGGER
 from .sdcp.models.elegoo_image import ElegooImage
@@ -473,12 +472,23 @@ class ElegooPrinterApiClient:
             data = response.json()
             LOGGER.debug("Firmware update response: %s", data)
 
-            # Check if the response contains an error message
-            if isinstance(data, dict) and "error" in data:
+            # The API can return a string for certain errors
+            if not isinstance(data, dict):
+                if isinstance(data, str) and "格式" in data:
+                    LOGGER.warning(
+                        "Firmware update API returned format error: %s", data
+                    )
+                else:
+                    LOGGER.warning(
+                        "Firmware update response is not a dictionary: %s", data
+                    )
+                return None
+
+            # Check if the dictionary response contains an error message
+            if "error" in data:
                 error_msg = data.get("error")
                 LOGGER.warning("Firmware update API returned error: %s", error_msg)
-            elif isinstance(data, str) and "格式" in data:
-                LOGGER.warning("Firmware update API returned format error: %s", data)
+                return None
 
         except (ConnectionError, TimeoutError, HTTPStatusError, RequestError) as err:
             LOGGER.error("Network error checking for firmware updates: %s", err)
