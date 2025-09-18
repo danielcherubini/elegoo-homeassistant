@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -30,6 +30,8 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         """Initialize."""
         self.online = False
         self.config_entry = entry
+        self._last_firmware_check: datetime | None = None
+        self._firmware_check_interval = timedelta(hours=12)  # Check every 12 hours
         super().__init__(
             hass,
             LOGGER,
@@ -54,6 +56,19 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             self.data = (
                 await self.config_entry.runtime_data.api.async_get_printer_data()
             )
+
+            # Check if we need to update firmware info
+            now = datetime.now(UTC)
+            if (
+                self._last_firmware_check is None
+                or now - self._last_firmware_check >= self._firmware_check_interval
+            ):
+                LOGGER.debug("Checking for firmware updates")
+                api = self.config_entry.runtime_data.api
+                firmware_info = await api.async_get_firmware_update_info()
+                self.data.firmware_update_info = firmware_info
+                self._last_firmware_check = now
+
             self.online = True
             if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)

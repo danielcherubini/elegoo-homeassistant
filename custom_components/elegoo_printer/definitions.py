@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from homeassistant.components.binary_sensor import BinarySensorEntityDescription
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntityDescription,
+)
 from homeassistant.components.button import ButtonEntityDescription
 from homeassistant.components.fan import FanEntityDescription, FanEntityFeature
 from homeassistant.components.light import LightEntityDescription
@@ -226,6 +229,37 @@ PRINTER_ATTRIBUTES_BINARY_COMMON: tuple[
         value_fn=lambda printer_data: bool(printer_data.attributes.sdcp_status)
         if printer_data is not None
         else False,
+    ),
+    ElegooPrinterBinarySensorEntityDescription(
+        key="firmware_update_available",
+        name="Firmware Update Available",
+        device_class=BinarySensorDeviceClass.UPDATE,
+        icon="mdi:cellphone-arrow-down",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda printer_data: (
+            printer_data.firmware_update_info.get("update_available", False)
+            if printer_data is not None
+            else False
+        ),
+        extra_attributes=lambda entity: (
+            {
+                "current_version": entity.coordinator.data.firmware_update_info.get(
+                    "current_version"
+                ),
+                "latest_version": entity.coordinator.data.firmware_update_info.get(
+                    "latest_version"
+                ),
+                "package_url": entity.coordinator.data.firmware_update_info.get(
+                    "package_url"
+                ),
+                "changelog": entity.coordinator.data.firmware_update_info.get(
+                    "changelog"
+                ),
+            }
+            if entity.coordinator.data
+            and entity.coordinator.data.firmware_update_info
+            else {}
+        ),
     ),
 )
 

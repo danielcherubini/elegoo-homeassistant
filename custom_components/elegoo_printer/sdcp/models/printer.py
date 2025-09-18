@@ -180,6 +180,7 @@ class PrinterData:
     print_history: dict[str, PrintHistoryDetail | None]
     current_job: PrintHistoryDetail | None
     video: ElegooVideo
+    firmware_update_info: dict[str, Any]
 
     def __init__(
         self,
@@ -195,6 +196,13 @@ class PrinterData:
         self.print_history: dict[str, PrintHistoryDetail | None] = print_history or {}
         self.current_job: PrintHistoryDetail | None = None
         self.video: ElegooVideo = ElegooVideo()
+        self.firmware_update_info: dict[str, Any] = {
+            "update_available": False,
+            "current_version": None,
+            "latest_version": None,
+            "package_url": None,
+            "changelog": None,
+        }
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
         """Round datetime object to minutes."""
