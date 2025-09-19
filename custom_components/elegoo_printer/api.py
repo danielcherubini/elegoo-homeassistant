@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.httpx_client import get_async_client
+from httpx import HTTPStatusError, RequestError
 from PIL import Image as PILImage
 from PIL import UnidentifiedImageError
 
@@ -333,7 +335,13 @@ class ElegooPrinterApiClient:
                         last_updated_timestamp=task.begin_time.timestamp(),
                         content_type="image/png",
                     )
-            except (ConnectionError, TimeoutError, UnidentifiedImageError) as e:
+            except (
+                ConnectionError,
+                TimeoutError,
+                UnidentifiedImageError,
+                HTTPStatusError,
+                RequestError,
+            ) as e:
                 LOGGER.error("Error fetching thumbnail: %s", e)
                 return None
 
@@ -418,6 +426,38 @@ class ElegooPrinterApiClient:
         """Set the target bed temperature."""
         await self.client.set_target_bed_temp(temperature)
 
+    def _normalize_firmware_version(self, version: str) -> str:
+        """
+        Normalize firmware version to the expected format.
+
+        The API expects format x.x.x where each x can be up to 5 digits.
+        """
+        if not version:
+            return "1.1.0"
+
+        # Remove any non-numeric characters except dots
+        cleaned = re.sub(r"[^0-9.]", "", version)
+
+        # Split by dots and ensure we have at least 3 parts
+        parts = cleaned.split(".")
+
+        # Pad or truncate to exactly 3 parts
+        version_parts_count = 3
+        while len(parts) < version_parts_count:
+            parts.append("0")
+        parts = parts[:version_parts_count]
+
+        # Ensure each part is a valid number and not too long (max 5 digits)
+        normalized_parts = []
+        for part in parts:
+            if not part or not part.isdigit():
+                normalized_parts.append("0")
+            else:
+                # Limit to 5 digits as per API requirement
+                normalized_parts.append(str(int(part))[:5])
+
+        return ".".join(normalized_parts)
+
     async def async_get_printer_data(self) -> PrinterData:
         """
         Asynchronously retrieves and updates the printer's attribute data.
@@ -466,3 +506,117 @@ class ElegooPrinterApiClient:
             printer = self.server.get_printer()
             printer.proxy_enabled = True
             return printer, True
+
+    async def async_check_firmware_update(self) -> dict[str, Any] | None:
+        """
+        Check for firmware updates from Elegoo servers.
+
+        Returns:
+            dict | None: Update information if available, None if check fails.
+
+        """
+        if not self.printer.model or not self.printer.firmware:
+            LOGGER.warning(
+                "Missing printer model or firmware version, cannot check for updates"
+            )
+            return None
+
+        try:
+            # Normalize the firmware version format
+            firmware_version = self._normalize_firmware_version(self.printer.firmware)
+            LOGGER.debug("Original firmware version: %s", self.printer.firmware)
+            LOGGER.debug("Normalized firmware version: %s", firmware_version)
+
+            # Construct the request parameters based on the API documentation
+            machine_id = self.printer.id or 0
+            params = {
+                "machineType": f"ELEGOO {self.printer.model}",
+                "machineId": machine_id,
+                "version": firmware_version,
+                "lan": "en",
+                "firmwareType": 1,
+            }
+
+            url = "https://mms.chituiot.com/mainboardVersionUpdate/getInfo.do7"
+            LOGGER.debug("Checking for firmware updates")
+            LOGGER.debug("URL: %s", url)
+            LOGGER.debug("Params: %s", params)
+
+            response = await self._hass_client.get(
+                url,
+                params=params,
+                timeout=30,
+                follow_redirects=True,
+            )
+
+            LOGGER.debug("Response status: %s", response.status_code)
+            LOGGER.debug("Response headers: %s", dict(response.headers))
+
+            response.raise_for_status()
+
+            data = response.json()
+            LOGGER.debug("Firmware update response: %s", data)
+
+            # The API can return a string for certain errors
+            if not isinstance(data, dict):
+                if isinstance(data, str) and "格式" in data:
+                    LOGGER.warning(
+                        "Firmware update API returned format error: %s", data
+                    )
+                else:
+                    LOGGER.warning(
+                        "Firmware update response is not a dictionary: %s", data
+                    )
+                return None
+
+            # Check if the dictionary response contains an error message
+            if "error" in data:
+                error_msg = data.get("error")
+                LOGGER.warning("Firmware update API returned error: %s", error_msg)
+                return None
+
+        except (ConnectionError, TimeoutError, HTTPStatusError, RequestError) as err:
+            LOGGER.error("Network error checking for firmware updates: %s", err)
+            return None
+        except (ValueError, KeyError) as err:
+            LOGGER.error("Error parsing firmware update response: %s", err)
+            return None
+        else:
+            return data
+
+    async def async_is_firmware_update_available(self) -> bool:
+        """
+        Check if a firmware update is available.
+
+        Returns:
+            bool: True if update is available, False otherwise.
+
+        """
+        info = await self.async_get_firmware_update_info()
+        return bool(info.get("update_available")) if info else False
+
+    async def async_get_firmware_update_info(self) -> dict[str, Any]:
+        """
+        Get detailed firmware update information.
+
+        Returns:
+            dict: Firmware update details including versions and changelog.
+
+        """
+        update_data = await self.async_check_firmware_update()
+        if not update_data:
+            return {
+                "update_available": False,
+                "current_version": self.printer.firmware,
+                "latest_version": None,
+                "package_url": None,
+                "changelog": None,
+            }
+
+        return {
+            "update_available": update_data.get("update", False),
+            "current_version": self.printer.firmware,
+            "latest_version": update_data.get("version"),
+            "package_url": update_data.get("packageUrl"),
+            "changelog": update_data.get("log"),
+        }
