@@ -6,6 +6,7 @@ import re
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.httpx_client import get_async_client
 from httpx import HTTPStatusError, RequestError
@@ -491,7 +492,7 @@ class ElegooPrinterApiClient:
             self.server = await ElegooPrinterServer.async_create(
                 printer, logger=self._logger, hass=self.hass, session=session
             )
-        except OSError:
+        except (OSError, ConfigEntryNotReady):
             # When proxy is explicitly enabled, server startup failures are fatal
             self._logger.exception(
                 "Failed to start required proxy server. "
