@@ -104,16 +104,14 @@ class ElegooPrinterApiClient:
                 printer.name,
                 printer.ip_address,
             )
-            # This is probably unnessacary, but lets check for now
+            # This is probably unnecessary, but let's disconnect for completeness
             await self.client.disconnect()
             await ElegooPrinterServer.stop_all()
             return None
 
         # Printer is reachable, now set up proxy if enabled
         if proxy_server_enabled:
-            printer, proxy_server_enabled = await self._setup_proxy_if_enabled(
-                printer, session
-            )
+            printer = await self._setup_proxy_if_enabled(printer, session)
             if printer is None:
                 # Proxy was required but failed to start
                 await self.client.disconnect()
@@ -214,7 +212,7 @@ class ElegooPrinterApiClient:
             await ElegooPrinterServer.stop_all()
             self.server = None
 
-            printer, _ = await self._setup_proxy_if_enabled(printer, session)
+            printer = await self._setup_proxy_if_enabled(printer, session)
             if printer is None:
                 # Proxy was required but failed to start during reconnect
                 return False
@@ -476,16 +474,16 @@ class ElegooPrinterApiClient:
 
     async def _setup_proxy_if_enabled(
         self, printer: Printer, session: ClientSession
-    ) -> tuple[Printer | None, bool]:
+    ) -> Printer | None:
         """
         Set up proxy server if enabled and printer is reachable.
 
         Returns:
-            Tuple of (updated printer object or None if failed, proxy running status)
+            Updated printer object with proxy IP, or None if proxy failed to start
 
         """
         if not self._proxy_server_enabled:
-            return printer, False
+            return printer
 
         self._logger.debug("Printer is reachable. Starting proxy server.")
         try:
@@ -495,18 +493,16 @@ class ElegooPrinterApiClient:
         except (OSError, ConfigEntryNotReady):
             # When proxy is explicitly enabled, server startup failures are fatal
             self._logger.exception(
-                "Failed to start required proxy server. "
-                "The proxy server is enabled in configuration but cannot start. "
-                "Please check if ports 3030, 3031, and 3000 are available."
+                "Failed to start required proxy server; proxy ports may be in use."
             )
             # Clean up any partial state
             await ElegooPrinterServer.stop_all()
             self.server = None
-            return None, False
+            return None
         else:
             printer = self.server.get_printer()
             printer.proxy_enabled = True
-            return printer, True
+            return printer
 
     async def async_check_firmware_update(self) -> dict[str, Any] | None:
         """
