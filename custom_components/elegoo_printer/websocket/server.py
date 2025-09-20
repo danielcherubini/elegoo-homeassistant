@@ -18,6 +18,7 @@ from custom_components.elegoo_printer.const import (
     DEFAULT_FALLBACK_IP,
     DISCOVERY_MESSAGE,
     DISCOVERY_PORT,
+    LOGGER,
     PROXY_HOST,
     VIDEO_PORT,
     WEBSOCKET_PORT,
@@ -179,6 +180,10 @@ class ElegooPrinterServer:
 
     async def start(self) -> None:
         """Start the proxy server on the Home Assistant event loop."""
+        # First try to cleanup any orphaned servers on our ports
+        # This assumes only one proxy instance is active at a time.
+        await self.__class__.stop_all()
+
         if not self._check_ports_are_available():
             msg = "Proxy server ports are in use."
             self.logger.info(msg)
@@ -221,9 +226,42 @@ class ElegooPrinterServer:
     @classmethod
     async def stop_all(cls) -> None:
         """Stop all running proxy server instances."""
+        LOGGER.debug("stop_all called, found %d instances", len(cls._instances))
         for instance in list(cls._instances):
+            LOGGER.debug("Stopping server instance...")
             await instance.stop()
         cls._instances.clear()
+        LOGGER.debug("All instances stopped, waiting for ports to be released...")
+        # Give time for ports to actually be released by the OS
+        await asyncio.sleep(0.5)
+
+        # Force cleanup any lingering connections
+        await cls._force_cleanup_ports(LOGGER)
+        LOGGER.debug("stop_all completed")
+
+    @classmethod
+    async def _force_cleanup_ports(cls, logger: Any) -> None:
+        """Force cleanup of any lingering socket connections on our ports."""
+        ports_to_cleanup = [
+            (WEBSOCKET_PORT, socket.SOCK_STREAM),
+            (VIDEO_PORT, socket.SOCK_STREAM),
+            (DISCOVERY_PORT, socket.SOCK_DGRAM),
+        ]
+
+        for port, proto in ports_to_cleanup:
+            try:
+                # Create and immediately close a socket to force cleanup
+                with socket.socket(socket.AF_INET, proto) as s:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    if proto == socket.SOCK_STREAM and hasattr(socket, "SO_REUSEPORT"):
+                        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                    try:
+                        s.bind(("localhost", port))  # Bind to localhost only
+                        logger.debug("Port %s is now available", port)
+                    except OSError:
+                        logger.debug("Port %s still in use after cleanup", port)
+            except OSError as e:
+                logger.debug("Error during port %s cleanup: %s", port, e)
 
     def _check_ports_are_available(self) -> bool:
         """Check if the required TCP and UDP ports for the proxy server are free."""
@@ -237,10 +275,11 @@ class ElegooPrinterServer:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     s.bind((INADDR_ANY, port))
             except OSError:
-                msg = (
-                    f"{name} port {port} is already in use. Proxy server cannot start."
+                self.logger.exception(
+                    "%s port %s is already in use. Proxy server cannot start.",
+                    name,
+                    port,
                 )
-                self.logger.warning(msg)
                 return False
         return True
 
@@ -249,16 +288,29 @@ class ElegooPrinterServer:
         self.logger.info("Stopping proxy server...")
         self._is_connected = False
 
+        # Close UDP transport first
         if self.datagram_transport:
-            self.datagram_transport.close()
-            self.datagram_transport = None
+            try:
+                self.datagram_transport.close()
+            except OSError as e:
+                self.logger.warning("Error closing datagram transport: %s", e)
+            finally:
+                self.datagram_transport = None
 
+        # Clean up web runners
         for runner in self.runners:
-            await runner.cleanup()
+            try:
+                await runner.cleanup()
+            except (RuntimeError, OSError) as e:
+                self.logger.warning("Error cleaning up runner: %s", e)
         self.runners.clear()
 
+        # Remove from instances list
         if self in self.__class__._instances:  # noqa: SLF001
             self.__class__._instances.remove(self)  # noqa: SLF001
+
+        # Small delay to ensure ports are fully released
+        await asyncio.sleep(0.1)
 
         self.logger.info("Proxy server stopped.")
 
@@ -587,7 +639,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         self.logger = logger
         self.printer = printer
         self.proxy_ip = proxy_ip
-        self.transport = asyncio.DatagramTransport | None
+        self.transport: asyncio.DatagramTransport | None = None
 
     def connection_made(self, transport: asyncio.DatagramTransport) -> None:
         """Call when a connection is made."""
