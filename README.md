@@ -53,8 +53,8 @@ This integration is designed to work with Elegoo printers that use the `SDCP` pr
 
 ### Resin Printers
 
-* Mars 4
-* Mars 4 Ultra
+* Mars 5
+* Mars 5 Ultra
 * Saturn 3
 * Saturn 3 Ultra
 * Saturn 4
