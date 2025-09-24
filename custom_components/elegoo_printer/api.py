@@ -523,14 +523,14 @@ class ElegooPrinterApiClient:
             self._logger.debug(
                 "Calling get_printer with specific_printer: %s (MainboardID: %s)",
                 printer.name,
-                printer.id
+                printer.id,
             )
             proxy_printer = self.server.get_printer(specific_printer=printer)
             proxy_printer.proxy_enabled = True
             self._logger.debug(
                 "Got proxy printer: %s (MainboardID: %s)",
                 proxy_printer.name,
-                proxy_printer.id
+                proxy_printer.id,
             )
             self.printer = proxy_printer
             return proxy_printer

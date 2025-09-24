@@ -647,7 +647,7 @@ class ElegooPrinterServer:
                     # Add printer to existing server's registry
                     cls._instance.printer_registry.add_printer(printer)
                     logger.debug(
-                        "Added printer %s (%s) with MainboardID %s to existing centralized proxy server",
+                        "Added printer %s (%s) with MainboardID %s to existing server",
                         printer.name,
                         printer.ip_address,
                         printer.id,
@@ -661,7 +661,7 @@ class ElegooPrinterServer:
                 # Add the initial printer to the registry
                 self.printer_registry.add_printer(printer)
                 logger.debug(
-                    "Added printer %s (%s) with MainboardID %s to new centralized proxy server",
+                    "Added printer %s (%s) with MainboardID %s to new server",
                     printer.name,
                     printer.ip_address,
                     printer.id,
@@ -806,7 +806,9 @@ class ElegooPrinterServer:
     @classmethod
     async def release_reference(cls) -> None:
         """
-        Release a reference to the proxy server. Only stops when all references are released.
+        Release a reference to the proxy server.
+
+        Only stops when all references are released.
 
         This should be called when an integration is being unloaded.
         """
@@ -819,7 +821,9 @@ class ElegooPrinterServer:
                 )
 
                 if cls._reference_count <= 0:
-                    LOGGER.debug("No more references, stopping centralized proxy server instance")
+                    LOGGER.debug(
+                        "No more references, stopping centralized proxy server instance"
+                    )
                     await cls._instance.stop()
                     cls._instance = None
                     cls._reference_count = 0
@@ -831,19 +835,23 @@ class ElegooPrinterServer:
                     await cls._force_cleanup_ports(LOGGER)
                     LOGGER.debug("Proxy server completely stopped")
                 else:
-                    LOGGER.debug("Proxy server still has %d active reference(s), keeping alive", cls._reference_count)
+                    LOGGER.debug(
+                        "Proxy server still has %d active reference(s), keeping alive",
+                        cls._reference_count,
+                    )
 
     @classmethod
     async def stop_all(cls) -> None:
         """
         Force stop the proxy server singleton instance (emergency cleanup).
 
-        WARNING: This bypasses reference counting and should only be used for emergency cleanup.
+        WARNING: This bypasses reference counting and should only be used for
+        emergency cleanup.
         Normal shutdown should use release_reference() instead.
         """
         async with cls._creation_lock:
             if cls._instance is not None:
-                LOGGER.warning("Force stopping centralized proxy server instance (bypassing reference counting)")
+                LOGGER.warning("Force stopping centralized proxy server instance")
                 await cls._instance.stop()
                 cls._instance = None
                 cls._reference_count = 0
@@ -969,7 +977,9 @@ class ElegooPrinterServer:
         # Use the specific printer if provided, otherwise default to first printer
         if specific_printer and specific_printer.id:
             # Find the printer with matching MainboardID in the registry
-            target_printer = self.printer_registry.get_printer_by_mainboard_id(specific_printer.id)
+            target_printer = self.printer_registry.get_printer_by_mainboard_id(
+                specific_printer.id
+            )
             if target_printer:
                 self.logger.debug(
                     "get_printer: Using specific printer %s with MainboardID %s",
@@ -978,19 +988,20 @@ class ElegooPrinterServer:
                 )
             else:
                 self.logger.warning(
-                    "get_printer: Printer with MainboardID %s not found in registry, using first printer",
+                    "get_printer: Printer with MainboardID %s not found in registry",
                     specific_printer.id,
                 )
                 target_printer = next(iter(all_printers.values()))
         else:
             target_printer = next(iter(all_printers.values()))
             self.logger.debug(
-                "get_printer: No specific printer provided, using first printer %s with MainboardID %s",
+                "get_printer: No specific printer, using 1st printer %s with id %s",
                 target_printer.name,
                 target_printer.id,
             )
 
-        # Create a proxy printer that clients connect to, preserving the specific printer's MainboardID
+        # Create a proxy printer that clients connect to,
+        # preserving the specific printer's MainboardID
         proxy_printer_dict = target_printer.to_dict()
         proxy_printer_dict["ip_address"] = self.get_local_ip()
         proxy_printer_dict["name"] = f"{target_printer.name} Proxy"
@@ -1131,7 +1142,7 @@ class ElegooPrinterServer:
             remote_ws = await self.session.ws_connect(
                 remote_ws_url,
                 headers=self._get_request_headers("WS", request.headers),
-                heartbeat=10.0
+                heartbeat=10.0,
             )
             self.logger.debug(
                 "Connected to printer %s (%s)", printer.name, printer.ip_address
@@ -1222,7 +1233,11 @@ class ElegooPrinterServer:
         """Handle a text message from client and route to appropriate printer."""
         mainboard_id = extract_mainboard_id_from_message(message.data)
 
-        self.logger.debug("Extracted MainboardID: %s from message: %s", mainboard_id, message.data[:200])
+        self.logger.debug(
+            "Extracted MainboardID: %s from message: %s",
+            mainboard_id,
+            message.data[:200],
+        )
 
         if not mainboard_id:
             self.logger.debug("No MainboardID found in message: %s", message.data[:200])
@@ -1232,11 +1247,13 @@ class ElegooPrinterServer:
         target_printer = self.printer_registry.get_printer_by_mainboard_id(mainboard_id)
         if not target_printer:
             # Debug: Show what printers are available
-            available_printers = self.printer_registry.get_all_printers_by_mainboard_id()
+            available_printers = (
+                self.printer_registry.get_all_printers_by_mainboard_id()
+            )
             self.logger.warning(
                 "No printer found for MainboardID: %s. Available printers: %s",
                 mainboard_id,
-                list(available_printers.keys())
+                list(available_printers.keys()),
             )
             return
 
@@ -1324,9 +1341,7 @@ class ElegooPrinterServer:
         if not self.session or self.session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
-        target_url = (
-            f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
-        )
+        target_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
 
         try:
             async with self.session.request(
