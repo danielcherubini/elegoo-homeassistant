@@ -119,12 +119,12 @@ async def async_unload_entry(
         except (asyncio.CancelledError, ClientError, OSError, RuntimeError) as e:
             LOGGER.warning("Error disconnecting client: %s", e, exc_info=True)
 
-        # Ensure ALL server instances are stopped (cleanup orphaned instances)
+        # Release reference to proxy server (only stops if this was the last reference)
         try:
-            await asyncio.shield(ElegooPrinterServer.stop_all())
+            await asyncio.shield(ElegooPrinterServer.release_reference())
         except (asyncio.CancelledError, OSError, RuntimeError) as e:
             LOGGER.warning(
-                "Error stopping all proxy server instances: %s", e, exc_info=True
+                "Error releasing proxy server reference: %s", e, exc_info=True
             )
 
     return unload_ok

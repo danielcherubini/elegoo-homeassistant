@@ -167,9 +167,9 @@ class ElegooPrinterApiClient:
         await self.client.disconnect()
 
     async def elegoo_stop_proxy(self) -> None:
-        """Stop the proxy server if it is running."""
-        # Stop ALL instances to ensure complete cleanup
-        await ElegooPrinterServer.stop_all()
+        """Release the proxy server reference if it is running."""
+        # Release reference instead of forcing shutdown
+        await ElegooPrinterServer.release_reference()
         self.server = None
 
     def get_local_ip(self) -> str:
@@ -213,8 +213,9 @@ class ElegooPrinterApiClient:
 
         # Printer is reachable, handle proxy server if enabled
         if self._proxy_server_enabled:
-            # Stop ALL existing server instances for clean restart
-            await ElegooPrinterServer.stop_all()
+            # Release existing reference before creating new one
+            if self.server is not None:
+                await ElegooPrinterServer.release_reference()
             self.server = None
 
             printer = await self._setup_proxy_if_enabled(printer, session)
@@ -507,7 +508,7 @@ class ElegooPrinterApiClient:
         self._logger.debug("Printer is reachable. Starting proxy server.")
         try:
             self.server = await ElegooPrinterServer.async_create(
-                printer, logger=self._logger, hass=self.hass, session=session
+                self._logger, self.hass, session, printer=printer
             )
         except (OSError, ConfigEntryNotReady):
             # When proxy is explicitly enabled, server startup failures are fatal
@@ -519,10 +520,20 @@ class ElegooPrinterApiClient:
             self.server = None
             return None
         else:
-            printer = self.server.get_printer()
-            printer.proxy_enabled = True
-            self.printer = printer
-            return printer
+            self._logger.debug(
+                "Calling get_printer with specific_printer: %s (MainboardID: %s)",
+                printer.name,
+                printer.id
+            )
+            proxy_printer = self.server.get_printer(specific_printer=printer)
+            proxy_printer.proxy_enabled = True
+            self._logger.debug(
+                "Got proxy printer: %s (MainboardID: %s)",
+                proxy_printer.name,
+                proxy_printer.id
+            )
+            self.printer = proxy_printer
+            return proxy_printer
 
     def _normalize_firmware_version(self, version: str) -> str:
         """
