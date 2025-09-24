@@ -85,7 +85,8 @@
           "file_transferring": "File Transferring",
           "exposure_testing": "Exposure Testing",
           "devices_testing": "Device Testing",
-          "leveling": "Leveling"
+          "leveling": "Leveling",
+          "loading_unloading": "Loading / Unloading"
         }
       },
       "print_error": {
