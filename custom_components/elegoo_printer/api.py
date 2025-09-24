@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.httpx_client import get_async_client
+from httpx import HTTPStatusError, RequestError
 from PIL import Image as PILImage
 from PIL import UnidentifiedImageError
 
@@ -20,6 +23,7 @@ if TYPE_CHECKING:
     from logging import Logger
     from types import MappingProxyType
 
+    from aiohttp import ClientSession
     from homeassistant.core import HomeAssistant
 
     from .sdcp.models.enums import ElegooFan
@@ -78,60 +82,68 @@ class ElegooPrinterApiClient:
         self = ElegooPrinterApiClient(printer, config=config, logger=logger, hass=hass)
         session = async_get_clientsession(hass)
 
-        if proxy_server_enabled:
-            logger.debug("Proxy server is enabled, attempting to create proxy server.")
-            try:
-                self.server = await ElegooPrinterServer.async_create(
-                    logger=logger, hass=hass, session=session, printer=printer
-                )
-                # For multi-printer server, we'll use the original printer config
-                # but note that proxy is enabled
-                printer.proxy_enabled = proxy_server_enabled
-            except (ConnectionError, TimeoutError) as e:
-                logger.warning(
-                    "Failed to start proxy server: %s. Falling back to direct conn.",
-                    e,
-                )
-                self.server = None
+        # First, test if printer is reachable before starting proxy server
+        logger.debug(
+            "Testing connectivity to printer: %s at %s",
+            printer.name,
+            printer.ip_address,
+        )
+        self.client = ElegooPrinterClient(
+            printer.ip_address,
+            config=config,
+            logger=logger,
+            session=session,
+        )
 
+        # Ping the printer to check if it's available
+        printer_reachable = await self.client.ping_printer(ping_timeout=5.0)
+
+        if not printer_reachable:
+            logger.warning(
+                "Printer %s at %s is not reachable. Not starting proxy server.",
+                printer.name,
+                printer.ip_address,
+            )
+            await self.client.disconnect()
+            if proxy_server_enabled:
+                await ElegooPrinterServer.stop_all()
+            return None
+
+        # Printer is reachable, now set up proxy if enabled
+        if proxy_server_enabled:
+            printer = await self._setup_proxy_if_enabled(printer, session)
+            if printer is None:
+                await self.client.disconnect()
+                await ElegooPrinterServer.stop_all()
+                return None
+
+        # Now connect to the printer (either direct or through proxy)
+        target_ip = self.get_local_ip() if self.server else printer.ip_address
         logger.debug(
             "Connecting to printer: %s at %s with proxy enabled %s",
             printer.name,
-            printer.ip_address,
+            target_ip,
             proxy_server_enabled,
         )
         try:
-            self.client = ElegooPrinterClient(
-                printer.ip_address,
-                config=config,
-                logger=logger,
-                session=session,
-            )
             connected = await self.client.connect_printer(
                 printer, proxy_enabled=proxy_server_enabled
             )
             if not connected:
-                if self.server:
-                    removed = await ElegooPrinterServer.remove_printer_from_server(
-                        self.printer, logger
-                    )
-                    if removed:
-                        # Server stopped because no printers remained
-                        self.server = None
-                if self.client:
-                    await self.client.disconnect()
+                if proxy_server_enabled:
+                    await ElegooPrinterServer.stop_all()
+                self.server = None
+                await self.client.disconnect()
+                self._proxy_server_enabled = False
                 return None
             logger.info("Polling Started")
             return self  # noqa: TRY300
         except (ConnectionError, TimeoutError):
-            if self.server:
-                removed = await ElegooPrinterServer.remove_printer_from_server(
-                    self.printer, logger
-                )
-                if removed:
-                    self.server = None
-            if self.client:
-                await self.client.disconnect()
+            if proxy_server_enabled:
+                await ElegooPrinterServer.stop_all()
+            self.server = None
+            await self.client.disconnect()
+            self._proxy_server_enabled = False
             return None
 
     @property
@@ -150,13 +162,16 @@ class ElegooPrinterApiClient:
         await self.client.disconnect()
 
     async def elegoo_stop_proxy(self) -> None:
-        """Remove this printer from the proxy server or stop if no printers remain."""
-        if self.server and self.printer:
-            removed = await ElegooPrinterServer.remove_printer_from_server(
-                self.printer, self._logger
-            )
-            if removed:
-                self.server = None
+        """Stop the proxy server if it is running."""
+        # Stop ALL instances to ensure complete cleanup
+        await ElegooPrinterServer.stop_all()
+        self.server = None
+
+    def get_local_ip(self) -> str:
+        """Get the local IP for the proxy server, falling back to the printer's IP."""
+        if self.server:
+            return self.server.get_local_ip()
+        return self.printer.ip_address
 
     async def async_get_status(self) -> PrinterData:
         """
@@ -311,7 +326,13 @@ class ElegooPrinterApiClient:
                         last_updated_timestamp=task.begin_time.timestamp(),
                         content_type="image/png",
                     )
-            except (ConnectionError, TimeoutError, UnidentifiedImageError) as e:
+            except (
+                ConnectionError,
+                TimeoutError,
+                UnidentifiedImageError,
+                HTTPStatusError,
+                RequestError,
+            ) as e:
                 LOGGER.error("Error fetching thumbnail: %s", e)
                 return None
 
@@ -390,25 +411,46 @@ class ElegooPrinterApiClient:
         """  # noqa: E501
         printer = self.printer
         session = async_get_clientsession(self.hass)
+
+        # First, test if printer is reachable
+        self._logger.debug(
+            "Testing connectivity before reconnect to printer: %s at %s",
+            printer.name,
+            printer.ip_address,
+        )
+
+        # Ping the printer to check if it's available
+        printer_reachable = await self.client.ping_printer(ping_timeout=5.0)
+
+        if not printer_reachable:
+            self._logger.debug(
+                "Printer %s at %s is not reachable during reconnect. Stopping proxies.",
+                printer.name,
+                printer.ip_address,
+            )
+            if self._proxy_server_enabled:
+                await ElegooPrinterServer.stop_all()
+            self.server = None
+            return False
+
+        # Printer is reachable, handle proxy server if enabled
         if self._proxy_server_enabled:
-            try:
-                self.server = await ElegooPrinterServer.async_create(
-                    logger=self._logger,
-                    hass=self.hass,
-                    session=session,
-                    printer=printer,
-                )
-            except (ConnectionError, TimeoutError):
-                self._logger.exception("Failed to (re)create proxy server")
-                self.server = None
+            # Stop ALL existing server instances for clean restart
+            await ElegooPrinterServer.stop_all()
+            self.server = None
+
+            printer = await self._setup_proxy_if_enabled(printer, session)
+            if printer is None:
+                return False
 
         self._logger.debug(
             "Reconnecting to printer: %s proxy_enabled %s",
             printer.ip_address,
-            self._proxy_server_enabled,
+            self._proxy_server_enabled and self.server is not None,
         )
         return await self.client.connect_printer(
-            printer, proxy_enabled=self._proxy_server_enabled
+            printer,
+            proxy_enabled=self._proxy_server_enabled and self.server is not None,
         )
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
@@ -441,3 +483,181 @@ class ElegooPrinterApiClient:
         await self.async_get_current_task()
         self.printer_data.calculate_current_job_end_time()
         return self.printer_data
+
+    async def _setup_proxy_if_enabled(
+        self, printer: Printer, session: ClientSession
+    ) -> Printer | None:
+        """
+        Set up proxy server if enabled and printer is reachable.
+
+        Returns:
+            Updated printer object with proxy IP, or None if proxy failed to start
+
+        """
+        if not self._proxy_server_enabled:
+            return printer
+
+        self._logger.debug("Printer is reachable. Starting proxy server.")
+        try:
+            self.server = await ElegooPrinterServer.async_create(
+                printer, logger=self._logger, hass=self.hass, session=session
+            )
+        except (OSError, ConfigEntryNotReady):
+            # When proxy is explicitly enabled, server startup failures are fatal
+            self._logger.exception(
+                "Failed to start required proxy server; proxy ports may be in use."
+            )
+            # Clean up any partial state
+            await ElegooPrinterServer.stop_all()
+            self.server = None
+            return None
+        else:
+            printer = self.server.get_printer()
+            printer.proxy_enabled = True
+            return printer
+
+    def _normalize_firmware_version(self, version: str) -> str:
+        """
+        Normalize firmware version to the expected format.
+
+        The API expects format x.x.x where each x can be up to 5 digits.
+        """
+        if not version:
+            return "1.1.0"
+
+        # Remove any non-numeric characters except dots
+        cleaned = re.sub(r"[^0-9.]", "", version)
+
+        # Split by dots and ensure we have at least 3 parts
+        parts = cleaned.split(".")
+
+        # Pad or truncate to exactly 3 parts
+        version_parts_count = 3
+        while len(parts) < version_parts_count:
+            parts.append("0")
+        parts = parts[:version_parts_count]
+
+        # Ensure each part is a valid number and not too long (max 5 digits)
+        normalized_parts = []
+        for part in parts:
+            if not part or not part.isdigit():
+                normalized_parts.append("0")
+            else:
+                # Limit to 5 digits as per API requirement
+                normalized_parts.append(str(int(part))[:5])
+
+        return ".".join(normalized_parts)
+
+    async def async_check_firmware_update(self) -> dict[str, Any] | None:
+        """
+        Check for firmware updates from Elegoo servers.
+
+        Returns:
+            dict | None: Update information if available, None if check fails.
+
+        """
+        if not self.printer.model or not self.printer.firmware:
+            LOGGER.warning(
+                "Missing printer model or firmware version, cannot check for updates"
+            )
+            return None
+
+        try:
+            # Normalize the firmware version format
+            firmware_version = self._normalize_firmware_version(self.printer.firmware)
+            LOGGER.debug("Original firmware version: %s", self.printer.firmware)
+            LOGGER.debug("Normalized firmware version: %s", firmware_version)
+
+            # Construct the request parameters based on the API documentation
+            machine_id = self.printer.id or 0
+            params = {
+                "machineType": f"ELEGOO {self.printer.model}",
+                "machineId": machine_id,
+                "version": firmware_version,
+                "lan": "en",
+                "firmwareType": 1,
+            }
+
+            url = "https://mms.chituiot.com/mainboardVersionUpdate/getInfo.do7"
+            LOGGER.debug("Checking for firmware updates")
+            LOGGER.debug("URL: %s", url)
+            LOGGER.debug("Params: %s", params)
+
+            response = await self._hass_client.get(
+                url,
+                params=params,
+                timeout=30,
+                follow_redirects=True,
+            )
+
+            LOGGER.debug("Response status: %s", response.status_code)
+            LOGGER.debug("Response headers: %s", dict(response.headers))
+
+            response.raise_for_status()
+
+            data = response.json()
+            LOGGER.debug("Firmware update response: %s", data)
+
+            # The API can return a string for certain errors
+            if not isinstance(data, dict):
+                if isinstance(data, str) and "格式" in data:
+                    LOGGER.warning(
+                        "Firmware update API returned format error: %s", data
+                    )
+                else:
+                    LOGGER.warning(
+                        "Firmware update response is not a dictionary: %s", data
+                    )
+                return None
+
+            # Check if the dictionary response contains an error message
+            if "error" in data:
+                error_msg = data.get("error")
+                LOGGER.warning("Firmware update API returned error: %s", error_msg)
+                return None
+
+        except (ConnectionError, TimeoutError, HTTPStatusError, RequestError) as err:
+            LOGGER.error("Network error checking for firmware updates: %s", err)
+            return None
+        except (ValueError, KeyError) as err:
+            LOGGER.error("Error parsing firmware update response: %s", err)
+            return None
+        else:
+            return data
+
+    async def async_is_firmware_update_available(self) -> bool:
+        """
+        Check if a firmware update is available.
+
+        Returns:
+            bool: True if update is available, False otherwise.
+
+        """
+        info = await self.async_get_firmware_update_info()
+        return bool(info.get("update_available")) if info else False
+
+    async def async_get_firmware_update_info(self) -> dict[str, Any]:
+        """
+        Get detailed firmware update information.
+
+        Returns:
+            dict: Firmware update details including versions and changelog.
+
+        """
+        update_data = await self.async_check_firmware_update()
+        if not update_data:
+            return {
+                "update_available": False,
+                "current_version": self.printer.firmware,
+                "latest_version": None,
+                "package_url": None,
+                "changelog": None,
+            }
+
+        return {
+            "update_available": update_data.get("update", False),
+            "current_version": self.printer.firmware,
+            "latest_version": update_data.get("version"),
+            "package_url": update_data.get("packageUrl"),
+            "changelog": update_data.get("log"),
+        }

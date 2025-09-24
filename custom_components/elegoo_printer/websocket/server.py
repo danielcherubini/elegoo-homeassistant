@@ -762,6 +762,40 @@ class ElegooPrinterServer:
 
         self.logger.info("Proxy server stopped.")
 
+    def get_printer(self) -> Printer:
+        """Return a printer object with its IP address set to the local proxy."""
+        # For topic-based routing, return the first printer in the registry
+        # with IP adjusted to point to the proxy
+        all_printers = self.printer_registry.get_all_printers()
+        if not all_printers:
+            msg = "No printers in registry"
+            raise RuntimeError(msg)
+
+        first_printer = next(iter(all_printers.values()))
+        printer_dict = first_printer.to_dict()
+        printer_dict["ip_address"] = self.get_local_ip()
+        return Printer.from_dict(printer_dict)
+
+    def _check_ports_are_available(self) -> bool:
+        """Check if the required TCP and UDP ports for the proxy server are free."""
+        for port, proto, name in [
+            (WEBSOCKET_PORT, socket.SOCK_STREAM, "TCP"),
+            (VIDEO_PORT, socket.SOCK_STREAM, "Video TCP"),
+            (DISCOVERY_PORT, socket.SOCK_DGRAM, "UDP"),
+        ]:
+            try:
+                with socket.socket(socket.AF_INET, proto) as s:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    s.bind((INADDR_ANY, port))
+            except OSError:
+                self.logger.exception(
+                    "%s port %s is already in use. Proxy server cannot start.",
+                    name,
+                    port,
+                )
+                return False
+        return True
+
     async def _printer_http_handler(
         self, request: web.Request, printer: Printer
     ) -> web.StreamResponse:
