@@ -78,7 +78,7 @@ async def main() -> None:
             # Test ping functionality first if specific IP provided
             if PRINTER_IP != "10.0.0.184":
                 logger.info(f"Testing ping to specific printer at {PRINTER_IP}...")
-                ping_result = await elegoo_printer.ping_printer(timeout_s=3.0)
+                ping_result = await elegoo_printer.ping_printer(ping_timeout=3.0)
                 if ping_result:
                     logger.info("✓ Ping successful - printer WebSocket is reachable")
                 else:
