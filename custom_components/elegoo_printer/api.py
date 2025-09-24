@@ -459,6 +459,7 @@ class ElegooPrinterApiClient:
 
         """  # noqa: E501
         return await self.client.async_get_printer_historical_tasks()
+
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """Set the speed of a fan."""
         await self.client.set_fan_speed(percentage, fan)
@@ -474,38 +475,6 @@ class ElegooPrinterApiClient:
     async def async_set_target_bed_temp(self, temperature: int) -> None:
         """Set the target bed temperature."""
         await self.client.set_target_bed_temp(temperature)
-
-    def _normalize_firmware_version(self, version: str) -> str:
-        """
-        Normalize firmware version to the expected format.
-
-        The API expects format x.x.x where each x can be up to 5 digits.
-        """
-        if not version:
-            return "1.1.0"
-
-        # Remove any non-numeric characters except dots
-        cleaned = re.sub(r"[^0-9.]", "", version)
-
-        # Split by dots and ensure we have at least 3 parts
-        parts = cleaned.split(".")
-
-        # Pad or truncate to exactly 3 parts
-        version_parts_count = 3
-        while len(parts) < version_parts_count:
-            parts.append("0")
-        parts = parts[:version_parts_count]
-
-        # Ensure each part is a valid number and not too long (max 5 digits)
-        normalized_parts = []
-        for part in parts:
-            if not part or not part.isdigit():
-                normalized_parts.append("0")
-            else:
-                # Limit to 5 digits as per API requirement
-                normalized_parts.append(str(int(part))[:5])
-
-        return ".".join(normalized_parts)
 
     async def async_get_printer_data(self) -> PrinterData:
         """
@@ -552,6 +521,7 @@ class ElegooPrinterApiClient:
         else:
             printer = self.server.get_printer()
             printer.proxy_enabled = True
+            self.printer = printer
             return printer
 
     def _normalize_firmware_version(self, version: str) -> str:
@@ -585,6 +555,7 @@ class ElegooPrinterApiClient:
                 normalized_parts.append(str(int(part))[:5])
 
         return ".".join(normalized_parts)
+
     async def async_check_firmware_update(self) -> dict[str, Any] | None:
         """
         Check for firmware updates from Elegoo servers.

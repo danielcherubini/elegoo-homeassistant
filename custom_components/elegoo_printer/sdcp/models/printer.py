@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
     CONF_PROXY_ENABLED,
+    DEFAULT_FALLBACK_IP,
     WEBSOCKET_PORT,
 )
 from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStatus
@@ -271,7 +272,7 @@ class PrinterData:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 # Doesn't have to be reachable
-                s.connect((target_ip or "8.8.8.8", 1))
+                s.connect((target_ip or DEFAULT_FALLBACK_IP, 1))
                 return s.getsockname()[0]
         except (socket.gaierror, OSError):
             return "127.0.0.1"
