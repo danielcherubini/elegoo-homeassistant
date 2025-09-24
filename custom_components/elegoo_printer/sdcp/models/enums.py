@@ -29,6 +29,7 @@ class ElegooMachineStatus(Enum):
     EXPOSURE_TESTING = 3
     DEVICES_TESTING = 4
     LEVELING = 5
+    LOADING_UNLOADING = 10
 
     @classmethod
     def from_int(cls, status_int: int) -> "ElegooMachineStatus | None":

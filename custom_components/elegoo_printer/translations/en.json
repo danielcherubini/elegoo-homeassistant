@@ -86,6 +86,7 @@
           "exposure_testing": "Exposure Testing",
           "devices_testing": "Device Testing",
           "leveling": "Leveling"
+          "loading_unloading": "Loading\Unloading Material"
         }
       },
       "print_error": {
