@@ -58,12 +58,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import socket
 import time
+from math import floor
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
-from aiohttp import ClientSession, WSMsgType, web
+from aiohttp import ClientResponse, ClientSession, WSMsgType, web
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from custom_components.elegoo_printer.const import (
@@ -74,6 +76,7 @@ from custom_components.elegoo_printer.const import (
     DISCOVERY_MESSAGE,
     DISCOVERY_PORT,
     DOMAIN,
+    LOGGER,
     PROXY_HOST,
     VIDEO_PORT,
     WEBSOCKET_PORT,
@@ -82,12 +85,111 @@ from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from multidict import CIMultiDictProxy
 
 INADDR_ANY = "0.0.0.0"  # noqa: S104
 DISCOVERY_TIMEOUT = 5
 DISCOVERY_RATE_LIMIT_SECONDS = 30
 MIN_MAINBOARD_ID_LENGTH = 8
 TOPIC_PARTS_COUNT = 3  # Expected parts in SDCP topic: sdcp/{type}/{MainboardID}
+
+ALLOWED_REQUEST_HEADERS = {
+    "GET": [
+        "accept",
+        "accept-language",
+        "accept-encoding",
+        "priority",
+        "user-agent",
+        "range",
+        "if-none-match",
+        "if-modified-since",
+    ],
+    "HEAD": [
+        "accept",
+        "accept-language",
+        "accept-encoding",
+        "priority",
+        "user-agent",
+        "range",
+        "if-none-match",
+        "if-modified-since",
+    ],
+    "OPTIONS": [
+        "origin",
+        "access-control-request-method",
+        "access-control-request-headers",
+    ],
+    "POST": [
+        "user-agent",
+        "accept",
+        "accept-language",
+        "accept-encoding",
+        "content-length",
+        "content-type",
+        "origin",
+    ],
+    "WS": [
+        "connection",
+        "upgrade",
+        "origin",
+        "sec-websocket-extensions",
+        "sec-websocket-key",
+        "sec-websocket-protocol",
+        "sec-websocket-version",
+    ],
+}
+
+ALLOWED_RESPONSE_HEADERS = {
+    "GET": [
+        "content-length",
+        "content-type",
+        "content-encoding",
+        "etag",
+        "cache-control",
+        "last-modified",
+        "accept-ranges",
+    ],
+    "HEAD": [
+        "content-length",
+        "content-type",
+        "content-encoding",
+        "etag",
+        "cache-control",
+        "last-modified",
+        "accept-ranges",
+    ],
+    "OPTIONS": [
+        "access-control-allow-origin",
+        "access-control-allow-methods",
+        "access-control-allow-headers",
+        "access-control-max-age",
+        "content-length",
+    ],
+    "POST": ["content-length", "content-type", "content-encoding"],
+}
+
+TRANSFORMABLE_MIME_TYPES = [
+    "text/plain",
+    "text/css",
+    "text/html",
+    "text/javascript",
+    "application/json",
+]
+
+CACHEABLE_MIME_TYPES = [
+    "text/plain",
+    "text/css",
+    "text/html",
+    "text/javascript",
+    "application/json",
+    "image/apng",
+    "image/avif",
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/svg+xml",
+    "image/webp",
+]
 
 
 def extract_mainboard_id_from_topic(topic: str) -> str | None:
@@ -691,10 +793,42 @@ class ElegooPrinterServer:
 
     @classmethod
     async def stop_all(cls) -> None:
-        """Stop the proxy server singleton instance."""
+        """Stop the proxy server singleton instance with enhanced cleanup."""
         if cls._instance is not None:
+            LOGGER.debug("Stopping centralized proxy server instance")
             await cls._instance.stop()
             cls._instance = None
+
+            # Give time for ports to actually be released by the OS
+            await asyncio.sleep(0.5)
+
+            # Force cleanup any lingering connections
+            await cls._force_cleanup_ports(LOGGER)
+            LOGGER.debug("stop_all completed")
+
+    @classmethod
+    async def _force_cleanup_ports(cls, logger: Any) -> None:
+        """Force cleanup of any lingering socket connections on our ports."""
+        ports_to_cleanup = [
+            (WEBSOCKET_PORT, socket.SOCK_STREAM),
+            (VIDEO_PORT, socket.SOCK_STREAM),
+            (DISCOVERY_PORT, socket.SOCK_DGRAM),
+        ]
+
+        for port, proto in ports_to_cleanup:
+            try:
+                # Create and immediately close a socket to force cleanup
+                with socket.socket(socket.AF_INET, proto) as s:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    if proto == socket.SOCK_STREAM and hasattr(socket, "SO_REUSEPORT"):
+                        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                    try:
+                        s.bind(("localhost", port))  # Bind to localhost only
+                        logger.debug("Port %s is now available", port)
+                    except OSError:
+                        logger.debug("Port %s still in use after cleanup", port)
+            except OSError as e:
+                logger.debug("Error during port %s cleanup: %s", port, e)
 
     def _check_printer_ports_available(self, ws_port: int, video_port: int) -> bool:
         """Check if the specified ports are available for a printer."""
@@ -748,17 +882,29 @@ class ElegooPrinterServer:
         self.logger.info("Stopping proxy server...")
         self._is_connected = False
 
+        # Close UDP transport first
         if self.datagram_transport:
-            self.datagram_transport.close()
-            self.datagram_transport = None
+            try:
+                self.datagram_transport.close()
+            except OSError as e:
+                self.logger.warning("Error closing datagram transport: %s", e)
+            finally:
+                self.datagram_transport = None
 
+        # Clean up web runners
         for runner in self.runners:
-            await runner.cleanup()
+            try:
+                await runner.cleanup()
+            except (RuntimeError, OSError) as e:
+                self.logger.warning("Error cleaning up runner: %s", e)
         self.runners.clear()
 
         # Clear singleton instance
         if self.__class__._instance is self:  # noqa: SLF001
             self.__class__._instance = None  # noqa: SLF001
+
+        # Small delay to ensure ports are fully released
+        await asyncio.sleep(0.1)
 
         self.logger.info("Proxy server stopped.")
 
@@ -796,6 +942,40 @@ class ElegooPrinterServer:
                 return False
         return True
 
+    def _get_request_headers(
+        self, method: str, headers: CIMultiDictProxy[str]
+    ) -> dict[str, str]:
+        allowed_headers = ALLOWED_REQUEST_HEADERS.get(method.upper(), [])
+        request_headers = {}
+        request_headers["connection"] = "keep-alive"
+        request_headers.update(self._get_filtered_headers(allowed_headers, headers))
+        return request_headers
+
+    def _get_response_headers(
+        self, method: str, headers: CIMultiDictProxy[str]
+    ) -> dict[str, str]:
+        allowed_headers = ALLOWED_RESPONSE_HEADERS.get(method.upper(), [])
+        filtered_headers = self._get_filtered_headers(allowed_headers, headers)
+        if method.upper() in ("GET", "HEAD"):
+            return self._set_caching_headers(filtered_headers)
+        return filtered_headers
+
+    def _set_caching_headers(self, headers: dict[str, str]) -> dict[str, str]:
+        content_type = headers.get("content-type", "").split(";")[0]
+        if content_type in CACHEABLE_MIME_TYPES and "cache-control" not in headers:
+            headers["cache-control"] = "public, max-age=31536000"
+        return headers
+
+    def _get_filtered_headers(
+        self, allowed_headers: list[str], headers: CIMultiDictProxy[str]
+    ) -> dict[str, str]:
+        """Build a header dict that is filtered to just the allowed headers."""
+        filtered_headers = {}
+        for h in allowed_headers:
+            if h in headers:
+                filtered_headers[h] = headers[h]
+        return filtered_headers
+
     async def _printer_http_handler(
         self, request: web.Request, printer: Printer
     ) -> web.StreamResponse:
@@ -818,23 +998,20 @@ class ElegooPrinterServer:
 
         # Forward directly to printer's video endpoint
         remote_url = f"http://{printer.ip_address}:{VIDEO_PORT}{request.path_qs}"
-
-        headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
         try:
             async with self.session.get(
                 remote_url,
                 timeout=aiohttp.ClientTimeout(
                     total=None, sock_connect=10, sock_read=None
                 ),
-                headers=headers,
+                headers=self._get_request_headers("GET", request.headers),
             ) as proxy_response:
-                response_headers = proxy_response.headers.copy()
-                for h in ("Content-Length", "Transfer-Encoding", "Connection"):
-                    response_headers.pop(h, None)
+                resp_headers = self._get_response_headers("GET", proxy_response.headers)
+                resp_headers.pop("content-length", None)
                 response = web.StreamResponse(
                     status=proxy_response.status,
                     reason=proxy_response.reason,
-                    headers=response_headers,
+                    headers=resp_headers,
                 )
                 await response.prepare(request)
                 try:
@@ -853,11 +1030,12 @@ class ElegooPrinterServer:
                         "An unexpected error occurred during video streaming"
                     )
                 return response
-        except (TimeoutError, aiohttp.ClientError):
-            self.logger.exception(
-                "Error proxying video stream to %s", printer.ip_address
-            )
-            return web.Response(status=502, text="Bad Gateway")
+        except TimeoutError as e:
+            self.logger.debug("Video stream timeout from %s: %s", remote_url, e)
+            return web.Response(status=504, text="Video stream not available")
+        except aiohttp.ClientError as e:
+            self.logger.debug("Video stream not available from %s: %s", remote_url, e)
+            return web.Response(status=502, text="Video stream not available")
 
     def get_local_ip(self) -> str:
         """Determine the local IP address for outbound communication."""
@@ -876,19 +1054,10 @@ class ElegooPrinterServer:
             remote_ws_url = (
                 f"ws://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
             )
-            allowed_headers = {
-                "sec-websocket-version",
-                "sec-websocket-key",
-                "sec-websocket-protocol",
-                "upgrade",
-                "connection",
-            }
-            filtered_headers = {
-                k: v for k, v in request.headers.items() if k.lower() in allowed_headers
-            }
-
             remote_ws = await self.session.ws_connect(
-                remote_ws_url, headers=filtered_headers, heartbeat=10.0
+                remote_ws_url,
+                headers=self._get_request_headers("WS", request.headers),
+                heartbeat=10.0
             )
             self.logger.debug(
                 "Connected to printer %s (%s)", printer.name, printer.ip_address
@@ -1073,61 +1242,104 @@ class ElegooPrinterServer:
         if not self.session or self.session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
-        # Forward directly to printer
-        target_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
-
-        headers = {
-            k: v
-            for k, v in request.headers.items()
-            if k.lower()
-            not in (
-                "host",
-                "content-length",
-                "transfer-encoding",
-                "connection",
-                "keep-alive",
-                "proxy-authenticate",
-                "proxy-authorization",
-                "te",
-                "trailer",
-                "upgrade",
-            )
-        }
+        target_url = (
+            f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
+        )
 
         try:
             async with self.session.request(
                 request.method,
                 target_url,
-                headers=headers,
+                headers=self._get_request_headers(request.method, request.headers),
                 data=request.content,
                 allow_redirects=False,
                 timeout=aiohttp.ClientTimeout(
                     total=None, sock_connect=10, sock_read=None
                 ),
             ) as upstream_response:
-                response_headers = upstream_response.headers.copy()
-                for h in (
-                    "Content-Length",
-                    "Transfer-Encoding",
-                    "Connection",
-                    "Keep-Alive",
-                ):
-                    response_headers.pop(h, None)
-
-                client_response = web.StreamResponse(
-                    status=upstream_response.status, headers=response_headers
+                response_headers = self._get_response_headers(
+                    request.method, upstream_response.headers
                 )
-                await client_response.prepare(request)
-                async for chunk in upstream_response.content.iter_any():
-                    await client_response.write(chunk)
-                await client_response.write_eof()
-                return client_response
+                client_response = web.StreamResponse(
+                    status=upstream_response.status,
+                    headers=response_headers,
+                )
+                content_type = response_headers.get("content-type", "").split(";")[0]
+                if content_type in TRANSFORMABLE_MIME_TYPES:
+                    return await self._transformed_streamed_response(
+                        request, client_response, upstream_response, printer
+                    )
+                return await self._streamed_response(
+                    request, client_response, upstream_response
+                )
+        except aiohttp.ClientError as e:
+            msg = f"HTTP proxy error connecting to {target_url}"
+            self.logger.exception(msg)
+            return web.Response(status=502, text=f"Bad Gateway: {e}")
 
-        except aiohttp.ClientError:
-            self.logger.exception(
-                "HTTP proxy error connecting to printer %s", printer.ip_address
+    async def _transformed_streamed_response(
+        self,
+        request: web.Request,
+        client_response: web.StreamResponse,
+        upstream_response: ClientResponse,
+        printer: Printer,
+    ) -> web.StreamResponse:
+        client_response.headers.pop("content-length")
+        await client_response.prepare(request)
+        encoding = "utf-8"
+        content_type = client_response.headers.get("content-type")
+        if content_type:
+            matches = re.search(r"charset=(.+?)(;|$)", content_type)
+            if matches and matches[1]:
+                encoding = matches[1]
+        previous = ""
+        async for chunk in upstream_response.content.iter_any():
+            current = chunk.decode(encoding)
+            previous_length = len(previous)
+            if previous_length > 0:
+                combined = previous + current
+                replaced = self._process_replacements(combined, printer)
+                half_len = floor(len(replaced) / 2)
+                replaced_previous = replaced[:half_len]
+                await client_response.write(replaced_previous.encode(encoding))
+                previous = replaced[half_len:]
+            else:
+                previous = current
+
+        await client_response.write(previous.encode(encoding))
+        await client_response.write_eof()
+        return client_response
+
+    async def _streamed_response(
+        self,
+        request: web.Request,
+        client_response: web.StreamResponse,
+        upstream_response: ClientResponse,
+    ) -> web.StreamResponse:
+        await client_response.prepare(request)
+        async for chunk in upstream_response.content.iter_any():
+            await client_response.write(chunk)
+        await client_response.write_eof()
+        return client_response
+
+    def _process_replacements(self, content: str, printer: Printer) -> str:
+        return (
+            content.replace(
+                printer.ip_address or DEFAULT_FALLBACK_IP, self.get_local_ip()
             )
-            return web.Response(status=502, text="Bad Gateway")
+            .replace(
+                f"{self.get_local_ip()}/",
+                f"{self.get_local_ip()}:{WEBSOCKET_PORT}/",
+            )
+            .replace(
+                f"{self.get_local_ip()}:{VIDEO_PORT}/",
+                f"{self.get_local_ip()}:{WEBSOCKET_PORT}/",
+            )
+            .replace(
+                "${this.webSocketService.hostName}:80",
+                "${this.webSocketService.hostName}:" + f"{WEBSOCKET_PORT}",
+            )
+        )
 
     async def _centralized_file_handler(
         self, request: web.Request, printer: Printer
@@ -1139,44 +1351,20 @@ class ElegooPrinterServer:
         # Forward directly to printer's file upload endpoint
         remote_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
 
-        headers = {
-            k: v
-            for k, v in request.headers.items()
-            if k.lower()
-            not in (
-                "host",
-                "content-length",
-                "transfer-encoding",
-                "connection",
-                "keep-alive",
-                "proxy-authenticate",
-                "proxy-authorization",
-                "te",
-                "trailer",
-                "upgrade",
-            )
-        }
-
         try:
             async with self.session.post(
                 remote_url,
-                headers=headers,
+                headers=self._get_request_headers("POST", request.headers),
                 data=request.content,
                 timeout=aiohttp.ClientTimeout(
                     total=None, sock_connect=10, sock_read=None
                 ),
             ) as response:
                 content = await response.read()
-                resp_headers = response.headers.copy()
-                for h in (
-                    "Content-Length",
-                    "Transfer-Encoding",
-                    "Connection",
-                    "Keep-Alive",
-                ):
-                    resp_headers.pop(h, None)
                 return web.Response(
-                    body=content, status=response.status, headers=resp_headers
+                    body=content,
+                    status=response.status,
+                    headers=self._get_response_headers("POST", response.headers),
                 )
         except Exception:
             self.logger.exception(
