@@ -91,12 +91,12 @@ condition: []
 action:
   - if:
       - condition: template
-        value_template: "{{ states(percent_complete_entity) | int < 100 }}"
+        value_template: "{{ states(percent_complete_entity) | int(0) < 100 }}"
     then:
       - if:
           - condition: template
             value_template: >-
-              {{ states(percent_complete_entity) | int % (percentage_divisor | int) == 0 }}
+              {{ states(percent_complete_entity) | int(0) % (percentage_divisor | int) == 0 }}
           - condition: template
             value_template: >-
               {{ current_status_entity != none and states(current_status_entity) == 'printing' }}
@@ -111,7 +111,7 @@ action:
             data:
               chronometer: true
               when: "{{ as_timestamp(states(end_time_entity))|int if end_time_entity != none and states(end_time_entity) not in ['unknown', 'unavailable'] else 0 }}"
-              progress: "{{ states(percent_complete_entity)|int }}"
+              progress: "{{ states(percent_complete_entity)|int(0) }}"
               progress_max: 100
               image: "{{ ('/api/camera_proxy/' ~ camera_entity) if (camera_entity|default('', true)) != '' else '' }}"
               url: "{{ dashboard_url }}"
