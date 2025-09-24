@@ -29,18 +29,18 @@ NETWORK FLOW DIAGRAM:
 SUPPORTED PROTOCOLS:
 ===================
 
-- WebSocket (Port 3030): SDCP protocol messages with MainboardID routing
+- WebSocket (Port 3030): SDCP protocol messages with topic-based routing
 - HTTP/HTTPS (Port 3030): REST API calls and file uploads
-- Video Streaming (Port 3031): Real-time camera feeds with URL rewriting
 - UDP Discovery (Port 3000): Network printer discovery and advertisement
 
 MESSAGE ROUTING:
 ===============
 
-All messages include a MainboardID that identifies the target printer:
-- WebSocket: Extracted from JSON message payload
-- HTTP: Via query parameter (?mainboard_id=xxx) or path (/api/{id}/...)
-- Video: Via URL path (/video/{mainboard_id})
+WebSocket messages are routed based on SDCP topic structure:
+- Topic format: "sdcp/{message_type}/{MainboardID}"
+- Primary routing: Extract MainboardID from Topic field
+- Fallback routing: Extract MainboardID from message payload
+- HTTP requests: Currently routed to first available printer
 
 PROXY FEATURES:
 ==============
@@ -87,23 +87,112 @@ INADDR_ANY = "0.0.0.0"  # noqa: S104
 DISCOVERY_TIMEOUT = 5
 DISCOVERY_RATE_LIMIT_SECONDS = 30
 MIN_MAINBOARD_ID_LENGTH = 8
+TOPIC_PARTS_COUNT = 3  # Expected parts in SDCP topic: sdcp/{type}/{MainboardID}
+
+
+def extract_mainboard_id_from_topic(topic: str) -> str | None:
+    """
+    Extract MainboardID from SDCP topic string.
+
+    Topics follow the pattern: "sdcp/{message_type}/{MainboardID}"
+    Examples:
+    - "sdcp/request/ABC123DEF456" -> "ABC123DEF456"
+    - "sdcp/status/abc123def456" -> "abc123def456"
+    - "sdcp/attributes/12345678" -> "12345678"
+
+    Args:
+        topic: The SDCP topic string
+
+    Returns:
+        MainboardID if found and valid, None otherwise
+
+    """
+    if not topic or not isinstance(topic, str):
+        return None
+
+    parts = topic.strip().split("/")
+    if len(parts) != TOPIC_PARTS_COUNT or parts[0] != "sdcp":
+        return None
+
+    mainboard_id = parts[2]
+
+    # Validate MainboardID (hex characters, minimum length)
+    if len(mainboard_id) >= MIN_MAINBOARD_ID_LENGTH and all(
+        c in "0123456789abcdefABCDEF" for c in mainboard_id
+    ):
+        return mainboard_id
+
+    return None
+
+
+def extract_mainboard_id_from_message(message_data: str) -> str | None:
+    """
+    Extract MainboardID from SDCP JSON message.
+
+    First tries to extract from Topic field, then falls back to MainboardID field.
+
+    Args:
+        message_data: JSON message string
+
+    Returns:
+        MainboardID if found, None otherwise
+
+    """
+    try:
+        message = json.loads(message_data)
+        if not isinstance(message, dict):
+            return None
+
+        # First priority: Extract from Topic field
+        topic = message.get("Topic")
+        if topic:
+            mainboard_id = extract_mainboard_id_from_topic(topic)
+            if mainboard_id:
+                return mainboard_id
+
+        # Second priority: Direct MainboardID field
+        mainboard_id = message.get("MainboardID")
+        if (
+            mainboard_id
+            and isinstance(mainboard_id, str)
+            and len(mainboard_id) >= MIN_MAINBOARD_ID_LENGTH
+            and all(c in "0123456789abcdefABCDEF" for c in mainboard_id)
+        ):
+            return mainboard_id
+
+        # Check nested Data.MainboardID (some messages have this structure)
+        data = message.get("Data")
+        if isinstance(data, dict):
+            mainboard_id = data.get("MainboardID")
+            if (
+                mainboard_id
+                and isinstance(mainboard_id, str)
+                and len(mainboard_id) >= MIN_MAINBOARD_ID_LENGTH
+                and all(c in "0123456789abcdefABCDEF" for c in mainboard_id)
+            ):
+                return mainboard_id
+
+    except (json.JSONDecodeError, ValueError, TypeError, AttributeError):
+        # Invalid JSON or wrong structure
+        pass
+
+    return None
 
 
 class PrinterRegistry:
     """
-    Registry for managing multiple discovered printers with port-based routing.
+    Registry for managing multiple discovered printers with topic-based routing.
 
     This class provides thread-safe management of network-discovered printers
-    with automatic discovery, caching, rate limiting, and port assignment.
+    with automatic discovery, caching, rate limiting, and MainboardID-based lookup.
 
-    PORT ALLOCATION STRATEGY:
-    ========================
+    TOPIC-BASED ROUTING:
+    ===================
 
-    Printers are assigned unique port pairs based on registration order:
-    - Printer 1: WebSocket=3030, Video=3031
-    - Printer 2: WebSocket=3032, Video=3033
-    - Printer 3: WebSocket=3034, Video=3035
-    - Formula: WebSocket = 3030 + (index)*2, Video = 3031 + (index)*2
+    Printers are identified by their MainboardID and accessed via topic-based routing:
+    - All printers accessible through single proxy port (3030)
+    - WebSocket messages routed by SDCP topic: "sdcp/{type}/{MainboardID}"
+    - Maintains backward compatibility with port-based configuration
 
     DISCOVERY PROCESS:
     =================
@@ -111,7 +200,7 @@ class PrinterRegistry:
     1. UDP Broadcast: Send "M99999" to 255.255.255.255:3000
     2. Response Collection: Gather JSON responses for 5 seconds
     3. Printer Parsing: Extract printer info and create Printer objects
-    4. Registry Update: Store printers by IP address with port assignment
+    4. Registry Update: Store printers by IP address and MainboardID
 
     RATE LIMITING:
     =============
@@ -215,11 +304,10 @@ class PrinterRegistry:
                         "Could not find config entry for printer %s to update ports",
                         printer.id,
                     )
-            except Exception as e:  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 logger.warning(
-                    "Failed to update config entry for printer %s: %s",
+                    "Failed to update config entry for printer %s",
                     printer.id,
-                    e,
                 )
 
     def get_printer_by_ip(self, ip_address: str) -> Printer | None:
@@ -244,6 +332,24 @@ class PrinterRegistry:
     def get_all_printer_ports(self) -> dict[str, tuple[int, int]]:
         """Get all printer port assignments mapped by IP address."""
         return self._printer_ports.copy()
+
+    def get_printer_by_mainboard_id(self, mainboard_id: str) -> Printer | None:
+        """Get a printer by its MainboardID."""
+        if not mainboard_id:
+            return None
+
+        for printer in self._printers.values():
+            if printer.id and printer.id.lower() == mainboard_id.lower():
+                return printer
+        return None
+
+    def get_all_printers_by_mainboard_id(self) -> dict[str, Printer]:
+        """Get all registered printers mapped by MainboardID."""
+        result = {}
+        for printer in self._printers.values():
+            if printer.id:
+                result[printer.id] = printer
+        return result
 
     def count(self) -> int:
         """Get the number of registered printers."""
@@ -332,9 +438,9 @@ class PrinterRegistry:
                                 "Error parsing discovery response from %s: %s", addr, e
                             )
                             continue
-                        except Exception as e:  # noqa: BLE001
+                        except Exception:  # noqa: BLE001
                             # Catch any other unexpected errors
-                            logger.debug("Unexpected error during discovery: %s", e)
+                            logger.debug("Unexpected error during discovery")
                             continue
 
             except OSError:
@@ -359,11 +465,17 @@ class PrinterRegistry:
 
 class ElegooPrinterServer:
     """
-    Manages local proxy servers for multiple Elegoo printers.
+    Centralized proxy server for multiple Elegoo printers with topic-based routing.
 
-    This includes WebSocket, UDP discovery, and a full HTTP reverse proxy.
-    This server runs on the main Home Assistant event loop and routes
-    requests to appropriate printers based on MainboardID.
+    This server provides a single entry point for multiple printers, routing
+    WebSocket messages based on SDCP topic structure and MainboardID extraction.
+    Runs on the main Home Assistant event loop with singleton architecture.
+
+    ARCHITECTURE:
+    - Single WebSocket/HTTP server on port 3030
+    - Topic-based message routing for WebSocket connections
+    - MainboardID extraction from SDCP message topics
+    - UDP discovery server for network printer detection
     """
 
     _instance: ElegooPrinterServer | None = None
@@ -424,24 +536,12 @@ class ElegooPrinterServer:
             # Return existing instance if already created (check again inside the lock)
             if cls._instance is not None:
                 if printer:
-                    # Check and assign ports if needed, update config
-                    await PrinterRegistry.ensure_printer_ports_assigned(
-                        printer, hass, logger
-                    )
-                    # Add printer to existing server's registry and start server for it
-                    ws_port, video_port = cls._instance.printer_registry.add_printer(
-                        printer
-                    )
-                    # Start printer servers for singleton coordination
-                    await cls._instance.start_printer_servers(
-                        printer, ws_port, video_port
-                    )
+                    # Add printer to existing server's registry
+                    cls._instance.printer_registry.add_printer(printer)
                     logger.debug(
-                        "Added printer %s (%s) to proxy server on ports WS:%d Video:%d",
+                        "Added printer %s (%s) to centralized proxy server",
                         printer.name,
                         printer.ip_address,
-                        ws_port,
-                        video_port,
                     )
                 else:
                     logger.debug("Reusing existing proxy server instance")
@@ -451,40 +551,30 @@ class ElegooPrinterServer:
             logger.debug("Creating new proxy server instance")
             self = cls(logger, hass, session)
             if printer:
-                # Check and assign ports if needed, update config
-                await PrinterRegistry.ensure_printer_ports_assigned(
-                    printer, hass, logger
-                )
                 # Add the initial printer to the registry
-                ws_port, video_port = self.printer_registry.add_printer(printer)
+                self.printer_registry.add_printer(printer)
                 logger.debug(
-                    "Added printer %s (%s) to new proxy server on ports WS:%d Video:%d",
+                    "Added printer %s (%s) to new centralized proxy server",
                     printer.name,
                     printer.ip_address,
-                    ws_port,
-                    video_port,
                 )
 
             # Set instance BEFORE starting to prevent race condition
             cls._instance = self
 
             try:
-                # Start the discovery server and printer-specific servers
+                # Start the centralized proxy server
                 await self.start()
 
-                # Only perform network discovery if no printers were provided via config
+                # Perform network discovery for printers if none configured
                 if self.printer_registry.count() == 0:
                     logger.debug("No configured printers, performing network discovery")
                     await self.printer_registry.discover_printers(logger)
-                    # Start servers for discovered printers
-                    await self._start_servers_for_all_printers()
                 else:
                     logger.debug(
                         "Using %d printer(s) from Home Assistant config",
                         self.printer_registry.count(),
                     )
-                    # Start servers for configured printers
-                    await self._start_servers_for_all_printers()
             except Exception:
                 # Clear instance if startup fails
                 cls._instance = None
@@ -498,12 +588,24 @@ class ElegooPrinterServer:
         return self._is_connected
 
     async def start(self) -> None:
-        """Start the discovery server (UDP only for printer discovery)."""
+        """Start the centralized proxy server with topic-based routing."""
         self.logger.info(
-            "Initializing multi-printer proxy server with port-based routing"
+            "Initializing multi-printer proxy server with topic-based routing"
         )
 
         try:
+            # Start centralized HTTP/WebSocket server
+            main_app = web.Application(client_max_size=1024 * 1024 * 1024)  # 1 GiB
+            main_app.router.add_route("*", "/{path:.*}", self._centralized_http_handler)
+            main_runner = web.AppRunner(main_app)
+            await main_runner.setup()
+            main_site = web.TCPSite(main_runner, INADDR_ANY, WEBSOCKET_PORT)
+            await main_site.start()
+            self.runners.append(main_runner)
+
+            msg = f"Centralized HTTP/WebSocket Proxy running on http://{self.get_local_ip()}:{WEBSOCKET_PORT}"
+            self.logger.info(msg)
+
             # Start UDP discovery server
             def discovery_factory() -> DiscoveryProtocol:
                 return DiscoveryProtocol(
@@ -518,13 +620,13 @@ class ElegooPrinterServer:
             self.logger.info(msg)
 
         except OSError as e:
-            msg = f"Failed to start discovery server: {e}"
+            msg = f"Failed to start proxy server: {e}"
             self.logger.exception(msg)
             await self.stop()
             raise ConfigEntryNotReady(msg) from e
 
         self._is_connected = True
-        self.logger.info("Discovery server has started successfully.")
+        self.logger.info("Centralized proxy server started successfully.")
 
     async def _start_servers_for_all_printers(self) -> None:
         """Start HTTP/WebSocket servers for all registered printers."""
@@ -732,10 +834,74 @@ class ElegooPrinterServer:
         except Exception:  # noqa: BLE001
             return PROXY_HOST
 
-    async def _printer_websocket_handler(
+    async def _connect_to_printer(
         self, request: web.Request, printer: Printer
+    ) -> aiohttp.ClientWebSocketResponse | None:
+        """Connect to a specific printer's WebSocket."""
+        try:
+            remote_ws_url = (
+                f"ws://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
+            )
+            allowed_headers = {
+                "sec-websocket-version",
+                "sec-websocket-key",
+                "sec-websocket-protocol",
+                "upgrade",
+                "connection",
+            }
+            filtered_headers = {
+                k: v for k, v in request.headers.items() if k.lower() in allowed_headers
+            }
+
+            remote_ws = await self.session.ws_connect(
+                remote_ws_url, headers=filtered_headers, heartbeat=10.0
+            )
+            self.logger.debug(
+                "Connected to printer %s (%s)", printer.name, printer.ip_address
+            )
+        except aiohttp.ClientError:
+            self.logger.warning(
+                "Failed to connect to printer %s (%s)",
+                printer.name,
+                printer.ip_address,
+            )
+            return None
+        else:
+            return remote_ws
+
+    async def _route_printer_to_client(
+        self,
+        mainboard_id: str,
+        remote_ws: aiohttp.ClientWebSocketResponse,
+        client_ws: web.WebSocketResponse,
+        printer_connections: dict[str, aiohttp.ClientWebSocketResponse],
+    ) -> None:
+        """Route messages from specific printer to client."""
+        try:
+            async for message in remote_ws:
+                if message.type == WSMsgType.TEXT:
+                    await client_ws.send_str(message.data)
+                    self.logger.debug(
+                        "Routed response from printer %s: %s",
+                        mainboard_id,
+                        message.data[:100],
+                    )
+                elif message.type == WSMsgType.BINARY:
+                    await client_ws.send_bytes(message.data)
+                elif message.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                    break
+        except aiohttp.ClientError:
+            self.logger.exception(
+                "Error in printer-to-client routing for %s", mainboard_id
+            )
+        finally:
+            # Clean up connection
+            printer_connections.pop(mainboard_id, None)
+
+    async def _centralized_websocket_handler(
+        self, request: web.Request
     ) -> web.WebSocketResponse:
-        """Handle WebSocket connections for a specific printer (direct pass-through)."""
+        """Handle WebSocket connections with topic-based message routing."""
         client_ws = web.WebSocketResponse()
         await client_ws.prepare(request)
 
@@ -743,60 +909,254 @@ class ElegooPrinterServer:
             await client_ws.close(code=1011, message=b"Upstream connection failed")
             return client_ws
 
-        # Connect directly to printer's WebSocket
-        remote_ws_url = f"ws://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
-        allowed_headers = {
-            "sec-websocket-version",
-            "sec-websocket-key",
-            "sec-websocket-protocol",
-            "upgrade",
-            "connection",
-        }
-        filtered_headers = {
-            k: v for k, v in request.headers.items() if k.lower() in allowed_headers
+        # Keep connections to all printers
+        printer_connections: dict[str, aiohttp.ClientWebSocketResponse] = {}
+        tasks: set[asyncio.Task] = set()
+
+        try:
+            # Route messages from client to printers
+            async for message in client_ws:
+                if message.type == WSMsgType.TEXT:
+                    await self._handle_client_text_message(
+                        message, printer_connections, tasks, request, client_ws
+                    )
+                elif message.type == WSMsgType.BINARY:
+                    self.logger.debug("Binary message received but not routed")
+                elif message.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                    break
+
+        except aiohttp.ClientError:
+            self.logger.exception("Error in centralized WebSocket handler")
+        finally:
+            await self._cleanup_websocket_connections(
+                tasks, printer_connections, client_ws
+            )
+
+        return client_ws
+
+    async def _handle_client_text_message(
+        self,
+        message: aiohttp.WSMessage,
+        printer_connections: dict[str, aiohttp.ClientWebSocketResponse],
+        tasks: set[asyncio.Task],
+        request: web.Request,
+        client_ws: web.WebSocketResponse,
+    ) -> None:
+        """Handle a text message from client and route to appropriate printer."""
+        mainboard_id = extract_mainboard_id_from_message(message.data)
+
+        if not mainboard_id:
+            self.logger.debug("No MainboardID found in message: %s", message.data[:200])
+            return
+
+        # Find target printer
+        target_printer = self.printer_registry.get_printer_by_mainboard_id(mainboard_id)
+        if not target_printer:
+            self.logger.warning("No printer found for MainboardID: %s", mainboard_id)
+            return
+
+        # Connect to printer if not already connected
+        if mainboard_id not in printer_connections:
+            remote_ws = await self._connect_to_printer(request, target_printer)
+            if not remote_ws:
+                return
+            printer_connections[mainboard_id] = remote_ws
+
+            # Start printer-to-client forwarding task
+            task = asyncio.create_task(
+                self._route_printer_to_client(
+                    mainboard_id, remote_ws, client_ws, printer_connections
+                ),
+                name=f"elegoo_ws:printer_{mainboard_id}_to_client",
+            )
+            tasks.add(task)
+
+        # Forward message to printer
+        remote_ws = printer_connections[mainboard_id]
+        try:
+            await remote_ws.send_str(message.data)
+            self.logger.debug(
+                "Routed message to printer %s: %s", mainboard_id, message.data[:100]
+            )
+        except aiohttp.ClientError:
+            self.logger.exception("Failed to send message to printer %s", mainboard_id)
+            printer_connections.pop(mainboard_id, None)
+
+    async def _cleanup_websocket_connections(
+        self,
+        tasks: set[asyncio.Task],
+        printer_connections: dict[str, aiohttp.ClientWebSocketResponse],
+        client_ws: web.WebSocketResponse,
+    ) -> None:
+        """Clean up WebSocket connections and tasks."""
+        # Cancel all tasks
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
+        # Close all printer connections
+        for remote_ws in printer_connections.values():
+            if not remote_ws.closed:
+                await remote_ws.close()
+
+        # Close client connection
+        if not client_ws.closed:
+            await client_ws.close()
+
+        # Wait for all tasks to complete
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _centralized_http_handler(
+        self, request: web.Request
+    ) -> web.StreamResponse:
+        """Central HTTP handler that routes all requests."""
+        if request.headers.get("Upgrade", "").lower() == "websocket":
+            return await self._centralized_websocket_handler(request)
+
+        # For HTTP requests, we need to extract printer info from request
+        # For now, route to the first available printer (can be enhanced later)
+        printers = self.printer_registry.get_all_printers()
+        if not printers:
+            return web.Response(status=503, text="No printers available")
+
+        # Use first printer for HTTP requests
+        # (this could be enhanced with better routing)
+        first_printer = next(iter(printers.values()))
+
+        if request.method == "POST" and (
+            request.path == "/uploadFile/upload"
+            or request.path.endswith("/uploadFile/upload")
+        ):
+            return await self._centralized_file_handler(request, first_printer)
+
+        return await self._centralized_http_proxy_handler(request, first_printer)
+
+    async def _centralized_http_proxy_handler(
+        self, request: web.Request, printer: Printer
+    ) -> web.StreamResponse:
+        """Handle HTTP requests by forwarding to the specified printer."""
+        if not self.session or self.session.closed:
+            return web.Response(status=502, text="Bad Gateway: Proxy not configured")
+
+        # Forward directly to printer
+        target_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
+
+        headers = {
+            k: v
+            for k, v in request.headers.items()
+            if k.lower()
+            not in (
+                "host",
+                "content-length",
+                "transfer-encoding",
+                "connection",
+                "keep-alive",
+                "proxy-authenticate",
+                "proxy-authorization",
+                "te",
+                "trailer",
+                "upgrade",
+            )
         }
 
         try:
-            remote_ws = await self.session.ws_connect(
-                remote_ws_url, headers=filtered_headers, heartbeat=10.0
+            async with self.session.request(
+                request.method,
+                target_url,
+                headers=headers,
+                data=request.content,
+                allow_redirects=False,
+                timeout=aiohttp.ClientTimeout(
+                    total=None, sock_connect=10, sock_read=None
+                ),
+            ) as upstream_response:
+                response_headers = upstream_response.headers.copy()
+                for h in (
+                    "Content-Length",
+                    "Transfer-Encoding",
+                    "Connection",
+                    "Keep-Alive",
+                ):
+                    response_headers.pop(h, None)
+
+                client_response = web.StreamResponse(
+                    status=upstream_response.status, headers=response_headers
+                )
+                await client_response.prepare(request)
+                async for chunk in upstream_response.content.iter_any():
+                    await client_response.write(chunk)
+                await client_response.write_eof()
+                return client_response
+
+        except aiohttp.ClientError:
+            self.logger.exception(
+                "HTTP proxy error connecting to printer %s", printer.ip_address
             )
+            return web.Response(status=502, text="Bad Gateway")
 
-            # Bidirectional message forwarding
-            async def forward_to_remote() -> None:
-                async for message in client_ws:
-                    if message.type == WSMsgType.TEXT:
-                        await remote_ws.send_str(message.data)
-                    elif message.type == WSMsgType.BINARY:
-                        await remote_ws.send_bytes(message.data)
-                    elif message.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
-                        break
+    async def _centralized_file_handler(
+        self, request: web.Request, printer: Printer
+    ) -> web.Response:
+        """Handle file upload requests by forwarding to the specified printer."""
+        if not self.session or self.session.closed:
+            return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
-            async def forward_to_client() -> None:
-                async for message in remote_ws:
-                    if message.type == WSMsgType.TEXT:
-                        await client_ws.send_str(message.data)
-                    elif message.type == WSMsgType.BINARY:
-                        await client_ws.send_bytes(message.data)
-                    elif message.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
-                        break
+        # Forward directly to printer's file upload endpoint
+        remote_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
 
-            # Run both forwarding tasks concurrently
-            await asyncio.gather(
-                forward_to_remote(), forward_to_client(), return_exceptions=True
+        headers = {
+            k: v
+            for k, v in request.headers.items()
+            if k.lower()
+            not in (
+                "host",
+                "content-length",
+                "transfer-encoding",
+                "connection",
+                "keep-alive",
+                "proxy-authenticate",
+                "proxy-authorization",
+                "te",
+                "trailer",
+                "upgrade",
             )
+        }
 
+        try:
+            async with self.session.post(
+                remote_url,
+                headers=headers,
+                data=request.content,
+                timeout=aiohttp.ClientTimeout(
+                    total=None, sock_connect=10, sock_read=None
+                ),
+            ) as response:
+                content = await response.read()
+                resp_headers = response.headers.copy()
+                for h in (
+                    "Content-Length",
+                    "Transfer-Encoding",
+                    "Connection",
+                    "Keep-Alive",
+                ):
+                    resp_headers.pop(h, None)
+                return web.Response(
+                    body=content, status=response.status, headers=resp_headers
+                )
         except Exception:
             self.logger.exception(
-                "Failed to establish WebSocket connection to printer %s",
-                printer.ip_address,
+                "HTTP file proxy error for printer %s", printer.ip_address
             )
-        finally:
-            if not remote_ws.closed:
-                await remote_ws.close()
-            if not client_ws.closed:
-                await client_ws.close()
+            return web.Response(status=502, text="Bad Gateway")
 
-        return client_ws
+    async def _printer_websocket_handler(
+        self,
+        request: web.Request,
+        printer: Printer,  # noqa: ARG002
+    ) -> web.WebSocketResponse:
+        """Legacy handler - redirect to centralized handler."""
+        return await self._centralized_websocket_handler(request)
 
     async def _printer_http_proxy_handler(
         self, request: web.Request, printer: Printer
@@ -855,11 +1215,11 @@ class ElegooPrinterServer:
                 await client_response.write_eof()
                 return client_response
 
-        except aiohttp.ClientError as e:
+        except aiohttp.ClientError:
             self.logger.exception(
                 "HTTP proxy error connecting to printer %s", printer.ip_address
             )
-            return web.Response(status=502, text=f"Bad Gateway: {e}")
+            return web.Response(status=502, text="Bad Gateway")
 
     async def _printer_file_handler(
         self, request: web.Request, printer: Printer
@@ -910,11 +1270,11 @@ class ElegooPrinterServer:
                 return web.Response(
                     body=content, status=response.status, headers=resp_headers
                 )
-        except Exception as e:
+        except Exception:
             self.logger.exception(
                 "HTTP file proxy error for printer %s", printer.ip_address
             )
-            return web.Response(status=502, text=f"Bad Gateway: {e}")
+            return web.Response(status=502, text="Bad Gateway")
 
 
 class DiscoveryProtocol(asyncio.DatagramProtocol):
@@ -942,8 +1302,8 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         """
         try:
             message = data.decode("utf-8", errors="ignore").strip()
-        except Exception as e:  # noqa: BLE001
-            msg = f"Ignoring undecodable discovery datagram from {addr}: {e}"
+        except Exception:  # noqa: BLE001
+            msg = f"Ignoring undecodable discovery datagram from {addr}"
             self.logger.debug(msg)
             return
 
