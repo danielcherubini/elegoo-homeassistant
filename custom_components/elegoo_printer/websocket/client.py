@@ -407,7 +407,7 @@ class ElegooPrinterClient:
                 await asyncio.wait_for(event.wait(), timeout=10)
             except TimeoutError as e:
                 # Command-level timeout: keep the connection alive
-                self.logger.warning(
+                self.logger.debug(
                     "Timed out waiting for response to cmd %s (RequestID=%s)",
                     cmd,
                     request_id,
@@ -590,7 +590,7 @@ class ElegooPrinterClient:
         try:
             timeout = ClientWSTimeout()
             self.printer_websocket = await self._session.ws_connect(
-                url, timeout=timeout, heartbeat=20
+                url, timeout=timeout, heartbeat=30
             )
             self._is_connected = True
             self._listener_task = asyncio.create_task(self._ws_listener())
@@ -619,13 +619,17 @@ class ElegooPrinterClient:
                     self._parse_response(msg.data)
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     error_str = f"WebSocket connection error: {self.printer_websocket.exception()}"  # noqa: E501
-                    self.logger.info(error_str)
+                    self.logger.debug(error_str)
                     raise ElegooPrinterConnectionError(error_str)  # noqa: TRY301
         except asyncio.CancelledError:
             self.logger.debug("WebSocket listener cancelled.")
         except Exception as e:
-            msg = f"WebSocket listener exception: {e}"
-            self.logger.exception(msg)
+            # Check if it's a heartbeat/PONG timeout error
+            error_msg = str(e)
+            if "PONG" in error_msg or "heartbeat" in error_msg.lower():
+                self.logger.debug("WebSocket heartbeat timeout: %s", e)
+            else:
+                self.logger.debug("WebSocket listener exception: %s", e)
             raise ElegooPrinterConnectionError from e
         finally:
             self._is_connected = False
