@@ -104,8 +104,10 @@ class ElegooPrinterApiClient:
                 printer.name,
                 printer.ip_address,
             )
+            # This is probably unnecessary, but let's disconnect for completeness
             await self.client.disconnect()
-            if proxy_server_enabled:
+            # Only stop proxy servers if proxy was actually enabled
+            if self._proxy_server_enabled:
                 await ElegooPrinterServer.stop_all()
             return None
 
@@ -113,6 +115,7 @@ class ElegooPrinterApiClient:
         if proxy_server_enabled:
             printer = await self._setup_proxy_if_enabled(printer, session)
             if printer is None:
+                # Proxy was required but failed to start
                 await self.client.disconnect()
                 await ElegooPrinterServer.stop_all()
                 return None
@@ -130,7 +133,8 @@ class ElegooPrinterApiClient:
                 printer, proxy_enabled=proxy_server_enabled
             )
             if not connected:
-                if proxy_server_enabled:
+                # Stop ALL server instances to ensure clean state
+                if self._proxy_server_enabled:
                     await ElegooPrinterServer.stop_all()
                 self.server = None
                 await self.client.disconnect()
@@ -139,7 +143,8 @@ class ElegooPrinterApiClient:
             logger.info("Polling Started")
             return self  # noqa: TRY300
         except (ConnectionError, TimeoutError):
-            if proxy_server_enabled:
+            # Stop ALL server instances to ensure clean state
+            if self._proxy_server_enabled:
                 await ElegooPrinterServer.stop_all()
             self.server = None
             await self.client.disconnect()
@@ -172,6 +177,60 @@ class ElegooPrinterApiClient:
         if self.server:
             return self.server.get_local_ip()
         return self.printer.ip_address
+
+    async def reconnect(self) -> bool:
+        """
+        Asynchronously attempts to reconnect to the printer, using a proxy server if enabled.
+
+        Returns:
+            bool: True if reconnection is successful, False otherwise.
+
+        """  # noqa: E501
+        printer = self.printer
+        session = async_get_clientsession(self.hass)
+
+        # First, test if printer is reachable
+        self._logger.debug(
+            "Testing connectivity before reconnect to printer: %s at %s",
+            printer.name,
+            printer.ip_address,
+        )
+
+        # Ping the printer to check if it's available
+        printer_reachable = await self.client.ping_printer(ping_timeout=5.0)
+
+        if not printer_reachable:
+            self._logger.debug(
+                "Printer %s at %s is not reachable during reconnect. Stopping proxies.",
+                printer.name,
+                printer.ip_address,
+            )
+            # Stop server instances since printer is unreachable (only if proxy enabled)
+            if self._proxy_server_enabled:
+                await ElegooPrinterServer.stop_all()
+            self.server = None
+            return False
+
+        # Printer is reachable, handle proxy server if enabled
+        if self._proxy_server_enabled:
+            # Stop ALL existing server instances for clean restart
+            await ElegooPrinterServer.stop_all()
+            self.server = None
+
+            printer = await self._setup_proxy_if_enabled(printer, session)
+            if printer is None:
+                # Proxy was required but failed to start during reconnect
+                return False
+
+        self._logger.debug(
+            "Reconnecting to printer: %s proxy_enabled %s",
+            printer.ip_address,
+            self._proxy_server_enabled and self.server is not None,
+        )
+        return await self.client.connect_printer(
+            printer,
+            proxy_enabled=self._proxy_server_enabled and self.server is not None,
+        )
 
     async def async_get_status(self) -> PrinterData:
         """
@@ -400,59 +459,6 @@ class ElegooPrinterApiClient:
 
         """  # noqa: E501
         return await self.client.async_get_printer_historical_tasks()
-
-    async def reconnect(self) -> bool:
-        """
-        Asynchronously attempts to reconnect to the printer, using a proxy server if enabled.
-
-        Returns:
-            bool: True if reconnection is successful, False otherwise.
-
-        """  # noqa: E501
-        printer = self.printer
-        session = async_get_clientsession(self.hass)
-
-        # First, test if printer is reachable
-        self._logger.debug(
-            "Testing connectivity before reconnect to printer: %s at %s",
-            printer.name,
-            printer.ip_address,
-        )
-
-        # Ping the printer to check if it's available
-        printer_reachable = await self.client.ping_printer(ping_timeout=5.0)
-
-        if not printer_reachable:
-            self._logger.debug(
-                "Printer %s at %s is not reachable during reconnect. Stopping proxies.",
-                printer.name,
-                printer.ip_address,
-            )
-            if self._proxy_server_enabled:
-                await ElegooPrinterServer.stop_all()
-            self.server = None
-            return False
-
-        # Printer is reachable, handle proxy server if enabled
-        if self._proxy_server_enabled:
-            # Stop ALL existing server instances for clean restart
-            await ElegooPrinterServer.stop_all()
-            self.server = None
-
-            printer = await self._setup_proxy_if_enabled(printer, session)
-            if printer is None:
-                return False
-
-        self._logger.debug(
-            "Reconnecting to printer: %s proxy_enabled %s",
-            printer.ip_address,
-            self._proxy_server_enabled and self.server is not None,
-        )
-        return await self.client.connect_printer(
-            printer,
-            proxy_enabled=self._proxy_server_enabled and self.server is not None,
-        )
-
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """Set the speed of a fan."""
         await self.client.set_fan_speed(percentage, fan)
@@ -468,6 +474,38 @@ class ElegooPrinterApiClient:
     async def async_set_target_bed_temp(self, temperature: int) -> None:
         """Set the target bed temperature."""
         await self.client.set_target_bed_temp(temperature)
+
+    def _normalize_firmware_version(self, version: str) -> str:
+        """
+        Normalize firmware version to the expected format.
+
+        The API expects format x.x.x where each x can be up to 5 digits.
+        """
+        if not version:
+            return "1.1.0"
+
+        # Remove any non-numeric characters except dots
+        cleaned = re.sub(r"[^0-9.]", "", version)
+
+        # Split by dots and ensure we have at least 3 parts
+        parts = cleaned.split(".")
+
+        # Pad or truncate to exactly 3 parts
+        version_parts_count = 3
+        while len(parts) < version_parts_count:
+            parts.append("0")
+        parts = parts[:version_parts_count]
+
+        # Ensure each part is a valid number and not too long (max 5 digits)
+        normalized_parts = []
+        for part in parts:
+            if not part or not part.isdigit():
+                normalized_parts.append("0")
+            else:
+                # Limit to 5 digits as per API requirement
+                normalized_parts.append(str(int(part))[:5])
+
+        return ".".join(normalized_parts)
 
     async def async_get_printer_data(self) -> PrinterData:
         """
@@ -547,7 +585,6 @@ class ElegooPrinterApiClient:
                 normalized_parts.append(str(int(part))[:5])
 
         return ".".join(normalized_parts)
-
     async def async_check_firmware_update(self) -> dict[str, Any] | None:
         """
         Check for firmware updates from Elegoo servers.

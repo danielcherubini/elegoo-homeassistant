@@ -1,99 +1,124 @@
-# CLAUDE.md
+# Claude Code Project Helper
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This document provides instructions and context for Claude Code to effectively assist with development in this repository.
 
 ## Project Overview
 
-This is a Home Assistant custom integration for monitoring and controlling Elegoo 3D printers (resin and FDM models) through the SDCP protocol. The integration provides real-time status monitoring, camera feeds, print control, and automation capabilities.
-
-## Development Commands
-
-**Setup:**
-```bash
-make setup          # Install dependencies and create virtual environment
-```
-
-**Development:**
-```bash
-make start          # Run Home Assistant with integration in development mode
-make debug          # Run in debug mode
-make test-server    # Start test server for development
-```
-
-**Code Quality:**
-```bash
-make test           # Run pytest tests
-make lint           # Run Ruff linting
-make format         # Format code with Ruff
-make fix            # Auto-fix code issues
-```
-
-**Version Management:**
-When asked to "bump the version to xxx", follow this process:
-1. Update version in `pyproject.toml`
-2. Update version in `custom_components/elegoo_printer/manifest.json`
-3. Run `make format` (code formatting)
-4. Run `make lint` (linting checks)
-5. Stage the modified files with `git add`
-6. Create commit with descriptive message including the version change
-
-**Package Manager:** Uses `uv` (modern Python package manager) with `pyproject.toml`
-
-## Architecture Overview
-
-**Core Components:**
-- **API Client** (`api.py`) - Main interface for printer communication via SDCP protocol
-- **Coordinator** (`coordinator.py`) - Manages data updates with 2-second polling intervals
-- **Config Flow** (`config_flow.py`) - Handles integration setup and configuration UI
-- **SDCP Protocol** (`sdcp/` directory) - Structured models for printer status and communication
-- **WebSocket Support** (`websocket/` directory) - Real-time communication with printer firmware
-- **Proxy Server** - Optional component to bypass printer's 4-connection limit
-
-**Entity Structure:**
-The integration creates multiple Home Assistant entity types (sensors, cameras, buttons, lights, fans, selects, numbers, binary sensors, images) based on printer capabilities and status.
-
-**Configuration Migration:**
-The integration uses a migration system (currently at config version 4) to handle breaking changes between versions. Migration logic is in `__init__.py`.
-
-## Logging and Debugging
-
-**Log Location:**
-Home Assistant logs are located at `config/home-assistant.log` in the project directory.
-
-**Viewing Logs:**
-```bash
-# View recent logs
-tail -f config/home-assistant.log
-
-# Search for integration-specific logs
-grep "elegoo_printer" config/home-assistant.log
-
-# View last 100 lines
-tail -100 config/home-assistant.log
-```
-
-## Key Directories
-
-- `custom_components/elegoo_printer/` - Main integration code
-- `custom_components/elegoo_printer/sdcp/` - SDCP protocol models and communication
-- `custom_components/elegoo_printer/websocket/` - WebSocket client/server implementation
-- `config/` - Home Assistant configuration for development
-- `scripts/` - Development and maintenance utilities
+- **Project Name:** Elegoo Printer Home Assistant Integration
+- **Type:** Home Assistant Custom Component
+- **Language:** Python
+- **Primary Code Location:** `custom_components/elegoo_printer/`
 
 ## Development Environment
 
-- **Python Version:** 3.13+
-- **Home Assistant Version:** 2025.4.0
-- **Devcontainer Support:** Available for containerized development
-- **PYTHONPATH:** Custom configuration loads integration during development
+This project uses `uv` for Python environment and dependency management. The virtual environment is expected to be located at `.venv/`.
 
-## Printer Support
+- **Setup:** To set up the development environment and install all dependencies (including dev dependencies), run:
+  ```bash
+  make setup
+  ```
 
-**Resin Printers:** Mars 4, Saturn 3/4 series
-**FDM Printers:** Centauri Carbon
+## Key Commands
 
-The integration auto-discovers printers on the network and supports both printer types through the same SDCP protocol interface.
+The `Makefile` contains all the necessary commands for common development tasks.
 
-## Testing Strategy
+- **Linting:** To check the code for style and quality issues, run:
 
-Tests are located in the repository and can be run with `make test`. The integration includes comprehensive testing for SDCP protocol communication, entity state management, and configuration flows.
+  ```bash
+  make lint
+  ```
+
+- **Formatting:** To automatically format the code, run:
+
+  ```bash
+  make format
+  ```
+
+- **Fixing:** To automatically fix linting issues, run:
+
+  ```bash
+  make fix
+  ```
+
+- **Testing:** To run the automated test suite, run:
+
+  ```bash
+  make test
+  ```
+
+- **Running the development server:** To start the Home Assistant instance with the custom component for development, run:
+
+  ```bash
+  make start
+  ```
+
+- **Running the debug server:** To start the Home Assistant instance in debug mode, run:
+  ```bash
+  make debug
+  ```
+
+## Committing and Contributions
+
+- Before committing any changes, please ensure that the code passes both the linter and the test suite.
+- Run `make fix` and `make test` to validate your changes.
+- Follow the existing code style and conventions.
+- **Always create a feature branch for new work. Do not commit directly to `main`**
+
+## Logging
+
+The Home Assistant logs are located at `config/home-assistant.log`.
+
+## Repository Structure
+
+Here's a breakdown of the key files and directories in this repository and their general purpose:
+
+- Project Root (/):
+
+  - .devcontainer.json: Configuration for development containers (e.g., VS Code Dev Containers).
+  - .gitattributes, .gitignore: Git configuration for file handling and ignored files.
+  - .python-version: Specifies the Python version for tools like pyenv.
+  - CONTRIBUTING.md: Guidelines for project contributions.
+  - debug.py: A script used for debugging the Home Assistant integration.
+  - CLAUDE.md: This document, providing context and instructions for Claude Code.
+  - hacs.json: Configuration file for Home Assistant Community Store (HACS) integration.
+  - LICENSE: The project's open-source license.
+  - Makefile: Commands for common development tasks (setup, linting, formatting, testing, running the dev server).
+  - pyproject.toml: Project metadata, dependencies, and tool configurations (e.g., uv, ruff, pytest).
+  - README.md: The main project documentation and overview.
+  - uv.lock: A lock file generated by uv to ensure reproducible Python environments.
+
+- .github/: GitHub-specific configurations.
+
+  - ISSUE_TEMPLATE/: Templates for creating new issues on GitHub.
+  - workflows/: GitHub Actions workflows for continuous integration (CI) tasks like linting, testing, and releases.
+
+- .venv/: The Python virtual environment where project dependencies are installed.
+
+- blueprints/: Home Assistant automation blueprints.
+
+  - automation/elegoo_printer/elegoo_printer_progress.yaml: A blueprint related to printer progress.
+
+- config/: A Home Assistant configuration directory used for local development and testing.
+
+  - configuration.yaml: The main Home Assistant configuration file for the development instance.
+
+- custom_components/elegoo_printer/: Core directory for the custom component.
+
+  - `__init__.py`: Initializes the Python package and the Home Assistant integration itself.
+  - api.py
+  - button.py, camera.py, fan.py, image.py, light.py, number.py, select.py, sensor.py
+  - config_flow.py
+  - const.py
+  - coordinator.py
+  - manifest.json
+  - sdcp/: SDCP protocol implementation and models.
+    - models/: Data models (e.g., printer status, print history).
+    - exceptions.py, const.py (as applicable)
+  - websocket/: WebSocket client/server implementation.
+    - client.py
+    - server.py
+  - translations/en.json: English translations for the integration UI.
+
+- scripts/: Utility scripts for development.
+
+- tests/: Unit and integration tests for the project.

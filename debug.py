@@ -12,6 +12,7 @@ from custom_components.elegoo_printer.websocket.client import ElegooPrinterClien
 from custom_components.elegoo_printer.sdcp.const import DEBUG
 
 LOG_LEVEL = "INFO"
+PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.184")
 
 logger.remove()
 logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)
@@ -73,18 +74,28 @@ async def main() -> None:
             elegoo_printer = ElegooPrinterClient(
                 ip_address=None, session=session, logger=logger
             )
-            
+
+            # Test ping functionality first if specific IP provided
+            if PRINTER_IP != "10.0.0.184":
+                logger.info(f"Testing ping to specific printer at {PRINTER_IP}...")
+                ping_result = await elegoo_printer.ping_printer(timeout_s=3.0)
+                if ping_result:
+                    logger.info("✓ Ping successful - printer WebSocket is reachable")
+                else:
+                    logger.warning("✗ Ping failed - printer WebSocket is not reachable")
+                    logger.info("This is expected if printer is off or WebSocket service not running")
+
             # Discover all printers (broadcast discovery)
             logger.info("🔍 Discovering printers on network...")
             discovered_printers = elegoo_printer.discover_printer()
-            
+
             if discovered_printers:
                 logger.info(f"🎯 Found {len(discovered_printers)} printer(s):")
                 for i, printer in enumerate(discovered_printers):
                     logger.info(
                         f"  {i+1}. {printer.name} ({printer.model}) at {printer.ip_address}"
                     )
-                
+
                 # Create monitoring tasks for all printers
                 monitor_tasks = []
                 for printer in discovered_printers:
@@ -92,9 +103,9 @@ async def main() -> None:
                         monitor_printer(printer, session, stop_event)
                     )
                     monitor_tasks.append(task)
-                
+
                 logger.info("🚀 Starting concurrent monitoring of all printers...")
-                
+
                 # Wait for all tasks to complete
                 try:
                     await asyncio.gather(*monitor_tasks)
@@ -106,7 +117,7 @@ async def main() -> None:
                     await asyncio.gather(*monitor_tasks, return_exceptions=True)
             else:
                 logger.warning("⚠️  No printers discovered on the network")
-                
+
     except KeyboardInterrupt:
         logger.info("🛑 Received interrupt signal")
         stop_event.set()

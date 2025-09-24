@@ -407,7 +407,7 @@ class ElegooPrinterClient:
                 await asyncio.wait_for(event.wait(), timeout=10)
             except TimeoutError as e:
                 # Command-level timeout: keep the connection alive
-                self.logger.warning(
+                self.logger.debug(
                     "Timed out waiting for response to cmd %s (RequestID=%s)",
                     cmd,
                     request_id,
@@ -531,6 +531,48 @@ class ElegooPrinterClient:
 
         return None
 
+    async def ping_printer(self, ping_timeout: float = 5.0) -> bool:
+        """
+        Test if printer is reachable by checking TCP port connectivity.
+
+        Args:
+            ping_timeout: Connection timeout in seconds
+
+        Returns:
+            bool: True if printer is reachable, False otherwise
+
+        """
+        # Try port 80 first (HTTP), then 3030 (WebSocket)
+        ports_to_check = [80, WEBSOCKET_PORT]
+
+        for port in ports_to_check:
+            try:
+                # Simple TCP connection test
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(self.printer.ip_address, port),
+                    timeout=ping_timeout / len(ports_to_check),  # Split timeout
+                )
+                writer.close()
+                await writer.wait_closed()
+            except (TimeoutError, ConnectionRefusedError, OSError) as e:
+                self.logger.debug(
+                    "Printer ping failed at %s:%s - %s",
+                    self.printer.ip_address,
+                    port,
+                    type(e).__name__,
+                )
+                continue
+            else:
+                self.logger.debug(
+                    "Printer ping successful at %s:%s", self.printer.ip_address, port
+                )
+                return True
+
+        self.logger.debug(
+            "Printer at %s is not reachable on any port", self.printer.ip_address
+        )
+        return False
+
     async def connect_printer(self, printer: Printer, *, proxy_enabled: bool) -> bool:
         """Establish an asynchronous connection to the Elegoo printer."""
         if self.is_connected:
@@ -548,7 +590,7 @@ class ElegooPrinterClient:
         try:
             timeout = ClientWSTimeout()
             self.printer_websocket = await self._session.ws_connect(
-                url, timeout=timeout, heartbeat=20
+                url, timeout=timeout, heartbeat=30
             )
             self._is_connected = True
             self._listener_task = asyncio.create_task(self._ws_listener())
@@ -577,13 +619,19 @@ class ElegooPrinterClient:
                     self._parse_response(msg.data)
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     error_str = f"WebSocket connection error: {self.printer_websocket.exception()}"  # noqa: E501
-                    self.logger.info(error_str)
+                    self.logger.debug(error_str)
                     raise ElegooPrinterConnectionError(error_str)  # noqa: TRY301
         except asyncio.CancelledError:
             self.logger.debug("WebSocket listener cancelled.")
         except Exception as e:
-            msg = f"WebSocket listener exception: {e}"
-            self.logger.exception(msg)
+            # Classify heartbeat/PONG timeouts explicitly
+            error_msg = str(e)
+            is_timeout = isinstance(e, asyncio.TimeoutError)
+            is_heartbeat = "PONG" in error_msg or "heartbeat" in error_msg.lower()
+            if is_timeout or is_heartbeat:
+                self.logger.debug("WebSocket heartbeat timeout: %s", e)
+            else:
+                self.logger.debug("WebSocket listener exception: %s", e)
             raise ElegooPrinterConnectionError from e
         finally:
             self._is_connected = False

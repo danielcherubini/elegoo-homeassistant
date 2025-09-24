@@ -22,6 +22,17 @@ from .video import ElegooVideo
 
 if TYPE_CHECKING:
     from .print_history_detail import PrintHistoryDetail
+from typing import TypedDict
+
+
+class FirmwareUpdateInfo(TypedDict, total=False):
+    """Represent a Firmware Update Object."""
+
+    update_available: bool
+    current_version: str | None
+    latest_version: str | None
+    package_url: str | None
+    changelog: str | None
 
 
 class Printer:
@@ -184,12 +195,15 @@ class PrinterData:
             printer.
         current_job (PrintHistoryDetail | None): The current print job of the printer.
         video (ElegooVideo): The video object of the printer.
+        firmware_update_info (dict): Firmware update state and metadata
+            (update_available, current_version, latest_version, package_url, changelog).
 
     """
 
     print_history: dict[str, PrintHistoryDetail | None]
     current_job: PrintHistoryDetail | None
     video: ElegooVideo
+    firmware_update_info: FirmwareUpdateInfo
 
     def __init__(
         self,
@@ -205,6 +219,13 @@ class PrinterData:
         self.print_history: dict[str, PrintHistoryDetail | None] = print_history or {}
         self.current_job: PrintHistoryDetail | None = None
         self.video: ElegooVideo = ElegooVideo()
+        self.firmware_update_info: FirmwareUpdateInfo = {
+            "update_available": False,
+            "current_version": None,
+            "latest_version": None,
+            "package_url": None,
+            "changelog": None,
+        }
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
         """Round datetime object to minutes."""
@@ -223,6 +244,7 @@ class PrinterData:
         """Calculate the estimated end time of the print job."""
         if (
             self.status.current_status == ElegooMachineStatus.PRINTING
+            and self.status.print_info.remaining_ticks is not None
             and self.status.print_info.remaining_ticks > 0
             and self.current_job
         ):
