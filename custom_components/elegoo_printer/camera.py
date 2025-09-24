@@ -18,10 +18,12 @@ from propcache.api import cached_property
 
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
+    CONF_PROXY_ENABLED,
     LOGGER,
     PROXY_HOST,
     VIDEO_ENDPOINT,
     VIDEO_PORT,
+    WEBSOCKET_PORT,
 )
 from custom_components.elegoo_printer.data import ElegooPrinterConfigEntry
 from custom_components.elegoo_printer.definitions import (
@@ -253,16 +255,26 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug("stream_source: Video is OK, getting stream source")
-            # Normalize without mutating the ElegooVideo object
-            video_url = self._normalize_video_url(video.video_url)
-            if not video_url:
-                LOGGER.debug("stream_source: Empty or invalid video URL from printer")
-                self._mjpeg_url = None
-                return
+            if self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False):
+                LOGGER.debug("stream_source: Proxy is enabled using local video")
+                self._mjpeg_url = (
+                    f"http://{PROXY_HOST}:{WEBSOCKET_PORT}/{VIDEO_ENDPOINT}"
+                )
+            else:
+                # Normalize without mutating the ElegooVideo object
+                video_url = self._normalize_video_url(video.video_url)
+                if not video_url:
+                    LOGGER.debug(
+                        "stream_source: Empty or invalid video URL from printer"
+                    )
+                    self._mjpeg_url = None
+                    return
 
-            # Video URL is already rewritten by proxy server if enabled
-            LOGGER.debug("stream_source: Using video URL: %s", video_url)
-            self._mjpeg_url = video_url
+                LOGGER.debug(
+                    "stream_source: Proxy is disabled using printer video url: %s",
+                    video_url,
+                )
+                self._mjpeg_url = video_url
         else:
             LOGGER.debug("stream_source: Failed to get video stream: %s", video.status)
             self._mjpeg_url = None
