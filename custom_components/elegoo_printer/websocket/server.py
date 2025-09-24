@@ -412,8 +412,11 @@ class ElegooPrinterServer:
                         "An unexpected error occurred during video streaming"
                     )
                 return response
-        except (TimeoutError, aiohttp.ClientError) as e:
-            self.logger.debug("Video stream not available on remote printer: %s", e)
+        except TimeoutError as e:
+            self.logger.debug("Video stream timeout from %s: %s", remote_url, e)
+            return web.Response(status=504, text="Video stream not available")
+        except aiohttp.ClientError as e:
+            self.logger.debug("Video stream not available from %s: %s", remote_url, e)
             return web.Response(status=502, text="Video stream not available")
 
     async def _websocket_handler(self, request: web.Request) -> web.WebSocketResponse:

@@ -624,9 +624,11 @@ class ElegooPrinterClient:
         except asyncio.CancelledError:
             self.logger.debug("WebSocket listener cancelled.")
         except Exception as e:
-            # Check if it's a heartbeat/PONG timeout error
+            # Classify heartbeat/PONG timeouts explicitly
             error_msg = str(e)
-            if "PONG" in error_msg or "heartbeat" in error_msg.lower():
+            is_timeout = isinstance(e, asyncio.TimeoutError)
+            is_heartbeat = "PONG" in error_msg or "heartbeat" in error_msg.lower()
+            if is_timeout or is_heartbeat:
                 self.logger.debug("WebSocket heartbeat timeout: %s", e)
             else:
                 self.logger.debug("WebSocket listener exception: %s", e)

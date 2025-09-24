@@ -107,7 +107,7 @@ class ElegooPrinterApiClient:
             # This is probably unnecessary, but let's disconnect for completeness
             await self.client.disconnect()
             # Only stop proxy servers if proxy was actually enabled
-            if proxy_server_enabled:
+            if self._proxy_server_enabled:
                 await ElegooPrinterServer.stop_all()
             return None
 
@@ -134,7 +134,7 @@ class ElegooPrinterApiClient:
             )
             if not connected:
                 # Stop ALL server instances to ensure clean state
-                if proxy_server_enabled:
+                if self._proxy_server_enabled:
                     await ElegooPrinterServer.stop_all()
                 self.server = None
                 await self.client.disconnect()
@@ -144,7 +144,7 @@ class ElegooPrinterApiClient:
             return self  # noqa: TRY300
         except (ConnectionError, TimeoutError):
             # Stop ALL server instances to ensure clean state
-            if proxy_server_enabled:
+            if self._proxy_server_enabled:
                 await ElegooPrinterServer.stop_all()
             self.server = None
             await self.client.disconnect()
