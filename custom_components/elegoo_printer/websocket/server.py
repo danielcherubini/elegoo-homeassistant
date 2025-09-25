@@ -96,6 +96,7 @@ TOPIC_PARTS_COUNT = 3  # Expected parts in SDCP topic: sdcp/{type}/{MainboardID}
 MIN_PATH_PARTS_FOR_FALLBACK = 2  # Minimum path parts needed for MainboardID fallback
 MIN_API_PATH_PARTS = 3  # Minimum parts for /api/{MainboardID}/... pattern
 MIN_VIDEO_PATH_PARTS = 2  # Minimum parts for /video/{MainboardID} pattern
+MAX_LOG_LENGTH = 50  # Maximum length for log message truncation
 
 ALLOWED_REQUEST_HEADERS = {
     "GET": [
@@ -1261,11 +1262,6 @@ class ElegooPrinterServer:
                         # Not JSON or malformed: forward original payload
                         self.logger.debug("Could not parse or rewrite VideoUrl")
                     await client_ws.send_str(payload)
-                    self.logger.debug(
-                        "Routed response from printer %s: %s",
-                        mainboard_id,
-                        payload[:100],
-                    )
                 elif message.type == WSMsgType.BINARY:
                     await client_ws.send_bytes(message.data)
                 elif message.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
@@ -1325,12 +1321,6 @@ class ElegooPrinterServer:
         """Handle a text message from client and route to appropriate printer."""
         mainboard_id = extract_mainboard_id_from_message(message.data)
 
-        self.logger.debug(
-            "Extracted MainboardID: %s from message: %s",
-            mainboard_id,
-            message.data[:200],
-        )
-
         if not mainboard_id:
             # Fallbacks: query param and path segment
             mainboard_id = request.query.get("id") or request.query.get("mainboard_id")
@@ -1379,9 +1369,6 @@ class ElegooPrinterServer:
         remote_ws = printer_connections[mainboard_id]
         try:
             await remote_ws.send_str(message.data)
-            self.logger.debug(
-                "Routed message to printer %s: %s", mainboard_id, message.data[:100]
-            )
         except aiohttp.ClientError:
             self.logger.exception("Failed to send message to printer %s", mainboard_id)
             printer_connections.pop(mainboard_id, None)
@@ -1417,7 +1404,7 @@ class ElegooPrinterServer:
 
         Tries in order:
         1. Query parameters: ?id=mainboardid or ?mainboard_id=mainboardid (preferred)
-        2. Referer header: Extracts MainboardID from the referring page URL (for web interface)
+        2. Referer header: Extracts MainboardID from referring page URL
         3. X-MainboardID header: Direct header specification (fallback)
 
         This multi-method approach ensures routing works for:
@@ -1438,9 +1425,8 @@ class ElegooPrinterServer:
         # Method 1: Query parameter routing (preferred for all requests)
         mainboard_id = request.query.get("id") or request.query.get("mainboard_id")
         if mainboard_id:
-            self.logger.debug(
-                "Extracted MainboardID from query param: %s", mainboard_id
-            )
+            # Reduced logging: Only log when needed for debugging
+            pass
 
         # Method 2: Referer header fallback (for web interface navigation)
         if not mainboard_id:
@@ -1448,15 +1434,15 @@ class ElegooPrinterServer:
             if referer:
                 mainboard_id = extract_mainboard_id_from_header(referer)
                 if mainboard_id:
-                    self.logger.debug(
-                        "Extracted MainboardID from Referer header: %s", mainboard_id
-                    )
+                    # Reduced logging: Only log when needed for debugging
+                    pass
 
         # Method 3: X-MainboardID header fallback
         if not mainboard_id:
             mainboard_id = request.headers.get("X-MainboardID")
             if mainboard_id:
-                self.logger.debug("Extracted MainboardID from header: %s", mainboard_id)
+                # Reduced logging: Only log when needed for debugging
+                pass
 
         # Find printer by MainboardID
         if mainboard_id:
@@ -1666,32 +1652,30 @@ class ElegooPrinterServer:
         )
 
         # Apply JavaScript WebSocket URL transformations (for MainboardID routing)
-        if printer.id:
+        if printer.id and f"?id={printer.id}" not in processed_content:
             # Template literal syntax (ES6) - main pattern for WebSocket connections
-            # Only add the parameter if it's not already there
-            if f"?id={printer.id}" not in processed_content:
-                processed_content = processed_content.replace(
-                    "ws://${this.hostName}:3030/websocket",
-                    f"ws://${{this.hostName}}:3030/websocket?id={printer.id}",
-                )
+            processed_content = processed_content.replace(
+                "ws://${this.hostName}:3030/websocket",
+                f"ws://${{this.hostName}}:3030/websocket?id={printer.id}",
+            )
 
-                # Template literal for HTTP URLs
-                processed_content = processed_content.replace(
-                    "http://${this.hostName}:3030/",
-                    f"http://${{this.hostName}}:3030/?id={printer.id}&",
-                )
+            # Template literal for HTTP URLs
+            processed_content = processed_content.replace(
+                "http://${this.hostName}:3030/",
+                f"http://${{this.hostName}}:3030/?id={printer.id}&",
+            )
 
-                # String concatenation patterns (in case they exist)
-                processed_content = processed_content.replace(
-                    'ws://" + this.hostName + ":3030/websocket',
-                    f'ws://" + this.hostName + ":3030/websocket?id={printer.id}',
-                )
+            # String concatenation patterns (in case they exist)
+            processed_content = processed_content.replace(
+                'ws://" + this.hostName + ":3030/websocket',
+                f'ws://" + this.hostName + ":3030/websocket?id={printer.id}',
+            )
 
-                # Generic patterns without host variables
-                processed_content = processed_content.replace(
-                    "ws://localhost:3030/websocket",
-                    f"ws://localhost:3030/websocket?id={printer.id}",
-                )
+            # Generic patterns without host variables
+            processed_content = processed_content.replace(
+                "ws://localhost:3030/websocket",
+                f"ws://localhost:3030/websocket?id={printer.id}",
+            )
 
         return processed_content
 
@@ -1781,11 +1765,11 @@ class ElegooPrinterServer:
                 replacements_made += 1
                 self.logger.debug(
                     "Replaced '%s' with '%s'",
-                    replacement["find"][:50] + "..."
-                    if len(replacement["find"]) > 50
+                    replacement["find"][:MAX_LOG_LENGTH] + "..."
+                    if len(replacement["find"]) > MAX_LOG_LENGTH
                     else replacement["find"],
-                    replacement["replace"][:50] + "..."
-                    if len(replacement["replace"]) > 50
+                    replacement["replace"][:MAX_LOG_LENGTH] + "..."
+                    if len(replacement["replace"]) > MAX_LOG_LENGTH
                     else replacement["replace"],
                 )
 
@@ -1797,11 +1781,11 @@ class ElegooPrinterServer:
             )
         else:
             self.logger.warning(
-                "No WebSocket URL patterns found to replace in JavaScript file for printer %s",
+                "No WebSocket patterns found in JS file for printer %s",
                 printer.id,
             )
 
-        # 4. Prepare response headers, removing ones that will be recalculated by aiohttp
+        # 4. Prepare response headers, removing recalculated ones
         response_headers = upstream_response.headers.copy()
         for h in (
             "Content-Length",
@@ -1858,7 +1842,7 @@ class ElegooPrinterServer:
                 ),
             ) as upstream_response:
                 # --- Main Logic: Check and Delegate ---
-                # Intercept JavaScript files that likely contain WebSocket connection code
+                # Intercept JavaScript files with WebSocket connection code
                 if request.path.endswith(".js") and (
                     request.path.startswith("/main.")
                     or request.path.startswith("/app.")

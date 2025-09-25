@@ -314,7 +314,7 @@ class ElegooPrinterApiClient:
                 # Replace printer IP with centralized proxy using MainboardID routing
                 try:
                     proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
-                    # Use centralized proxy on port 3030 with MainboardID as query parameter
+                    # Use centralized proxy with MainboardID query parameter
                     thumbnail_url = thumbnail_url.replace(
                         f"http://{self.printer.ip_address}:3030",
                         f"http://{proxy_ip}:3030",
