@@ -63,7 +63,7 @@ import socket
 import time
 from math import floor
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlparse, urlsplit, urlunsplit
 
 import aiohttp
 from aiohttp import ClientResponse, ClientSession, WSMsgType, web
@@ -285,6 +285,42 @@ def extract_mainboard_id_from_message(message_data: str) -> str | None:
     return None
 
 
+def extract_mainboard_id_from_header(header: str) -> str | None:
+    """
+    Extract MainboardID from a HTTP Header (like Referer).
+
+    Args:
+        header: Header string (e.g., Referer URL)
+
+    Returns:
+        MainboardID if found, None otherwise
+
+    """
+    if not header:
+        return None
+
+    try:
+        parsed_header = urlparse(header)
+        query_params = parse_qs(parsed_header.query)
+
+        # Try "id" parameter first, then "mainboard_id" as fallback
+        if query_params.get("id"):
+            mainboard_id = query_params["id"][0]
+            if mainboard_id and len(mainboard_id) >= MIN_MAINBOARD_ID_LENGTH:
+                return mainboard_id
+
+        if query_params.get("mainboard_id"):
+            mainboard_id = query_params["mainboard_id"][0]
+            if mainboard_id and len(mainboard_id) >= MIN_MAINBOARD_ID_LENGTH:
+                return mainboard_id
+
+    except (ValueError, TypeError, IndexError):
+        # Invalid URL or parsing error
+        pass
+
+    return None
+
+
 class PrinterRegistry:
     """
     Registry for managing multiple discovered printers with topic-based routing.
@@ -348,17 +384,12 @@ class PrinterRegistry:
         if printer.ip_address in self._printers:
             return self._printer_ports[printer.ip_address]
 
-        # Use stored ports if available (from config)
-        if printer.proxy_websocket_port and printer.proxy_video_port:
-            ws_port = printer.proxy_websocket_port
-            video_port = printer.proxy_video_port
-        else:
-            # Fallback to auto-assignment for legacy configs
-            ws_port = WEBSOCKET_PORT + (self._next_index * 2)
-            video_port = VIDEO_PORT + (self._next_index * 2)
-            self._next_index += 1
-
+        # Store printer in registry (ports no longer needed for MainboardID routing)
         self._printers[printer.ip_address] = printer
+
+        # Keep port tracking for legacy compatibility, but use defaults
+        ws_port = WEBSOCKET_PORT  # Centralized proxy port
+        video_port = VIDEO_PORT  # Default video port
         self._printer_ports[printer.ip_address] = (ws_port, video_port)
 
         return (ws_port, video_port)
@@ -724,6 +755,20 @@ class ElegooPrinterServer:
             msg = f"Centralized HTTP/WebSocket Proxy running on http://{self.get_local_ip()}:{WEBSOCKET_PORT}"
             self.logger.info(msg)
 
+            # Start dedicated video server on port 3031
+            video_app = web.Application(client_max_size=1024 * 1024 * 1024)  # 1 GiB
+            video_app.router.add_route(
+                "*", "/{path:.*}", self._centralized_http_handler
+            )
+            video_runner = web.AppRunner(video_app)
+            await video_runner.setup()
+            video_site = web.TCPSite(video_runner, INADDR_ANY, VIDEO_PORT)
+            await video_site.start()
+            self.runners.append(video_runner)
+
+            msg = f"Centralized Video Proxy running on http://{self.get_local_ip()}:{VIDEO_PORT}"
+            self.logger.info(msg)
+
             # Start UDP discovery server
             def discovery_factory() -> DiscoveryProtocol:
                 return DiscoveryProtocol(
@@ -1014,7 +1059,7 @@ class ElegooPrinterServer:
     def _check_ports_are_available(self) -> bool:
         """Check if the required TCP and UDP ports for the proxy server are free."""
         for port, proto, name in [
-            (WEBSOCKET_PORT, socket.SOCK_STREAM, "TCP"),
+            (WEBSOCKET_PORT, socket.SOCK_STREAM, "WebSocket/HTTP TCP"),
             (VIDEO_PORT, socket.SOCK_STREAM, "Video TCP"),
             (DISCOVERY_PORT, socket.SOCK_DGRAM, "UDP"),
         ]:
@@ -1071,6 +1116,7 @@ class ElegooPrinterServer:
         """Handle HTTP requests for a specific printer (direct pass-through)."""
         if request.headers.get("Upgrade", "").lower() == "websocket":
             return await self._printer_websocket_handler(request, printer)
+
         if request.method == "POST" and (
             request.path == "/uploadFile/upload"
             or request.path.endswith("/uploadFile/upload")
@@ -1190,14 +1236,15 @@ class ElegooPrinterServer:
                         if video_url:
                             parts = urlsplit(str(video_url))
                             proxy_ip = self.get_local_ip()
-                            new_netloc = f"{proxy_ip}:{WEBSOCKET_PORT}"
-                            new_path = f"/video/{mainboard_id}"
+                            new_netloc = f"{proxy_ip}:{VIDEO_PORT}"
+                            new_path = "/video"
+                            new_query = f"id={mainboard_id}"
                             modified_url = urlunsplit(
                                 (
                                     parts.scheme or "http",
                                     new_netloc,
                                     new_path,
-                                    parts.query,
+                                    new_query,
                                     parts.fragment,
                                 )
                             )
@@ -1286,7 +1333,7 @@ class ElegooPrinterServer:
 
         if not mainboard_id:
             # Fallbacks: query param and path segment
-            mainboard_id = request.query.get("mainboard_id")
+            mainboard_id = request.query.get("id") or request.query.get("mainboard_id")
             if not mainboard_id:
                 parts = request.path.strip("/").split("/")
                 if len(parts) >= MIN_PATH_PARTS_FOR_FALLBACK and parts[0] in (
@@ -1369,9 +1416,14 @@ class ElegooPrinterServer:
         Extract target printer from HTTP request using multiple methods.
 
         Tries in order:
-        1. URL path: /api/{MainboardID}/... or /video/{MainboardID}
-        2. Query parameter: ?mainboard_id=...
-        3. Header: X-MainboardID
+        1. Query parameters: ?id=mainboardid or ?mainboard_id=mainboardid (preferred)
+        2. Referer header: Extracts MainboardID from the referring page URL (for web interface)
+        3. X-MainboardID header: Direct header specification (fallback)
+
+        This multi-method approach ensures routing works for:
+        - Direct API calls with query params
+        - Web interface navigation (uses referer)
+        - Custom client implementations (uses headers)
 
         Returns:
             Target printer if found, None otherwise
@@ -1379,26 +1431,48 @@ class ElegooPrinterServer:
         """
         mainboard_id = None
 
-        # Method 1: Extract from URL path
-        path_parts = request.path.strip("/").split("/")
-        if len(path_parts) >= MIN_PATH_PARTS_FOR_FALLBACK:
-            if path_parts[0] == "api" and len(path_parts) >= MIN_API_PATH_PARTS:
-                # /api/{MainboardID}/...
-                mainboard_id = path_parts[1]
-            elif path_parts[0] == "video" and len(path_parts) >= MIN_VIDEO_PATH_PARTS:
-                # /video/{MainboardID}
-                mainboard_id = path_parts[1]
+        self.logger.debug(
+            "HTTP request path: %s, query: %s", request.path, dict(request.query)
+        )
 
-        # Method 2: Query parameter fallback
+        # Method 1: Query parameter routing (preferred for all requests)
+        mainboard_id = request.query.get("id") or request.query.get("mainboard_id")
+        if mainboard_id:
+            self.logger.debug(
+                "Extracted MainboardID from query param: %s", mainboard_id
+            )
+
+        # Method 2: Referer header fallback (for web interface navigation)
         if not mainboard_id:
-            mainboard_id = request.query.get("mainboard_id")
+            referer = request.headers.get("Referer", "")
+            if referer:
+                mainboard_id = extract_mainboard_id_from_header(referer)
+                if mainboard_id:
+                    self.logger.debug(
+                        "Extracted MainboardID from Referer header: %s", mainboard_id
+                    )
 
-        # Method 3: Header fallback
+        # Method 3: X-MainboardID header fallback
         if not mainboard_id:
             mainboard_id = request.headers.get("X-MainboardID")
+            if mainboard_id:
+                self.logger.debug("Extracted MainboardID from header: %s", mainboard_id)
 
         # Find printer by MainboardID
         if mainboard_id:
+            self.logger.debug("Looking up printer for MainboardID: %s", mainboard_id)
+            available_printers = self.printer_registry.get_all_printers()
+            available_by_mainboard = (
+                self.printer_registry.get_all_printers_by_mainboard_id()
+            )
+            self.logger.debug(
+                "Available printers by IP: %s", list(available_printers.keys())
+            )
+            self.logger.debug(
+                "Available printers by MainboardID: %s",
+                list(available_by_mainboard.keys()),
+            )
+
             target_printer = self.printer_registry.get_printer_by_mainboard_id(
                 mainboard_id
             )
@@ -1428,23 +1502,17 @@ class ElegooPrinterServer:
 
     def _get_cleaned_path_for_printer(self, request_path: str) -> str:
         """
-        Clean request path by removing MainboardID for forwarding to printer.
+        Return the request path as-is since we use query parameter routing.
+
+        With query parameter routing (?id=mainboardid), the path doesn't contain
+        MainboardID information that needs to be removed.
 
         Examples:
-            /api/3c4c1a910147017000002c0000000000/status -> /status
-            /video/3c4c1a910147017000002c0000000000 -> /video
-            /status -> /status (unchanged)
+            /api/status?id=abc123 -> /api/status (path unchanged)
+            /video?id=abc123 -> /video (path unchanged)
+            /status?id=abc123 -> /status (path unchanged)
 
         """
-        path_parts = request_path.strip("/").split("/")
-        if len(path_parts) >= MIN_API_PATH_PARTS and path_parts[0] == "api":
-            # Remove /api/{MainboardID} prefix, keep the rest
-            cleaned_parts = path_parts[2:]
-            return "/" + "/".join(cleaned_parts) if cleaned_parts else "/"
-        if len(path_parts) >= MIN_VIDEO_PATH_PARTS and path_parts[0] == "video":
-            # /video/{MainboardID} -> /video
-            return "/video"
-        # Keep path unchanged for backward compatibility
         return request_path
 
     async def _centralized_http_handler(
@@ -1480,8 +1548,25 @@ class ElegooPrinterServer:
         # Clean path by removing MainboardID before forwarding to printer
         cleaned_path = self._get_cleaned_path_for_printer(request.path)
         query_string = f"?{request.query_string}" if request.query_string else ""
+
+        # Use appropriate port based on request type
+        if cleaned_path.startswith("/video"):
+            # Video requests always go to VIDEO_PORT (3031)
+            target_port = VIDEO_PORT
+        else:
+            # Other requests go to WEBSOCKET_PORT (3030)
+            target_port = WEBSOCKET_PORT
+
         target_url = (
-            f"http://{printer.ip_address}:{WEBSOCKET_PORT}{cleaned_path}{query_string}"
+            f"http://{printer.ip_address}:{target_port}{cleaned_path}{query_string}"
+        )
+
+        self.logger.debug(
+            "HTTP proxy forwarding: %s %s -> %s (cleaned path: %s)",
+            request.method,
+            request.path,
+            target_url,
+            cleaned_path,
         )
 
         try:
@@ -1522,7 +1607,7 @@ class ElegooPrinterServer:
         upstream_response: ClientResponse,
         printer: Printer,
     ) -> web.StreamResponse:
-        client_response.headers.pop("content-length")
+        client_response.headers.pop("content-length", None)
         await client_response.prepare(request)
         encoding = "utf-8"
         content_type = client_response.headers.get("content-type")
@@ -1561,7 +1646,8 @@ class ElegooPrinterServer:
         return client_response
 
     def _process_replacements(self, content: str, printer: Printer) -> str:
-        return (
+        # Apply existing IP address and port replacements
+        processed_content = (
             content.replace(
                 printer.ip_address or DEFAULT_FALLBACK_IP, self.get_local_ip()
             )
@@ -1578,6 +1664,36 @@ class ElegooPrinterServer:
                 "${this.webSocketService.hostName}:" + f"{WEBSOCKET_PORT}",
             )
         )
+
+        # Apply JavaScript WebSocket URL transformations (for MainboardID routing)
+        if printer.id:
+            # Template literal syntax (ES6) - main pattern for WebSocket connections
+            # Only add the parameter if it's not already there
+            if f"?id={printer.id}" not in processed_content:
+                processed_content = processed_content.replace(
+                    "ws://${this.hostName}:3030/websocket",
+                    f"ws://${{this.hostName}}:3030/websocket?id={printer.id}",
+                )
+
+                # Template literal for HTTP URLs
+                processed_content = processed_content.replace(
+                    "http://${this.hostName}:3030/",
+                    f"http://${{this.hostName}}:3030/?id={printer.id}&",
+                )
+
+                # String concatenation patterns (in case they exist)
+                processed_content = processed_content.replace(
+                    'ws://" + this.hostName + ":3030/websocket',
+                    f'ws://" + this.hostName + ":3030/websocket?id={printer.id}',
+                )
+
+                # Generic patterns without host variables
+                processed_content = processed_content.replace(
+                    "ws://localhost:3030/websocket",
+                    f"ws://localhost:3030/websocket?id={printer.id}",
+                )
+
+        return processed_content
 
     async def _centralized_file_handler(
         self, request: web.Request, printer: Printer
@@ -1614,22 +1730,102 @@ class ElegooPrinterServer:
             )
             return web.Response(status=502, text="Bad Gateway")
 
-    async def _printer_websocket_handler(
-        self,
-        request: web.Request,
-        printer: Printer,  # noqa: ARG002
-    ) -> web.WebSocketResponse:
-        """Legacy handler - redirect to centralized handler."""
-        return await self._centralized_websocket_handler(request)
+    async def _intercept_and_modify_main_js(
+        self, upstream_response: aiohttp.ClientResponse, printer: Printer
+    ) -> web.Response:
+        """
+        Intercept and modify JavaScript files to inject MainboardID routing.
+
+        This method modifies WebSocket connection URLs in the JavaScript to include
+        the MainboardID parameter for proper multi-printer routing.
+        """
+        self.logger.info(
+            "[!] Intercepting and modifying JavaScript file for printer %s", printer.id
+        )
+
+        # 1. Read the entire original body to perform replacement
+        original_body = await upstream_response.text()
+        modified_body = original_body
+
+        # 2. Define replacement patterns for WebSocket URLs
+        replacements = [
+            # Template literal syntax (ES6) - this is what you're actually looking for
+            {
+                "find": "ws://${this.hostName}:3030/websocket",
+                "replace": f"ws://${{this.hostName}}:3030/websocket?id={printer.id}",
+            },
+            # Template literal for HTTP URLs
+            {
+                "find": "http://${this.hostName}:3030/",
+                "replace": f"http://${{this.hostName}}:3030/?id={printer.id}&",
+            },
+            # String concatenation patterns (in case they exist)
+            {
+                "find": 'ws://" + this.hostName + ":3030/websocket',
+                "replace": f'ws://" + this.hostName + ":3030/websocket?id={printer.id}',
+            },
+            # Generic patterns without host variables
+            {
+                "find": "ws://localhost:3030/websocket",
+                "replace": f"ws://localhost:3030/websocket?id={printer.id}",
+            },
+        ]
+
+        # 3. Apply all replacements
+        replacements_made = 0
+        for replacement in replacements:
+            if replacement["find"] in modified_body:
+                modified_body = modified_body.replace(
+                    replacement["find"], replacement["replace"]
+                )
+                replacements_made += 1
+                self.logger.debug(
+                    "Replaced '%s' with '%s'",
+                    replacement["find"][:50] + "..."
+                    if len(replacement["find"]) > 50
+                    else replacement["find"],
+                    replacement["replace"][:50] + "..."
+                    if len(replacement["replace"]) > 50
+                    else replacement["replace"],
+                )
+
+        if replacements_made > 0:
+            self.logger.info(
+                "Made %d replacements in JavaScript file for printer %s",
+                replacements_made,
+                printer.id,
+            )
+        else:
+            self.logger.warning(
+                "No WebSocket URL patterns found to replace in JavaScript file for printer %s",
+                printer.id,
+            )
+
+        # 4. Prepare response headers, removing ones that will be recalculated by aiohttp
+        response_headers = upstream_response.headers.copy()
+        for h in (
+            "Content-Length",
+            "Transfer-Encoding",
+            "Connection",
+            "Content-Encoding",
+        ):
+            response_headers.pop(h, None)
+
+        # 5. Return a new, non-streaming response with the modified text
+        # aiohttp will automatically set the correct Content-Length.
+        return web.Response(
+            text=modified_body,
+            status=upstream_response.status,
+            headers=response_headers,
+        )
 
     async def _printer_http_proxy_handler(
         self, request: web.Request, printer: Printer
     ) -> web.StreamResponse:
-        """Handle HTTP requests for a specific printer (direct pass-through)."""
+        """Handle HTTP requests, to an interception method for specific files."""
         if not self.session or self.session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
-        # Forward directly to printer
         target_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
 
         headers = {
@@ -1661,6 +1857,19 @@ class ElegooPrinterServer:
                     total=None, sock_connect=10, sock_read=None
                 ),
             ) as upstream_response:
+                # --- Main Logic: Check and Delegate ---
+                # Intercept JavaScript files that likely contain WebSocket connection code
+                if request.path.endswith(".js") and (
+                    request.path.startswith("/main.")
+                    or request.path.startswith("/app.")
+                    or "main" in request.path.lower()
+                ):
+                    # Delegate the special handling to our new method
+                    return await self._intercept_and_modify_main_js(
+                        upstream_response, printer
+                    )
+
+                # --- Default Case: Stream all other responses ---
                 response_headers = upstream_response.headers.copy()
                 for h in (
                     "Content-Length",

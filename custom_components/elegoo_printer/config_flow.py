@@ -519,17 +519,8 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         LOGGER.debug("data: %s", self.config_entry.data)
         LOGGER.debug("options: %s", self.config_entry.options)
         if user_input is not None:
-            # Assign ports if proxy is enabled and not already assigned
-            if user_input[CONF_PROXY_ENABLED] and not (
-                printer.proxy_websocket_port and printer.proxy_video_port
-            ):
-                ws_port, video_port = ElegooPrinterServer.get_next_available_ports()
-                printer.proxy_websocket_port = ws_port
-                printer.proxy_video_port = video_port
-                LOGGER.debug(
-                    "Assigned ports for proxy: WS:%d Video:%d", ws_port, video_port
-                )
-            elif not user_input[CONF_PROXY_ENABLED]:
+            # No port assignment needed - centralized proxy with MainboardID routing
+            if not user_input[CONF_PROXY_ENABLED]:
                 # Clear ports if proxy is disabled
                 printer.proxy_websocket_port = None
                 printer.proxy_video_port = None

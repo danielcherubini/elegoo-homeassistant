@@ -195,11 +195,12 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             description: The entity description.
 
         """
-        # Use stored proxy video port if available, otherwise fallback to default
+        # Use centralized proxy with MainboardID routing
         printer = coordinator.config_entry.runtime_data.api.printer
-        if printer.proxy_enabled and printer.proxy_video_port:
+        if printer.proxy_enabled:
             proxy_ip = PrinterData.get_local_ip(printer.ip_address)
-            mjpeg_url = f"http://{proxy_ip}:{printer.proxy_video_port}/{VIDEO_ENDPOINT}"
+            # Use centralized proxy on port 3031 with MainboardID as query parameter
+            mjpeg_url = f"http://{proxy_ip}:{VIDEO_PORT}/video?id={printer.id}"
         else:
             # Direct HTTP MJPEG stream from the printer
             mjpeg_url = f"http://{printer.ip_address}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"

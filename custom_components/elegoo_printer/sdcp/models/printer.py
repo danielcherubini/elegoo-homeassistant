@@ -284,16 +284,9 @@ class PrinterData:
             return None
 
         if self.printer.proxy_enabled:
-            # Use stored proxy port if available
-            if self.printer.proxy_websocket_port:
-                proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
-                return f"http://{proxy_ip}:{self.printer.proxy_websocket_port}"
-
-            # Fallback: try to get port from server registry
-            assigned_port = self._get_assigned_proxy_port()
-            if assigned_port:
-                proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
-                return f"http://{proxy_ip}:{assigned_port}"
+            # Use centralized proxy on port 3030 (MainboardID routing handles the rest)
+            proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
+            return f"http://{proxy_ip}:{WEBSOCKET_PORT}"
 
         # Use direct printer URL
         return f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}"

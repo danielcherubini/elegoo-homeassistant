@@ -119,12 +119,17 @@ async def async_unload_entry(
         except (asyncio.CancelledError, ClientError, OSError, RuntimeError) as e:
             LOGGER.warning("Error disconnecting client: %s", e, exc_info=True)
 
-        # Release reference to proxy server (only stops if this was the last reference)
+        # Remove this specific printer from proxy server registry
         try:
-            await asyncio.shield(ElegooPrinterServer.release_reference())
+            should_stop = await asyncio.shield(
+                ElegooPrinterServer.remove_printer_from_server(client.printer, LOGGER)
+            )
+            if not should_stop:
+                # Server continues with other printers, just decrement reference count
+                await asyncio.shield(ElegooPrinterServer.release_reference())
         except (asyncio.CancelledError, OSError, RuntimeError) as e:
             LOGGER.warning(
-                "Error releasing proxy server reference: %s", e, exc_info=True
+                "Error removing printer from proxy server: %s", e, exc_info=True
             )
 
     return unload_ok
