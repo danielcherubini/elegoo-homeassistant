@@ -1287,9 +1287,9 @@ class ElegooPrinterServer:
             mainboard_id = request.query.get("mainboard_id")
             if not mainboard_id:
                 parts = request.path.strip("/").split("/")
-                if (
-                    len(parts) >= MIN_PATH_PARTS_FOR_FALLBACK
-                    and parts[0] in ("api", "video")
+                if len(parts) >= MIN_PATH_PARTS_FOR_FALLBACK and parts[0] in (
+                    "api",
+                    "video",
                 ):
                     mainboard_id = parts[1]
         if not mainboard_id:
