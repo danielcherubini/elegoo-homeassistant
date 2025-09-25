@@ -94,6 +94,8 @@ DISCOVERY_RATE_LIMIT_SECONDS = 30
 MIN_MAINBOARD_ID_LENGTH = 8
 TOPIC_PARTS_COUNT = 3  # Expected parts in SDCP topic: sdcp/{type}/{MainboardID}
 MIN_PATH_PARTS_FOR_FALLBACK = 2  # Minimum path parts needed for MainboardID fallback
+MIN_API_PATH_PARTS = 3  # Minimum parts for /api/{MainboardID}/... pattern
+MIN_VIDEO_PATH_PARTS = 2  # Minimum parts for /video/{MainboardID} pattern
 
 ALLOWED_REQUEST_HEADERS = {
     "GET": [
@@ -1362,6 +1364,89 @@ class ElegooPrinterServer:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
+    def _get_target_printer_from_request(self, request: web.Request) -> Printer | None:
+        """
+        Extract target printer from HTTP request using multiple methods.
+
+        Tries in order:
+        1. URL path: /api/{MainboardID}/... or /video/{MainboardID}
+        2. Query parameter: ?mainboard_id=...
+        3. Header: X-MainboardID
+
+        Returns:
+            Target printer if found, None otherwise
+
+        """
+        mainboard_id = None
+
+        # Method 1: Extract from URL path
+        path_parts = request.path.strip("/").split("/")
+        if len(path_parts) >= MIN_PATH_PARTS_FOR_FALLBACK:
+            if path_parts[0] == "api" and len(path_parts) >= MIN_API_PATH_PARTS:
+                # /api/{MainboardID}/...
+                mainboard_id = path_parts[1]
+            elif path_parts[0] == "video" and len(path_parts) >= MIN_VIDEO_PATH_PARTS:
+                # /video/{MainboardID}
+                mainboard_id = path_parts[1]
+
+        # Method 2: Query parameter fallback
+        if not mainboard_id:
+            mainboard_id = request.query.get("mainboard_id")
+
+        # Method 3: Header fallback
+        if not mainboard_id:
+            mainboard_id = request.headers.get("X-MainboardID")
+
+        # Find printer by MainboardID
+        if mainboard_id:
+            target_printer = self.printer_registry.get_printer_by_mainboard_id(
+                mainboard_id
+            )
+            if target_printer:
+                self.logger.debug(
+                    "HTTP request routed to printer %s (MainboardID: %s)",
+                    target_printer.name,
+                    mainboard_id,
+                )
+                return target_printer
+            self.logger.warning(
+                "No printer found for MainboardID: %s in HTTP request", mainboard_id
+            )
+
+        # Fallback: Use first available printer if no MainboardID specified
+        printers = self.printer_registry.get_all_printers()
+        if printers:
+            fallback_printer = next(iter(printers.values()))
+            self.logger.debug(
+                "No MainboardID in HTTP request, using fallback printer: %s",
+                fallback_printer.name,
+            )
+            return fallback_printer
+
+        self.logger.warning("No printers available for HTTP request")
+        return None
+
+    def _get_cleaned_path_for_printer(self, request_path: str) -> str:
+        """
+        Clean request path by removing MainboardID for forwarding to printer.
+
+        Examples:
+            /api/3c4c1a910147017000002c0000000000/status -> /status
+            /video/3c4c1a910147017000002c0000000000 -> /video
+            /status -> /status (unchanged)
+
+        """
+        path_parts = request_path.strip("/").split("/")
+        if len(path_parts) >= MIN_API_PATH_PARTS and path_parts[0] == "api":
+            # Remove /api/{MainboardID} prefix, keep the rest
+            cleaned_parts = path_parts[2:]
+            return "/" + "/".join(cleaned_parts) if cleaned_parts else "/"
+        if len(path_parts) >= MIN_VIDEO_PATH_PARTS and path_parts[0] == "video":
+            # /video/{MainboardID} -> /video
+            return "/video"
+        # Keep path unchanged for backward compatibility
+        return request_path
+
     async def _centralized_http_handler(
         self, request: web.Request
     ) -> web.StreamResponse:
@@ -1369,15 +1454,13 @@ class ElegooPrinterServer:
         if request.headers.get("Upgrade", "").lower() == "websocket":
             return await self._centralized_websocket_handler(request)
 
-        # For HTTP requests, we need to extract printer info from request
-        # For now, route to the first available printer (can be enhanced later)
-        printers = self.printer_registry.get_all_printers()
-        if not printers:
-            return web.Response(status=503, text="No printers available")
+        # Extract MainboardID from URL path, query param, or header
+        target_printer = self._get_target_printer_from_request(request)
+        if not target_printer:
+            return web.Response(status=404, text="Printer not found or not specified")
 
-        # Use first printer for HTTP requests
-        # (this could be enhanced with better routing)
-        first_printer = next(iter(printers.values()))
+        # Use the identified printer for HTTP requests
+        first_printer = target_printer
 
         if request.method == "POST" and (
             request.path == "/uploadFile/upload"
@@ -1394,7 +1477,12 @@ class ElegooPrinterServer:
         if not self.session or self.session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
-        target_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
+        # Clean path by removing MainboardID before forwarding to printer
+        cleaned_path = self._get_cleaned_path_for_printer(request.path)
+        query_string = f"?{request.query_string}" if request.query_string else ""
+        target_url = (
+            f"http://{printer.ip_address}:{WEBSOCKET_PORT}{cleaned_path}{query_string}"
+        )
 
         try:
             async with self.session.request(
@@ -1498,8 +1586,12 @@ class ElegooPrinterServer:
         if not self.session or self.session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
-        # Forward directly to printer's file upload endpoint
-        remote_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
+        # Clean path by removing MainboardID before forwarding to printer
+        cleaned_path = self._get_cleaned_path_for_printer(request.path)
+        query_string = f"?{request.query_string}" if request.query_string else ""
+        remote_url = (
+            f"http://{printer.ip_address}:{WEBSOCKET_PORT}{cleaned_path}{query_string}"
+        )
 
         try:
             async with self.session.post(
