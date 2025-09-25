@@ -63,7 +63,7 @@ import socket
 import time
 from math import floor
 from typing import TYPE_CHECKING, Any
-from urllib.parse import parse_qs, urlparse, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlparse
 
 import aiohttp
 from aiohttp import ClientResponse, ClientSession, WSMsgType, web
@@ -1208,6 +1208,29 @@ class ElegooPrinterServer:
         else:
             return remote_ws
 
+    def _find_video_url_in_data(self, data: dict) -> tuple[str | None, dict | None]:
+        """Find VideoUrl in nested data structures and return it with its parent."""
+        if not isinstance(data, dict):
+            return None, None
+
+        # Check top-level VideoUrl
+        if "VideoUrl" in data:
+            return data["VideoUrl"], data
+
+        # Check Data.VideoUrl
+        if isinstance(data.get("Data"), dict) and "VideoUrl" in data["Data"]:
+            return data["Data"]["VideoUrl"], data["Data"]
+
+        # Check Data.Data.VideoUrl
+        if (
+            isinstance(data.get("Data"), dict)
+            and isinstance(data["Data"].get("Data"), dict)
+            and "VideoUrl" in data["Data"]["Data"]
+        ):
+            return data["Data"]["Data"]["VideoUrl"], data["Data"]["Data"]
+
+        return None, None
+
     async def _route_printer_to_client(
         self,
         mainboard_id: str,
@@ -1222,36 +1245,27 @@ class ElegooPrinterServer:
                     payload = message.data
                     try:
                         data = json.loads(payload)
-                        # Handle either top-level or nested Data.VideoUrl
-                        video_url = None
-                        target = data
-                        if isinstance(data, dict):
-                            if "VideoUrl" in data:
-                                video_url = data["VideoUrl"]
-                            elif (
-                                isinstance(data.get("Data"), dict)
-                                and "VideoUrl" in data["Data"]
-                            ):
-                                video_url = data["Data"]["VideoUrl"]
-                                target = data["Data"]
+                        # Find and rewrite VideoUrl in nested data structures
+                        video_url, target = self._find_video_url_in_data(data)
                         if video_url:
-                            parts = urlsplit(str(video_url))
+                            video_url_str = str(video_url)
                             proxy_ip = self.get_local_ip()
-                            new_netloc = f"{proxy_ip}:{VIDEO_PORT}"
-                            new_path = "/video"
-                            new_query = f"id={mainboard_id}"
-                            modified_url = urlunsplit(
-                                (
-                                    parts.scheme or "http",
-                                    new_netloc,
-                                    new_path,
-                                    new_query,
-                                    parts.fragment,
-                                )
+
+                            # Handle URLs without scheme (e.g., "10.0.0.184:3031/video")
+                            if not video_url_str.startswith(("http://", "https://")):
+                                video_url_str = f"http://{video_url_str}"
+
+                            # Build URL without scheme to match original format
+                            modified_url = (
+                                f"{proxy_ip}:{VIDEO_PORT}/video?id={mainboard_id}"
                             )
                             target["VideoUrl"] = modified_url
                             payload = json.dumps(data)
-                            self.logger.debug("Rewrote VideoUrl -> %s", modified_url)
+                            self.logger.debug(
+                                "Rewrote VideoUrl from %s -> %s",
+                                video_url,
+                                modified_url,
+                            )
                     except (
                         json.JSONDecodeError,
                         ValueError,
@@ -1365,10 +1379,29 @@ class ElegooPrinterServer:
             )
             tasks.add(task)
 
-        # Forward message to printer
+        # Forward message to printer, injecting MainboardID if missing
         remote_ws = printer_connections[mainboard_id]
         try:
-            await remote_ws.send_str(message.data)
+            # Check if message needs MainboardID injection
+            message_data = message.data
+            try:
+                data = json.loads(message_data)
+                if (
+                    isinstance(data, dict)
+                    and isinstance(data.get("Data"), dict)
+                    and not data["Data"].get("MainboardID")
+                ):
+                    # Inject MainboardID from WebSocket query parameter
+                    data["Data"]["MainboardID"] = mainboard_id
+                    message_data = json.dumps(data)
+                    self.logger.debug(
+                        "Injected MainboardID %s into outgoing message", mainboard_id
+                    )
+            except (json.JSONDecodeError, KeyError, TypeError):
+                # If we can't parse/modify the message, send it as-is
+                pass
+
+            await remote_ws.send_str(message_data)
         except aiohttp.ClientError:
             self.logger.exception("Failed to send message to printer %s", mainboard_id)
             printer_connections.pop(mainboard_id, None)

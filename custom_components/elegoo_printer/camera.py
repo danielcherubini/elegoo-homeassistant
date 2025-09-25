@@ -18,7 +18,6 @@ from propcache.api import cached_property
 
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
-    CONF_PROXY_ENABLED,
     LOGGER,
     VIDEO_ENDPOINT,
     VIDEO_PORT,
@@ -257,9 +256,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             LOGGER.debug("stream_source: Video is OK, getting stream source")
             video_url = self._normalize_video_url(video.video_url)
             if not video_url:
-                LOGGER.debug(
-                    "stream_source: Empty or invalid video URL from printer"
-                )
+                LOGGER.debug("stream_source: Empty or invalid video URL from printer")
                 self._mjpeg_url = None
                 return
 
