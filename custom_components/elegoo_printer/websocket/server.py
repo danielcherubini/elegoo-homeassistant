@@ -1659,9 +1659,21 @@ class ElegooPrinterServer:
         upstream_response: ClientResponse,
     ) -> web.StreamResponse:
         await client_response.prepare(request)
-        async for chunk in upstream_response.content.iter_any():
-            await client_response.write(chunk)
-        await client_response.write_eof()
+        try:
+            async for chunk in upstream_response.content.iter_any():
+                if request.transport is None or request.transport.is_closing():
+                    self.logger.debug("Client disconnected during streaming")
+                    break
+                await client_response.write(chunk)
+            await client_response.write_eof()
+        except (
+            aiohttp.ClientConnectionResetError,
+            ConnectionResetError,
+            asyncio.CancelledError,
+        ) as e:
+            self.logger.debug("Stream interrupted by client disconnect: %s", e)
+        except Exception:
+            self.logger.exception("Unexpected error during streaming")
         return client_response
 
     def _process_replacements(self, content: str, printer: Printer) -> str:
