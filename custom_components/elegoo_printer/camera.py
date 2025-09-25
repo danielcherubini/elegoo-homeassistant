@@ -201,7 +201,8 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             proxy_ip = PrinterData.get_local_ip(printer.ip_address)
             mjpeg_url = f"http://{proxy_ip}:{printer.proxy_video_port}/{VIDEO_ENDPOINT}"
         else:
-            mjpeg_url = f"http://{PROXY_HOST}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"
+            # Direct HTTP MJPEG stream from the printer
+            mjpeg_url = f"http://{printer.ip_address}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"
 
         MjpegCamera.__init__(
             self,

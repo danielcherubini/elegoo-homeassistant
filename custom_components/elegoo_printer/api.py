@@ -106,9 +106,7 @@ class ElegooPrinterApiClient:
             )
             # This is probably unnecessary, but let's disconnect for completeness
             await self.client.disconnect()
-            # Only stop proxy servers if proxy was actually enabled
-            if self._proxy_server_enabled:
-                await ElegooPrinterServer.stop_all()
+            # No proxy server was started by this client; nothing to release here
             return None
 
         # Printer is reachable, now set up proxy if enabled
@@ -117,7 +115,9 @@ class ElegooPrinterApiClient:
             if printer is None:
                 # Proxy was required but failed to start
                 await self.client.disconnect()
-                await ElegooPrinterServer.stop_all()
+                # Release only our proxy reference if any
+                if self.server:
+                    await ElegooPrinterServer.release_reference()
                 return None
 
         # Now connect to the printer (either direct or through proxy)
@@ -133,9 +133,9 @@ class ElegooPrinterApiClient:
                 printer, proxy_enabled=proxy_server_enabled
             )
             if not connected:
-                # Stop ALL server instances to ensure clean state
-                if self._proxy_server_enabled:
-                    await ElegooPrinterServer.stop_all()
+                # Release only our proxy reference if any
+                if self.server:
+                    await ElegooPrinterServer.release_reference()
                 self.server = None
                 await self.client.disconnect()
                 self._proxy_server_enabled = False
@@ -143,9 +143,9 @@ class ElegooPrinterApiClient:
             logger.info("Polling Started")
             return self  # noqa: TRY300
         except (ConnectionError, TimeoutError):
-            # Stop ALL server instances to ensure clean state
-            if self._proxy_server_enabled:
-                await ElegooPrinterServer.stop_all()
+            # Release only our proxy reference if any
+            if self.server:
+                await ElegooPrinterServer.release_reference()
             self.server = None
             await self.client.disconnect()
             self._proxy_server_enabled = False
@@ -205,9 +205,9 @@ class ElegooPrinterApiClient:
                 printer.name,
                 printer.ip_address,
             )
-            # Stop server instances since printer is unreachable (only if proxy enabled)
-            if self._proxy_server_enabled:
-                await ElegooPrinterServer.stop_all()
+            # Release only our proxy reference if any
+            if self.server:
+                await ElegooPrinterServer.release_reference()
             self.server = None
             return False
 
@@ -515,8 +515,9 @@ class ElegooPrinterApiClient:
             self._logger.exception(
                 "Failed to start required proxy server; proxy ports may be in use."
             )
-            # Clean up any partial state
-            await ElegooPrinterServer.stop_all()
+            # Clean up any partial state (only our reference)
+            if self.server:
+                await ElegooPrinterServer.release_reference()
             self.server = None
             return None
         else:

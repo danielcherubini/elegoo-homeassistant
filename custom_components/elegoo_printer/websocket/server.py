@@ -1168,11 +1168,42 @@ class ElegooPrinterServer:
         try:
             async for message in remote_ws:
                 if message.type == WSMsgType.TEXT:
-                    await client_ws.send_str(message.data)
+                    payload = message.data
+                    try:
+                        data = json.loads(payload)
+                        # Handle either top-level or nested Data.VideoUrl
+                        video_url = None
+                        target = data
+                        if isinstance(data, dict):
+                            if "VideoUrl" in data:
+                                video_url = data["VideoUrl"]
+                            elif isinstance(data.get("Data"), dict) and "VideoUrl" in data["Data"]:
+                                video_url = data["Data"]["VideoUrl"]
+                                target = data["Data"]
+                        if video_url:
+                            from urllib.parse import urlsplit, urlunsplit
+                            parts = urlsplit(str(video_url))
+                            proxy_ip = self.get_local_ip()
+                            new_netloc = f"{proxy_ip}:{WEBSOCKET_PORT}"
+                            new_path = f"/video/{mainboard_id}"
+                            modified_url = urlunsplit((
+                                parts.scheme or "http",
+                                new_netloc,
+                                new_path,
+                                parts.query,
+                                parts.fragment,
+                            ))
+                            target["VideoUrl"] = modified_url
+                            payload = json.dumps(data)
+                            self.logger.debug("Rewrote VideoUrl -> %s", modified_url)
+                    except Exception:
+                        # Not JSON or malformed: forward original payload
+                        pass
+                    await client_ws.send_str(payload)
                     self.logger.debug(
                         "Routed response from printer %s: %s",
                         mainboard_id,
-                        message.data[:100],
+                        payload[:100],
                     )
                 elif message.type == WSMsgType.BINARY:
                     await client_ws.send_bytes(message.data)
@@ -1239,6 +1270,13 @@ class ElegooPrinterServer:
             message.data[:200],
         )
 
+        if not mainboard_id:
+            # Fallbacks: query param and path segment
+            mainboard_id = request.query.get("mainboard_id")
+            if not mainboard_id:
+                parts = request.path.strip("/").split("/")
+                if len(parts) >= 2 and parts[0] in ("api", "video"):
+                    mainboard_id = parts[1]
         if not mainboard_id:
             self.logger.debug("No MainboardID found in message: %s", message.data[:200])
             return
@@ -1672,7 +1710,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                             "MachineName": display_name,
                             "BrandName": getattr(printer, "brand", "Elegoo"),
                             "MainboardIP": self.proxy_ip,  # Point to our proxy
-                            "MainboardID": f"{ip}:{ws_port}",  # Use IP:port as ID
+                            "MainboardID": getattr(printer, "id", None) or ip,
                             "ProtocolVersion": getattr(printer, "protocol", "V3.0.0"),
                             "FirmwareVersion": getattr(printer, "firmware", "V1.0.0"),
                             # Add custom fields for port-based routing
