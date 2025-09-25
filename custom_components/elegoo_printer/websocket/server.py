@@ -63,6 +63,7 @@ import socket
 import time
 from math import floor
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit, urlunsplit
 
 import aiohttp
 from aiohttp import ClientResponse, ClientSession, WSMsgType, web
@@ -92,6 +93,7 @@ DISCOVERY_TIMEOUT = 5
 DISCOVERY_RATE_LIMIT_SECONDS = 30
 MIN_MAINBOARD_ID_LENGTH = 8
 TOPIC_PARTS_COUNT = 3  # Expected parts in SDCP topic: sdcp/{type}/{MainboardID}
+MIN_PATH_PARTS_FOR_FALLBACK = 2  # Minimum path parts needed for MainboardID fallback
 
 ALLOWED_REQUEST_HEADERS = {
     "GET": [
@@ -1177,28 +1179,38 @@ class ElegooPrinterServer:
                         if isinstance(data, dict):
                             if "VideoUrl" in data:
                                 video_url = data["VideoUrl"]
-                            elif isinstance(data.get("Data"), dict) and "VideoUrl" in data["Data"]:
+                            elif (
+                                isinstance(data.get("Data"), dict)
+                                and "VideoUrl" in data["Data"]
+                            ):
                                 video_url = data["Data"]["VideoUrl"]
                                 target = data["Data"]
                         if video_url:
-                            from urllib.parse import urlsplit, urlunsplit
                             parts = urlsplit(str(video_url))
                             proxy_ip = self.get_local_ip()
                             new_netloc = f"{proxy_ip}:{WEBSOCKET_PORT}"
                             new_path = f"/video/{mainboard_id}"
-                            modified_url = urlunsplit((
-                                parts.scheme or "http",
-                                new_netloc,
-                                new_path,
-                                parts.query,
-                                parts.fragment,
-                            ))
+                            modified_url = urlunsplit(
+                                (
+                                    parts.scheme or "http",
+                                    new_netloc,
+                                    new_path,
+                                    parts.query,
+                                    parts.fragment,
+                                )
+                            )
                             target["VideoUrl"] = modified_url
                             payload = json.dumps(data)
                             self.logger.debug("Rewrote VideoUrl -> %s", modified_url)
-                    except Exception:
+                    except (
+                        json.JSONDecodeError,
+                        ValueError,
+                        TypeError,
+                        KeyError,
+                        AttributeError,
+                    ):
                         # Not JSON or malformed: forward original payload
-                        pass
+                        self.logger.debug("Could not parse or rewrite VideoUrl")
                     await client_ws.send_str(payload)
                     self.logger.debug(
                         "Routed response from printer %s: %s",
@@ -1275,7 +1287,10 @@ class ElegooPrinterServer:
             mainboard_id = request.query.get("mainboard_id")
             if not mainboard_id:
                 parts = request.path.strip("/").split("/")
-                if len(parts) >= 2 and parts[0] in ("api", "video"):
+                if (
+                    len(parts) >= MIN_PATH_PARTS_FOR_FALLBACK
+                    and parts[0] in ("api", "video")
+                ):
                     mainboard_id = parts[1]
         if not mainboard_id:
             self.logger.debug("No MainboardID found in message: %s", message.data[:200])
