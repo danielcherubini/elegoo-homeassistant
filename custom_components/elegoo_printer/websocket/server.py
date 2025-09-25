@@ -1642,10 +1642,6 @@ class ElegooPrinterServer:
                 f"{self.get_local_ip()}:{WEBSOCKET_PORT}/",
             )
             .replace(
-                f"{self.get_local_ip()}:{VIDEO_PORT}/",
-                f"{self.get_local_ip()}:{WEBSOCKET_PORT}/",
-            )
-            .replace(
                 "${this.webSocketService.hostName}:80",
                 "${this.webSocketService.hostName}:" + f"{WEBSOCKET_PORT}",
             )
