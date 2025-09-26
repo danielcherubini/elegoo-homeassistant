@@ -296,24 +296,4 @@ class PrinterData:
         if not self.printer or not self.printer.ip_address:
             return None
 
-        # Try to get port from server registry if available
-        try:
-            # Import here to avoid circular dependency
-            from custom_components.elegoo_printer.websocket.server import (  # noqa: PLC0415
-                ElegooPrinterServer,
-            )
-
-            # Access singleton instance - this is intentional for server coordination
-            if ElegooPrinterServer._instance:  # noqa: SLF001
-                ports = (
-                    ElegooPrinterServer._instance.printer_registry.get_printer_ports(  # noqa: SLF001
-                        self.printer.ip_address
-                    )
-                )
-                if ports:
-                    return ports[0]  # Return WebSocket port
-        except ImportError:
-            # Server module not available
-            pass
-
-        return None
+        return WEBSOCKET_PORT
