@@ -366,6 +366,3 @@ action:
               tag: "{{ notification_group }}_critical_error"
               sticky: true
               alert_once: false
-              push:
-                interruption-level: critical
-
