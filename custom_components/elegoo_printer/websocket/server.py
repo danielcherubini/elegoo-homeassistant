@@ -153,6 +153,7 @@ ALLOWED_RESPONSE_HEADERS = {
         "cache-control",
         "last-modified",
         "accept-ranges",
+        "access-control-allow-origin",
     ],
     "HEAD": [
         "content-length",
@@ -162,6 +163,7 @@ ALLOWED_RESPONSE_HEADERS = {
         "cache-control",
         "last-modified",
         "accept-ranges",
+        "access-control-allow-origin",
     ],
     "OPTIONS": [
         "access-control-allow-origin",
@@ -182,11 +184,9 @@ TRANSFORMABLE_MIME_TYPES = [
 ]
 
 CACHEABLE_MIME_TYPES = [
-    "text/plain",
     "text/css",
-    "text/html",
     "text/javascript",
-    "application/json",
+    "application/javascript",
     "image/apng",
     "image/avif",
     "image/gif",
@@ -559,7 +559,7 @@ class PrinterRegistry:
                                     ws_port,
                                     video_port,
                                 )
-                        except TimeoutError:
+                        except socket.timeout:
                             # Socket timeout is expected, continue polling
                             continue
                         except OSError as e:
@@ -1166,7 +1166,7 @@ class ElegooPrinterServer:
                         "An unexpected error occurred during video streaming"
                     )
                 return response
-        except TimeoutError as e:
+        except asyncio.TimeoutError as e:
             self.logger.debug("Video stream timeout from %s: %s", remote_url, e)
             return web.Response(status=504, text="Video stream not available")
         except aiohttp.ClientError as e:
@@ -1418,8 +1418,8 @@ class ElegooPrinterServer:
             if not task.done():
                 task.cancel()
 
-        # Close all printer connections
-        for remote_ws in printer_connections.values():
+        # Close all printer connections (copy values to avoid iteration issues)
+        for remote_ws in list(printer_connections.values()):
             if not remote_ws.closed:
                 await remote_ws.close()
 
@@ -1566,7 +1566,13 @@ class ElegooPrinterServer:
 
         # Clean path by removing MainboardID before forwarding to printer
         cleaned_path = self._get_cleaned_path_for_printer(request.path)
-        query_string = f"?{request.query_string}" if request.query_string else ""
+        from urllib.parse import parse_qsl, urlencode
+        q = [
+            (k, v)
+            for k, v in parse_qsl(request.query_string, keep_blank_values=True)
+            if k.lower() not in ("id", "mainboard_id")
+        ]
+        query_string = f"?{urlencode(q, doseq=True)}" if q else ""
 
         # Use appropriate port based on request type
         if cleaned_path.startswith("/video"):
@@ -1729,10 +1735,14 @@ class ElegooPrinterServer:
 
         # Clean path by removing MainboardID before forwarding to printer
         cleaned_path = self._get_cleaned_path_for_printer(request.path)
-        query_string = f"?{request.query_string}" if request.query_string else ""
-        remote_url = (
-            f"http://{printer.ip_address}:{WEBSOCKET_PORT}{cleaned_path}{query_string}"
-        )
+        from urllib.parse import parse_qsl, urlencode
+        q = [
+            (k, v)
+            for k, v in parse_qsl(request.query_string, keep_blank_values=True)
+            if k.lower() not in ("id", "mainboard_id")
+        ]
+        query_string = f"?{urlencode(q, doseq=True)}" if q else ""
+        remote_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{cleaned_path}{query_string}"
 
         try:
             async with self.session.post(
@@ -1927,7 +1937,22 @@ class ElegooPrinterServer:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
         # Forward directly to printer's file upload endpoint
-        remote_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
+        from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+        parts = urlsplit(request.path_qs)
+        q = [
+            (k, v)
+            for k, v in parse_qsl(parts.query, keep_blank_values=True)
+            if k.lower() not in ("id", "mainboard_id")
+        ]
+        remote_url = urlunsplit(
+            (
+                "http",
+                f"{printer.ip_address}:{WEBSOCKET_PORT}",
+                parts.path,
+                urlencode(q, doseq=True) if q else "",
+                parts.fragment,
+            )
+        )
 
         headers = {
             k: v
