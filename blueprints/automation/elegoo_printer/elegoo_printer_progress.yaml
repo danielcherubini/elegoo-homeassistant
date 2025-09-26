@@ -276,7 +276,7 @@ action:
             value_template: "{{ enable_status_notifications }}"
           - condition: template
             value_template: >-
-              {{ states(print_status_entity) not in ['complete', 'stopped', 'stopping'] }}
+              {{ states(print_status_entity) not in ['complete', 'stopped', 'stopping', 'unknown', 'unavailable'] }}
         sequence:
           - device_id: !input notify_device
             domain: mobile_app
