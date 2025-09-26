@@ -63,7 +63,7 @@ import socket
 import time
 from math import floor
 from typing import TYPE_CHECKING, Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 import aiohttp
 from aiohttp import ClientResponse, ClientSession, WSMsgType, web
@@ -559,7 +559,7 @@ class PrinterRegistry:
                                     ws_port,
                                     video_port,
                                 )
-                        except socket.timeout:
+                        except TimeoutError:
                             # Socket timeout is expected, continue polling
                             continue
                         except OSError as e:
@@ -1166,7 +1166,7 @@ class ElegooPrinterServer:
                         "An unexpected error occurred during video streaming"
                     )
                 return response
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             self.logger.debug("Video stream timeout from %s: %s", remote_url, e)
             return web.Response(status=504, text="Video stream not available")
         except aiohttp.ClientError as e:
@@ -1566,7 +1566,6 @@ class ElegooPrinterServer:
 
         # Clean path by removing MainboardID before forwarding to printer
         cleaned_path = self._get_cleaned_path_for_printer(request.path)
-        from urllib.parse import parse_qsl, urlencode
         q = [
             (k, v)
             for k, v in parse_qsl(request.query_string, keep_blank_values=True)
@@ -1735,14 +1734,15 @@ class ElegooPrinterServer:
 
         # Clean path by removing MainboardID before forwarding to printer
         cleaned_path = self._get_cleaned_path_for_printer(request.path)
-        from urllib.parse import parse_qsl, urlencode
         q = [
             (k, v)
             for k, v in parse_qsl(request.query_string, keep_blank_values=True)
             if k.lower() not in ("id", "mainboard_id")
         ]
         query_string = f"?{urlencode(q, doseq=True)}" if q else ""
-        remote_url = f"http://{printer.ip_address}:{WEBSOCKET_PORT}{cleaned_path}{query_string}"
+        remote_url = (
+            f"http://{printer.ip_address}:{WEBSOCKET_PORT}{cleaned_path}{query_string}"
+        )
 
         try:
             async with self.session.post(
@@ -1937,7 +1937,6 @@ class ElegooPrinterServer:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
         # Forward directly to printer's file upload endpoint
-        from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
         parts = urlsplit(request.path_qs)
         q = [
             (k, v)
