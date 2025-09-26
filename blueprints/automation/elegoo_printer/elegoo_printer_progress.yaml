@@ -145,8 +145,10 @@ action:
               push:
                 interruption-level: passive
 
-      # Handle print completion (triggered by either trigger type)
+      # Handle print completion (triggered by print_status_entity changes)
       - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'print_status' }}"
           - condition: template
             value_template: "{{ notify_device != '' }}"
           - condition: template
