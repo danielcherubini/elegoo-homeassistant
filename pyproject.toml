@@ -51,6 +51,7 @@ max-complexity = 25
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["S101"]
 "custom_components/elegoo_printer/sdcp/tests/*.py" = ["S101"]
+"custom_components/elegoo_printer/websocket/tests/*.py" = ["S101"]
 
 [tool.pytest.ini_options]
 pythonpath = [
