@@ -95,18 +95,15 @@ variables:
 trigger:
   - platform: state
     entity_id: !input percent_complete_entity
-  - platform: template
+  - id: print_status
+    platform: template
     value_template: "{{ states(print_status_entity) }}"
-    variables:
-      trigger_entity: "{{ print_status_entity }}"
-  - platform: template
+  - id: current_status
+    platform: template
     value_template: "{{ states(current_status_entity) }}"
-    variables:
-      trigger_entity: "{{ current_status_entity }}"
-  - platform: template
+  - id: error_status_reason
+    platform: template
     value_template: "{{ states(error_status_reason_entity) }}"
-    variables:
-      trigger_entity: "{{ error_status_reason_entity }}"
 
 condition: []
 
@@ -175,7 +172,7 @@ action:
       # Handle critical error status reasons (triggered by error_status_reason_entity changes)
       - conditions:
           - condition: template
-            value_template: "{{ trigger.platform == 'template' and trigger.variables.trigger_entity == error_status_reason_entity }}"
+            value_template: "{{ trigger.id == 'error_status_reason' }}"
           - condition: template
             value_template: "{{ notify_device != '' }}"
           - condition: template
@@ -237,7 +234,7 @@ action:
       # Handle error states (triggered by print_status_entity changes)
       - conditions:
           - condition: template
-            value_template: "{{ trigger.platform == 'template' and trigger.variables.trigger_entity == print_status_entity }}"
+            value_template: "{{ trigger.id == 'print_status' }}"
           - condition: template
             value_template: "{{ notify_device != '' }}"
           - condition: template
@@ -272,7 +269,7 @@ action:
       # Handle status change notifications (triggered by print_status_entity changes)
       - conditions:
           - condition: template
-            value_template: "{{ trigger.platform == 'template' and trigger.variables.trigger_entity == print_status_entity }}"
+            value_template: "{{ trigger.id == 'print_status' }}"
           - condition: template
             value_template: "{{ notify_device != '' }}"
           - condition: template
@@ -322,7 +319,7 @@ action:
       # Handle current status change notifications (triggered by current_status_entity changes)
       - conditions:
           - condition: template
-            value_template: "{{ trigger.platform == 'template' and trigger.variables.trigger_entity == current_status_entity }}"
+            value_template: "{{ trigger.id == 'current_status' }}"
           - condition: template
             value_template: "{{ notify_device != '' }}"
           - condition: template
