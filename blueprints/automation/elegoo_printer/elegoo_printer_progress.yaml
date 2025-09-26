@@ -147,6 +147,8 @@ action:
           - condition: template
             value_template: "{{ trigger.entity_id == percent_complete_entity }}"
           - condition: template
+            value_template: "{{ states(percent_complete_entity) not in ['unknown', 'unavailable'] }}"
+          - condition: template
             value_template: "{{ states(percent_complete_entity) | int(0) < 100 }}"
           - condition: template
             value_template: >-
