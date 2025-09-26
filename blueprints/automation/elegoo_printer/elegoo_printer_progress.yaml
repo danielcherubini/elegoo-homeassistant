@@ -115,28 +115,10 @@ trigger:
     entity_id: !input percent_complete_entity
   - platform: state
     entity_id: !input print_status_entity
-    not_from:
-      - "unknown"
-      - "unavailable"
-    not_to:
-      - "unknown"
-      - "unavailable"
   - platform: state
     entity_id: !input current_status_entity
-    not_from:
-      - "unknown"
-      - "unavailable"
-    not_to:
-      - "unknown"
-      - "unavailable"
   - platform: state
     entity_id: !input error_status_reason_entity
-    not_from:
-      - "unknown"
-      - "unavailable"
-    not_to:
-      - "unknown"
-      - "unavailable"
 
 condition: []
 
@@ -196,6 +178,8 @@ action:
                     value_template: "{{ trigger.entity_id == percent_complete_entity }}"
                   - condition: template
                     value_template: "{{ states(percent_complete_entity) | int(0) >= 95 }}"
+                  - condition: template
+                    value_template: "{{ (trigger.from_state.state | int(0)) < 95 }}"
         sequence:
           - device_id: !input notify_device
             domain: mobile_app
@@ -210,7 +194,7 @@ action:
               channel: "{{ notification_group }}"
               tag: "{{ notification_group }}_complete"
               sticky: true
-              alert_once: false
+              alert_once: true
               push:
                 interruption-level: time-sensitive
 
@@ -272,6 +256,8 @@ action:
             value_template: "{{ notify_device != '' }}"
           - condition: template
             value_template: "{{ enable_status_notifications }}"
+          - condition: template
+            value_template: "{{ states(current_status_entity) not in ['unknown', 'unavailable'] }}"
         sequence:
           - device_id: !input notify_device
             domain: mobile_app
