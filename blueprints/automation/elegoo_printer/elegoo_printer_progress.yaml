@@ -13,6 +13,30 @@ blueprint:
         entity:
           domain: sensor
           integration: elegoo_printer
+    print_status_entity:
+      name: Print Status Entity
+      description: The print status sensor (should end with '_print_status').
+      selector:
+        entity:
+          domain: sensor
+          integration: elegoo_printer
+          device_class: enum
+    current_status_entity:
+      name: Current Status Entity
+      description: The current status sensor (should end with '_current_status').
+      selector:
+        entity:
+          domain: sensor
+          integration: elegoo_printer
+          device_class: enum
+    error_status_reason_entity:
+      name: Error Status Reason Entity
+      description: The error status reason sensor (should end with '_current_print_error_status_reason').
+      selector:
+        entity:
+          domain: sensor
+          integration: elegoo_printer
+          device_class: enum
     notify_device:
       name: Notification Device
       description: The device to send notifications to.
@@ -59,6 +83,9 @@ variables:
   camera_entity_input: !input camera_entity
   dashboard_url: !input dashboard_url
   enable_status_notifications: !input enable_status_notifications
+  print_status_entity: !input print_status_entity
+  current_status_entity: !input current_status_entity
+  error_status_reason_entity: !input error_status_reason_entity
   # Get the device from the percent complete entity
   printer_device: >-
     {{ device_id(percent_complete_entity) }}
@@ -71,9 +98,6 @@ variables:
   file_name_entity: >-
     {{ device_entities(printer_device) | select('search', '_file_name') |
     first }}
-  current_status_entity: >-
-    {{ device_entities(printer_device) | select('search', '_current_status') |
-    first }}
   current_layer_entity: >-
     {{ device_entities(printer_device) | select('search', '_current_layer') |
     first }}
@@ -85,25 +109,34 @@ variables:
         if camera_entity_input != ''
         else (device_entities(printer_device) | select('match', '^camera\.') | first))
        | default('', true) }}
-  print_status_entity: >-
-    {{ device_entities(printer_device) | select('search', '_print_status') |
-    first }}
-  error_status_reason_entity: >-
-    {{ device_entities(printer_device) | select('search', '_current_print_error_status_reason') |
-    first }}
 
 trigger:
   - platform: state
     entity_id: !input percent_complete_entity
-  - id: print_status
-    platform: template
-    value_template: "{{ states(print_status_entity) }}"
-  - id: current_status
-    platform: template
-    value_template: "{{ states(current_status_entity) }}"
-  - id: error_status_reason
-    platform: template
-    value_template: "{{ states(error_status_reason_entity) }}"
+  - platform: state
+    entity_id: !input print_status_entity
+    not_from:
+      - "unknown"
+      - "unavailable"
+    not_to:
+      - "unknown"
+      - "unavailable"
+  - platform: state
+    entity_id: !input current_status_entity
+    not_from:
+      - "unknown"
+      - "unavailable"
+    not_to:
+      - "unknown"
+      - "unavailable"
+  - platform: state
+    entity_id: !input error_status_reason_entity
+    not_from:
+      - "unknown"
+      - "unavailable"
+    not_to:
+      - "unknown"
+      - "unavailable"
 
 condition: []
 
@@ -145,14 +178,22 @@ action:
               push:
                 interruption-level: passive
 
-      # Handle print completion (triggered by print_status_entity changes)
+      # Handle print completion (triggered by print_status changes to complete OR percent_complete changes)
       - conditions:
-          - condition: template
-            value_template: "{{ trigger.id == 'print_status' }}"
           - condition: template
             value_template: "{{ notify_device != '' }}"
           - condition: template
-            value_template: "{{ print_status_entity != none and states(print_status_entity) == 'complete' }}"
+            value_template: "{{ states(print_status_entity) == 'complete' }}"
+          - condition: or
+            conditions:
+              - condition: template
+                value_template: "{{ trigger.entity_id == print_status_entity }}"
+              - condition: and
+                conditions:
+                  - condition: template
+                    value_template: "{{ trigger.entity_id == percent_complete_entity }}"
+                  - condition: template
+                    value_template: "{{ states(percent_complete_entity) | int(0) >= 95 }}"
         sequence:
           - device_id: !input notify_device
             domain: mobile_app
@@ -171,10 +212,103 @@ action:
               push:
                 interruption-level: time-sensitive
 
-      # Handle critical error status reasons (triggered by error_status_reason_entity changes)
+      # Handle print status change notifications
       - conditions:
           - condition: template
-            value_template: "{{ trigger.id == 'error_status_reason' }}"
+            value_template: "{{ trigger.entity_id == print_status_entity }}"
+          - condition: template
+            value_template: "{{ notify_device != '' }}"
+          - condition: template
+            value_template: "{{ enable_status_notifications }}"
+          - condition: template
+            value_template: >-
+              {{ states(print_status_entity) not in ['complete', 'stopped', 'stopping', 'unknown', 'unavailable'] }}
+        sequence:
+          - device_id: !input notify_device
+            domain: mobile_app
+            type: notify
+            title: "Printer Status Update"
+            message: >-
+              {% set status = states(print_status_entity) %}
+              {% set file_name = states(file_name_entity)|default('Unknown file', true) %}
+              {% if status == 'homing' %}
+                🏠 Printer is homing
+              {% elif status == 'printing' %}
+                🖨️ Started printing: {{ file_name }}
+              {% elif status == 'paused' or status == 'pausing' %}
+                ⏸️ Print paused: {{ file_name }}
+              {% elif status == 'idle' %}
+                💤 Printer is idle
+              {% elif status == 'loading' %}
+                📥 Loading filament
+              {% elif status == 'dropping' %}
+                🔽 Platform dropping
+              {% elif status == 'lifting' %}
+                🔼 Platform lifting
+              {% elif status == 'file_checking' %}
+                📁 Checking print file
+              {% elif status == 'recovery' or status == 'printing_recovery' %}
+                🔄 Print recovery in progress
+              {% else %}
+                📊 Status: {{ status }}
+              {% endif %}
+            data:
+              url: "{{ dashboard_url }}"
+              clickAction: "{{ dashboard_url }}"
+              group: "{{ notification_group }}"
+              channel: "{{ notification_group }}"
+              tag: "{{ notification_group }}_status"
+              alert_once: true
+              push:
+                interruption-level: passive
+
+      # Handle current status change notifications
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.entity_id == current_status_entity }}"
+          - condition: template
+            value_template: "{{ notify_device != '' }}"
+          - condition: template
+            value_template: "{{ enable_status_notifications }}"
+        sequence:
+          - device_id: !input notify_device
+            domain: mobile_app
+            type: notify
+            title: "Machine Status Update"
+            message: >-
+              {% set status = states(current_status_entity) %}
+              {% set file_name = states(file_name_entity)|default('Unknown file', true) %}
+              {% if status == 'idle' %}
+                💤 Machine is idle
+              {% elif status == 'printing' %}
+                🖨️ Machine started printing: {{ file_name }}
+              {% elif status == 'file_transferring' %}
+                📁 File transfer in progress
+              {% elif status == 'exposure_testing' %}
+                🔬 Exposure test running
+              {% elif status == 'devices_testing' %}
+                🔧 Device self-check running
+              {% elif status == 'leveling' %}
+                📐 Bed leveling in progress
+              {% elif status == 'loading_unloading' %}
+                📥📤 Loading/unloading filament
+              {% else %}
+                📊 Machine status: {{ status }}
+              {% endif %}
+            data:
+              url: "{{ dashboard_url }}"
+              clickAction: "{{ dashboard_url }}"
+              group: "{{ notification_group }}"
+              channel: "{{ notification_group }}"
+              tag: "{{ notification_group }}_machine_status"
+              alert_once: true
+              push:
+                interruption-level: passive
+
+      # Handle critical error status reasons
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.entity_id == error_status_reason_entity }}"
           - condition: template
             value_template: "{{ notify_device != '' }}"
           - condition: template
@@ -233,130 +367,3 @@ action:
               push:
                 interruption-level: critical
 
-      # Handle error states (triggered by print_status_entity changes)
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.id == 'print_status' }}"
-          - condition: template
-            value_template: "{{ notify_device != '' }}"
-          - condition: template
-            value_template: >-
-              {{ states(print_status_entity) in ['stopped', 'stopping'] }}
-        sequence:
-          - device_id: !input notify_device
-            domain: mobile_app
-            type: notify
-            title: "⚠️ Printer Alert!"
-            message: >-
-              {% set status = states(print_status_entity) %}
-              {% if status == 'stopped' %}
-                Print was stopped.
-              {% elif status == 'stopping' %}
-                Print is stopping...
-              {% else %}
-                Printer status: {{ status }}
-              {% endif %}
-            data:
-              image: "{{ ('/api/camera_proxy/' ~ camera_entity) if (camera_entity|default('', true)) != '' else '' }}"
-              url: "{{ dashboard_url }}"
-              clickAction: "{{ dashboard_url }}"
-              group: "{{ notification_group }}"
-              channel: "{{ notification_group }}"
-              tag: "{{ notification_group }}_error"
-              sticky: true
-              alert_once: false
-              push:
-                interruption-level: critical
-
-      # Handle status change notifications (triggered by print_status_entity changes)
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.id == 'print_status' }}"
-          - condition: template
-            value_template: "{{ notify_device != '' }}"
-          - condition: template
-            value_template: "{{ enable_status_notifications }}"
-          - condition: template
-            value_template: >-
-              {{ states(print_status_entity) not in ['complete', 'stopped', 'stopping', 'unknown', 'unavailable'] }}
-        sequence:
-          - device_id: !input notify_device
-            domain: mobile_app
-            type: notify
-            title: "Printer Status Update"
-            message: >-
-              {% set status = states(print_status_entity) %}
-              {% set file_name = states(file_name_entity)|default('Unknown file', true) %}
-              {% if status == 'homing' %}
-                🏠 Printer is homing
-              {% elif status == 'printing' %}
-                🖨️ Started printing: {{ file_name }}
-              {% elif status == 'paused' or status == 'pausing' %}
-                ⏸️ Print paused: {{ file_name }}
-              {% elif status == 'idle' %}
-                💤 Printer is idle
-              {% elif status == 'loading' %}
-                📥 Loading filament
-              {% elif status == 'dropping' %}
-                🔽 Platform dropping
-              {% elif status == 'lifting' %}
-                🔼 Platform lifting
-              {% elif status == 'file_checking' %}
-                📁 Checking print file
-              {% elif status == 'recovery' or status == 'printing_recovery' %}
-                🔄 Print recovery in progress
-              {% else %}
-                📊 Status: {{ status }}
-              {% endif %}
-            data:
-              url: "{{ dashboard_url }}"
-              clickAction: "{{ dashboard_url }}"
-              group: "{{ notification_group }}"
-              channel: "{{ notification_group }}"
-              tag: "{{ notification_group }}_status"
-              alert_once: true
-              push:
-                interruption-level: passive
-
-      # Handle current status change notifications (triggered by current_status_entity changes)
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.id == 'current_status' }}"
-          - condition: template
-            value_template: "{{ notify_device != '' }}"
-          - condition: template
-            value_template: "{{ enable_status_notifications }}"
-        sequence:
-          - device_id: !input notify_device
-            domain: mobile_app
-            type: notify
-            title: "Machine Status Update"
-            message: >-
-              {% set status = states(current_status_entity) %}
-              {% set file_name = states(file_name_entity)|default('Unknown file', true) %}
-              {% if status == 'idle' %}
-                💤 Machine is idle
-              {% elif status == 'printing' %}
-                🖨️ Machine started printing: {{ file_name }}
-              {% elif status == 'file_transferring' %}
-                📁 File transfer in progress
-              {% elif status == 'exposure_testing' %}
-                🔬 Exposure test running
-              {% elif status == 'devices_testing' %}
-                🔧 Device self-check running
-              {% elif status == 'leveling' %}
-                📐 Bed leveling in progress
-              {% elif status == 'loading_unloading' %}
-                📥📤 Loading/unloading filament
-              {% else %}
-                📊 Machine status: {{ status }}
-              {% endif %}
-            data:
-              url: "{{ dashboard_url }}"
-              clickAction: "{{ dashboard_url }}"
-              group: "{{ notification_group }}"
-              channel: "{{ notification_group }}"
-              tag: "{{ notification_group }}_machine_status"
-              alert_once: true
-              push:
-                interruption-level: passive
