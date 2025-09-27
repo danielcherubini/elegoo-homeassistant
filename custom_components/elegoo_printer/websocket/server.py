@@ -396,13 +396,26 @@ class ElegooPrinterServer:
                 )
                 await response.prepare(request)
                 try:
-                    async for chunk in proxy_response.content.iter_chunked(8192):
-                        if request.transport is None or request.transport.is_closing():
-                            self.logger.debug(
-                                "Client disconnected, stopping video stream."
-                            )
-                            break
-                        await response.write(chunk)
+                    # For MJPEG streams, use iter_any() to avoid breaking boundaries
+                    content_type = proxy_response.headers.get("content-type", "")
+                    if "multipart" in content_type.lower() or "mjpeg" in content_type.lower():
+                        # Use iter_any() for MJPEG to preserve multipart boundaries
+                        async for chunk in proxy_response.content.iter_any():
+                            if request.transport is None or request.transport.is_closing():
+                                self.logger.debug(
+                                    "Client disconnected, stopping video stream."
+                                )
+                                break
+                            await response.write(chunk)
+                    else:
+                        # Use chunked reading for other content types
+                        async for chunk in proxy_response.content.iter_chunked(8192):
+                            if request.transport is None or request.transport.is_closing():
+                                self.logger.debug(
+                                    "Client disconnected, stopping video stream."
+                                )
+                                break
+                            await response.write(chunk)
                     await response.write_eof()
                 except (ConnectionResetError, asyncio.CancelledError) as e:
                     msg = f"Video stream stopped: {e}"
