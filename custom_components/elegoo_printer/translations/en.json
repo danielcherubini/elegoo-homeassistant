@@ -122,7 +122,8 @@
           "server_connect_failed": "Server connection failed",
           "disconnect_app": "App disconnected during print",
           "nozzle_temp_sensor_offline": "Nozzle temperature sensor offline",
-          "bed_temp_sensor_offline": "Bed temperature sensor offline"
+          "bed_temp_sensor_offline": "Bed temperature sensor offline",
+          "filament_about_to_runout": "Filament runout detected"
         }
       },
       "end_time": {
