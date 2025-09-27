@@ -150,7 +150,10 @@ class ElegooPrinterServer:
         self.printer = printer
         self.logger = logger
         self.hass = hass
-        self.session: ClientSession | None = None  # Will create our own
+        # Three dedicated sessions for different use cases
+        self.api_session: ClientSession | None = None  # API calls & WebSocket
+        self.video_session: ClientSession | None = None  # Video streaming
+        self.file_session: ClientSession | None = None  # File transfers
         self.runners: list[web.AppRunner] = []
         self._is_connected = False
         self.datagram_transport: asyncio.DatagramTransport | None = None
@@ -190,25 +193,61 @@ class ElegooPrinterServer:
         msg = f"Initializing proxy server for remote printer {self.printer.ip_address}"
         self.logger.info(msg)
 
-        # Create dedicated session for proxy to avoid interfering with HA's session
-        connector = aiohttp.TCPConnector(
-            limit=100,  # Total connection pool size
-            limit_per_host=30,  # Connections per host (for the printer)
-            ttl_dns_cache=300,  # DNS cache TTL
+        # Create three dedicated sessions optimized for different use cases
+
+        # API Session: Quick API calls and WebSocket upgrades
+        api_connector = aiohttp.TCPConnector(
+            limit=50,  # Moderate connection pool
+            limit_per_host=10,  # Conservative per-host limit
+            ttl_dns_cache=300,
             use_dns_cache=True,
             enable_cleanup_closed=True,
         )
-        timeout = aiohttp.ClientTimeout(
-            total=None,  # No total timeout
-            connect=10,  # 10 second connect timeout
-            sock_read=30,  # 30 second read timeout for long operations
+        api_timeout = aiohttp.ClientTimeout(total=30, sock_read=10)
+        self.api_session = aiohttp.ClientSession(
+            connector=api_connector,
+            timeout=api_timeout,
+            headers={"User-Agent": "ElegooProxy-API/1.0"},
         )
-        self.session = aiohttp.ClientSession(
-            connector=connector,
-            timeout=timeout,
-            headers={"User-Agent": "ElegooProxy/1.0"},
+
+        # Video Session: Optimized for streaming
+        video_connector = aiohttp.TCPConnector(
+            limit=20,  # Fewer total connections
+            limit_per_host=5,  # Limited concurrent streams per printer
+            ttl_dns_cache=300,
+            use_dns_cache=True,
+            enable_cleanup_closed=True,
         )
-        self.logger.debug("Created dedicated proxy session")
+        video_timeout = aiohttp.ClientTimeout(
+            total=None,  # No total timeout for streams
+            sock_connect=10,  # Quick connection
+            sock_read=None,  # No read timeout for streaming
+        )
+        self.video_session = aiohttp.ClientSession(
+            connector=video_connector,
+            timeout=video_timeout,
+            headers={"User-Agent": "ElegooProxy-Video/1.0"},
+        )
+
+        # File Session: Optimized for large transfers
+        file_connector = aiohttp.TCPConnector(
+            limit=10,  # Very few connections
+            limit_per_host=2,  # Only 2 concurrent file ops per printer
+            ttl_dns_cache=300,
+            use_dns_cache=True,
+            enable_cleanup_closed=True,
+        )
+        file_timeout = aiohttp.ClientTimeout(
+            total=600,  # 10 minute total timeout
+            sock_connect=30,  # Longer connection timeout
+            sock_read=300,  # 5 minute read timeout for large files
+        )
+        self.file_session = aiohttp.ClientSession(
+            connector=file_connector,
+            timeout=file_timeout,
+            headers={"User-Agent": "ElegooProxy-File/1.0"},
+        )
+        self.logger.debug("Created dedicated proxy sessions: API, Video, File")
 
         try:
             # Allow large uploads (streamed), keep headroom for typical print files.
@@ -315,15 +354,24 @@ class ElegooPrinterServer:
             finally:
                 self.datagram_transport = None
 
-        # Close dedicated session
-        if self.session and not self.session.closed:
-            try:
-                await self.session.close()
-                self.logger.debug("Closed dedicated proxy session")
-            except (RuntimeError, OSError) as e:
-                self.logger.warning("Error closing proxy session: %s", e)
-            finally:
-                self.session = None
+        # Close all dedicated sessions
+        sessions_to_close = [
+            ("API", self.api_session),
+            ("Video", self.video_session),
+            ("File", self.file_session),
+        ]
+
+        for session_name, session in sessions_to_close:
+            if session and not session.closed:
+                try:
+                    await session.close()
+                    self.logger.debug("Closed dedicated %s session", session_name)
+                except (RuntimeError, OSError) as e:
+                    self.logger.warning("Error closing %s session: %s", session_name, e)
+
+        self.api_session = None
+        self.video_session = None
+        self.file_session = None
 
         # Clean up web runners
         for runner in self.runners:
@@ -404,15 +452,12 @@ class ElegooPrinterServer:
     async def _video_proxy_handler(self, request: web.Request) -> web.StreamResponse:
         """Proxies video stream requests."""
         remote_url = f"http://{self.printer.ip_address}:{VIDEO_PORT}{request.path_qs}"
-        if not self.session or self.session.closed:
-            return web.Response(status=503, text="Session not available.")
+        if not self.video_session or self.video_session.closed:
+            return web.Response(status=503, text="Video session not available.")
 
         try:
-            async with self.session.get(
+            async with self.video_session.get(
                 remote_url,
-                timeout=aiohttp.ClientTimeout(
-                    total=None, sock_connect=10, sock_read=None
-                ),
                 headers=self._get_request_headers("GET", request.headers),
             ) as proxy_response:
                 resp_headers = self._get_response_headers("GET", proxy_response.headers)
@@ -466,7 +511,7 @@ class ElegooPrinterServer:
         client_ws = web.WebSocketResponse()
         await client_ws.prepare(request)
 
-        if not self.session or self.session.closed:
+        if not self.api_session or self.api_session.closed:
             await client_ws.close(code=1011, message=b"Upstream connection failed")
             return client_ws
 
@@ -476,7 +521,7 @@ class ElegooPrinterServer:
 
         tasks = set()
         try:
-            async with self.session.ws_connect(
+            async with self.api_session.ws_connect(
                 remote_ws_url,
                 headers=self._get_request_headers("WS", request.headers),
                 heartbeat=10.0,
@@ -544,7 +589,11 @@ class ElegooPrinterServer:
 
     async def _http_proxy_handler(self, request: web.Request) -> web.StreamResponse:
         """Streams HTTP requests."""
-        if not self.printer.ip_address or not self.session or self.session.closed:
+        if (
+            not self.printer.ip_address
+            or not self.api_session
+            or self.api_session.closed
+        ):
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
         target_url = (
@@ -552,7 +601,7 @@ class ElegooPrinterServer:
         )
 
         try:
-            async with self.session.request(
+            async with self.api_session.request(
                 request.method,
                 target_url,
                 headers=self._get_request_headers(request.method, request.headers),
@@ -652,17 +701,16 @@ class ElegooPrinterServer:
         remote_url = (
             f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}{request.path_qs}"
         )
-        if not self.session or self.session.closed:
-            return web.Response(status=502, text="Bad Gateway: Proxy not configured")
+        if not self.file_session or self.file_session.closed:
+            return web.Response(
+                status=502, text="Bad Gateway: File session not available"
+            )
 
         try:
-            async with self.session.post(
+            async with self.file_session.post(
                 remote_url,
                 headers=self._get_request_headers("POST", request.headers),
                 data=request.content,
-                timeout=aiohttp.ClientTimeout(
-                    total=None, sock_connect=10, sock_read=None
-                ),
             ) as response:
                 content = await response.read()
                 return web.Response(
