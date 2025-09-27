@@ -185,7 +185,7 @@ action:
             domain: mobile_app
             type: notify
             title: "🎉 Print Complete!"
-            message: "{{ states(file_name_entity)|default('Print', true) }} has finished successfully"
+            message: "Print has finished successfully"
             data:
               image: "{{ ('/api/camera_proxy/' ~ camera_entity) if (camera_entity|default('', true)) != '' else '' }}"
               url: "{{ dashboard_url }}"
@@ -197,7 +197,6 @@ action:
               alert_once: true
               push:
                 interruption-level: time-sensitive
-
 
       # Handle print status change notifications
       - conditions:
