@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from logging import Logger
     from types import MappingProxyType
 
-    from aiohttp import ClientSession
     from homeassistant.core import HomeAssistant
 
     from .sdcp.models.enums import ElegooFan
@@ -113,7 +112,7 @@ class ElegooPrinterApiClient:
 
         # Printer is reachable, now set up proxy if enabled
         if proxy_server_enabled:
-            printer = await self._setup_proxy_if_enabled(printer, session)
+            printer = await self._setup_proxy_if_enabled(printer)
             if printer is None:
                 # Proxy was required but failed to start
                 await self.client.disconnect()
@@ -187,7 +186,6 @@ class ElegooPrinterApiClient:
 
         """  # noqa: E501
         printer = self.printer
-        session = async_get_clientsession(self.hass)
 
         # First, test if printer is reachable
         self._logger.debug(
@@ -217,7 +215,7 @@ class ElegooPrinterApiClient:
             await ElegooPrinterServer.stop_all()
             self.server = None
 
-            printer = await self._setup_proxy_if_enabled(printer, session)
+            printer = await self._setup_proxy_if_enabled(printer)
             if printer is None:
                 # Proxy was required but failed to start during reconnect
                 return False
@@ -477,9 +475,7 @@ class ElegooPrinterApiClient:
         self.printer_data.calculate_current_job_end_time()
         return self.printer_data
 
-    async def _setup_proxy_if_enabled(
-        self, printer: Printer, session: ClientSession
-    ) -> Printer | None:
+    async def _setup_proxy_if_enabled(self, printer: Printer) -> Printer | None:
         """
         Set up proxy server if enabled and printer is reachable.
 
@@ -493,7 +489,7 @@ class ElegooPrinterApiClient:
         self._logger.debug("Printer is reachable. Starting proxy server.")
         try:
             self.server = await ElegooPrinterServer.async_create(
-                printer, logger=self._logger, hass=self.hass, session=session
+                printer, logger=self._logger, hass=self.hass
             )
         except (OSError, ConfigEntryNotReady):
             # When proxy is explicitly enabled, server startup failures are fatal
