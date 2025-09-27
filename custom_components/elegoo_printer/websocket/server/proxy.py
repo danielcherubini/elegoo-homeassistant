@@ -1029,7 +1029,7 @@ class ElegooPrinterServer:
         self, request: web.Request
     ) -> web.StreamResponse:
         """Handle HTTP requests by forwarding to the specified printer."""
-        if not self.session or self.session.closed:
+        if not self.api_session or self.api_session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
         # Find target printer
@@ -1268,7 +1268,7 @@ class ElegooPrinterServer:
         self, request: web.Request, printer: Printer
     ) -> web.StreamResponse:
         """Handle HTTP requests for a specific printer (direct pass-through)."""
-        if not self.session or self.session.closed:
+        if not self.api_session or self.api_session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
         # Forward directly to printer
@@ -1319,7 +1319,7 @@ class ElegooPrinterServer:
         self, request: web.Request, printer: Printer
     ) -> web.Response:
         """Handle file upload requests for a specific printer (direct pass-through)."""
-        if not self.session or self.session.closed:
+        if not self.file_session or self.file_session.closed:
             return web.Response(status=502, text="Bad Gateway: Proxy not configured")
 
         # Forward directly to printer's file upload endpoint
