@@ -74,7 +74,9 @@
           "complete": "Complete",
           "file_checking": "Checking File",
           "recovery": "Recovery",
-          "loading": "Loading"
+          "loading": "Loading",
+          "preheating": "Preheating",
+          "leveling": "Leveling"
         }
       },
       "current_status": {
