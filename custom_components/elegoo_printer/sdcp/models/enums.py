@@ -89,6 +89,8 @@ class ElegooPrintStatus(Enum):
         COMPLETE: The print job has completed successfully.
         FILE_CHECKING: The printer is currently checking the print file.
         LOADING: The printer is loading filament.
+        PREHEATING: The printer is preheating.
+        LEVELING: The printer is leveling.
 
     Example:
         >>> ElegooPrintStatus(0)
@@ -112,6 +114,8 @@ class ElegooPrintStatus(Enum):
     RECOVERY = 12
     PRINTING_RECOVERY = 13
     LOADING = 15
+    PREHEATING = 16
+    LEVELING = 20
 
     @classmethod
     def from_int(cls, status_int: int) -> "ElegooPrintStatus | None":
@@ -126,7 +130,7 @@ class ElegooPrintStatus(Enum):
             integer is not a valid status value.
 
         """  # noqa: D401
-        if status_int in [16, 18, 19, 20, 21]:
+        if status_int in [18, 19, 21]:
             return cls.LOADING
         if status_int == cls.PRINTING_RECOVERY.value:
             return cls.PRINTING
