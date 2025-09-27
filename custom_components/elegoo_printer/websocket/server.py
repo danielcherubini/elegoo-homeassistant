@@ -145,13 +145,12 @@ class ElegooPrinterServer:
         printer: Printer,
         logger: Any,
         hass: HomeAssistant,
-        session: ClientSession,
     ) -> None:
         """Initialize the Elegoo printer proxy server."""
         self.printer = printer
         self.logger = logger
         self.hass = hass
-        self.session = session
+        self.session: ClientSession | None = None  # Will create our own
         self.runners: list[web.AppRunner] = []
         self._is_connected = False
         self.datagram_transport: asyncio.DatagramTransport | None = None
@@ -166,10 +165,9 @@ class ElegooPrinterServer:
         printer: Printer,
         logger: Any,
         hass: HomeAssistant,
-        session: ClientSession,
     ) -> ElegooPrinterServer:
         """Asynchronously creates and starts the server."""
-        self = cls(printer, logger, hass, session)
+        self = cls(printer, logger, hass)
         await self.start()
         return self
 
@@ -191,6 +189,26 @@ class ElegooPrinterServer:
 
         msg = f"Initializing proxy server for remote printer {self.printer.ip_address}"
         self.logger.info(msg)
+
+        # Create dedicated session for proxy to avoid interfering with HA's session
+        connector = aiohttp.TCPConnector(
+            limit=100,  # Total connection pool size
+            limit_per_host=30,  # Connections per host (for the printer)
+            ttl_dns_cache=300,  # DNS cache TTL
+            use_dns_cache=True,
+            enable_cleanup_closed=True,
+        )
+        timeout = aiohttp.ClientTimeout(
+            total=None,  # No total timeout
+            connect=10,  # 10 second connect timeout
+            sock_read=30,  # 30 second read timeout for long operations
+        )
+        self.session = aiohttp.ClientSession(
+            connector=connector,
+            timeout=timeout,
+            headers={"User-Agent": "ElegooProxy/1.0"},
+        )
+        self.logger.debug("Created dedicated proxy session")
 
         try:
             # Allow large uploads (streamed), keep headroom for typical print files.
@@ -297,6 +315,16 @@ class ElegooPrinterServer:
             finally:
                 self.datagram_transport = None
 
+        # Close dedicated session
+        if self.session and not self.session.closed:
+            try:
+                await self.session.close()
+                self.logger.debug("Closed dedicated proxy session")
+            except (RuntimeError, OSError) as e:
+                self.logger.warning("Error closing proxy session: %s", e)
+            finally:
+                self.session = None
+
         # Clean up web runners
         for runner in self.runners:
             try:
@@ -396,8 +424,22 @@ class ElegooPrinterServer:
                 )
                 await response.prepare(request)
                 try:
-                    async for chunk in proxy_response.content.iter_chunked(8192):
-                        if request.transport is None or request.transport.is_closing():
+                    # For MJPEG streams, use iter_any() to avoid breaking boundaries
+                    content_type = proxy_response.headers.get("content-type", "")
+                    content_type_lower = content_type.lower()
+                    if (
+                        "multipart" in content_type_lower
+                        or "mjpeg" in content_type_lower
+                    ):
+                        # Use iter_any() for MJPEG to preserve multipart boundaries
+                        body_iter = proxy_response.content.iter_any()
+                    else:
+                        # Use chunked reading for other content types
+                        body_iter = proxy_response.content.iter_chunked(8192)
+
+                    async for chunk in body_iter:
+                        transport = request.transport
+                        if transport is None or transport.is_closing():
                             self.logger.debug(
                                 "Client disconnected, stopping video stream."
                             )
