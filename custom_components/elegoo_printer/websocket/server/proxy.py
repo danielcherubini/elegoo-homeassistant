@@ -74,7 +74,7 @@ class ElegooPrinterServer:
         """Initialize the proxy server."""
         self.logger = logger
         self.hass = hass
-        self.session = session
+        self.session: ClientSession | None = None  # Will create our own
         self.runners: list[web.AppRunner] = []
         self._is_connected = False
         self.datagram_transport: asyncio.DatagramTransport | None = None
@@ -190,6 +190,23 @@ class ElegooPrinterServer:
             if not self._check_ports_are_available():
                 self._raise_port_error()
 
+            # Create dedicated session for proxy to avoid interfering with HA's session
+            import aiohttp
+            connector = aiohttp.TCPConnector(
+                limit=100,  # Total connection pool size
+                limit_per_host=30,  # Connections per host (for the printer)
+                ttl_dns_cache=300,  # DNS cache TTL
+                use_dns_cache=True,
+                enable_cleanup_closed=True,
+            )
+            timeout = aiohttp.ClientTimeout(total=30)
+            self.session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout,
+                headers={"User-Agent": "ElegooProxy/1.0"},
+            )
+            self.logger.debug("Created dedicated proxy session")
+
             # Start centralized HTTP/WebSocket server
             http_app = web.Application(client_max_size=1024 * 1024 * 1024)  # 1 GiB
             http_app.router.add_route("*", "/{path:.*}", self._centralized_http_handler)
@@ -266,6 +283,12 @@ class ElegooPrinterServer:
         if self.datagram_transport:
             self.datagram_transport.close()
             self.datagram_transport = None
+
+        # Close dedicated session
+        if self.session and not self.session.closed:
+            await self.session.close()
+            self.logger.debug("Closed dedicated proxy session")
+        self.session = None
 
         # Give time for ports to actually be released by the OS
         await asyncio.sleep(0.5)
@@ -431,13 +454,26 @@ class ElegooPrinterServer:
                 )
                 await response.prepare(request)
                 try:
-                    async for chunk in proxy_response.content.iter_chunked(8192):
-                        if request.transport is None or request.transport.is_closing():
-                            self.logger.debug(
-                                "Client disconnected, stopping video stream."
-                            )
-                            break
-                        await response.write(chunk)
+                    # For MJPEG streams, use iter_any() to avoid breaking boundaries
+                    content_type = proxy_response.headers.get("content-type", "")
+                    if "multipart" in content_type.lower() or "mjpeg" in content_type.lower():
+                        # Use iter_any() for MJPEG to preserve multipart boundaries
+                        async for chunk in proxy_response.content.iter_any():
+                            if request.transport is None or request.transport.is_closing():
+                                self.logger.debug(
+                                    "Client disconnected, stopping video stream."
+                                )
+                                break
+                            await response.write(chunk)
+                    else:
+                        # Use chunked reading for other content types
+                        async for chunk in proxy_response.content.iter_chunked(8192):
+                            if request.transport is None or request.transport.is_closing():
+                                self.logger.debug(
+                                    "Client disconnected, stopping video stream."
+                                )
+                                break
+                            await response.write(chunk)
                     await response.write_eof()
                 except (ConnectionResetError, asyncio.CancelledError) as e:
                     self.logger.debug("Video stream stopped: %s", e)
