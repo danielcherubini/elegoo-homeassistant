@@ -18,11 +18,9 @@ from propcache.api import cached_property
 
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
-    CONF_PROXY_ENABLED,
     LOGGER,
-    PROXY_HOST,
     VIDEO_ENDPOINT,
-    WEBSOCKET_PORT,
+    VIDEO_PORT,
 )
 from custom_components.elegoo_printer.data import ElegooPrinterConfigEntry
 from custom_components.elegoo_printer.definitions import (
@@ -35,7 +33,7 @@ from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooVideoStatus,
     PrinterType,
 )
-from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
+from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
 
 from .coordinator import ElegooDataUpdateCoordinator
 
@@ -113,8 +111,10 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
             return None
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
+            # Resin printers use RTSP feeds - bypass proxy and use direct URL
             LOGGER.debug(
-                f"stream_source: Video is OK, printer video url: {video.video_url}"
+                "stream_source: Resin printer video (RTSP), using direct URL: %s",
+                video.video_url,
             )
             return video.video_url
 
@@ -192,10 +192,20 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
             description: The entity description.
 
         """
+        # Use centralized proxy with MainboardID routing
+        printer = coordinator.config_entry.runtime_data.api.printer
+        if printer.proxy_enabled:
+            proxy_ip = PrinterData.get_local_ip(printer.ip_address)
+            # Use centralized proxy on port 3031 with MainboardID as query parameter
+            mjpeg_url = f"http://{proxy_ip}:{VIDEO_PORT}/video?id={printer.id}"
+        else:
+            # Direct HTTP MJPEG stream from the printer
+            mjpeg_url = f"http://{printer.ip_address}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"
+
         MjpegCamera.__init__(
             self,
             name=f"{description.name}",
-            mjpeg_url=f"http://{PROXY_HOST}:{WEBSOCKET_PORT}/{VIDEO_ENDPOINT}",
+            mjpeg_url=mjpeg_url,
             still_image_url=None,  # This camera does not have a separate still URL
             unique_id=coordinator.generate_unique_id(description.key),
         )
@@ -214,18 +224,28 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         return num_connected >= max_allowed
 
     @staticmethod
-    def _normalize_video_url(video_object: ElegooVideo) -> ElegooVideo:
+    def _normalize_video_url(video_url: str | None) -> str | None:
         """
-        Check if video_object.video_url starts with 'http://' and adds it if missing.
+        Check if video_url starts with 'http://' and adds it if missing.
 
         Arguments:
-            video_object: The video object to normalize.
+            video_url: The video URL to normalize.
+
+        Returns:
+            Normalized video URL string, or None if invalid/empty.
 
         """
-        if not video_object.video_url.startswith("http://"):
-            video_object.video_url = "http://" + video_object.video_url
+        if not video_url:
+            return None
 
-        return video_object
+        video_url = video_url.strip()
+        if not video_url:
+            return None
+
+        if not video_url.startswith("http://"):
+            video_url = "http://" + video_url
+
+        return video_url
 
     async def _update_stream_url(self) -> None:
         """Update the MJPEG stream URL."""
@@ -234,17 +254,14 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status and video.status == ElegooVideoStatus.SUCCESS:
             LOGGER.debug("stream_source: Video is OK, getting stream source")
-            if self.coordinator.config_entry.data.get(CONF_PROXY_ENABLED, False):
-                LOGGER.debug("stream_source: Proxy is enabled using local video")
-                self._mjpeg_url = (
-                    f"http://{PROXY_HOST}:{WEBSOCKET_PORT}/{VIDEO_ENDPOINT}"
-                )
-            else:
-                LOGGER.debug(
-                    "stream_source: Proxy is disabled using printer video url: %s",
-                    video.video_url,
-                )
-                self._mjpeg_url = self._normalize_video_url(video).video_url
+            video_url = self._normalize_video_url(video.video_url)
+            if not video_url:
+                LOGGER.debug("stream_source: Empty or invalid video URL from printer")
+                self._mjpeg_url = None
+                return
+
+            LOGGER.debug("stream_source: Using video url: %s", video_url)
+            self._mjpeg_url = video_url
         else:
             LOGGER.debug("stream_source: Failed to get video stream: %s", video.status)
             self._mjpeg_url = None

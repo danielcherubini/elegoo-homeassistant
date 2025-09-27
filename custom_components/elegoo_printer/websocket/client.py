@@ -96,7 +96,7 @@ class ElegooPrinterClient:
         self.printer_websocket: ClientWebSocketResponse | None = None
         self.config = config
         self.printer: Printer = Printer.from_dict(dict(config))
-        self.printer_data = PrinterData()
+        self.printer_data = PrinterData(printer=self.printer)
         self.logger = logger
         self._is_connected: bool = False
         self._listener_task: asyncio.Task | None = None
@@ -557,6 +557,9 @@ class ElegooPrinterClient:
                     type(e).__name__,
                 )
                 continue
+            except asyncio.CancelledError:
+                self.logger.debug("Ping cancelled - Home Assistant shutting down")
+                return False
             else:
                 self.logger.debug(
                     "Printer ping successful at %s:%s", self.printer.ip_address, port

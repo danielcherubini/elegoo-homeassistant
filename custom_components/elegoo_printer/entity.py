@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import network as network_util
 
 from .const import (
     ATTRIBUTION,
@@ -14,13 +13,12 @@ from .const import (
     CONF_IP,
     CONF_MODEL,
     CONF_NAME,
-    CONF_PRINTER_TYPE,
     CONF_PROXY_ENABLED,
     DOMAIN,
     WEBSOCKET_PORT,
 )
 from .coordinator import ElegooDataUpdateCoordinator
-from .sdcp.models.enums import PrinterType
+from .sdcp.models.printer import PrinterData
 
 
 class ElegooPrinterEntity(CoordinatorEntity[ElegooDataUpdateCoordinator]):
@@ -32,22 +30,31 @@ class ElegooPrinterEntity(CoordinatorEntity[ElegooDataUpdateCoordinator]):
     def __init__(self, coordinator: ElegooDataUpdateCoordinator) -> None:
         """Initialize."""
         super().__init__(coordinator)
-        printer_type: PrinterType = coordinator.config_entry.data[CONF_PRINTER_TYPE]
-        proxy_enabled: bool = coordinator.config_entry.data.get(
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info with dynamically updated configuration URL."""
+        proxy_enabled: bool = self.coordinator.config_entry.data.get(
             CONF_PROXY_ENABLED, False
         )
-        ip_address = coordinator.config_entry.data[CONF_IP]
-        if printer_type == PrinterType.FDM and proxy_enabled:
-            ip_address = network_util.get_local_ip()
+        ip_address = self.coordinator.config_entry.data[CONF_IP]
 
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.config_entry.data[CONF_ID])},
-            name=coordinator.config_entry.data[CONF_NAME],
-            model=coordinator.config_entry.data[CONF_MODEL],
-            manufacturer=coordinator.config_entry.data[CONF_BRAND],
-            sw_version=coordinator.config_entry.data[CONF_FIRMWARE],
-            serial_number=coordinator.config_entry.data[CONF_ID],
-            configuration_url=f"http://{ip_address}:{WEBSOCKET_PORT}",
+        if proxy_enabled:
+            # Use centralized proxy with MainboardID query parameter
+            proxy_ip = PrinterData.get_local_ip(ip_address)
+            mainboard_id = self.coordinator.config_entry.data[CONF_ID]
+            configuration_url = f"http://{proxy_ip}:{WEBSOCKET_PORT}?id={mainboard_id}"
+        else:
+            configuration_url = f"http://{ip_address}:{WEBSOCKET_PORT}"
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.config_entry.data[CONF_ID])},
+            name=self.coordinator.config_entry.data[CONF_NAME],
+            model=self.coordinator.config_entry.data[CONF_MODEL],
+            manufacturer=self.coordinator.config_entry.data[CONF_BRAND],
+            sw_version=self.coordinator.config_entry.data[CONF_FIRMWARE],
+            serial_number=self.coordinator.config_entry.data[CONF_ID],
+            configuration_url=configuration_url,
         )
 
     @property
