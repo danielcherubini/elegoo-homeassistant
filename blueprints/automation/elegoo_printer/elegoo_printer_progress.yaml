@@ -176,10 +176,6 @@ action:
                 conditions:
                   - condition: template
                     value_template: "{{ trigger.entity_id == percent_complete_entity }}"
-                  - condition: template
-                    value_template: "{{ states(percent_complete_entity) | int(0) >= 95 }}"
-                  - condition: template
-                    value_template: "{{ (trigger.from_state.state | int(0)) < 95 }}"
         sequence:
           - device_id: !input notify_device
             domain: mobile_app
