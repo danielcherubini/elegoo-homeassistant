@@ -146,6 +146,10 @@ class ElegooPrinterServer:
         """Return True if the proxy server is connected and running."""
         return self._is_connected
 
+    def get_local_ip(self) -> str:
+        """Get the local IP address for the proxy server."""
+        return get_local_ip()
+
     def get_printer(self, specific_printer: Printer | None = None) -> Printer:
         """
         Get a printer instance for API operations.
