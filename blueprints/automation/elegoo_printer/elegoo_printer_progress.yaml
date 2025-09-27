@@ -234,6 +234,10 @@ action:
                 📁 Checking print file
               {% elif status == 'recovery' or status == 'printing_recovery' %}
                 🔄 Print recovery in progress
+              {% elif status == 'preheating' %}
+                🔥 Preheating for print
+              {% elif status == 'leveling' %}
+                📐 Bed leveling in progress
               {% else %}
                 📊 Status: {{ status }}
               {% endif %}
@@ -256,7 +260,7 @@ action:
           - condition: template
             value_template: "{{ enable_status_notifications }}"
           - condition: template
-            value_template: "{{ states(current_status_entity) not in ['idle', 'unknown', 'unavailable'] }}"
+            value_template: "{{ states(current_status_entity) not in ['idle', 'printing', 'unknown', 'unavailable'] }}"
         sequence:
           - device_id: !input notify_device
             domain: mobile_app
@@ -265,9 +269,7 @@ action:
             message: >-
               {% set status = states(current_status_entity) %}
               {% set file_name = states(file_name_entity)|default('Unknown file', true) %}
-              {% if status == 'printing' %}
-                🖨️ Machine started printing: {{ file_name }}
-              {% elif status == 'file_transferring' %}
+              {% if status == 'file_transferring' %}
                 📁 File transfer in progress
               {% elif status == 'exposure_testing' %}
                 🔬 Exposure test running
