@@ -426,34 +426,25 @@ class ElegooPrinterServer:
                 try:
                     # For MJPEG streams, use iter_any() to avoid breaking boundaries
                     content_type = proxy_response.headers.get("content-type", "")
-                    is_multipart = (
-                        "multipart" in content_type.lower()
-                        or "mjpeg" in content_type.lower()
-                    )
-                    if is_multipart:
+                    content_type_lower = content_type.lower()
+                    if (
+                        "multipart" in content_type_lower
+                        or "mjpeg" in content_type_lower
+                    ):
                         # Use iter_any() for MJPEG to preserve multipart boundaries
-                        async for chunk in proxy_response.content.iter_any():
-                            if (
-                                request.transport is None
-                                or request.transport.is_closing()
-                            ):
-                                self.logger.debug(
-                                    "Client disconnected, stopping video stream."
-                                )
-                                break
-                            await response.write(chunk)
+                        body_iter = proxy_response.content.iter_any()
                     else:
                         # Use chunked reading for other content types
-                        async for chunk in proxy_response.content.iter_chunked(8192):
-                            if (
-                                request.transport is None
-                                or request.transport.is_closing()
-                            ):
-                                self.logger.debug(
-                                    "Client disconnected, stopping video stream."
-                                )
-                                break
-                            await response.write(chunk)
+                        body_iter = proxy_response.content.iter_chunked(8192)
+
+                    async for chunk in body_iter:
+                        transport = request.transport
+                        if transport is None or transport.is_closing():
+                            self.logger.debug(
+                                "Client disconnected, stopping video stream."
+                            )
+                            break
+                        await response.write(chunk)
                     await response.write_eof()
                 except (ConnectionResetError, asyncio.CancelledError) as e:
                     msg = f"Video stream stopped: {e}"
