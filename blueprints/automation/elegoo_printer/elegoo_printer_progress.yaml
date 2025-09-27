@@ -188,7 +188,47 @@ action:
               clickAction: "{{ dashboard_url }}"
               group: "{{ notification_group }}"
               channel: "{{ notification_group }}"
-              tag: "{{ notification_group }}_complete"
+              tag: "{{ notification_group }}"
+              sticky: true
+              alert_once: true
+              push:
+                interruption-level: time-sensitive
+
+      # Handle print completion when status becomes idle (print finished)
+      - conditions:
+          - condition: template
+            value_template: "{{ notify_device != '' }}"
+          - condition: or
+            conditions:
+              - condition: and
+                conditions:
+                  - condition: template
+                    value_template: "{{ trigger.entity_id == print_status_entity }}"
+                  - condition: template
+                    value_template: "{{ states(print_status_entity) == 'idle' }}"
+                  - condition: template
+                    value_template: "{{ trigger.from_state.state != 'idle' }}"
+              - condition: and
+                conditions:
+                  - condition: template
+                    value_template: "{{ trigger.entity_id == current_status_entity }}"
+                  - condition: template
+                    value_template: "{{ states(current_status_entity) == 'idle' }}"
+                  - condition: template
+                    value_template: "{{ trigger.from_state.state != 'idle' }}"
+        sequence:
+          - device_id: !input notify_device
+            domain: mobile_app
+            type: notify
+            title: "🎉 Print Complete!"
+            message: "Print has finished successfully"
+            data:
+              image: "{{ ('/api/camera_proxy/' ~ camera_entity) if (camera_entity|default('', true)) != '' else '' }}"
+              url: "{{ dashboard_url }}"
+              clickAction: "{{ dashboard_url }}"
+              group: "{{ notification_group }}"
+              channel: "{{ notification_group }}"
+              tag: "{{ notification_group }}"
               sticky: true
               alert_once: true
               push:
@@ -204,7 +244,7 @@ action:
             value_template: "{{ enable_status_notifications }}"
           - condition: template
             value_template: >-
-              {{ states(print_status_entity) not in ['complete', 'stopped', 'stopping', 'unknown', 'unavailable'] }}
+              {{ states(print_status_entity) not in ['complete', 'stopped', 'stopping', 'idle', 'unknown', 'unavailable'] }}
         sequence:
           - device_id: !input notify_device
             domain: mobile_app
@@ -219,8 +259,6 @@ action:
                 🖨️ Started printing: {{ file_name }}
               {% elif status == 'paused' or status == 'pausing' %}
                 ⏸️ Print paused: {{ file_name }}
-              {% elif status == 'idle' %}
-                💤 Printer is idle
               {% elif status == 'loading' %}
                 📥 Loading filament
               {% elif status == 'dropping' %}
@@ -253,7 +291,7 @@ action:
           - condition: template
             value_template: "{{ enable_status_notifications }}"
           - condition: template
-            value_template: "{{ states(current_status_entity) not in ['unknown', 'unavailable'] }}"
+            value_template: "{{ states(current_status_entity) not in ['idle', 'unknown', 'unavailable'] }}"
         sequence:
           - device_id: !input notify_device
             domain: mobile_app
@@ -262,9 +300,7 @@ action:
             message: >-
               {% set status = states(current_status_entity) %}
               {% set file_name = states(file_name_entity)|default('Unknown file', true) %}
-              {% if status == 'idle' %}
-                💤 Machine is idle
-              {% elif status == 'printing' %}
+              {% if status == 'printing' %}
                 🖨️ Machine started printing: {{ file_name }}
               {% elif status == 'file_transferring' %}
                 📁 File transfer in progress
