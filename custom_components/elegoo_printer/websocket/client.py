@@ -253,11 +253,6 @@ class ElegooPrinterClient:
         """
         if task_id := self.printer_data.status.print_info.task_id:
             LOGGER.debug(f"get_printer_current_task task_id: {task_id}")
-            current_task = self.printer_data.print_history.get(task_id)
-            if current_task is not None:
-                LOGGER.debug("get_printer_current_task: got cached task")
-                return current_task
-            LOGGER.debug("get_printer_current_task: getting task from api")
             task = await self.get_printer_task_detail([task_id])
             if task:
                 LOGGER.debug(
