@@ -32,6 +32,10 @@ VIDEO_ENDPOINT = "video"
 VIDEO_PORT = 3031
 WEBSOCKET_PORT = 3030
 
+# Firmware service settings
+FIRMWARE_SERVICE_BASE_URL = "https://mms.chituiot.com"
+FIRMWARE_UPDATE_ENDPOINT = "/mainboardVersionUpdate/getInfo.do7"
+
 # Error messages
 MIGRATE_V4_ERROR = (
     "Migration v3->v4 failed: 'name' or 'id' field is missing from config."

@@ -962,7 +962,25 @@ class ElegooPrinterServer:
 
     def _get_cleaned_path_for_printer(self, request_path: str) -> str:
         """Clean request path by removing MainboardID segments for forwarding."""
+        # Fast path: if path doesn't start with /api or /video, return as-is
+        if not request_path.startswith(("/api/", "/video/")):
+            return request_path
+
         path_parts = request_path.strip("/").split("/")
+
+        # Fast path: common paths that don't contain MainboardIDs
+        min_parts_for_second_element = 2
+        if len(path_parts) >= min_parts_for_second_element:
+            second_part = path_parts[1]
+            # Skip registry lookup for obviously non-MainboardID paths
+            if (
+                len(second_part) < MIN_MAINBOARD_ID_LENGTH
+                or second_part
+                in ("status", "info", "login", "logout", "stream", "health")
+                or second_part.isdigit()  # Port numbers, simple IDs
+                or "." in second_part  # File extensions, IP addresses
+            ):
+                return request_path
 
         # Remove API prefix and MainboardID: /api/{MainboardID}/rest -> /rest
         if len(path_parts) >= MIN_API_PATH_PARTS and path_parts[0] == "api":

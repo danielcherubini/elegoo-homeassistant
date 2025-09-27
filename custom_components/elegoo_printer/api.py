@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -13,7 +14,12 @@ from httpx import HTTPStatusError, RequestError
 from PIL import Image as PILImage
 from PIL import UnidentifiedImageError
 
-from .const import CONF_PROXY_ENABLED, LOGGER
+from .const import (
+    CONF_PROXY_ENABLED,
+    FIRMWARE_SERVICE_BASE_URL,
+    FIRMWARE_UPDATE_ENDPOINT,
+    LOGGER,
+)
 from .sdcp.models.elegoo_image import ElegooImage
 from .sdcp.models.printer import Printer, PrinterData
 from .websocket.client import ElegooPrinterClient
@@ -306,35 +312,35 @@ class ElegooPrinterApiClient:
 
             # Rewrite thumbnail URL to use proxy if proxy is enabled
             thumbnail_url = task.thumbnail
-            if self.printer.proxy_enabled and thumbnail_url.startswith(
-                f"http://{self.printer.ip_address}"
-            ):
-                # Replace printer IP with centralized proxy using MainboardID routing
+            if self.printer.proxy_enabled:
+                # Replace printer host with centralized proxy and set id=query
                 try:
                     proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
-                    # Use centralized proxy with MainboardID query parameter
-                    thumbnail_url = thumbnail_url.replace(
-                        f"http://{self.printer.ip_address}:3030",
-                        f"http://{proxy_ip}:3030",
-                        1,
-                    )
-                    # Also handle cases without explicit port
-                    if thumbnail_url == task.thumbnail:  # No replacement happened
-                        thumbnail_url = thumbnail_url.replace(
-                            f"http://{self.printer.ip_address}",
-                            f"http://{proxy_ip}:3030",
-                            1,
+                    parts = urlsplit(thumbnail_url)
+                    scheme = parts.scheme or "http"
+                    netloc = parts.netloc or self.printer.ip_address
+
+                    # Only rewrite if the URL points to our printer
+                    if self.printer.ip_address in netloc:
+                        # Force proxy host:port
+                        new_netloc = f"{proxy_ip}:3030"
+                        # Merge/replace query id
+                        q = dict(parse_qsl(parts.query, keep_blank_values=True))
+                        q["id"] = self.printer.id
+                        thumbnail_url = urlunsplit(
+                            (
+                                scheme,
+                                new_netloc,
+                                parts.path,
+                                urlencode(q, doseq=True),
+                                parts.fragment,
+                            )
                         )
-                    # Add MainboardID as query parameter
-                    if "?" in thumbnail_url:
-                        thumbnail_url += f"&id={self.printer.id}"
-                    else:
-                        thumbnail_url += f"?id={self.printer.id}"
-                    LOGGER.debug(
-                        "Rewritten thumbnail URL from %s to %s",
-                        task.thumbnail,
-                        thumbnail_url,
-                    )
+                        LOGGER.debug(
+                            "Rewritten thumbnail URL from %s to %s",
+                            task.thumbnail,
+                            thumbnail_url,
+                        )
                 except (OSError, ValueError) as e:
                     LOGGER.debug("Failed to rewrite thumbnail URL: %s", e)
                     thumbnail_url = task.thumbnail
@@ -584,7 +590,7 @@ class ElegooPrinterApiClient:
                 "firmwareType": 1,
             }
 
-            url = "https://mms.chituiot.com/mainboardVersionUpdate/getInfo.do7"
+            url = f"{FIRMWARE_SERVICE_BASE_URL}{FIRMWARE_UPDATE_ENDPOINT}"
             LOGGER.debug("Checking for firmware updates")
             LOGGER.debug("URL: %s", url)
             LOGGER.debug("Params: %s", params)
