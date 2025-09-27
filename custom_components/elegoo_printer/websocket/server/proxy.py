@@ -206,6 +206,7 @@ class ElegooPrinterServer:
                 connector=api_connector,
                 timeout=api_timeout,
                 headers={"User-Agent": "ElegooProxy-API/1.0"},
+                trust_env=False,
             )
 
             # Video Session: Optimized for streaming
@@ -225,6 +226,7 @@ class ElegooPrinterServer:
                 connector=video_connector,
                 timeout=video_timeout,
                 headers={"User-Agent": "ElegooProxy-Video/1.0"},
+                trust_env=False,
             )
 
             # File Session: Optimized for large transfers
@@ -244,6 +246,7 @@ class ElegooPrinterServer:
                 connector=file_connector,
                 timeout=file_timeout,
                 headers={"User-Agent": "ElegooProxy-File/1.0"},
+                trust_env=False,
             )
 
             self.logger.debug("Created dedicated proxy sessions: API, Video, File")
@@ -337,7 +340,7 @@ class ElegooPrinterServer:
                 try:
                     await session.close()
                     self.logger.debug("Closed dedicated %s session", session_name)
-                except (RuntimeError, OSError) as e:
+                except (aiohttp.ClientError, RuntimeError, OSError) as e:
                     self.logger.warning("Error closing %s session: %s", session_name, e)
 
         self.api_session = None
@@ -510,6 +513,7 @@ class ElegooPrinterServer:
                     if (
                         "multipart" in content_type.lower()
                         or "mjpeg" in content_type.lower()
+                        or "mjpeg" in request.path.lower()
                     ):
                         # Use iter_any() for MJPEG to preserve multipart boundaries
                         async for chunk in proxy_response.content.iter_any():
@@ -537,10 +541,8 @@ class ElegooPrinterServer:
                     await response.write_eof()
                 except (ConnectionResetError, asyncio.CancelledError) as e:
                     self.logger.debug("Video stream stopped: %s", e)
-                except Exception:
-                    self.logger.exception(
-                        "An unexpected error occurred during video streaming"
-                    )
+                except (aiohttp.ClientError, TimeoutError, OSError):
+                    self.logger.exception("Unexpected video streaming error")
                 return response
         except TimeoutError as e:
             self.logger.debug("Video stream timeout from %s: %s", remote_url, e)
@@ -803,7 +805,7 @@ class ElegooPrinterServer:
                 for task in pending:
                     task.cancel()
 
-        except Exception:
+        except (aiohttp.ClientError, TimeoutError, OSError):
             self.logger.exception("Error in centralized WebSocket handler")
         finally:
             # Cleanup
@@ -1154,7 +1156,7 @@ class ElegooPrinterServer:
             asyncio.CancelledError,
         ) as e:
             self.logger.debug("Stream interrupted by client disconnect: %s", e)
-        except Exception:
+        except (aiohttp.ClientError, TimeoutError, OSError):
             self.logger.exception("Unexpected error during streaming")
         return client_response
 
