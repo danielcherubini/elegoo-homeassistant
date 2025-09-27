@@ -68,7 +68,6 @@ class ElegooPrinterServer:
         self,
         logger: Any,
         hass: HomeAssistant,
-        session: ClientSession,
         printer: Printer | None = None,  # noqa: ARG002
     ) -> None:
         """Initialize the proxy server."""
@@ -98,7 +97,6 @@ class ElegooPrinterServer:
         cls,
         logger: Any,
         hass: HomeAssistant,
-        session: ClientSession,
         printer: Printer | None = None,
     ) -> ElegooPrinterServer:
         """Asynchronously creates and starts the multi-printer server (singleton)."""
@@ -122,7 +120,7 @@ class ElegooPrinterServer:
                 return cls._instance
 
             # Create new instance
-            cls._instance = cls(logger, hass, session, printer)
+            cls._instance = cls(logger, hass, printer)
             cls._reference_count = 1
 
             logger.debug(
@@ -191,7 +189,6 @@ class ElegooPrinterServer:
                 self._raise_port_error()
 
             # Create dedicated session for proxy to avoid interfering with HA's session
-            import aiohttp
             connector = aiohttp.TCPConnector(
                 limit=100,  # Total connection pool size
                 limit_per_host=30,  # Connections per host (for the printer)
@@ -456,10 +453,16 @@ class ElegooPrinterServer:
                 try:
                     # For MJPEG streams, use iter_any() to avoid breaking boundaries
                     content_type = proxy_response.headers.get("content-type", "")
-                    if "multipart" in content_type.lower() or "mjpeg" in content_type.lower():
+                    if (
+                        "multipart" in content_type.lower()
+                        or "mjpeg" in content_type.lower()
+                    ):
                         # Use iter_any() for MJPEG to preserve multipart boundaries
                         async for chunk in proxy_response.content.iter_any():
-                            if request.transport is None or request.transport.is_closing():
+                            if (
+                                request.transport is None
+                                or request.transport.is_closing()
+                            ):
                                 self.logger.debug(
                                     "Client disconnected, stopping video stream."
                                 )
@@ -468,7 +471,10 @@ class ElegooPrinterServer:
                     else:
                         # Use chunked reading for other content types
                         async for chunk in proxy_response.content.iter_chunked(8192):
-                            if request.transport is None or request.transport.is_closing():
+                            if (
+                                request.transport is None
+                                or request.transport.is_closing()
+                            ):
                                 self.logger.debug(
                                     "Client disconnected, stopping video stream."
                                 )
