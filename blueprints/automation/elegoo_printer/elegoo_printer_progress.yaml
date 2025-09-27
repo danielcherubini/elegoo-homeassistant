@@ -308,6 +308,8 @@ action:
               {% set file_name = states(file_name_entity)|default('current print', true) %}
               {% if error == 'filament_runout' %}
                 🧵 Filament runout detected during {{ file_name }}! Please load new filament.
+              {% elif error == 'filament_about_to_runout' %}
+                ⚠️ Filament runout imminent for {{ file_name }}! Please prepare new filament.
               {% elif error == 'filament_jam' %}
                 🚫 Filament jam detected during {{ file_name }}! Please check the extruder.
               {% elif error == 'temp_error' %}
