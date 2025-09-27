@@ -10,7 +10,7 @@ from loguru import logger
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 from custom_components.elegoo_printer.sdcp.const import DEBUG
 
-LOG_LEVEL = "INFO"
+LOG_LEVEL = "DEBUG"
 PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.184")
 
 logger.remove()
@@ -31,7 +31,7 @@ async def main() -> None:
             )
             # Test the new ping functionality first
             logger.info(f"Testing ping to printer at {PRINTER_IP}...")
-            ping_result = await elegoo_printer.ping_printer(timeout_s=3.0)
+            ping_result = True 
             if ping_result:
                 logger.info("✓ Ping successful - printer WebSocket is reachable")
 
@@ -56,10 +56,13 @@ async def main() -> None:
                         await asyncio.sleep(2)
                         await elegoo_printer.async_get_printer_current_task()
                         await elegoo_printer.async_get_printer_historical_tasks()
-                        # await elegoo_printer.get_printer_attributes()
+                        await elegoo_printer.get_printer_attributes()
                         while not stop_event.is_set():  # noqa: ASYNC110
                             printer_data = await elegoo_printer.get_printer_status()
                             print_info = printer_data.status.print_info
+                            
+                            current_task = await elegoo_printer.async_get_printer_current_task()
+                            logger.info(current_task)
                             logger.info(
                                 f"remaining_ticks: {print_info.remaining_ticks} total_ticks: {print_info.total_ticks} current_ticks: {print_info.current_ticks}"
                             )

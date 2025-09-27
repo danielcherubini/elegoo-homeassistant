@@ -244,6 +244,7 @@ class ElegooErrorStatusReason(Enum):
         DISCONNECT_APP: The controlling application disconnected during the print.
         NOZZLE_TEMP_SENSOR_OFFLINE: The nozzle thermistor is offline or disconnected.
         BED_TEMP_SENSOR_OFFLINE: The bed thermistor is offline or disconnected.
+        FILAMENT_ABOUT_TO_RUNOUT: The filament is about to runout but hasn't
 
     Example:
         >>> ElegooErrorStatusReason(0)
@@ -273,6 +274,7 @@ class ElegooErrorStatusReason(Enum):
     DISCONNECT_APP = 28
     NOZZLE_TEMP_SENSOR_OFFLINE = 33
     BED_TEMP_SENSOR_OFFLINE = 34
+    FILAMENT_ABOUT_TO_RUNOUT = 45
 
     @classmethod
     def from_int(cls, status_int: int) -> "ElegooErrorStatusReason | None":
