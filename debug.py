@@ -71,67 +71,63 @@ async def main() -> None:
     stop_event = asyncio.Event()
     try:
         async with aiohttp.ClientSession() as session:
+            # Create client with the printer IP for discovery
             elegoo_printer = ElegooPrinterClient(
-                ip_address=None, session=session, logger=logger
+                ip_address=PRINTER_IP, session=session, logger=logger
             )
-            # Test the new ping functionality first
-            logger.info(f"Testing ping to printer at {PRINTER_IP}...")
-            ping_result = True 
-            if ping_result:
-                logger.info("✓ Ping successful - printer WebSocket is reachable")
-
-                printer = elegoo_printer.discover_printer(PRINTER_IP)
-                if printer:
-                    logger.debug(f"PrinterType: {printer[0].printer_type}")
-                    logger.debug(f"Model Reported from Printer: {printer[0].model}")
-                    # server = ElegooPrinterServer(printer[0], logger=logger)
-                    # printer = server.get_printer()
-
-                    logger.debug(
-                        "Connecting to printer: %s at %s with proxy enabled: %s",
-                        printer[0].name,
-                        printer[0].ip_address,
-                        printer[0].proxy_enabled,
-                    )
-                    connected = await elegoo_printer.connect_printer(
-                        printer[0], proxy_enabled=printer[0].proxy_enabled
-                    )
-                    if connected:
-                        logger.debug("Polling Started")
-                        await asyncio.sleep(2)
-                        await elegoo_printer.async_get_printer_current_task()
-                        await elegoo_printer.async_get_printer_historical_tasks()
-                        await elegoo_printer.get_printer_attributes()
-                        while not stop_event.is_set():  # noqa: ASYNC110
-                            printer_data = await elegoo_printer.get_printer_status()
-                            print_info = printer_data.status.print_info
-                            
-                            current_task = await elegoo_printer.async_get_printer_current_task()
-                            logger.info(current_task)
-                            logger.info(
-                                f"remaining_ticks: {print_info.remaining_ticks} total_ticks: {print_info.total_ticks} current_ticks: {print_info.current_ticks}"
-                            )
-                            # task = await elegoo_printer.async_get_printer_last_task()
-                            # if task is not None:
-                            #     logger.debug(task.thumbnail)
-                            await asyncio.sleep(4)
 
             # Test ping functionality first if specific IP provided
-            if PRINTER_IP != "10.0.0.184":
-                logger.info(f"Testing ping to specific printer at {PRINTER_IP}...")
-                ping_result = await elegoo_printer.ping_printer(ping_timeout=3.0)
-                if ping_result:
-                    logger.info("✓ Ping successful - printer WebSocket is reachable")
-                else:
-                    logger.warning("✗ Ping failed - printer WebSocket is not reachable")
-                    logger.info("This is expected if printer is off or WebSocket service not running")
+            logger.info(f"Testing ping to printer at {PRINTER_IP}...")
+            ping_result = await elegoo_printer.ping_printer(ping_timeout=5.0)
+            if ping_result:
+                logger.info("✓ Ping successful - printer WebSocket is reachable")
+            else:
+                logger.warning("✗ Ping failed - printer WebSocket is not reachable")
+                logger.info("This is expected if printer is off or WebSocket service not running")
 
-            # Discover all printers (broadcast discovery)
-            logger.info("🔍 Discovering printers on network...")
+            # Discover specific printer first
+            logger.info(f"🔍 Discovering printer at {PRINTER_IP}...")
+            discovered_printer = elegoo_printer.discover_printer(PRINTER_IP)
+            if discovered_printer:
+                printer = discovered_printer[0]
+                logger.info(f"✓ Found printer: {printer.name} ({printer.model})")
+                logger.debug(f"PrinterType: {printer.printer_type}")
+                logger.debug(f"Model Reported from Printer: {printer.model}")
+
+                logger.debug(
+                    "Connecting to printer: %s at %s with proxy enabled: %s",
+                    printer.name,
+                    printer.ip_address,
+                    printer.proxy_enabled,
+                )
+                connected = await elegoo_printer.connect_printer(
+                    printer, proxy_enabled=printer.proxy_enabled
+                )
+                if connected:
+                    logger.debug("Polling Started")
+                    await asyncio.sleep(2)
+                    await elegoo_printer.async_get_printer_current_task()
+                    await elegoo_printer.async_get_printer_historical_tasks()
+                    await elegoo_printer.get_printer_attributes()
+                    while not stop_event.is_set():  # noqa: ASYNC110
+                        printer_data = await elegoo_printer.get_printer_status()
+                        print_info = printer_data.status.print_info
+
+                        current_task = await elegoo_printer.async_get_printer_current_task()
+                        logger.info(current_task)
+                        logger.info(
+                            f"remaining_ticks: {print_info.remaining_ticks} total_ticks: {print_info.total_ticks} current_ticks: {print_info.current_ticks}"
+                        )
+                        await asyncio.sleep(4)
+                else:
+                    logger.error(f"❌ Failed to connect to {printer.name}")
+
+            # Also discover all printers on network (broadcast discovery)
+            logger.info("🔍 Discovering all printers on network...")
             discovered_printers = elegoo_printer.discover_printer()
 
             if discovered_printers:
-                logger.info(f"🎯 Found {len(discovered_printers)} printer(s):")
+                logger.info(f"🎯 Found {len(discovered_printers)} printer(s) total:")
                 for i, printer in enumerate(discovered_printers):
                     logger.info(
                         f"  {i+1}. {printer.name} ({printer.model}) at {printer.ip_address}"
@@ -157,7 +153,7 @@ async def main() -> None:
                             task.cancel()
                     await asyncio.gather(*monitor_tasks, return_exceptions=True)
             else:
-                logger.warning("⚠️  No printers discovered on the network")
+                logger.warning("⚠️  No additional printers discovered on the network")
 
     except KeyboardInterrupt:
         logger.info("🛑 Received interrupt signal")
