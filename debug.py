@@ -11,7 +11,7 @@ from loguru import logger
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 from custom_components.elegoo_printer.sdcp.const import DEBUG
 
-LOG_LEVEL = "DEBUG"
+LOG_LEVEL = "INFO"
 PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.184")
 
 logger.remove()
@@ -113,8 +113,7 @@ async def main() -> None:
                         printer_data = await elegoo_printer.get_printer_status()
                         print_info = printer_data.status.print_info
 
-                        current_task = await elegoo_printer.async_get_printer_current_task()
-                        logger.info(current_task)
+                        logger.info(print_info.percent_complete)
                         logger.info(
                             f"remaining_ticks: {print_info.remaining_ticks} total_ticks: {print_info.total_ticks} current_ticks: {print_info.current_ticks}"
                         )

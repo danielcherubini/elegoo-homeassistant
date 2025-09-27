@@ -134,6 +134,8 @@ class PrintInfo:
             ElegooPrintStatus.DROPPING,
             ElegooPrintStatus.RECOVERY,
             ElegooPrintStatus.PRINTING_RECOVERY,
+            ElegooPrintStatus.PREHEATING,
+            ElegooPrintStatus.LEVELING,
         }
         if self.status in active_statuses:
             if self.progress is not None:
