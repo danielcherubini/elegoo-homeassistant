@@ -295,11 +295,11 @@ class TestElegooPrinterServerUtilities:
             assert result is False
 
     def test_raise_port_error(self, proxy_server: ElegooPrinterServer) -> None:
-        """Test _raise_port_error method."""
+        """Test _raise_port_unavailable_error method."""
         with pytest.raises(
             OSError, match="Ports 3030 or 3031 are already in use"
         ) as exc_info:
-            proxy_server._raise_port_error()  # noqa: SLF001
+            proxy_server._raise_port_unavailable_error()  # noqa: SLF001
 
         assert "Ports 3030 or 3031 are already in use" in str(exc_info.value)
 
