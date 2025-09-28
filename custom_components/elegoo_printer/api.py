@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from logging import Logger
     from types import MappingProxyType
 
+    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
     from .sdcp.models.enums import ElegooFan
@@ -53,6 +54,7 @@ class ElegooPrinterApiClient:
         config: MappingProxyType[str, Any],
         logger: Logger,
         hass: HomeAssistant,
+        config_entry: ConfigEntry | None = None,
     ) -> None:
         """
         Initialize the ElegooPrinterApiClient with a Printer object, configuration, and logger.
@@ -66,6 +68,7 @@ class ElegooPrinterApiClient:
         self._hass_client = get_async_client(hass)
         self.server: ElegooPrinterServer | None = None
         self.hass: HomeAssistant = hass
+        self._config_entry = config_entry
 
     @classmethod
     async def async_create(
@@ -73,6 +76,7 @@ class ElegooPrinterApiClient:
         config: MappingProxyType[str, Any],
         logger: Logger,
         hass: HomeAssistant,
+        config_entry: ConfigEntry | None = None,
     ) -> ElegooPrinterApiClient | None:
         """
         Asynchronously creates and initializes an ElegooPrinterApiClient instance.
@@ -84,7 +88,9 @@ class ElegooPrinterApiClient:
         printer = Printer.from_dict(dict(config))
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
         logger.debug("CONFIGURATION %s", config)
-        self = ElegooPrinterApiClient(printer, config=config, logger=logger, hass=hass)
+        self = ElegooPrinterApiClient(
+            printer, config=config, logger=logger, hass=hass, config_entry=config_entry
+        )
         session = async_get_clientsession(hass)
 
         # First, test if printer is reachable before starting proxy server
@@ -146,6 +152,10 @@ class ElegooPrinterApiClient:
                 self._proxy_server_enabled = False
                 return None
             logger.info("Polling Started")
+
+            # Update config entry with fresh printer data from successful connection
+            await self._update_config_entry_if_needed(printer)
+
             return self  # noqa: TRY300
         except (ConnectionError, TimeoutError):
             # Release only our proxy reference if any
@@ -232,10 +242,16 @@ class ElegooPrinterApiClient:
             printer.ip_address,
             self._proxy_server_enabled and self.server is not None,
         )
-        return await self.client.connect_printer(
+        connected = await self.client.connect_printer(
             printer,
             proxy_enabled=self._proxy_server_enabled and self.server is not None,
         )
+
+        # Update config entry with fresh printer data if reconnection was successful
+        if connected:
+            await self._update_config_entry_if_needed(printer)
+
+        return connected
 
     async def async_get_status(self) -> PrinterData:
         """
@@ -673,3 +689,69 @@ class ElegooPrinterApiClient:
             "package_url": update_data.get("packageUrl"),
             "changelog": update_data.get("log"),
         }
+
+    async def _update_config_entry_if_needed(self, printer: Printer) -> None:
+        """
+        Update the config entry with fresh printer data if anything has changed.
+
+        This ensures the stored config stays in sync with the actual printer state.
+        """
+        try:
+            # Use stored config entry reference if available
+            config_entry = self._config_entry
+            if not config_entry:
+                LOGGER.debug(
+                    "No config entry reference available for printer %s", printer.id
+                )
+                return
+
+            # Convert current and new printer data for comparison
+            current_data = dict(config_entry.data)
+            new_data = printer.to_dict()
+
+            # Compare key fields that might have changed
+            fields_to_check = [
+                "name",
+                "model",
+                "brand",
+                "firmware",
+                "protocol",
+                "ip_address",
+            ]
+            has_changes = False
+
+            for field in fields_to_check:
+                current_value = current_data.get(field)
+                new_value = new_data.get(field)
+                if current_value != new_value and new_value is not None:
+                    LOGGER.debug(
+                        "Printer %s field '%s' changed: '%s' -> '%s'",
+                        printer.name,
+                        field,
+                        current_value,
+                        new_value,
+                    )
+                    has_changes = True
+
+            if has_changes:
+                LOGGER.info(
+                    "Updating config entry for printer %s with fresh data",
+                    printer.name,
+                )
+                # Update the config entry with the new printer data
+                self.hass.config_entries.async_update_entry(
+                    config_entry,
+                    data=new_data,
+                )
+            else:
+                LOGGER.debug(
+                    "No config changes needed for printer %s",
+                    printer.name,
+                )
+
+        except Exception as e:  # noqa: BLE001
+            LOGGER.warning(
+                "Failed to update config entry for printer %s: %s",
+                printer.name,
+                e,
+            )

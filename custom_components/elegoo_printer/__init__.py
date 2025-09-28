@@ -85,6 +85,7 @@ async def async_setup_entry(
         config=MappingProxyType(config),
         logger=LOGGER,
         hass=hass,
+        config_entry=entry,
     )
 
     if client is None:

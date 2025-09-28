@@ -15,7 +15,6 @@ from .const import (
     CONF_NAME,
     CONF_PROXY_ENABLED,
     DOMAIN,
-    LOGGER,
     WEBSOCKET_PORT,
 )
 from .coordinator import ElegooDataUpdateCoordinator
@@ -37,52 +36,14 @@ class ElegooPrinterEntity(CoordinatorEntity[ElegooDataUpdateCoordinator]):
         """Return device info with dynamically updated configuration URL."""
         config_data = self.coordinator.config_entry.data
 
-        # Determine if we have printer data available
-        has_printer_data = self.coordinator.data and self.coordinator.data.printer
-
-        LOGGER.debug(
-            "Building device_info for %s: using %s data",
-            config_data.get(CONF_NAME, "unknown"),
-            "printer" if has_printer_data else "config",
-        )
-
-        # Set variables based on data availability
-        if has_printer_data:
-            printer = self.coordinator.data.printer
-            device_id = printer.id or config_data[CONF_ID]
-            device_name = printer.name or config_data[CONF_NAME]
-            device_model = printer.model or config_data[CONF_MODEL]
-            device_manufacturer = printer.brand or config_data[CONF_BRAND]
-            device_firmware = printer.firmware or config_data[CONF_FIRMWARE]
-            device_ip = printer.ip_address
-            proxy_enabled = printer.proxy_enabled
-
-            LOGGER.debug(
-                "Using printer data: name=%s, model=%s, firmware=%s, ip=%s, proxy=%s",
-                device_name,
-                device_model,
-                device_firmware,
-                device_ip,
-                proxy_enabled,
-            )
-        else:
-            # Use config fallbacks
-            device_id = config_data[CONF_ID]
-            device_name = config_data[CONF_NAME]
-            device_model = config_data[CONF_MODEL]
-            device_manufacturer = config_data[CONF_BRAND]
-            device_firmware = config_data[CONF_FIRMWARE]
-            device_ip = config_data.get(CONF_IP)
-            proxy_enabled = config_data.get(CONF_PROXY_ENABLED, False)
-
-            LOGGER.debug(
-                "Config fallback: name=%s, model=%s, firmware=%s, ip=%s, proxy=%s",
-                device_name,
-                device_model,
-                device_firmware,
-                device_ip,
-                proxy_enabled,
-            )
+        # Use config data (now kept in sync with printer via automatic updates)
+        device_id = config_data[CONF_ID]
+        device_name = config_data[CONF_NAME]
+        device_model = config_data[CONF_MODEL]
+        device_manufacturer = config_data[CONF_BRAND]
+        device_firmware = config_data[CONF_FIRMWARE]
+        device_ip = config_data.get(CONF_IP)
+        proxy_enabled = config_data.get(CONF_PROXY_ENABLED, False)
 
         # Build configuration URL
         configuration_url = None
@@ -91,20 +52,8 @@ class ElegooPrinterEntity(CoordinatorEntity[ElegooDataUpdateCoordinator]):
                 # Use centralized proxy with MainboardID query parameter
                 proxy_ip = PrinterData.get_local_ip(device_ip)
                 configuration_url = f"http://{proxy_ip}:{WEBSOCKET_PORT}?id={device_id}"
-                LOGGER.debug("Built proxy configuration URL: %s", configuration_url)
             else:
                 configuration_url = f"http://{device_ip}:{WEBSOCKET_PORT}"
-                LOGGER.debug("Built direct configuration URL: %s", configuration_url)
-        else:
-            LOGGER.debug("No IP address available, configuration URL will be None")
-
-        LOGGER.debug(
-            "Final device_info: id=%s, name=%s, model=%s, manufacturer=%s",
-            device_id,
-            device_name,
-            device_model,
-            device_manufacturer,
-        )
 
         # Construct and return DeviceInfo
         return DeviceInfo(
