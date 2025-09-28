@@ -12,7 +12,7 @@ import json
 import re
 import socket
 from math import floor
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
 
 import aiohttp
@@ -50,6 +50,15 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from custom_components.elegoo_printer.sdcp.models.printer import Printer
+
+
+# Port configuration for cleanup operations
+class PortConfig(NamedTuple):
+    """Configuration for port cleanup operations."""
+
+    port: int
+    proto: int
+    name: str
 
 
 class ElegooPrinterServer:
@@ -151,6 +160,11 @@ class ElegooPrinterServer:
         """Get the local IP address for the proxy server."""
         return get_local_ip()
 
+    def _raise_port_unavailable_error(self) -> None:
+        """Raise an OSError for port availability issues."""
+        msg = f"Ports {WEBSOCKET_PORT} or {VIDEO_PORT} are already in use"
+        raise OSError(msg)
+
     def get_printer(self, specific_printer: Printer | None = None) -> Printer:
         """
         Get a printer instance for API operations.
@@ -180,16 +194,11 @@ class ElegooPrinterServer:
         msg = "No printers available in proxy server"
         raise ConfigEntryNotReady(msg)
 
-    def _raise_port_error(self) -> None:
-        """Raise an OSError for port availability issues."""
-        msg = f"Ports {WEBSOCKET_PORT} or {VIDEO_PORT} are already in use"
-        raise OSError(msg)
-
     async def start(self) -> None:
         """Start the centralized proxy server."""
         try:
             if not self._check_ports_are_available():
-                self._raise_port_error()
+                self._raise_port_unavailable_error()
 
             # Create three dedicated sessions optimized for different use cases
 
@@ -358,27 +367,38 @@ class ElegooPrinterServer:
     async def _force_cleanup_ports(cls, logger: Any) -> None:
         """Force cleanup of any lingering socket connections on our ports."""
         ports_to_cleanup = [
-            (WEBSOCKET_PORT, socket.SOCK_STREAM),
-            (VIDEO_PORT, socket.SOCK_STREAM),
-            (DISCOVERY_PORT, socket.SOCK_DGRAM),
+            PortConfig(WEBSOCKET_PORT, socket.SOCK_STREAM, "WebSocket"),
+            PortConfig(VIDEO_PORT, socket.SOCK_STREAM, "Video"),
+            PortConfig(DISCOVERY_PORT, socket.SOCK_DGRAM, "Discovery"),
         ]
 
-        for port, proto in ports_to_cleanup:
+        for config in ports_to_cleanup:
             try:
                 # Create and immediately close a socket to force cleanup
-                with socket.socket(socket.AF_INET, proto) as s:
+                with socket.socket(socket.AF_INET, config.proto) as s:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                    s.bind((INADDR_ANY, port))
-                    logger.debug("Port %s successfully cleaned up", port)
+                    s.bind((INADDR_ANY, config.port))
+                    logger.debug(
+                        "%s port %s successfully cleaned up", config.name, config.port
+                    )
             except OSError:
                 try:
                     # Try connecting to see if something is actually there
-                    with socket.socket(socket.AF_INET, proto) as test_s:
-                        if proto == socket.SOCK_STREAM:
-                            test_s.connect((INADDR_ANY, port))
-                        logger.debug("Port %s still in use after cleanup", port)
+                    with socket.socket(socket.AF_INET, config.proto) as test_s:
+                        if config.proto == socket.SOCK_STREAM:
+                            test_s.connect((INADDR_ANY, config.port))
+                        logger.debug(
+                            "%s port %s still in use after cleanup",
+                            config.name,
+                            config.port,
+                        )
                 except OSError as e:
-                    logger.debug("Error during port %s cleanup: %s", port, e)
+                    logger.debug(
+                        "Error during %s port %s cleanup: %s",
+                        config.name,
+                        config.port,
+                        e,
+                    )
 
     @classmethod
     async def release_reference(cls) -> None:
@@ -588,28 +608,27 @@ class ElegooPrinterServer:
         else:
             return remote_ws
 
-    def _find_video_url_in_data(self, data: dict) -> tuple[str | None, dict | None]:
+    def _find_video_url_in_data(
+        self, data: dict, max_depth: int = 3
+    ) -> tuple[str | None, dict | None]:
         """Find VideoUrl in nested data structures and return it with its parent."""
-        if not isinstance(data, dict):
+
+        def search(obj: Any, depth: int = 0) -> tuple[str | None, dict | None]:
+            if depth > max_depth or not isinstance(obj, dict):
+                return None, None
+
+            if "VideoUrl" in obj:
+                return obj["VideoUrl"], obj
+
+            # Search nested Data fields
+            if "Data" in obj:
+                result = search(obj["Data"], depth + 1)
+                if result[0] is not None:
+                    return result
+
             return None, None
 
-        # Check top-level VideoUrl
-        if "VideoUrl" in data:
-            return data["VideoUrl"], data
-
-        # Check Data.VideoUrl
-        if isinstance(data.get("Data"), dict) and "VideoUrl" in data["Data"]:
-            return data["Data"]["VideoUrl"], data["Data"]
-
-        # Check Data.Data.VideoUrl
-        if (
-            isinstance(data.get("Data"), dict)
-            and isinstance(data["Data"].get("Data"), dict)
-            and "VideoUrl" in data["Data"]["Data"]
-        ):
-            return data["Data"]["Data"]["VideoUrl"], data["Data"]["Data"]
-
-        return None, None
+        return search(data)
 
     async def _route_printer_to_client(
         self,
@@ -1191,43 +1210,41 @@ class ElegooPrinterServer:
 
     def _process_replacements(self, content: str, printer: Printer) -> str:
         # Apply existing IP address and port replacements
-        processed_content = (
-            content.replace(printer.ip_address or DEFAULT_FALLBACK_IP, get_local_ip())
-            .replace(
-                f"{get_local_ip()}/",
-                f"{get_local_ip()}:{WEBSOCKET_PORT}/",
-            )
-            .replace(
+        replacements = [
+            (printer.ip_address or DEFAULT_FALLBACK_IP, get_local_ip()),
+            (f"{get_local_ip()}/", f"{get_local_ip()}:{WEBSOCKET_PORT}/"),
+            (
                 "${this.webSocketService.hostName}:80",
-                "${this.webSocketService.hostName}:" + f"{WEBSOCKET_PORT}",
-            )
-        )
+                f"${{this.webSocketService.hostName}}:{WEBSOCKET_PORT}",
+            ),
+        ]
+
+        processed_content = content
+        for old, new in replacements:
+            processed_content = processed_content.replace(old, new)
 
         # Apply JavaScript WebSocket URL transformations (for MainboardID routing)
         if printer.id and f"?id={printer.id}" not in processed_content:
-            # Template literal syntax (ES6) - main pattern for WebSocket connections
-            processed_content = processed_content.replace(
-                "ws://${this.hostName}:3030/websocket",
-                f"ws://${{this.hostName}}:3030/websocket?id={printer.id}",
-            )
-
-            # Template literal for HTTP URLs
-            processed_content = processed_content.replace(
-                "http://${this.hostName}:3030/",
-                f"http://${{this.hostName}}:3030/?id={printer.id}&",
-            )
-
-            # String concatenation patterns (in case they exist)
-            processed_content = processed_content.replace(
-                'ws://" + this.hostName + ":3030/websocket',
-                f'ws://" + this.hostName + ":3030/websocket?id={printer.id}',
-            )
-
-            # Generic patterns without host variables
-            processed_content = processed_content.replace(
-                "ws://localhost:3030/websocket",
-                f"ws://localhost:3030/websocket?id={printer.id}",
-            )
+            ws_replacements = [
+                (
+                    "ws://${this.hostName}:3030/websocket",
+                    f"ws://${{this.hostName}}:3030/websocket?id={printer.id}",
+                ),
+                (
+                    "http://${this.hostName}:3030/",
+                    f"http://${{this.hostName}}:3030/?id={printer.id}&",
+                ),
+                (
+                    'ws://" + this.hostName + ":3030/websocket',
+                    f'ws://" + this.hostName + ":3030/websocket?id={printer.id}',
+                ),
+                (
+                    "ws://localhost:3030/websocket",
+                    f"ws://localhost:3030/websocket?id={printer.id}",
+                ),
+            ]
+            for old, new in ws_replacements:
+                processed_content = processed_content.replace(old, new)
 
         return processed_content
 

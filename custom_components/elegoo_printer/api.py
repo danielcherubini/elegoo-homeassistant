@@ -42,6 +42,11 @@ if TYPE_CHECKING:
 class ElegooPrinterApiClient:
     """Sample API Client."""
 
+    # Thumbnail fetch retry configuration
+    _THUMBNAIL_MAX_RETRIES = 2
+    _THUMBNAIL_RETRY_BASE_DELAY = 0.5  # seconds
+    _THUMBNAIL_TIMEOUT = 10  # seconds
+
     _ip_address: str | None
     client: ElegooPrinterClient
     _logger: Logger
@@ -303,21 +308,22 @@ class ElegooPrinterApiClient:
 
     async def _fetch_thumbnail_with_retry(self, thumbnail_url: str) -> Any:
         """Fetch thumbnail with exponential backoff retry logic."""
-        max_retries = 2
-        for attempt in range(max_retries + 1):
+        for attempt in range(self._THUMBNAIL_MAX_RETRIES + 1):
             try:
                 response = await self._hass_client.get(
-                    thumbnail_url, timeout=10, follow_redirects=True
+                    thumbnail_url,
+                    timeout=self._THUMBNAIL_TIMEOUT,
+                    follow_redirects=True,
                 )
                 response.raise_for_status()
             except (RequestError, HTTPStatusError) as e:
-                if attempt < max_retries:
+                if attempt < self._THUMBNAIL_MAX_RETRIES:
                     LOGGER.debug(
                         "Thumbnail fetch attempt %d failed, retrying: %s",
                         attempt + 1,
                         e,
                     )
-                    await asyncio.sleep(0.5 * (2**attempt))
+                    await asyncio.sleep(self._THUMBNAIL_RETRY_BASE_DELAY * (2**attempt))
                     continue
                 raise
             else:
