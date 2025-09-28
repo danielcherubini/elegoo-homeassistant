@@ -416,6 +416,17 @@ class ElegooPrinterServer:
                     )
 
     @classmethod
+    def has_reference(cls) -> bool:
+        """
+        Check if there's an active reference to the proxy server.
+
+        Returns:
+            True if there are active references, False otherwise.
+
+        """
+        return cls._reference_count > 0
+
+    @classmethod
     async def stop_all(cls) -> None:
         """
         Force stop the proxy server singleton instance (emergency cleanup).

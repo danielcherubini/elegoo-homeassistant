@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
@@ -126,8 +127,8 @@ class ElegooPrinterApiClient:
             if printer is None:
                 # Proxy was required but failed to start
                 await self.client.disconnect()
-                # Release only our proxy reference if any
-                if self.server:
+                # Release proxy reference only if there's an active class-level ref
+                if ElegooPrinterServer.has_reference():
                     await ElegooPrinterServer.release_reference()
                 return None
 
@@ -300,6 +301,32 @@ class ElegooPrinterApiClient:
             return task.thumbnail
         return None
 
+    async def _fetch_thumbnail_with_retry(self, thumbnail_url: str) -> Any:
+        """Fetch thumbnail with exponential backoff retry logic."""
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self._hass_client.get(
+                    thumbnail_url, timeout=10, follow_redirects=True
+                )
+                response.raise_for_status()
+            except (RequestError, HTTPStatusError) as e:
+                if attempt < max_retries:
+                    LOGGER.debug(
+                        "Thumbnail fetch attempt %d failed, retrying: %s",
+                        attempt + 1,
+                        e,
+                    )
+                    await asyncio.sleep(0.5 * (2**attempt))
+                    continue
+                raise
+            else:
+                return response
+
+        # This should never be reached due to raise above, but satisfy linter
+        msg = "Failed to fetch thumbnail after all retries"
+        raise RequestError(msg)
+
     async def async_get_thumbnail_image(
         self, task: PrintHistoryDetail | None = None
     ) -> ElegooImage | None:
@@ -362,10 +389,7 @@ class ElegooPrinterApiClient:
                     thumbnail_url = task.thumbnail
 
             try:
-                response = await self._hass_client.get(
-                    thumbnail_url, timeout=10, follow_redirects=True
-                )
-                response.raise_for_status()
+                response = await self._fetch_thumbnail_with_retry(thumbnail_url)
                 LOGGER.debug("get_thumbnail response status: %s", response.status_code)
                 raw_ct = response.headers.get("content-type", "")
                 content_type = raw_ct.split(";", 1)[0].strip().lower() or "image/png"
@@ -749,9 +773,25 @@ class ElegooPrinterApiClient:
                     printer.name,
                 )
 
-        except Exception as e:  # noqa: BLE001
-            LOGGER.warning(
-                "Failed to update config entry for printer %s: %s",
+        except AttributeError as e:
+            # Handle missing attributes in printer or config
+            LOGGER.debug(
+                "Missing attributes when updating config for printer %s: %s",
                 printer.name,
                 e,
+            )
+        except RuntimeError as e:
+            # Handle Home Assistant state errors
+            LOGGER.warning(
+                "Home Assistant error updating config for printer %s: %s",
+                printer.name,
+                e,
+            )
+        except Exception as e:  # noqa: BLE001
+            # Log unexpected errors but don't crash
+            LOGGER.error(
+                "Unexpected error updating config for printer %s: %s",
+                printer.name,
+                e,
+                exc_info=True,
             )
