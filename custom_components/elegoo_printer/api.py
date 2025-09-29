@@ -546,7 +546,7 @@ class ElegooPrinterApiClient:
         self._logger.debug("Printer is reachable. Starting proxy server.")
         try:
             self.server = await ElegooPrinterServer.async_create(
-                self._logger, self.hass, printer=printer
+                logger=self._logger, hass=self.hass, printer=printer
             )
         except (OSError, ConfigEntryNotReady):
             # When proxy is explicitly enabled, server startup failures are fatal
