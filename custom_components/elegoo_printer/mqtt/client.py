@@ -543,20 +543,19 @@ class ElegooMqttClient:
         if DEBUG:
             msg = f"response >> \n{json.dumps(data, indent=5)}"
             self.logger.debug(msg)
-        try:
-            inner_data = data.get("Data")
-            if inner_data:
-                request_id = inner_data.get("RequestID")
-                if request_id:
-                    await self._set_response_event(request_id)
-                data_data = inner_data.get("Data", {})
-                cmd: int = inner_data.get("Cmd", 0)
-                if cmd == CMD_RETRIEVE_HISTORICAL_TASKS:
-                    self._print_history_handler(data_data)
-                elif cmd == CMD_RETRIEVE_TASK_DETAILS:
-                    self._print_history_detail_handler(data_data)
-                elif cmd == CMD_SET_VIDEO_STREAM:
-                    self._print_video_handler(data_data)
+        inner_data = data.get("Data")
+        if inner_data:
+            request_id = inner_data.get("RequestID")
+            if request_id:
+                self._set_response_event_sync(request_id)
+            data_data = inner_data.get("Data", {})
+            cmd: int = inner_data.get("Cmd", 0)
+            if cmd == CMD_RETRIEVE_HISTORICAL_TASKS:
+                self._print_history_handler(data_data)
+            elif cmd == CMD_RETRIEVE_TASK_DETAILS:
+                self._print_history_detail_handler(data_data)
+            elif cmd == CMD_SET_VIDEO_STREAM:
+                self._print_video_handler(data_data)
 
     def _status_handler(self, data: dict[str, Any]) -> None:
         """
@@ -622,13 +621,12 @@ class ElegooMqttClient:
         """
         self.printer_data.video = ElegooVideo(data_data)
 
-    async def _set_response_event(self, request_id: str) -> None:
-        """Set the event for a given request ID."""
-        async with self._response_lock:
-            if event := self._response_events.get(request_id):
-                event.set()
-            elif DEBUG:
-                self.logger.debug("No waiter found for RequestID=%s", request_id)
+    def _set_response_event_sync(self, request_id: str) -> None:
+        """Set the event for a given request ID (synchronous wrapper)."""
+        if event := self._response_events.get(request_id):
+            event.set()
+        elif DEBUG:
+            self.logger.debug("No waiter found for RequestID=%s", request_id)
 
     async def ping_printer(self, ping_timeout: float = 5.0) -> bool:
         """

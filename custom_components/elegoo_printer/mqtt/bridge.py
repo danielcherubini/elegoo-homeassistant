@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from logging import Logger
 
 DISCOVERY_TIMEOUT = 5
+MAX_RETRY_ATTEMPTS = 3
 
 
 class ElegooMqttBridge:
@@ -80,9 +81,11 @@ class ElegooMqttBridge:
 
         try:
             await self.mqtt_client.__aenter__()
-            self.logger.info("Connected to MQTT broker at %s:%s", self.mqtt_host, self.mqtt_port)
-        except Exception as e:
-            self.logger.error("Failed to connect to MQTT broker: %s", e)
+            self.logger.info(
+                "Connected to MQTT broker at %s:%s", self.mqtt_host, self.mqtt_port
+            )
+        except Exception:
+            self.logger.exception("Failed to connect to MQTT broker")
             return
 
         # Start discovery and MQTT message handling
@@ -123,8 +126,8 @@ class ElegooMqttBridge:
                 await asyncio.sleep(60)  # Discovery every minute
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                self.logger.error("Error in discovery loop: %s", e)
+            except Exception:
+                self.logger.exception("Error in discovery loop")
                 await asyncio.sleep(10)
 
     async def _discover_printers(self) -> None:
@@ -144,7 +147,9 @@ class ElegooMqttBridge:
         discovered_printers: list[Printer] = []
 
         msg = DISCOVERY_MESSAGE.encode()
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as sock:
+        with socket.socket(
+            socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
+        ) as sock:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             sock.settimeout(DISCOVERY_TIMEOUT)
 
@@ -160,15 +165,19 @@ class ElegooMqttBridge:
                             printer_info = data.decode("utf-8")
                             printer = Printer(printer_info)
                             discovered_printers.append(printer)
-                            self.logger.info("Discovered printer: %s (%s)", printer.name, printer.ip_address)
-                        except (UnicodeDecodeError, ValueError, TypeError) as e:
-                            self.logger.warning("Failed to parse printer data: %s", e)
+                            self.logger.info(
+                                "Discovered printer: %s (%s)",
+                                printer.name,
+                                printer.ip_address,
+                            )
+                        except (UnicodeDecodeError, ValueError, TypeError):
+                            self.logger.exception("Failed to parse printer data")
 
                     except TimeoutError:
                         break
 
-            except OSError as e:
-                self.logger.error("Socket error during discovery: %s", e)
+            except OSError:
+                self.logger.exception("Socket error during discovery")
 
         return discovered_printers
 
@@ -190,16 +199,22 @@ class ElegooMqttBridge:
                 self.logger.info("Successfully connected to printer: %s", printer.name)
 
                 # Start forwarding printer messages to MQTT
-                asyncio.create_task(self._forward_printer_to_mqtt(printer, client))
+                task = asyncio.create_task(
+                    self._forward_printer_to_mqtt(printer, client)
+                )
+                # Store task reference to prevent garbage collection
+                task.add_done_callback(lambda _: None)
             else:
                 self.logger.warning("Failed to connect to printer: %s", printer.name)
                 await session.close()
 
-        except Exception as e:
-            self.logger.error("Error connecting to printer %s: %s", printer.name, e)
+        except Exception:
+            self.logger.exception("Error connecting to printer %s", printer.name)
             await session.close()
 
-    async def _forward_printer_to_mqtt(self, printer: Printer, client: ElegooPrinterClient) -> None:
+    async def _forward_printer_to_mqtt(
+        self, printer: Printer, client: ElegooPrinterClient
+    ) -> None:
         """Forward printer WebSocket messages to MQTT."""
         # This would need to tap into the WebSocket message stream
         # For now, we'll poll for status updates
@@ -218,8 +233,8 @@ class ElegooMqttBridge:
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                self.logger.error("Error forwarding printer data: %s", e)
+            except Exception:
+                self.logger.exception("Error forwarding printer data")
                 await asyncio.sleep(10)
 
     async def _mqtt_message_handler(self) -> None:
@@ -233,25 +248,27 @@ class ElegooMqttBridge:
         async for message in self.mqtt_client.messages:
             try:
                 await self._handle_mqtt_message(message)
-            except Exception as e:
-                self.logger.error("Error handling MQTT message: %s", e)
+            except Exception:
+                self.logger.exception("Error handling MQTT message")
 
     async def _handle_mqtt_message(self, message: aiomqtt.Message) -> None:
         """Handle a single MQTT message."""
         topic_parts = str(message.topic).split("/")
-        if len(topic_parts) >= 3 and topic_parts[1] == TOPIC_REQUEST:
+        if len(topic_parts) >= MAX_RETRY_ATTEMPTS and topic_parts[1] == TOPIC_REQUEST:
             printer_id = topic_parts[2]
 
             if printer_id in self.printer_clients:
-                client = self.printer_clients[printer_id]
-
                 try:
                     payload = json.loads(message.payload.decode())
                     # Forward command to printer via WebSocket
                     # This would need integration with the existing command system
-                    self.logger.debug("Forwarding MQTT command to printer %s: %s", printer_id, payload)
+                    self.logger.debug(
+                        "Forwarding MQTT command to printer %s: %s", printer_id, payload
+                    )
 
                 except json.JSONDecodeError:
                     self.logger.warning("Invalid JSON in MQTT message")
             else:
-                self.logger.warning("Received MQTT message for unknown printer: %s", printer_id)
+                self.logger.warning(
+                    "Received MQTT message for unknown printer: %s", printer_id
+                )
