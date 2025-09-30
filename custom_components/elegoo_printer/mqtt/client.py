@@ -121,6 +121,13 @@ class ElegooMqttClient:
                 ev.set()
             self._response_events.clear()
 
+        # Properly close MQTT connection
+        if self.mqtt_client:
+            try:
+                await self.mqtt_client.__aexit__(None, None, None)
+            except (OSError, TimeoutError, aiomqtt.MqttError):
+                self.logger.exception("Error during MQTT disconnect")
+
         self.mqtt_client = None
         self._is_connected = False
 
@@ -190,11 +197,11 @@ class ElegooMqttClient:
                     self._parse_response(payload, str(message.topic))
                 except UnicodeDecodeError:
                     self.logger.exception("Failed to decode MQTT message")
-                except Exception:
+                except (json.JSONDecodeError, KeyError, ValueError):
                     self.logger.exception("Error processing MQTT message")
         except asyncio.CancelledError:
             self.logger.debug("MQTT listener cancelled.")
-        except Exception as e:
+        except (OSError, TimeoutError, aiomqtt.MqttError) as e:
             self.logger.debug("MQTT listener exception: %s", e)
             raise ElegooPrinterConnectionError from e
         finally:
@@ -254,13 +261,20 @@ class ElegooMqttClient:
         self, id_list: list[str]
     ) -> PrintHistoryDetail | None:
         """Retrieve historical tasks from the printer."""
+        # Check cache first for all IDs
         for task_id in id_list:
             if task := self.printer_data.print_history.get(task_id):
                 return task
+
+        # If not found in cache, fetch the first ID
+        if id_list:
             await self._send_printer_cmd(
-                CMD_RETRIEVE_TASK_DETAILS, data={"Id": [task_id]}
+                CMD_RETRIEVE_TASK_DETAILS, data={"Id": [id_list[0]]}
             )
-            return self.printer_data.print_history.get(task_id)
+            # Wait briefly for handler to populate cache
+            await asyncio.sleep(0.1)
+            return self.printer_data.print_history.get(id_list[0])
+
         return None
 
     def get_printer_current_task(self) -> PrintHistoryDetail | None:

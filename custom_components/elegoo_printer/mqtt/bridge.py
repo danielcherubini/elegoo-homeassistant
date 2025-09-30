@@ -16,6 +16,7 @@ import logging
 import socket
 from typing import TYPE_CHECKING
 
+import aiohttp
 import aiomqtt
 from aiohttp import ClientSession
 
@@ -84,7 +85,7 @@ class ElegooMqttBridge:
             self.logger.info(
                 "Connected to MQTT broker at %s:%s", self.mqtt_host, self.mqtt_port
             )
-        except Exception:
+        except (OSError, TimeoutError, aiomqtt.MqttError):
             self.logger.exception("Failed to connect to MQTT broker")
             return
 
@@ -126,7 +127,7 @@ class ElegooMqttBridge:
                 await asyncio.sleep(60)  # Discovery every minute
             except asyncio.CancelledError:
                 break
-            except Exception:
+            except (OSError, TimeoutError, json.JSONDecodeError):
                 self.logger.exception("Error in discovery loop")
                 await asyncio.sleep(10)
 
@@ -208,7 +209,7 @@ class ElegooMqttBridge:
                 self.logger.warning("Failed to connect to printer: %s", printer.name)
                 await session.close()
 
-        except Exception:
+        except (OSError, TimeoutError, aiohttp.ClientError):
             self.logger.exception("Error connecting to printer %s", printer.name)
             await session.close()
 
@@ -233,7 +234,7 @@ class ElegooMqttBridge:
 
             except asyncio.CancelledError:
                 break
-            except Exception:
+            except (OSError, TimeoutError, aiomqtt.MqttError):
                 self.logger.exception("Error forwarding printer data")
                 await asyncio.sleep(10)
 
@@ -248,7 +249,7 @@ class ElegooMqttBridge:
         async for message in self.mqtt_client.messages:
             try:
                 await self._handle_mqtt_message(message)
-            except Exception:
+            except (json.JSONDecodeError, KeyError, ValueError, UnicodeDecodeError):
                 self.logger.exception("Error handling MQTT message")
 
     async def _handle_mqtt_message(self, message: aiomqtt.Message) -> None:
