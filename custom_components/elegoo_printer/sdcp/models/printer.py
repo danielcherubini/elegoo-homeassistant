@@ -47,6 +47,7 @@ class Printer:
         brand (str): The brand of the printer.
         ip (str): The IP address of the printer.
         protocol (str): The protocol version used by the printer.
+        protocol_type (ProtocolType): The communication protocol type (SDCP or MQTT).
         firmware (str): The firmware version of the printer.
         id (str): The unique ID of the printer's mainboard.
         printer_type (PrinterType): The type of printer (RESIN or FDM).

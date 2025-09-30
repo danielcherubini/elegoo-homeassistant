@@ -378,15 +378,15 @@ class ElegooMqttClient:
 
     async def print_pause(self) -> None:
         """Pause the current print."""
-        await self._send_printer_cmd(CMD_PAUSE_PRINT, {})
+        await self._send_printer_cmd(CMD_PAUSE_PRINT)
 
     async def print_stop(self) -> None:
         """Stop the current print."""
-        await self._send_printer_cmd(CMD_STOP_PRINT, {})
+        await self._send_printer_cmd(CMD_STOP_PRINT)
 
     async def print_resume(self) -> None:
         """Resume/continue the current print."""
-        await self._send_printer_cmd(CMD_CONTINUE_PRINT, {})
+        await self._send_printer_cmd(CMD_CONTINUE_PRINT)
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """
@@ -548,9 +548,7 @@ class ElegooMqttClient:
             if inner_data:
                 request_id = inner_data.get("RequestID")
                 if request_id:
-                    task = asyncio.create_task(self._set_response_event(request_id))
-                    self._background_tasks.add(task)
-                    task.add_done_callback(self._background_tasks.discard)
+                    await self._set_response_event(request_id)
                 data_data = inner_data.get("Data", {})
                 cmd: int = inner_data.get("Cmd", 0)
                 if cmd == CMD_RETRIEVE_HISTORICAL_TASKS:
@@ -559,8 +557,6 @@ class ElegooMqttClient:
                     self._print_history_detail_handler(data_data)
                 elif cmd == CMD_SET_VIDEO_STREAM:
                     self._print_video_handler(data_data)
-        except json.JSONDecodeError:
-            self.logger.exception("Invalid JSON")
 
     def _status_handler(self, data: dict[str, Any]) -> None:
         """
@@ -626,7 +622,7 @@ class ElegooMqttClient:
         """
         self.printer_data.video = ElegooVideo(data_data)
 
-    async def _set_response_event(self, request_id: str) -> asyncio.Event:
+    async def _set_response_event(self, request_id: str) -> None:
         """Set the event for a given request ID."""
         async with self._response_lock:
             if event := self._response_events.get(request_id):
@@ -670,8 +666,3 @@ class ElegooMqttClient:
                 MQTT_PORT,
             )
             return True
-
-        self.logger.debug(
-            "Printer at %s is not reachable on MQTT port", self.printer.ip_address
-        )
-        return False

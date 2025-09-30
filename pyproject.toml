@@ -16,6 +16,7 @@ dependencies = [
 dev = [
     "pytest>=8.4.1",
     "ruff>=0.9.10",
+    "ty>=0.0.1a21",
 ]
 [tool.ruff]
 target-version = "py313"

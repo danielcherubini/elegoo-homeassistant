@@ -28,8 +28,11 @@ class ProtocolType(Enum):
             ProtocolType.MQTT if version starts with "V1", otherwise ProtocolType.SDCP.
 
         """
-        if version and version.startswith("V1"):
-            return cls.MQTT
+        if version:
+            # Extract major version for future-proof handling
+            version_upper = version.upper()
+            if version_upper.startswith("V1"):
+                return cls.MQTT
         return cls.SDCP
 
 
