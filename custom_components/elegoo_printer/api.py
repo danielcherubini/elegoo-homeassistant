@@ -21,7 +21,9 @@ from .const import (
     FIRMWARE_UPDATE_ENDPOINT,
     LOGGER,
 )
+from .mqtt.client import ElegooMqttClient
 from .sdcp.models.elegoo_image import ElegooImage
+from .sdcp.models.enums import ProtocolType
 from .sdcp.models.printer import Printer, PrinterData
 from .websocket.client import ElegooPrinterClient
 from .websocket.server import ElegooPrinterServer
@@ -48,7 +50,7 @@ class ElegooPrinterApiClient:
     _THUMBNAIL_TIMEOUT = 10  # seconds
 
     _ip_address: str | None
-    client: ElegooPrinterClient
+    client: ElegooPrinterClient | ElegooMqttClient
     _logger: Logger
     printer: Printer
     printer_data: PrinterData
@@ -101,16 +103,28 @@ class ElegooPrinterApiClient:
 
         # First, test if printer is reachable before starting proxy server
         logger.debug(
-            "Testing connectivity to printer: %s at %s",
+            "Testing connectivity to printer: %s at %s (protocol: %s)",
             printer.name,
             printer.ip_address,
+            printer.protocol_type.value,
         )
-        self.client = ElegooPrinterClient(
-            printer.ip_address,
-            config=config,
-            logger=logger,
-            session=session,
-        )
+
+        # Create appropriate client based on protocol type
+        if printer.protocol_type == ProtocolType.MQTT:
+            logger.info("Using MQTT protocol for printer %s", printer.name)
+            self.client = ElegooMqttClient(
+                printer.ip_address,
+                logger=logger,
+                printer=printer,
+            )
+        else:
+            logger.info("Using WebSocket/SDCP protocol for printer %s", printer.name)
+            self.client = ElegooPrinterClient(
+                printer.ip_address,
+                config=config,
+                logger=logger,
+                session=session,
+            )
 
         # Ping the printer to check if it's available
         printer_reachable = await self.client.ping_printer(ping_timeout=5.0)
@@ -146,9 +160,13 @@ class ElegooPrinterApiClient:
             proxy_server_enabled,
         )
         try:
-            connected = await self.client.connect_printer(
-                printer, proxy_enabled=proxy_server_enabled
-            )
+            # MQTT doesn't support proxy mode yet, only WebSocket does
+            if isinstance(self.client, ElegooMqttClient):
+                connected = await self.client.connect_printer(printer)
+            else:
+                connected = await self.client.connect_printer(
+                    printer, proxy_enabled=proxy_server_enabled
+                )
             if not connected:
                 # Release only our proxy reference if any
                 if self.server:
@@ -248,10 +266,15 @@ class ElegooPrinterApiClient:
             printer.ip_address,
             self._proxy_server_enabled and self.server is not None,
         )
-        connected = await self.client.connect_printer(
-            printer,
-            proxy_enabled=self._proxy_server_enabled and self.server is not None,
-        )
+
+        # MQTT doesn't support proxy mode yet, only WebSocket does
+        if isinstance(self.client, ElegooMqttClient):
+            connected = await self.client.connect_printer(printer)
+        else:
+            connected = await self.client.connect_printer(
+                printer,
+                proxy_enabled=self._proxy_server_enabled and self.server is not None,
+            )
 
         # Update config entry with fresh printer data if reconnection was successful
         if connected:
