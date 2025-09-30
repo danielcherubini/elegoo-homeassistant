@@ -141,7 +141,8 @@ class ElegooPrinterApiClient:
             return None
 
         # Printer is reachable, now set up proxy if enabled
-        if proxy_server_enabled:
+        # Note: MQTT doesn't support proxy mode yet, only WebSocket does
+        if proxy_server_enabled and not isinstance(self.client, ElegooMqttClient):
             printer = await self._setup_proxy_if_enabled(printer)
             if printer is None:
                 # Proxy was required but failed to start
@@ -250,7 +251,8 @@ class ElegooPrinterApiClient:
             return False
 
         # Printer is reachable, handle proxy server if enabled
-        if self._proxy_server_enabled:
+        # Note: MQTT doesn't support proxy mode yet, only WebSocket does
+        if self._proxy_server_enabled and not isinstance(self.client, ElegooMqttClient):
             # Release existing reference before creating new one
             if self.server is not None:
                 await ElegooPrinterServer.release_reference()
