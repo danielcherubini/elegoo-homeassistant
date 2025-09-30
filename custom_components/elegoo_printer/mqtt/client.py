@@ -1,4 +1,9 @@
-"""Elegoo MQTT Client for SDCP."""
+"""
+Elegoo MQTT Client for SDCP.
+
+This client connects to an MQTT broker that bridges communication
+with Elegoo printers, rather than connecting directly to the printer.
+"""
 
 from __future__ import annotations
 
@@ -24,7 +29,6 @@ from custom_components.elegoo_printer.sdcp.const import (
     LOGGER,
 )
 from custom_components.elegoo_printer.sdcp.exceptions import (
-    ElegooPrinterConfigurationError,
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
     ElegooPrinterTimeoutError,
@@ -51,6 +55,7 @@ from .const import (
     TOPIC_ERROR,
     TOPIC_NOTICE,
     TOPIC_PREFIX,
+    TOPIC_REQUEST,
     TOPIC_RESPONSE,
     TOPIC_STATUS,
 )
@@ -61,32 +66,33 @@ if TYPE_CHECKING:
 
 class ElegooMqttClient:
     """
-    MQTT client for interacting with an Elegoo printer.
+    MQTT client for interacting with an Elegoo printer via MQTT bridge.
 
-    Uses the SDCP Protocol over MQTT instead of WebSocket.
+    Connects to an MQTT broker that bridges communication with the printer
+    rather than connecting directly to the printer.
     """
 
     def __init__(
         self,
-        ip_address: str | None,
+        mqtt_host: str = "localhost",
+        mqtt_port: int = MQTT_PORT,
         logger: Any = LOGGER,
         printer: Printer | None = None,
     ) -> None:
         """
         Initialize an ElegooMqttClient.
 
-        For communicating with an Elegoo 3D printer via MQTT.
+        For communicating with an Elegoo 3D printer via MQTT bridge.
 
         Arguments:
-            ip_address: The IP address of the target printer.
+            mqtt_host: The MQTT broker hostname.
+            mqtt_port: The MQTT broker port.
             logger: The logger to use.
             printer: Optional Printer object with existing configuration.
 
         """
-        if ip_address is None:
-            msg = "IP address is required but not provided"
-            raise ElegooPrinterConfigurationError(msg)
-        self.ip_address: str = ip_address
+        self.mqtt_host = mqtt_host
+        self.mqtt_port = mqtt_port
         self.mqtt_client: aiomqtt.Client | None = None
         self.printer: Printer = printer or Printer()
         self.printer_data = PrinterData(printer=self.printer)
@@ -128,15 +134,15 @@ class ElegooMqttClient:
 
         self.printer = printer
         msg = (
-            f"Connecting to printer via MQTT: {self.printer.name} "
-            f"at {self.printer.ip_address}"
+            f"Connecting to MQTT bridge for printer: {self.printer.name} "
+            f"(broker: {self.mqtt_host}:{self.mqtt_port})"
         )
         self.logger.info(msg)
 
         try:
             self.mqtt_client = aiomqtt.Client(
-                hostname=self.printer.ip_address,
-                port=MQTT_PORT,
+                hostname=self.mqtt_host,
+                port=self.mqtt_port,
                 keepalive=MQTT_KEEPALIVE,
             )
 
@@ -460,7 +466,7 @@ class ElegooMqttClient:
 
         if self.mqtt_client:
             try:
-                topic = f"{TOPIC_PREFIX}/request/{self.printer.id}"
+                topic = f"{TOPIC_PREFIX}/{TOPIC_REQUEST}/{self.printer.id}"
                 await self.mqtt_client.publish(topic, json.dumps(payload))
                 await asyncio.wait_for(event.wait(), timeout=10)
             except TimeoutError as e:
