@@ -17,7 +17,7 @@ from custom_components.elegoo_printer.const import (
 from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStatus
 
 from .attributes import PrinterAttributes
-from .enums import PrinterType
+from .enums import PrinterType, ProtocolType
 from .status import PrinterStatus
 from .video import ElegooVideo
 
@@ -47,6 +47,7 @@ class Printer:
         brand (str): The brand of the printer.
         ip (str): The IP address of the printer.
         protocol (str): The protocol version used by the printer.
+        protocol_type (ProtocolType): The communication protocol type (SDCP or MQTT).
         firmware (str): The firmware version of the printer.
         id (str): The unique ID of the printer's mainboard.
         printer_type (PrinterType): The type of printer (RESIN or FDM).
@@ -78,6 +79,7 @@ class Printer:
     brand: str | None
     ip_address: str | None
     protocol: str | None
+    protocol_type: ProtocolType
     firmware: str | None
     id: str | None
     printer_type: PrinterType | None
@@ -114,6 +116,7 @@ class Printer:
                     "ip_address"
                 )
                 self.protocol = data_dict.get("ProtocolVersion")
+                self.protocol_type = ProtocolType.from_version(self.protocol)
                 self.firmware = data_dict.get("FirmwareVersion")
                 self.id = data_dict.get("MainboardID")
 
@@ -126,6 +129,7 @@ class Printer:
                 self.brand = None
                 self.ip_address = None
                 self.protocol = None
+                self.protocol_type = ProtocolType.SDCP
                 self.firmware = None
                 self.id = None
                 self.printer_type = None
@@ -145,6 +149,7 @@ class Printer:
             "brand": self.brand,
             "ip_address": self.ip_address,
             "protocol": self.protocol,
+            "protocol_type": self.protocol_type.value,
             "firmware": self.firmware,
             "id": self.id,
             "printer_type": self.printer_type.value if self.printer_type else None,
@@ -169,6 +174,14 @@ class Printer:
         printer.brand = data_dict.get("BrandName", data_dict.get("brand"))
         printer.ip_address = data_dict.get("MainboardIP", data_dict.get("ip_address"))
         printer.protocol = data_dict.get("ProtocolVersion", data_dict.get("protocol"))
+
+        # Determine protocol type from version or use stored value
+        protocol_type_str = data_dict.get("protocol_type")
+        if protocol_type_str:
+            printer.protocol_type = ProtocolType(protocol_type_str)
+        else:
+            printer.protocol_type = ProtocolType.from_version(printer.protocol)
+
         printer.firmware = data_dict.get("FirmwareVersion", data_dict.get("firmware"))
         printer.id = data_dict.get("MainboardID", data_dict.get("id"))
 

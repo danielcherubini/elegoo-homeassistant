@@ -3,6 +3,39 @@
 from enum import Enum
 
 
+class ProtocolType(Enum):
+    """
+    Represents the communication protocol type used by the printer.
+
+    Attributes:
+        SDCP: Standard SDCP protocol over WebSocket.
+        MQTT: SDCP protocol over MQTT.
+
+    """
+
+    SDCP = "sdcp"
+    MQTT = "mqtt"
+
+    @classmethod
+    def from_version(cls, version: str | None) -> "ProtocolType":
+        """
+        Determine protocol type from version string.
+
+        Arguments:
+            version: The protocol version string from the printer.
+
+        Returns:
+            ProtocolType.MQTT if version starts with "V1", otherwise ProtocolType.SDCP.
+
+        """
+        if version:
+            # Extract major version for future-proof handling
+            version_upper = version.upper()
+            if version_upper.startswith("V1"):
+                return cls.MQTT
+        return cls.SDCP
+
+
 class ElegooMachineStatus(Enum):
     """
     Represents the different status states of an SDCP machine.

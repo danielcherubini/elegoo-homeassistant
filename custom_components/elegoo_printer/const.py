@@ -22,6 +22,10 @@ CONF_PROXY_ENABLED = "proxy_enabled"
 CONF_PROXY_WEBSOCKET_PORT = "proxy_websocket_port"
 CONF_PROXY_VIDEO_PORT = "proxy_video_port"
 
+# MQTT settings
+CONF_MQTT_HOST = "mqtt_host"
+CONF_MQTT_PORT = "mqtt_port"
+
 # Websocket and proxy settings
 DEFAULT_BROADCAST_ADDRESS = "255.255.255.255"
 DEFAULT_FALLBACK_IP = "8.8.8.8"
