@@ -121,6 +121,8 @@ class PrintInfo:
         self.progress: int | None = data.get("Progress")
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
         self.end_time = None
+        # percent_complete is optional when printer is idle/unknown
+        self.percent_complete: int | None = None
 
         percent_complete = None
         # Report progress only during an active job to avoid leaking stale values.
@@ -132,6 +134,8 @@ class PrintInfo:
             ElegooPrintStatus.DROPPING,
             ElegooPrintStatus.RECOVERY,
             ElegooPrintStatus.PRINTING_RECOVERY,
+            ElegooPrintStatus.PREHEATING,
+            ElegooPrintStatus.LEVELING,
         }
         if self.status in active_statuses:
             if self.progress is not None:

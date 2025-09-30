@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socket
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -10,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
     CONF_PROXY_ENABLED,
+    DEFAULT_FALLBACK_IP,
+    WEBSOCKET_PORT,
 )
 from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStatus
 
@@ -80,6 +83,8 @@ class Printer:
     printer_type: PrinterType | None
     proxy_enabled: bool
     camera_enabled: bool
+    proxy_websocket_port: int | None
+    proxy_video_port: int | None
 
     def __init__(
         self,
@@ -128,6 +133,8 @@ class Printer:
         # Initialize config-based attributes for all instances
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
         self.camera_enabled = config.get(CONF_CAMERA_ENABLED, False)
+        self.proxy_websocket_port = None
+        self.proxy_video_port = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a dictionary containing all attributes of the Printer instance."""
@@ -143,6 +150,8 @@ class Printer:
             "printer_type": self.printer_type.value if self.printer_type else None,
             "proxy_enabled": self.proxy_enabled,
             "camera_enabled": self.camera_enabled,
+            "proxy_websocket_port": self.proxy_websocket_port,
+            "proxy_video_port": self.proxy_video_port,
         }
 
     @classmethod
@@ -170,6 +179,8 @@ class Printer:
         printer.camera_enabled = data_dict.get(
             CONF_CAMERA_ENABLED, data_dict.get("camera_enabled", False)
         )
+        printer.proxy_websocket_port = data_dict.get("proxy_websocket_port")
+        printer.proxy_video_port = data_dict.get("proxy_video_port")
         return printer
 
 
@@ -245,3 +256,44 @@ class PrinterData:
             self.current_job.end_time = self.round_minute(
                 target_datetime + timedelta(seconds=30), 1
             )
+
+    @staticmethod
+    def get_local_ip(target_ip: str) -> str:
+        """
+        Determine the local IP address used for outbound communication.
+
+        Args:
+            target_ip: The target IP to determine the route to.
+
+        Returns:
+            The local IP address, or "127.0.0.1" if detection fails.
+
+        """
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                # Doesn't have to be reachable
+                s.connect((target_ip or DEFAULT_FALLBACK_IP, 1))
+                return s.getsockname()[0]
+        except (socket.gaierror, OSError):
+            return "127.0.0.1"
+
+    @property
+    def printer_url(self) -> str | None:
+        """Get the printer URL based on proxy configuration."""
+        if not self.printer or not self.printer.ip_address:
+            return None
+
+        if self.printer.proxy_enabled:
+            # Use centralized proxy on port 3030 (MainboardID routing handles the rest)
+            proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
+            return f"http://{proxy_ip}:{WEBSOCKET_PORT}"
+
+        # Use direct printer URL
+        return f"http://{self.printer.ip_address}:{WEBSOCKET_PORT}"
+
+    def _get_assigned_proxy_port(self) -> int | None:
+        """Get the assigned proxy port for this printer (fallback method)."""
+        if not self.printer or not self.printer.ip_address:
+            return None
+
+        return WEBSOCKET_PORT

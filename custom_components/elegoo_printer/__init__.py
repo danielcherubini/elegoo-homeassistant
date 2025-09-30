@@ -85,6 +85,7 @@ async def async_setup_entry(
         config=MappingProxyType(config),
         logger=LOGGER,
         hass=hass,
+        config_entry=entry,
     )
 
     if client is None:
@@ -119,12 +120,17 @@ async def async_unload_entry(
         except (asyncio.CancelledError, ClientError, OSError, RuntimeError) as e:
             LOGGER.warning("Error disconnecting client: %s", e, exc_info=True)
 
-        # Ensure ALL server instances are stopped (cleanup orphaned instances)
+        # Remove this specific printer from proxy server registry
         try:
-            await asyncio.shield(ElegooPrinterServer.stop_all())
+            should_stop = await asyncio.shield(
+                ElegooPrinterServer.remove_printer_from_server(client.printer, LOGGER)
+            )
+            if not should_stop:
+                # Server continues with other printers, just decrement reference count
+                await asyncio.shield(ElegooPrinterServer.release_reference())
         except (asyncio.CancelledError, OSError, RuntimeError) as e:
             LOGGER.warning(
-                "Error stopping all proxy server instances: %s", e, exc_info=True
+                "Error removing printer from proxy server: %s", e, exc_info=True
             )
 
     return unload_ok

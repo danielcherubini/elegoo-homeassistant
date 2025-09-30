@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -13,7 +15,12 @@ from httpx import HTTPStatusError, RequestError
 from PIL import Image as PILImage
 from PIL import UnidentifiedImageError
 
-from .const import CONF_PROXY_ENABLED, LOGGER
+from .const import (
+    CONF_PROXY_ENABLED,
+    FIRMWARE_SERVICE_BASE_URL,
+    FIRMWARE_UPDATE_ENDPOINT,
+    LOGGER,
+)
 from .sdcp.models.elegoo_image import ElegooImage
 from .sdcp.models.printer import Printer, PrinterData
 from .websocket.client import ElegooPrinterClient
@@ -23,7 +30,7 @@ if TYPE_CHECKING:
     from logging import Logger
     from types import MappingProxyType
 
-    from aiohttp import ClientSession
+    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
     from .sdcp.models.enums import ElegooFan
@@ -34,6 +41,11 @@ if TYPE_CHECKING:
 
 class ElegooPrinterApiClient:
     """Sample API Client."""
+
+    # Thumbnail fetch retry configuration
+    _THUMBNAIL_MAX_RETRIES = 2
+    _THUMBNAIL_RETRY_BASE_DELAY = 0.5  # seconds
+    _THUMBNAIL_TIMEOUT = 10  # seconds
 
     _ip_address: str | None
     client: ElegooPrinterClient
@@ -48,6 +60,7 @@ class ElegooPrinterApiClient:
         config: MappingProxyType[str, Any],
         logger: Logger,
         hass: HomeAssistant,
+        config_entry: ConfigEntry | None = None,
     ) -> None:
         """
         Initialize the ElegooPrinterApiClient with a Printer object, configuration, and logger.
@@ -61,6 +74,7 @@ class ElegooPrinterApiClient:
         self._hass_client = get_async_client(hass)
         self.server: ElegooPrinterServer | None = None
         self.hass: HomeAssistant = hass
+        self._config_entry = config_entry
 
     @classmethod
     async def async_create(
@@ -68,6 +82,7 @@ class ElegooPrinterApiClient:
         config: MappingProxyType[str, Any],
         logger: Logger,
         hass: HomeAssistant,
+        config_entry: ConfigEntry | None = None,
     ) -> ElegooPrinterApiClient | None:
         """
         Asynchronously creates and initializes an ElegooPrinterApiClient instance.
@@ -79,7 +94,9 @@ class ElegooPrinterApiClient:
         printer = Printer.from_dict(dict(config))
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
         logger.debug("CONFIGURATION %s", config)
-        self = ElegooPrinterApiClient(printer, config=config, logger=logger, hass=hass)
+        self = ElegooPrinterApiClient(
+            printer, config=config, logger=logger, hass=hass, config_entry=config_entry
+        )
         session = async_get_clientsession(hass)
 
         # First, test if printer is reachable before starting proxy server
@@ -106,18 +123,18 @@ class ElegooPrinterApiClient:
             )
             # This is probably unnecessary, but let's disconnect for completeness
             await self.client.disconnect()
-            # Only stop proxy servers if proxy was actually enabled
-            if self._proxy_server_enabled:
-                await ElegooPrinterServer.stop_all()
+            # No proxy server was started by this client; nothing to release here
             return None
 
         # Printer is reachable, now set up proxy if enabled
         if proxy_server_enabled:
-            printer = await self._setup_proxy_if_enabled(printer, session)
+            printer = await self._setup_proxy_if_enabled(printer)
             if printer is None:
                 # Proxy was required but failed to start
                 await self.client.disconnect()
-                await ElegooPrinterServer.stop_all()
+                # Release proxy reference only if there's an active class-level ref
+                if ElegooPrinterServer.has_reference():
+                    await ElegooPrinterServer.release_reference()
                 return None
 
         # Now connect to the printer (either direct or through proxy)
@@ -133,19 +150,23 @@ class ElegooPrinterApiClient:
                 printer, proxy_enabled=proxy_server_enabled
             )
             if not connected:
-                # Stop ALL server instances to ensure clean state
-                if self._proxy_server_enabled:
-                    await ElegooPrinterServer.stop_all()
+                # Release only our proxy reference if any
+                if self.server:
+                    await ElegooPrinterServer.release_reference()
                 self.server = None
                 await self.client.disconnect()
                 self._proxy_server_enabled = False
                 return None
             logger.info("Polling Started")
+
+            # Update config entry with fresh printer data from successful connection
+            await self._update_config_entry_if_needed(printer)
+
             return self  # noqa: TRY300
         except (ConnectionError, TimeoutError):
-            # Stop ALL server instances to ensure clean state
-            if self._proxy_server_enabled:
-                await ElegooPrinterServer.stop_all()
+            # Release only our proxy reference if any
+            if self.server:
+                await ElegooPrinterServer.release_reference()
             self.server = None
             await self.client.disconnect()
             self._proxy_server_enabled = False
@@ -167,9 +188,9 @@ class ElegooPrinterApiClient:
         await self.client.disconnect()
 
     async def elegoo_stop_proxy(self) -> None:
-        """Stop the proxy server if it is running."""
-        # Stop ALL instances to ensure complete cleanup
-        await ElegooPrinterServer.stop_all()
+        """Release the proxy server reference if it is running."""
+        # Release reference instead of forcing shutdown
+        await ElegooPrinterServer.release_reference()
         self.server = None
 
     def get_local_ip(self) -> str:
@@ -187,7 +208,6 @@ class ElegooPrinterApiClient:
 
         """  # noqa: E501
         printer = self.printer
-        session = async_get_clientsession(self.hass)
 
         # First, test if printer is reachable
         self._logger.debug(
@@ -205,19 +225,20 @@ class ElegooPrinterApiClient:
                 printer.name,
                 printer.ip_address,
             )
-            # Stop server instances since printer is unreachable (only if proxy enabled)
-            if self._proxy_server_enabled:
-                await ElegooPrinterServer.stop_all()
+            # Release only our proxy reference if any
+            if self.server:
+                await ElegooPrinterServer.release_reference()
             self.server = None
             return False
 
         # Printer is reachable, handle proxy server if enabled
         if self._proxy_server_enabled:
-            # Stop ALL existing server instances for clean restart
-            await ElegooPrinterServer.stop_all()
+            # Release existing reference before creating new one
+            if self.server is not None:
+                await ElegooPrinterServer.release_reference()
             self.server = None
 
-            printer = await self._setup_proxy_if_enabled(printer, session)
+            printer = await self._setup_proxy_if_enabled(printer)
             if printer is None:
                 # Proxy was required but failed to start during reconnect
                 return False
@@ -227,10 +248,16 @@ class ElegooPrinterApiClient:
             printer.ip_address,
             self._proxy_server_enabled and self.server is not None,
         )
-        return await self.client.connect_printer(
+        connected = await self.client.connect_printer(
             printer,
             proxy_enabled=self._proxy_server_enabled and self.server is not None,
         )
+
+        # Update config entry with fresh printer data if reconnection was successful
+        if connected:
+            await self._update_config_entry_if_needed(printer)
+
+        return connected
 
     async def async_get_status(self) -> PrinterData:
         """
@@ -279,6 +306,33 @@ class ElegooPrinterApiClient:
             return task.thumbnail
         return None
 
+    async def _fetch_thumbnail_with_retry(self, thumbnail_url: str) -> Any:
+        """Fetch thumbnail with exponential backoff retry logic."""
+        for attempt in range(self._THUMBNAIL_MAX_RETRIES + 1):
+            try:
+                response = await self._hass_client.get(
+                    thumbnail_url,
+                    timeout=self._THUMBNAIL_TIMEOUT,
+                    follow_redirects=True,
+                )
+                response.raise_for_status()
+            except (RequestError, HTTPStatusError) as e:
+                if attempt < self._THUMBNAIL_MAX_RETRIES:
+                    LOGGER.debug(
+                        "Thumbnail fetch attempt %d failed, retrying: %s",
+                        attempt + 1,
+                        e,
+                    )
+                    await asyncio.sleep(self._THUMBNAIL_RETRY_BASE_DELAY * (2**attempt))
+                    continue
+                raise
+            else:
+                return response
+
+        # This should never be reached due to raise above, but satisfy linter
+        msg = "Failed to fetch thumbnail after all retries"
+        raise RequestError(msg)
+
     async def async_get_thumbnail_image(
         self, task: PrintHistoryDetail | None = None
     ) -> ElegooImage | None:
@@ -304,11 +358,44 @@ class ElegooPrinterApiClient:
         )
         if task.thumbnail and task.begin_time is not None:
             LOGGER.debug("get_thumbnail getting thumbnail from url")
+
+            # Rewrite thumbnail URL to use proxy if proxy is enabled
+            thumbnail_url = task.thumbnail
+            if self.printer.proxy_enabled:
+                # Replace printer host with centralized proxy and set id=query
+                try:
+                    proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
+                    parts = urlsplit(thumbnail_url)
+                    scheme = parts.scheme or "http"
+                    netloc = parts.netloc or self.printer.ip_address
+
+                    # Only rewrite if the URL points to our printer
+                    if self.printer.ip_address in netloc:
+                        # Force proxy host:port
+                        new_netloc = f"{proxy_ip}:3030"
+                        # Merge/replace query id
+                        q = dict(parse_qsl(parts.query, keep_blank_values=True))
+                        q["id"] = self.printer.id
+                        thumbnail_url = urlunsplit(
+                            (
+                                scheme,
+                                new_netloc,
+                                parts.path,
+                                urlencode(q, doseq=True),
+                                parts.fragment,
+                            )
+                        )
+                        LOGGER.debug(
+                            "Rewritten thumbnail URL from %s to %s",
+                            task.thumbnail,
+                            thumbnail_url,
+                        )
+                except (OSError, ValueError) as e:
+                    LOGGER.debug("Failed to rewrite thumbnail URL: %s", e)
+                    thumbnail_url = task.thumbnail
+
             try:
-                response = await self._hass_client.get(
-                    task.thumbnail, timeout=10, follow_redirects=True
-                )
-                response.raise_for_status()
+                response = await self._fetch_thumbnail_with_retry(thumbnail_url)
                 LOGGER.debug("get_thumbnail response status: %s", response.status_code)
                 raw_ct = response.headers.get("content-type", "")
                 content_type = raw_ct.split(";", 1)[0].strip().lower() or "image/png"
@@ -430,6 +517,63 @@ class ElegooPrinterApiClient:
         """Set the target bed temperature."""
         await self.client.set_target_bed_temp(temperature)
 
+    async def async_get_printer_data(self) -> PrinterData:
+        """
+        Asynchronously retrieves and updates the printer's attribute data.
+
+        Returns:
+            PrinterData: The latest attribute information for the printer.
+
+        """
+        await self.async_get_attributes()
+        await self.async_get_status()
+        await self.async_get_print_history()
+        await self.async_get_current_task()
+        self.printer_data.calculate_current_job_end_time()
+        return self.printer_data
+
+    async def _setup_proxy_if_enabled(self, printer: Printer) -> Printer | None:
+        """
+        Set up proxy server if enabled and printer is reachable.
+
+        Returns:
+            Updated printer object with proxy IP, or None if proxy failed to start
+
+        """
+        if not self._proxy_server_enabled:
+            return printer
+
+        self._logger.debug("Printer is reachable. Starting proxy server.")
+        try:
+            self.server = await ElegooPrinterServer.async_create(
+                logger=self._logger, hass=self.hass, printer=printer
+            )
+        except (OSError, ConfigEntryNotReady):
+            # When proxy is explicitly enabled, server startup failures are fatal
+            self._logger.exception(
+                "Failed to start required proxy server; proxy ports may be in use."
+            )
+            # Clean up any partial state (only our reference)
+            if self.server:
+                await ElegooPrinterServer.release_reference()
+            self.server = None
+            return None
+        else:
+            self._logger.debug(
+                "Calling get_printer with specific_printer: %s (MainboardID: %s)",
+                printer.name,
+                printer.id,
+            )
+            proxy_printer = self.server.get_printer(specific_printer=printer)
+            proxy_printer.proxy_enabled = True
+            self._logger.debug(
+                "Got proxy printer: %s (MainboardID: %s)",
+                proxy_printer.name,
+                proxy_printer.id,
+            )
+            self.printer = proxy_printer
+            return proxy_printer
+
     def _normalize_firmware_version(self, version: str) -> str:
         """
         Normalize firmware version to the expected format.
@@ -462,53 +606,6 @@ class ElegooPrinterApiClient:
 
         return ".".join(normalized_parts)
 
-    async def async_get_printer_data(self) -> PrinterData:
-        """
-        Asynchronously retrieves and updates the printer's attribute data.
-
-        Returns:
-            PrinterData: The latest attribute information for the printer.
-
-        """
-        await self.async_get_attributes()
-        await self.async_get_status()
-        await self.async_get_print_history()
-        await self.async_get_current_task()
-        self.printer_data.calculate_current_job_end_time()
-        return self.printer_data
-
-    async def _setup_proxy_if_enabled(
-        self, printer: Printer, session: ClientSession
-    ) -> Printer | None:
-        """
-        Set up proxy server if enabled and printer is reachable.
-
-        Returns:
-            Updated printer object with proxy IP, or None if proxy failed to start
-
-        """
-        if not self._proxy_server_enabled:
-            return printer
-
-        self._logger.debug("Printer is reachable. Starting proxy server.")
-        try:
-            self.server = await ElegooPrinterServer.async_create(
-                printer, logger=self._logger, hass=self.hass, session=session
-            )
-        except (OSError, ConfigEntryNotReady):
-            # When proxy is explicitly enabled, server startup failures are fatal
-            self._logger.exception(
-                "Failed to start required proxy server; proxy ports may be in use."
-            )
-            # Clean up any partial state
-            await ElegooPrinterServer.stop_all()
-            self.server = None
-            return None
-        else:
-            printer = self.server.get_printer()
-            printer.proxy_enabled = True
-            return printer
-
     async def async_check_firmware_update(self) -> dict[str, Any] | None:
         """
         Check for firmware updates from Elegoo servers.
@@ -539,7 +636,7 @@ class ElegooPrinterApiClient:
                 "firmwareType": 1,
             }
 
-            url = "https://mms.chituiot.com/mainboardVersionUpdate/getInfo.do7"
+            url = f"{FIRMWARE_SERVICE_BASE_URL}{FIRMWARE_UPDATE_ENDPOINT}"
             LOGGER.debug("Checking for firmware updates")
             LOGGER.debug("URL: %s", url)
             LOGGER.debug("Params: %s", params)
@@ -622,3 +719,85 @@ class ElegooPrinterApiClient:
             "package_url": update_data.get("packageUrl"),
             "changelog": update_data.get("log"),
         }
+
+    async def _update_config_entry_if_needed(self, printer: Printer) -> None:
+        """
+        Update the config entry with fresh printer data if anything has changed.
+
+        This ensures the stored config stays in sync with the actual printer state.
+        """
+        try:
+            # Use stored config entry reference if available
+            config_entry = self._config_entry
+            if not config_entry:
+                LOGGER.debug(
+                    "No config entry reference available for printer %s", printer.id
+                )
+                return
+
+            # Convert current and new printer data for comparison
+            current_data = dict(config_entry.data)
+            new_data = printer.to_dict()
+
+            # Compare key fields that might have changed
+            fields_to_check = [
+                "name",
+                "model",
+                "brand",
+                "firmware",
+                "protocol",
+                "ip_address",
+            ]
+            has_changes = False
+
+            for field in fields_to_check:
+                current_value = current_data.get(field)
+                new_value = new_data.get(field)
+                if current_value != new_value and new_value is not None:
+                    LOGGER.debug(
+                        "Printer %s field '%s' changed: '%s' -> '%s'",
+                        printer.name,
+                        field,
+                        current_value,
+                        new_value,
+                    )
+                    has_changes = True
+
+            if has_changes:
+                LOGGER.info(
+                    "Updating config entry for printer %s with fresh data",
+                    printer.name,
+                )
+                # Update the config entry with the new printer data
+                self.hass.config_entries.async_update_entry(
+                    config_entry,
+                    data=new_data,
+                )
+            else:
+                LOGGER.debug(
+                    "No config changes needed for printer %s",
+                    printer.name,
+                )
+
+        except AttributeError as e:
+            # Handle missing attributes in printer or config
+            LOGGER.debug(
+                "Missing attributes when updating config for printer %s: %s",
+                printer.name,
+                e,
+            )
+        except RuntimeError as e:
+            # Handle Home Assistant state errors
+            LOGGER.warning(
+                "Home Assistant error updating config for printer %s: %s",
+                printer.name,
+                e,
+            )
+        except Exception as e:  # noqa: BLE001
+            # Log unexpected errors but don't crash
+            LOGGER.error(
+                "Unexpected error updating config for printer %s: %s",
+                printer.name,
+                e,
+                exc_info=True,
+            )

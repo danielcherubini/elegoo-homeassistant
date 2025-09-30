@@ -207,6 +207,13 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.max_cloud_sdcp_services_allowed,  # noqa: E501
     ),
+    ElegooPrinterSensorEntityDescription(
+        key="printer_url",
+        name="Printer URL",
+        icon="mdi:link-variant",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda printer_data: printer_data.printer_url,
+    ),
 )
 
 PRINTER_ATTRIBUTES_BINARY_COMMON: tuple[
