@@ -88,8 +88,13 @@
           "exposure_testing": "Exposure Testing",
           "devices_testing": "Device Testing",
           "leveling": "Leveling",
+          "input_shaping": "Input Shaping",
+          "stopping": "Stopping",
+          "stopped": "Stopped",
           "homing": "Homing",
-          "loading_unloading": "Loading / Unloading"
+          "loading_unloading": "Loading / Unloading",
+          "pid_tuning": "PID Tuning",
+          "recovery": "Recovery"
         }
       },
       "print_error": {
