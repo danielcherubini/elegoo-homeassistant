@@ -29,6 +29,7 @@ class ElegooMachineStatus(Enum):
     EXPOSURE_TESTING = 3
     DEVICES_TESTING = 4
     LEVELING = 5
+    HOMING = 9
     LOADING_UNLOADING = 10
 
     @classmethod

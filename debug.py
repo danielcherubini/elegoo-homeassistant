@@ -50,9 +50,9 @@ async def monitor_printer(
                     logger.info(f"[{printer.name}] Video URL: {video.video_url}")
                 
                 # Optionally get status
-                # printer_data = await elegoo_printer.get_printer_status()
-                # print_info = printer_data.status.print_info
-                # logger.info(f"[{printer.name}] Remaining: {print_info.remaining_ticks}")
+                printer_data = await elegoo_printer.get_printer_status()
+                print_info = printer_data.status.print_info
+                logger.info(f"[{printer.name}] Remaining: {print_info.remaining_ticks}")
                 
                 await asyncio.sleep(4)
             except Exception as e:
