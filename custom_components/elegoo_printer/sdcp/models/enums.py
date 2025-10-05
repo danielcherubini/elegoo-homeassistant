@@ -14,6 +14,13 @@ class ElegooMachineStatus(Enum):
         EXPOSURE_TESTING: The machine is performing an exposure test.
         DEVICES_TESTING: The machine is running a device self-check.
         LEVELING: The machine is performing a leveling operation.
+        INPUT_SHAPING: The machine is performing input shaping calibration.
+        STOPPING: The machine is in the process of stopping.
+        STOPPED: The machine has stopped.
+        HOMING: The machine is homing its axes.
+        LOADING_UNLOADING: The machine is loading or unloading material.
+        PID_TUNING: The machine is performing PID tuning.
+        RECOVERY: The machine is in recovery mode.
 
     Example:
         >>> ElegooMachineStatus(0)
@@ -29,8 +36,13 @@ class ElegooMachineStatus(Enum):
     EXPOSURE_TESTING = 3
     DEVICES_TESTING = 4
     LEVELING = 5
+    INPUT_SHAPING = 6
+    STOPPING = 7
+    STOPPED = 8
     HOMING = 9
     LOADING_UNLOADING = 10
+    PID_TUNING = 11
+    RECOVERY = 12
 
     @classmethod
     def from_int(cls, status_int: int) -> "ElegooMachineStatus | None":
