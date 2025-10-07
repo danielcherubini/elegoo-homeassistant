@@ -123,6 +123,8 @@ class ElegooPrinterApiClient:
                 logger=logger,
                 printer=printer,
             )
+            # Ensure proxy state doesn't affect connection logic for MQTT
+            self._proxy_server_enabled = False
         else:
             logger.info("Using WebSocket/SDCP protocol for printer %s", printer.name)
             self.client = ElegooPrinterClient(
