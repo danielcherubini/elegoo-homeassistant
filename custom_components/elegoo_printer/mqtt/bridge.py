@@ -87,8 +87,8 @@ class ElegooMqttBridge:
             )
         except (OSError, TimeoutError, aiomqtt.MqttError):
             self.logger.exception("Failed to connect to MQTT broker")
+            self.running = False
             return
-
         # Start discovery and MQTT message handling
         self._discovery_task = asyncio.create_task(self._discovery_loop())
         self._mqtt_task = asyncio.create_task(self._mqtt_message_handler())
