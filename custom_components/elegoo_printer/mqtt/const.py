@@ -18,5 +18,5 @@ TOPIC_ATTRIBUTES = "attributes"
 TOPIC_NOTICE = "notice"
 TOPIC_ERROR = "error"
 
-# MQTT topic parsing
-MQTT_TOPIC_MIN_PARTS = 2
+# MQTT topic parsing: sdcp/{message_type}/{printer_id}
+MQTT_TOPIC_MIN_PARTS = 3
