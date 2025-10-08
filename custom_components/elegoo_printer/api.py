@@ -113,10 +113,19 @@ class ElegooPrinterApiClient:
         )
 
         # Discover the printer to check if it's available
-        discovered_printers = await hass.async_add_executor_job(
-            self.client.discover_printer, printer.ip_address
-        )
-        printer_reachable = len(discovered_printers) > 0
+        try:
+            discovered_printers = await hass.async_add_executor_job(
+                self.client.discover_printer, printer.ip_address
+            )
+            printer_reachable = len(discovered_printers) > 0
+        except (OSError, RuntimeError, TimeoutError) as e:
+            logger.warning(
+                "Error discovering printer %s at %s: %s",
+                printer.name,
+                printer.ip_address,
+                e,
+            )
+            printer_reachable = False
 
         if not printer_reachable:
             logger.warning(
@@ -220,10 +229,19 @@ class ElegooPrinterApiClient:
         )
 
         # Discover the printer to check if it's available
-        discovered_printers = await self.hass.async_add_executor_job(
-            self.client.discover_printer, printer.ip_address
-        )
-        printer_reachable = len(discovered_printers) > 0
+        try:
+            discovered_printers = await self.hass.async_add_executor_job(
+                self.client.discover_printer, printer.ip_address
+            )
+            printer_reachable = len(discovered_printers) > 0
+        except (OSError, RuntimeError, TimeoutError) as e:
+            self._logger.warning(
+                "Error discovering printer %s at %s: %s",
+                printer.name,
+                printer.ip_address,
+                e,
+            )
+            printer_reachable = False
 
         if not printer_reachable:
             self._logger.debug(
