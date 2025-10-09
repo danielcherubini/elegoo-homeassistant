@@ -99,7 +99,7 @@ class ElegooPrinterApiClient:
             )
 
             # Fallback: if not found via broadcast, try direct IP (for cross-subnet)
-            if not printer_reachable:
+            if not printer_reachable and printer.ip_address:
                 logger.debug(
                     "Printer %s not found via broadcast, trying direct IP %s",
                     printer.name,
@@ -110,6 +110,11 @@ class ElegooPrinterApiClient:
                 )
                 printer_reachable = any(
                     p.ip_address == printer.ip_address for p in discovered_printers
+                )
+            elif not printer_reachable:
+                logger.debug(
+                    "Skipping direct IP fallback for printer %s; no IP configured",
+                    printer.name,
                 )
         except (OSError, RuntimeError, TimeoutError) as e:
             logger.warning(
