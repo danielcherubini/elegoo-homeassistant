@@ -76,12 +76,9 @@ class ElegooPrinterApiClient:
         self.hass: HomeAssistant = hass
         self._config_entry = config_entry
 
-    @staticmethod
     async def _discover_printer_with_fallback(
+        self,
         printer: Printer,
-        client: ElegooPrinterClient,
-        hass: HomeAssistant,
-        logger: Logger,
     ) -> bool:
         """
         Discover printer via broadcast with direct IP fallback for cross-subnet support.
@@ -91,8 +88,8 @@ class ElegooPrinterApiClient:
 
         """
         try:
-            discovered_printers = await hass.async_add_executor_job(
-                client.discover_printer
+            discovered_printers = await self.hass.async_add_executor_job(
+                self.client.discover_printer
             )
             printer_reachable = any(
                 p.ip_address == printer.ip_address for p in discovered_printers
@@ -100,24 +97,24 @@ class ElegooPrinterApiClient:
 
             # Fallback: if not found via broadcast, try direct IP (for cross-subnet)
             if not printer_reachable and printer.ip_address:
-                logger.debug(
+                self._logger.debug(
                     "Printer %s not found via broadcast, trying direct IP %s",
                     printer.name,
                     printer.ip_address,
                 )
-                discovered_printers = await hass.async_add_executor_job(
-                    client.discover_printer, printer.ip_address
+                discovered_printers = await self.hass.async_add_executor_job(
+                    self.client.discover_printer, printer.ip_address
                 )
                 printer_reachable = any(
                     p.ip_address == printer.ip_address for p in discovered_printers
                 )
             elif not printer_reachable:
-                logger.debug(
+                self._logger.debug(
                     "Skipping direct IP fallback for printer %s; no IP configured",
                     printer.name,
                 )
         except (OSError, RuntimeError, TimeoutError) as e:
-            logger.warning(
+            self._logger.warning(
                 "Error discovering printer %s at %s: %s",
                 printer.name,
                 printer.ip_address,
@@ -164,11 +161,7 @@ class ElegooPrinterApiClient:
         )
 
         # Discover printers via broadcast and verify target IP is found
-        printer_reachable = (
-            await ElegooPrinterApiClient._discover_printer_with_fallback(
-                printer, self.client, hass, logger
-            )
-        )
+        printer_reachable = await self._discover_printer_with_fallback(printer)
 
         if not printer_reachable:
             logger.warning(
@@ -272,11 +265,7 @@ class ElegooPrinterApiClient:
         )
 
         # Discover printers via broadcast and verify target IP is found
-        printer_reachable = (
-            await ElegooPrinterApiClient._discover_printer_with_fallback(
-                printer, self.client, self.hass, self._logger
-            )
-        )
+        printer_reachable = await self._discover_printer_with_fallback(printer)
 
         if not printer_reachable:
             self._logger.debug(
