@@ -462,7 +462,7 @@ class ElegooPrinterClient:
                 return []
 
         if not discovered_printers:
-            self.logger.warning("No printers found during discovery.")
+            self.logger.debug("No printers found during discovery.")
         else:
             msg = f"Discovered {len(discovered_printers)} printer(s)."
             self.logger.debug(msg)
