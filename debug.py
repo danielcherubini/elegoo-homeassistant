@@ -12,7 +12,7 @@ from custom_components.elegoo_printer.websocket.client import ElegooPrinterClien
 from custom_components.elegoo_printer.sdcp.const import DEBUG
 
 LOG_LEVEL = "INFO"
-PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.184")
+PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.212")
 
 logger.remove()
 logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)
@@ -50,9 +50,9 @@ async def monitor_printer(
                     logger.info(f"[{printer.name}] Video URL: {video.video_url}")
                 
                 # Optionally get status
-                # printer_data = await elegoo_printer.get_printer_status()
-                # print_info = printer_data.status.print_info
-                # logger.info(f"[{printer.name}] Remaining: {print_info.remaining_ticks}")
+                printer_data = await elegoo_printer.get_printer_status()
+                print_info = printer_data.status.print_info
+                logger.info(f"[{printer.name}] Remaining: {print_info.remaining_ticks}")
                 
                 await asyncio.sleep(4)
             except Exception as e:
@@ -75,15 +75,6 @@ async def main() -> None:
             elegoo_printer = ElegooPrinterClient(
                 ip_address=PRINTER_IP, session=session, logger=logger
             )
-
-            # Test ping functionality first if specific IP provided
-            logger.info(f"Testing ping to printer at {PRINTER_IP}...")
-            ping_result = await elegoo_printer.ping_printer(ping_timeout=5.0)
-            if ping_result:
-                logger.info("✓ Ping successful - printer WebSocket is reachable")
-            else:
-                logger.warning("✗ Ping failed - printer WebSocket is not reachable")
-                logger.info("This is expected if printer is off or WebSocket service not running")
 
             # Discover specific printer first
             logger.info(f"🔍 Discovering printer at {PRINTER_IP}...")
