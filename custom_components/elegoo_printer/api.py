@@ -96,7 +96,6 @@ class ElegooPrinterApiClient:
             return False
 
         # Try direct IP first (more efficient for cross-subnet)
-        direct_ip_failed = False
         printer_reachable = False
 
         try:
@@ -118,7 +117,6 @@ class ElegooPrinterApiClient:
                 printer.ip_address,
                 e,
             )
-            direct_ip_failed = True
 
         # Fallback to broadcast if direct IP didn't work
         if not printer_reachable:
