@@ -76,6 +76,52 @@ class ElegooPrinterApiClient:
         self.hass: HomeAssistant = hass
         self._config_entry = config_entry
 
+    @staticmethod
+    async def _discover_printer_with_fallback(
+        printer: Printer,
+        client: ElegooPrinterClient,
+        hass: HomeAssistant,
+        logger: Logger,
+    ) -> bool:
+        """
+        Discover printer via broadcast with direct IP fallback for cross-subnet support.
+
+        Returns:
+            bool: True if printer is reachable, False otherwise.
+
+        """
+        try:
+            discovered_printers = await hass.async_add_executor_job(
+                client.discover_printer
+            )
+            printer_reachable = any(
+                p.ip_address == printer.ip_address for p in discovered_printers
+            )
+
+            # Fallback: if not found via broadcast, try direct IP (for cross-subnet)
+            if not printer_reachable:
+                logger.debug(
+                    "Printer %s not found via broadcast, trying direct IP %s",
+                    printer.name,
+                    printer.ip_address,
+                )
+                discovered_printers = await hass.async_add_executor_job(
+                    client.discover_printer, printer.ip_address
+                )
+                printer_reachable = any(
+                    p.ip_address == printer.ip_address for p in discovered_printers
+                )
+        except (OSError, RuntimeError, TimeoutError) as e:
+            logger.warning(
+                "Error discovering printer %s at %s: %s",
+                printer.name,
+                printer.ip_address,
+                e,
+            )
+            printer_reachable = False
+
+        return printer_reachable
+
     @classmethod
     async def async_create(
         cls,
@@ -113,35 +159,11 @@ class ElegooPrinterApiClient:
         )
 
         # Discover printers via broadcast and verify target IP is found
-        try:
-            discovered_printers = await hass.async_add_executor_job(
-                self.client.discover_printer
+        printer_reachable = (
+            await ElegooPrinterApiClient._discover_printer_with_fallback(
+                printer, self.client, hass, logger
             )
-            printer_reachable = any(
-                p.ip_address == printer.ip_address for p in discovered_printers
-            )
-
-            # Fallback: if not found via broadcast, try direct IP (for cross-subnet)
-            if not printer_reachable:
-                logger.debug(
-                    "Printer %s not found via broadcast, trying direct IP %s",
-                    printer.name,
-                    printer.ip_address,
-                )
-                discovered_printers = await hass.async_add_executor_job(
-                    self.client.discover_printer, printer.ip_address
-                )
-                printer_reachable = any(
-                    p.ip_address == printer.ip_address for p in discovered_printers
-                )
-        except (OSError, RuntimeError, TimeoutError) as e:
-            logger.warning(
-                "Error discovering printer %s at %s: %s",
-                printer.name,
-                printer.ip_address,
-                e,
-            )
-            printer_reachable = False
+        )
 
         if not printer_reachable:
             logger.warning(
@@ -245,35 +267,11 @@ class ElegooPrinterApiClient:
         )
 
         # Discover printers via broadcast and verify target IP is found
-        try:
-            discovered_printers = await self.hass.async_add_executor_job(
-                self.client.discover_printer
+        printer_reachable = (
+            await ElegooPrinterApiClient._discover_printer_with_fallback(
+                printer, self.client, self.hass, self._logger
             )
-            printer_reachable = any(
-                p.ip_address == printer.ip_address for p in discovered_printers
-            )
-
-            # Fallback: if not found via broadcast, try direct IP (for cross-subnet)
-            if not printer_reachable:
-                self._logger.debug(
-                    "Printer %s not found via broadcast, trying direct IP %s",
-                    printer.name,
-                    printer.ip_address,
-                )
-                discovered_printers = await self.hass.async_add_executor_job(
-                    self.client.discover_printer, printer.ip_address
-                )
-                printer_reachable = any(
-                    p.ip_address == printer.ip_address for p in discovered_printers
-                )
-        except (OSError, RuntimeError, TimeoutError) as e:
-            self._logger.warning(
-                "Error discovering printer %s at %s: %s",
-                printer.name,
-                printer.ip_address,
-                e,
-            )
-            printer_reachable = False
+        )
 
         if not printer_reachable:
             self._logger.debug(
