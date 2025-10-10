@@ -391,6 +391,20 @@ class PrinterType(Enum):
         """
         Return the printer type (RESIN or FDM) based on the provided model name.
 
+        This method identifies printer types for all Elegoo printers that support
+        the SDCP protocol (both WebSocket and MQTT variants).
+
+        Supported Models:
+            FDM Printers:
+                - Centauri series (Centauri, Centauri Carbon)
+                - Neptune series (Neptune 4, Neptune 4 Pro, Neptune 4 Plus,
+                  Neptune 4 Max)
+
+            Resin Printers:
+                - Mars series (Mars 3, Mars 4, Mars 4 Ultra, Mars 5, Mars 5 Ultra)
+                - Saturn series (Saturn 2, Saturn 3, Saturn 3 Ultra, Saturn 4,
+                  Saturn 4 Ultra, Saturn 4 Ultra 16K)
+
         Arguments:
             model (str): The printer model name to evaluate.
 
@@ -402,10 +416,16 @@ class PrinterType(Enum):
         if model is None:
             return None
 
-        fdm_keywords = ["centauri carbon", "centauri", "neptune"]
+        # FDM printer keywords - matches Centauri and Neptune series
+        fdm_keywords = [
+            "centauri",  # Matches: Centauri, Centauri Carbon
+            "neptune",  # Matches: Neptune 4 series (all variants)
+        ]
+
+        # Resin printer keywords - matches Mars and Saturn series
         resin_keywords = [
-            "mars",
-            "saturn",
+            "mars",  # Matches: Mars 3, 4, 4 Ultra, 5, 5 Ultra
+            "saturn",  # Matches: Saturn 2, 3, 3 Ultra, 4, 4 Ultra
         ]
 
         model_lower = model.lower()
