@@ -90,6 +90,8 @@ class Printer:
     is_proxy: bool
     mqtt_host: str | None
     mqtt_port: int | None
+    mqtt_username: str | None
+    mqtt_password: str | None
 
     def __init__(
         self,
@@ -147,6 +149,8 @@ class Printer:
         self.proxy_video_port = None
         self.mqtt_host = None
         self.mqtt_port = None
+        self.mqtt_username = None
+        self.mqtt_password = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a dictionary containing all attributes of the Printer instance."""
@@ -168,6 +172,8 @@ class Printer:
             "is_proxy": self.is_proxy,
             "mqtt_host": self.mqtt_host,
             "mqtt_port": self.mqtt_port,
+            "mqtt_username": self.mqtt_username,
+            "mqtt_password": self.mqtt_password,
         }
 
     @classmethod
@@ -208,6 +214,8 @@ class Printer:
         printer.is_proxy = data_dict.get("Proxy", data_dict.get("is_proxy", False))
         printer.mqtt_host = data_dict.get("mqtt_host")
         printer.mqtt_port = data_dict.get("mqtt_port")
+        printer.mqtt_username = data_dict.get("mqtt_username")
+        printer.mqtt_password = data_dict.get("mqtt_password")
         return printer
 
 

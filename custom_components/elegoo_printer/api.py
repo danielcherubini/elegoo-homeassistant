@@ -17,7 +17,9 @@ from PIL import UnidentifiedImageError
 
 from .const import (
     CONF_MQTT_HOST,
+    CONF_MQTT_PASSWORD,
     CONF_MQTT_PORT,
+    CONF_MQTT_USERNAME,
     CONF_PROXY_ENABLED,
     FIRMWARE_SERVICE_BASE_URL,
     FIRMWARE_UPDATE_ENDPOINT,
@@ -182,9 +184,13 @@ class ElegooPrinterApiClient:
             # For MQTT, we need to get broker settings from config
             mqtt_host = config.get(CONF_MQTT_HOST, "localhost")
             mqtt_port = config.get(CONF_MQTT_PORT, 1883)
+            mqtt_username = config.get(CONF_MQTT_USERNAME)
+            mqtt_password = config.get(CONF_MQTT_PASSWORD)
             self.client = ElegooMqttClient(
                 mqtt_host=mqtt_host,
                 mqtt_port=mqtt_port,
+                mqtt_username=mqtt_username,
+                mqtt_password=mqtt_password,
                 logger=logger,
                 printer=printer,
             )

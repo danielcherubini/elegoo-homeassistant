@@ -18,6 +18,8 @@ LOG_LEVEL = "INFO"
 PRINTER_IP = os.getenv("PRINTER_IP", "localhost")
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_USERNAME = os.getenv("MQTT_USERNAME")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 
 logger.remove()
 logger.add(sys.stdout, colorize=DEBUG, level=LOG_LEVEL)
@@ -59,6 +61,8 @@ async def monitor_printer(
         elegoo_printer = ElegooMqttClient(
             mqtt_host=MQTT_HOST,
             mqtt_port=MQTT_PORT,
+            mqtt_username=MQTT_USERNAME,
+            mqtt_password=MQTT_PASSWORD,
             logger=logger,
             printer=printer,
         )

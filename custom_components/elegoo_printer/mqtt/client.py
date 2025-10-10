@@ -79,10 +79,12 @@ class ElegooMqttClient:
     rather than connecting directly to the printer.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         mqtt_host: str = "localhost",
         mqtt_port: int = MQTT_PORT,
+        mqtt_username: str | None = None,
+        mqtt_password: str | None = None,
         logger: Any = LOGGER,
         printer: Printer | None = None,
     ) -> None:
@@ -94,12 +96,16 @@ class ElegooMqttClient:
         Arguments:
             mqtt_host: The MQTT broker hostname.
             mqtt_port: The MQTT broker port.
+            mqtt_username: Optional MQTT broker username for authentication.
+            mqtt_password: Optional MQTT broker password for authentication.
             logger: The logger to use.
             printer: Optional Printer object with existing configuration.
 
         """
         self.mqtt_host = mqtt_host
         self.mqtt_port = mqtt_port
+        self.mqtt_username = mqtt_username
+        self.mqtt_password = mqtt_password
         self.mqtt_client: aiomqtt.Client | None = None
         self.printer: Printer = printer or Printer()
         self.printer_data = PrinterData(printer=self.printer)
@@ -203,11 +209,20 @@ class ElegooMqttClient:
             await asyncio.sleep(2)
 
         try:
-            self.mqtt_client = aiomqtt.Client(
-                hostname=self.mqtt_host,
-                port=self.mqtt_port,
-                keepalive=MQTT_KEEPALIVE,
-            )
+            # Build client configuration
+            client_kwargs = {
+                "hostname": self.mqtt_host,
+                "port": self.mqtt_port,
+                "keepalive": MQTT_KEEPALIVE,
+            }
+
+            # Add authentication if credentials provided
+            if self.mqtt_username:
+                client_kwargs["username"] = self.mqtt_username
+            if self.mqtt_password:
+                client_kwargs["password"] = self.mqtt_password
+
+            self.mqtt_client = aiomqtt.Client(**client_kwargs)
 
             await self.mqtt_client.__aenter__()
 

@@ -16,7 +16,9 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import (
     CONF_CAMERA_ENABLED,
     CONF_MQTT_HOST,
+    CONF_MQTT_PASSWORD,
     CONF_MQTT_PORT,
+    CONF_MQTT_USERNAME,
     CONF_PROXY_ENABLED,
     DOMAIN,
     LOGGER,
@@ -83,9 +85,13 @@ async def _async_test_connection(
         )
         mqtt_host = user_input.get(CONF_MQTT_HOST, "localhost")
         mqtt_port = user_input.get(CONF_MQTT_PORT, 1883)
+        mqtt_username = user_input.get(CONF_MQTT_USERNAME)
+        mqtt_password = user_input.get(CONF_MQTT_PASSWORD)
         elegoo_printer = ElegooMqttClient(
             mqtt_host=mqtt_host,
             mqtt_port=mqtt_port,
+            mqtt_username=mqtt_username,
+            mqtt_password=mqtt_password,
             logger=LOGGER,
             printer=printer_object,
         )
@@ -508,6 +514,8 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             # Store MQTT broker settings
             printer_to_validate.mqtt_host = user_input[CONF_MQTT_HOST]
             printer_to_validate.mqtt_port = user_input[CONF_MQTT_PORT]
+            printer_to_validate.mqtt_username = user_input.get(CONF_MQTT_USERNAME)
+            printer_to_validate.mqtt_password = user_input.get(CONF_MQTT_PASSWORD)
 
             try:
                 # Test MQTT connection with broker settings
@@ -553,6 +561,20 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                             min=1,
                             max=65535,
                             mode=selector.NumberSelectorMode.BOX,
+                        ),
+                    ),
+                    vol.Optional(
+                        CONF_MQTT_USERNAME,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                        ),
+                    ),
+                    vol.Optional(
+                        CONF_MQTT_PASSWORD,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.PASSWORD,
                         ),
                     ),
                 }

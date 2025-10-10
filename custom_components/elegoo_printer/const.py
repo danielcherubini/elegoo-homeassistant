@@ -25,6 +25,8 @@ CONF_PROXY_VIDEO_PORT = "proxy_video_port"
 # MQTT settings
 CONF_MQTT_HOST = "mqtt_host"
 CONF_MQTT_PORT = "mqtt_port"
+CONF_MQTT_USERNAME = "mqtt_username"
+CONF_MQTT_PASSWORD = "mqtt_password"  # noqa: S105
 
 # Websocket and proxy settings
 DEFAULT_BROADCAST_ADDRESS = "255.255.255.255"
