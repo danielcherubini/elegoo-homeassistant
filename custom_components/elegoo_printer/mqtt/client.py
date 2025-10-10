@@ -10,11 +10,18 @@ from __future__ import annotations
 import asyncio
 import json
 import secrets
+import socket
 import time
 from typing import TYPE_CHECKING, Any
 
 import aiomqtt
 
+from custom_components.elegoo_printer.const import (
+    DEFAULT_BROADCAST_ADDRESS,
+    DISCOVERY_MESSAGE,
+    DISCOVERY_PORT,
+    DISCOVERY_TIMEOUT,
+)
 from custom_components.elegoo_printer.sdcp.const import (
     CMD_CONTINUE_PRINT,
     CMD_CONTROL_DEVICE,
@@ -184,6 +191,64 @@ class ElegooMqttClient:
             return False
         else:
             return True
+
+    def discover_printer(
+        self, broadcast_address: str = DEFAULT_BROADCAST_ADDRESS
+    ) -> list[Printer]:
+        """
+        Broadcast a UDP discovery message to locate MQTT-enabled Elegoo printers.
+
+        Sends a discovery request and collects responses within a timeout period,
+        returning a list of discovered printers. If no printers are found or a
+        socket error occurs, returns an empty list.
+
+        Arguments:
+            broadcast_address: The network address to send the discovery message to.
+
+        Returns:
+            A list of discovered MQTT printers, or an empty list if none are found.
+
+        """
+        discovered_printers: list[Printer] = []
+        self.logger.info("Broadcasting for MQTT printer discovery...")
+        msg = DISCOVERY_MESSAGE.encode()
+        with socket.socket(
+            socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
+        ) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.settimeout(DISCOVERY_TIMEOUT)
+            try:
+                sock.sendto(msg, (broadcast_address, DISCOVERY_PORT))
+                while True:
+                    try:
+                        data, addr = sock.recvfrom(8192)
+                        msg_str = f"Discovery response received from {addr}"
+                        self.logger.info(msg_str)
+                        try:
+                            printer_info = data.decode("utf-8")
+                            printer = Printer(printer_info)
+                            discovered_printers.append(printer)
+                            self.logger.debug(
+                                "Discovered printer: %s (protocol: %s)",
+                                printer.name,
+                                printer.protocol_type.value,
+                            )
+                        except (UnicodeDecodeError, ValueError, TypeError):
+                            self.logger.exception("Failed to parse printer data")
+                    except TimeoutError:
+                        break  # Timeout, no more responses
+            except OSError as e:
+                msg_str = f"Socket error during discovery: {e}"
+                self.logger.exception(msg_str)
+                return []
+
+        if not discovered_printers:
+            self.logger.debug("No MQTT printers found during discovery.")
+        else:
+            msg_str = f"Discovered {len(discovered_printers)} MQTT printer(s)."
+            self.logger.debug(msg_str)
+
+        return discovered_printers
 
     async def _mqtt_listener(self) -> None:
         """Listen for messages on MQTT and handle them."""

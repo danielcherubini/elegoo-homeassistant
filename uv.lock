@@ -643,7 +643,7 @@ wheels = [
 
 [[package]]
 name = "elegoo-printer"
-version = "2.3.2b3"
+version = "2.4.0b1"
 source = { virtual = "." }
 dependencies = [
     { name = "aiomqtt" },
@@ -663,7 +663,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiomqtt", specifier = ">=2.3.0" },
+    { name = "aiomqtt", specifier = ">=2.4.0" },
     { name = "colorlog", specifier = ">=6.9.0" },
     { name = "homeassistant", specifier = "==2025.4.0" },
     { name = "loguru", specifier = ">=0.7.3" },
