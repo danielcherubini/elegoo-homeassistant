@@ -2,7 +2,8 @@
 MQTT Test Printer Simulator.
 
 This simulates an Elegoo printer that communicates via MQTT protocol.
-It responds to commands on MQTT topics and publishes status updates.
+It responds to UDP discovery and M66666 MQTT connection commands,
+then connects to MQTT broker and publishes status updates.
 """
 
 import asyncio
@@ -113,53 +114,6 @@ printer_status = {
 def get_timestamp():
     """Get current timestamp in seconds."""
     return int(time.time())
-
-
-async def udp_discovery_server(stop_event):
-    """Handle UDP discovery requests and MQTT connection commands."""
-    loop = asyncio.get_running_loop()
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.settimeout(1)
-        sock.bind((HOST, UDP_PORT))
-        print(f"UDP discovery server listening on {HOST}:{UDP_PORT}")
-
-        while not stop_event.is_set():
-            try:
-                data, addr = await loop.run_in_executor(None, sock.recvfrom, 1024)
-                message = data.decode("utf-8")
-
-                if message == "M99999":
-                    print(f"Received discovery request from {addr}")
-                    response = {
-                        "Id": str(uuid.uuid4()),
-                        "Data": {
-                            "Name": PRINTER_NAME,
-                            "MachineName": "Saturn 3",
-                            "BrandName": printer_attributes["BrandName"],
-                            "MainboardIP": PRINTER_IP,
-                            "MainboardID": MAINBOARD_ID,
-                            "ProtocolVersion": printer_attributes["ProtocolVersion"],
-                            "FirmwareVersion": printer_attributes["FirmwareVersion"],
-                        },
-                    }
-                    sock.sendto(json.dumps(response).encode("utf-8"), addr)
-                elif message.startswith("M66666"):
-                    # MQTT connection command: M66666 <port>
-                    parts = message.split()
-                    if len(parts) == 2:
-                        mqtt_port = parts[1]
-                        print(f"Received M66666 command from {addr}: Connect to MQTT broker at {addr[0]}:{mqtt_port}")
-                        print(f"(Simulated printer would connect to MQTT broker at {addr[0]}:{mqtt_port})")
-                    else:
-                        print(f"Received M66666 command from {addr} (no port specified)")
-            except (socket.timeout, UnicodeDecodeError):
-                continue
-            except OSError as e:
-                if not stop_event.is_set():
-                    print(f"UDP error: {e}")
-
-    print("UDP discovery server shut down")
 
 
 async def publish_status(mqtt_client):
@@ -340,22 +294,15 @@ async def mqtt_message_handler(mqtt_client, stop_event):
         print("Message handler cancelled")
 
 
-async def main():
-    """Main entry point."""
-    stop_event = asyncio.Event()
-    loop = asyncio.get_running_loop()
+async def mqtt_connection_manager(mqtt_connect_event, stop_event):
+    """Manage MQTT connection after receiving M66666 command."""
+    # Wait for M66666 command to trigger connection
+    await mqtt_connect_event.wait()
 
-    # Set up signal handlers
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, stop_event.set)
+    if stop_event.is_set():
+        return
 
-    print(f"Starting MQTT test printer: {PRINTER_NAME}")
-    print(f"Mainboard ID: {MAINBOARD_ID}")
-    print(f"IP Address: {PRINTER_IP}")
-    print(f"Connecting to MQTT broker at {MQTT_HOST}:{MQTT_PORT}")
-
-    # Start UDP discovery server
-    udp_task = asyncio.create_task(udp_discovery_server(stop_event))
+    print(f"\n🔌 Connecting to MQTT broker at {MQTT_HOST}:{MQTT_PORT}...")
 
     try:
         # Build MQTT client configuration
@@ -370,9 +317,9 @@ async def main():
 
         async with aiomqtt.Client(**mqtt_kwargs) as mqtt_client:
             if MQTT_USERNAME:
-                print(f"Connected to MQTT broker (authenticated as {MQTT_USERNAME})")
+                print(f"✅ Connected to MQTT broker (authenticated as {MQTT_USERNAME})")
             else:
-                print("Connected to MQTT broker")
+                print("✅ Connected to MQTT broker")
 
             # Publish initial state
             await publish_attributes(mqtt_client)
@@ -386,18 +333,17 @@ async def main():
                 mqtt_message_handler(mqtt_client, stop_event)
             )
 
-            print(f"\nMQTT Printer ready and listening on topics:")
+            print(f"\n📡 MQTT Printer ready and listening on topics:")
             print(f"  - sdcp/request/{MAINBOARD_ID}")
             print(f"  - Publishing to sdcp/status/{MAINBOARD_ID}")
             print(f"  - Publishing to sdcp/attributes/{MAINBOARD_ID}")
             print(f"  - Publishing to sdcp/response/{MAINBOARD_ID}")
-            print("\nPress Ctrl+C to stop\n")
 
             # Wait for stop signal
             await stop_event.wait()
 
             # Clean shutdown
-            print("\nShutting down...")
+            print("\n🛑 Shutting down MQTT connection...")
             status_task.cancel()
             handler_task.cancel()
 
@@ -406,22 +352,116 @@ async def main():
             except asyncio.CancelledError:
                 pass
 
-            print("MQTT printer shut down gracefully")
+            print("✅ MQTT connection shut down gracefully")
 
     except (OSError, TimeoutError) as e:
-        print(f"Failed to connect to MQTT broker: {e}")
-        print(f"Make sure an MQTT broker is running on {MQTT_HOST}:{MQTT_PORT}")
-        print("You can start one with: mosquitto -v")
+        print(f"❌ Failed to connect to MQTT broker: {e}")
+        print(f"💡 Make sure an MQTT broker is running on {MQTT_HOST}:{MQTT_PORT}")
+        print("   You can start one with: mosquitto -v")
+
+
+async def udp_discovery_server(mqtt_connect_event, stop_event):
+    """Handle UDP discovery requests and MQTT connection commands."""
+    loop = asyncio.get_running_loop()
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.settimeout(1)
+        sock.bind((HOST, UDP_PORT))
+        print(f"📡 UDP discovery server listening on {HOST}:{UDP_PORT}")
+
+        while not stop_event.is_set():
+            try:
+                data, addr = await loop.run_in_executor(None, sock.recvfrom, 1024)
+                message = data.decode("utf-8")
+
+                if message == "M99999":
+                    print(f"🔍 Received discovery request from {addr}")
+                    response = {
+                        "Id": str(uuid.uuid4()),
+                        "Data": {
+                            "Name": PRINTER_NAME,
+                            "MachineName": "Saturn 3",
+                            "BrandName": printer_attributes["BrandName"],
+                            "MainboardIP": PRINTER_IP,
+                            "MainboardID": MAINBOARD_ID,
+                            "ProtocolVersion": printer_attributes["ProtocolVersion"],
+                            "FirmwareVersion": printer_attributes["FirmwareVersion"],
+                        },
+                    }
+                    sock.sendto(json.dumps(response).encode("utf-8"), addr)
+                    print(f"✅ Sent discovery response to {addr}")
+
+                elif message.startswith("M66666"):
+                    # MQTT connection command: M66666 <port>
+                    parts = message.split()
+                    if len(parts) == 2:
+                        mqtt_port = parts[1]
+                        print(f"\n🎯 Received M66666 command from {addr}")
+                        print(f"   Broker: {addr[0]}:{mqtt_port}")
+                        # Trigger MQTT connection
+                        mqtt_connect_event.set()
+                    else:
+                        print(f"⚠️  Received M66666 command from {addr} (no port specified)")
+
+            except (socket.timeout, UnicodeDecodeError):
+                continue
+            except OSError as e:
+                if not stop_event.is_set():
+                    print(f"❌ UDP error: {e}")
+
+    print("✅ UDP discovery server shut down")
+
+
+async def main():
+    """Main entry point."""
+    stop_event = asyncio.Event()
+    mqtt_connect_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    # Set up signal handlers
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, stop_event.set)
+
+    print("=" * 70)
+    print(f"🖨️  MQTT Test Printer Simulator")
+    print("=" * 70)
+    print(f"Printer Name:  {PRINTER_NAME}")
+    print(f"Mainboard ID:  {MAINBOARD_ID}")
+    print(f"IP Address:    {PRINTER_IP}")
+    print(f"UDP Port:      {UDP_PORT}")
+    print("=" * 70)
+    print("\n⏳ Waiting for M66666 command to connect to MQTT broker...")
+    print("💡 Tip: Run discovery or send M66666 command to trigger MQTT connection\n")
+
+    # Start UDP discovery server
+    udp_task = asyncio.create_task(udp_discovery_server(mqtt_connect_event, stop_event))
+
+    # Start MQTT connection manager (waits for M66666 command)
+    mqtt_task = asyncio.create_task(mqtt_connection_manager(mqtt_connect_event, stop_event))
+
+    try:
+        # Wait for stop signal
+        await stop_event.wait()
+    except KeyboardInterrupt:
+        print("\n\n⚠️  Received interrupt signal")
+        stop_event.set()
     finally:
+        print("\n🛑 Shutting down printer simulator...")
+
+        # Cancel tasks
         udp_task.cancel()
+        mqtt_task.cancel()
+
         try:
-            await udp_task
+            await asyncio.gather(udp_task, mqtt_task, return_exceptions=True)
         except asyncio.CancelledError:
             pass
+
+        print("✅ Printer simulator shut down\n")
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\nPrinter shutting down.")
+        pass
