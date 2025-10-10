@@ -183,7 +183,7 @@ class ElegooPrinterApiClient:
             logger.info("Using MQTT protocol for printer %s", printer.name)
             # For MQTT, we need to get broker settings from config
             mqtt_host = config.get(CONF_MQTT_HOST, "localhost")
-            mqtt_port = config.get(CONF_MQTT_PORT, 1883)
+            mqtt_port = int(config.get(CONF_MQTT_PORT, 1883))
             mqtt_username = config.get(CONF_MQTT_USERNAME)
             mqtt_password = config.get(CONF_MQTT_PASSWORD)
             self.client = ElegooMqttClient(

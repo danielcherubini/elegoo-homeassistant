@@ -84,7 +84,7 @@ async def _async_test_connection(
             printer_object.name,
         )
         mqtt_host = user_input.get(CONF_MQTT_HOST, "localhost")
-        mqtt_port = user_input.get(CONF_MQTT_PORT, 1883)
+        mqtt_port = int(user_input.get(CONF_MQTT_PORT, 1883))
         mqtt_username = user_input.get(CONF_MQTT_USERNAME)
         mqtt_password = user_input.get(CONF_MQTT_PASSWORD)
         elegoo_printer = ElegooMqttClient(
@@ -513,7 +513,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
             # Store MQTT broker settings
             printer_to_validate.mqtt_host = user_input[CONF_MQTT_HOST]
-            printer_to_validate.mqtt_port = user_input[CONF_MQTT_PORT]
+            printer_to_validate.mqtt_port = int(user_input[CONF_MQTT_PORT])
             printer_to_validate.mqtt_username = user_input.get(CONF_MQTT_USERNAME)
             printer_to_validate.mqtt_password = user_input.get(CONF_MQTT_PASSWORD)
 
