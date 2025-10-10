@@ -7,6 +7,7 @@ It responds to commands on MQTT topics and publishes status updates.
 
 import asyncio
 import json
+import os
 import random
 import signal
 import socket
@@ -16,8 +17,8 @@ import uuid
 import aiomqtt
 
 # Printer configuration
-MQTT_HOST = "localhost"
-MQTT_PORT = 1883
+MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MAINBOARD_ID = "4c851c540107103d00000c0000000000"
 PRINTER_IP = "127.0.0.1"
 PRINTER_NAME = "Saturn 3 MQTT"

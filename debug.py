@@ -15,7 +15,7 @@ from custom_components.elegoo_printer.sdcp.models.enums import ProtocolType
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 LOG_LEVEL = "INFO"
-PRINTER_IP = os.getenv("PRINTER_IP", "10.0.0.212")
+PRINTER_IP = os.getenv("PRINTER_IP", "localhost")
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 
