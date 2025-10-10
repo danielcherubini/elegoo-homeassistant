@@ -31,6 +31,7 @@ from custom_components.elegoo_printer.websocket.client import ElegooPrinterClien
 from .const import (
     MQTT_KEEPALIVE,
     MQTT_PORT,
+    MQTT_TOPIC_MIN_PARTS,
     TOPIC_PREFIX,
     TOPIC_REQUEST,
     TOPIC_STATUS,
@@ -255,7 +256,7 @@ class ElegooMqttBridge:
     async def _handle_mqtt_message(self, message: aiomqtt.Message) -> None:
         """Handle a single MQTT message."""
         topic_parts = str(message.topic).split("/")
-        if len(topic_parts) >= MAX_RETRY_ATTEMPTS and topic_parts[1] == TOPIC_REQUEST:
+        if len(topic_parts) >= MQTT_TOPIC_MIN_PARTS and topic_parts[1] == TOPIC_REQUEST:
             printer_id = topic_parts[2]
 
             if printer_id in self.printer_clients:
