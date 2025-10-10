@@ -290,6 +290,11 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
             if self.selected_printer:
+                # Check if printer uses MQTT protocol
+                if self.selected_printer.protocol_type == ProtocolType.MQTT:
+                    return await self.async_step_mqtt_options()
+
+                # For WebSocket/SDCP printers, show type-specific options
                 if self.selected_printer.printer_type == PrinterType.RESIN:
                     return self.async_show_form(
                         step_id="resin_options",
@@ -486,6 +491,69 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         default=self.selected_printer.proxy_enabled,
                     ): selector.BooleanSelector(
                         selector.BooleanSelectorConfig(),
+                    ),
+                }
+            ),
+            errors=_errors,
+        )
+
+    async def async_step_mqtt_options(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """Handle MQTT broker configuration for MQTT-enabled printers."""
+        _errors = {}
+        if user_input is not None and self.selected_printer:
+            printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
+            # Store MQTT broker settings
+            printer_to_validate.mqtt_host = user_input[CONF_MQTT_HOST]
+            printer_to_validate.mqtt_port = user_input[CONF_MQTT_PORT]
+
+            try:
+                # Test MQTT connection with broker settings
+                validated_printer = await _async_test_connection(
+                    self.hass, printer_to_validate, user_input
+                )
+                await self.async_set_unique_id(unique_id=validated_printer.id)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=validated_printer.name or "Elegoo Printer",
+                    data=validated_printer.to_dict(),
+                )
+            except ElegooConfigFlowConnectionError as exception:
+                LOGGER.error("Connection error: %s", exception)
+                _errors["base"] = "connection"
+            except ElegooConfigFlowGeneralError as exception:
+                LOGGER.error("No printer found: %s", exception)
+                _errors["base"] = "mqtt_options_no_printer_found"
+            except PlatformNotReady as exception:
+                LOGGER.error(exception)
+                _errors["base"] = "connection"
+            except OSError as exception:
+                LOGGER.exception(exception)
+                _errors["base"] = "unknown"
+
+        return self.async_show_form(
+            step_id="mqtt_options",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_MQTT_HOST,
+                        default="localhost",
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                        ),
+                    ),
+                    vol.Required(
+                        CONF_MQTT_PORT,
+                        default=1883,
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1,
+                            max=65535,
+                            mode=selector.NumberSelectorMode.BOX,
+                        ),
                     ),
                 }
             ),

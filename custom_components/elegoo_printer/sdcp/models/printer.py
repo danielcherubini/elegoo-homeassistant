@@ -88,6 +88,8 @@ class Printer:
     proxy_websocket_port: int | None
     proxy_video_port: int | None
     is_proxy: bool
+    mqtt_host: str | None
+    mqtt_port: int | None
 
     def __init__(
         self,
@@ -143,6 +145,8 @@ class Printer:
         self.camera_enabled = config.get(CONF_CAMERA_ENABLED, False)
         self.proxy_websocket_port = None
         self.proxy_video_port = None
+        self.mqtt_host = None
+        self.mqtt_port = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a dictionary containing all attributes of the Printer instance."""
@@ -162,6 +166,8 @@ class Printer:
             "proxy_websocket_port": self.proxy_websocket_port,
             "proxy_video_port": self.proxy_video_port,
             "is_proxy": self.is_proxy,
+            "mqtt_host": self.mqtt_host,
+            "mqtt_port": self.mqtt_port,
         }
 
     @classmethod
@@ -200,6 +206,8 @@ class Printer:
         printer.proxy_websocket_port = data_dict.get("proxy_websocket_port")
         printer.proxy_video_port = data_dict.get("proxy_video_port")
         printer.is_proxy = data_dict.get("Proxy", data_dict.get("is_proxy", False))
+        printer.mqtt_host = data_dict.get("mqtt_host")
+        printer.mqtt_port = data_dict.get("mqtt_port")
         return printer
 
 

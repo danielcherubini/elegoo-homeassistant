@@ -138,6 +138,44 @@ class ElegooMqttClient:
         self.mqtt_client = None
         self._is_connected = False
 
+    def _send_mqtt_connect_command(self, printer_ip: str) -> bool:
+        """
+        Send UDP command to tell printer to connect to MQTT broker.
+
+        Uses the M66666 command with the MQTT port to instruct the printer
+        to connect to the MQTT broker at the source IP.
+
+        Arguments:
+            printer_ip: The IP address of the printer.
+
+        Returns:
+            True if command was sent successfully, False otherwise.
+
+        """
+        try:
+            # Create UDP socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+            # Construct M66666 command with MQTT port
+            message = f"M66666 {self.mqtt_port}".encode()
+
+            # Send to printer's discovery port
+            sock.sendto(message, (printer_ip, DISCOVERY_PORT))
+            sock.close()
+
+            self.logger.info(
+                "Sent M66666 command to printer %s to connect to MQTT broker %s:%s",
+                printer_ip,
+                self.mqtt_host,
+                self.mqtt_port,
+            )
+        except OSError:
+            self.logger.exception("Failed to send M66666 command to printer")
+            return False
+        else:
+            return True
+
     async def connect_printer(self, printer: Printer) -> bool:
         """Establish an asynchronous MQTT connection to the Elegoo printer."""
         if self.is_connected:
@@ -152,6 +190,17 @@ class ElegooMqttClient:
             f"(broker: {self.mqtt_host}:{self.mqtt_port})"
         )
         self.logger.info(msg)
+
+        # First, tell the printer to connect to our MQTT broker
+        if printer.ip_address:
+            if not self._send_mqtt_connect_command(printer.ip_address):
+                msg = (
+                    "Failed to send MQTT connect command, "
+                    "but will try to connect anyway"
+                )
+                self.logger.warning(msg)
+            # Give printer time to connect to broker
+            await asyncio.sleep(2)
 
         try:
             self.mqtt_client = aiomqtt.Client(
