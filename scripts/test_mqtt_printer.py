@@ -19,6 +19,8 @@ import aiomqtt
 # Printer configuration
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_USERNAME = os.getenv("MQTT_USERNAME")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 MAINBOARD_ID = "4c851c540107103d00000c0000000000"
 PRINTER_IP = "127.0.0.1"
 PRINTER_NAME = "Saturn 3 MQTT"
@@ -114,7 +116,7 @@ def get_timestamp():
 
 
 async def udp_discovery_server(stop_event):
-    """Handle UDP discovery requests."""
+    """Handle UDP discovery requests and MQTT connection commands."""
     loop = asyncio.get_running_loop()
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -125,7 +127,9 @@ async def udp_discovery_server(stop_event):
         while not stop_event.is_set():
             try:
                 data, addr = await loop.run_in_executor(None, sock.recvfrom, 1024)
-                if data == b"M99999":
+                message = data.decode("utf-8")
+
+                if message == "M99999":
                     print(f"Received discovery request from {addr}")
                     response = {
                         "Id": str(uuid.uuid4()),
@@ -140,7 +144,16 @@ async def udp_discovery_server(stop_event):
                         },
                     }
                     sock.sendto(json.dumps(response).encode("utf-8"), addr)
-            except socket.timeout:
+                elif message.startswith("M66666"):
+                    # MQTT connection command: M66666 <port>
+                    parts = message.split()
+                    if len(parts) == 2:
+                        mqtt_port = parts[1]
+                        print(f"Received M66666 command from {addr}: Connect to MQTT broker at {addr[0]}:{mqtt_port}")
+                        print(f"(Simulated printer would connect to MQTT broker at {addr[0]}:{mqtt_port})")
+                    else:
+                        print(f"Received M66666 command from {addr} (no port specified)")
+            except (socket.timeout, UnicodeDecodeError):
                 continue
             except OSError as e:
                 if not stop_event.is_set():
@@ -345,8 +358,21 @@ async def main():
     udp_task = asyncio.create_task(udp_discovery_server(stop_event))
 
     try:
-        async with aiomqtt.Client(hostname=MQTT_HOST, port=MQTT_PORT) as mqtt_client:
-            print("Connected to MQTT broker")
+        # Build MQTT client configuration
+        mqtt_kwargs = {
+            "hostname": MQTT_HOST,
+            "port": MQTT_PORT,
+        }
+        if MQTT_USERNAME:
+            mqtt_kwargs["username"] = MQTT_USERNAME
+        if MQTT_PASSWORD:
+            mqtt_kwargs["password"] = MQTT_PASSWORD
+
+        async with aiomqtt.Client(**mqtt_kwargs) as mqtt_client:
+            if MQTT_USERNAME:
+                print(f"Connected to MQTT broker (authenticated as {MQTT_USERNAME})")
+            else:
+                print("Connected to MQTT broker")
 
             # Publish initial state
             await publish_attributes(mqtt_client)
