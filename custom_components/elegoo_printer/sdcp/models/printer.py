@@ -87,6 +87,7 @@ class Printer:
     camera_enabled: bool
     proxy_websocket_port: int | None
     proxy_video_port: int | None
+    is_proxy: bool
 
     def __init__(
         self,
@@ -104,6 +105,7 @@ class Printer:
             self.firmware = None
             self.id = None
             self.printer_type = None
+            self.is_proxy = False
         else:
             try:
                 j: dict[str, Any] = json.loads(json_string)  # Decode the JSON string
@@ -119,6 +121,7 @@ class Printer:
                 self.protocol_type = ProtocolType.from_version(self.protocol)
                 self.firmware = data_dict.get("FirmwareVersion")
                 self.id = data_dict.get("MainboardID")
+                self.is_proxy = data_dict.get("Proxy", False)
 
                 self.printer_type = PrinterType.from_model(self.model)
             except json.JSONDecodeError:
@@ -133,6 +136,7 @@ class Printer:
                 self.firmware = None
                 self.id = None
                 self.printer_type = None
+                self.is_proxy = False
 
         # Initialize config-based attributes for all instances
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
@@ -157,6 +161,7 @@ class Printer:
             "camera_enabled": self.camera_enabled,
             "proxy_websocket_port": self.proxy_websocket_port,
             "proxy_video_port": self.proxy_video_port,
+            "is_proxy": self.is_proxy,
         }
 
     @classmethod
@@ -194,6 +199,7 @@ class Printer:
         )
         printer.proxy_websocket_port = data_dict.get("proxy_websocket_port")
         printer.proxy_video_port = data_dict.get("proxy_video_port")
+        printer.is_proxy = data_dict.get("Proxy", data_dict.get("is_proxy", False))
         return printer
 
 

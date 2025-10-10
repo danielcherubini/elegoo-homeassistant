@@ -246,9 +246,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             logger=LOGGER,
             session=async_get_clientsession(self.hass),
         )  # IP doesn't matter for discovery
-        self.discovered_printers = await self.hass.async_add_executor_job(
+        discovered = await self.hass.async_add_executor_job(
             elegoo_printer_client.discover_printer
         )
+
+        # Filter out proxy servers from discovered printers
+        self.discovered_printers = [p for p in discovered if not p.is_proxy]
 
         if self.discovered_printers:
             return await self.async_step_discover_printers()

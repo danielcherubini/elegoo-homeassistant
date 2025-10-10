@@ -81,6 +81,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                         "MainboardID": "proxy",
                         "ProtocolVersion": "V3.0.0",
                         "FirmwareVersion": "V1.0.0",
+                        "Proxy": True,
                     },
                 }
                 json_string = json.dumps(response_payload)
@@ -104,6 +105,7 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                             "MainboardID": getattr(printer, "id", None) or ip,
                             "ProtocolVersion": getattr(printer, "protocol", "V3.0.0"),
                             "FirmwareVersion": getattr(printer, "firmware", "V1.0.0"),
+                            "Proxy": True,
                         },
                     }
                     json_string = json.dumps(response_payload)
