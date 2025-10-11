@@ -13,12 +13,22 @@ from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import CONF_CAMERA_ENABLED, CONF_PROXY_ENABLED, DOMAIN, LOGGER
+from .const import (
+    CONF_CAMERA_ENABLED,
+    CONF_MQTT_HOST,
+    CONF_MQTT_PASSWORD,
+    CONF_MQTT_PORT,
+    CONF_MQTT_USERNAME,
+    CONF_PROXY_ENABLED,
+    DOMAIN,
+    LOGGER,
+)
+from .mqtt.client import ElegooMqttClient
 from .sdcp.exceptions import (
     ElegooConfigFlowConnectionError,
     ElegooConfigFlowGeneralError,
 )
-from .sdcp.models.enums import PrinterType
+from .sdcp.models.enums import PrinterType, ProtocolType
 from .sdcp.models.printer import Printer
 from .websocket.client import ElegooPrinterClient
 from .websocket.server import ElegooPrinterServer
@@ -67,24 +77,59 @@ async def _async_test_connection(
         msg = "IP address is required to connect to the printer"
         raise ElegooConfigFlowGeneralError(msg)
 
-    elegoo_printer = ElegooPrinterClient(
-        printer_object.ip_address,
-        config=MappingProxyType(user_input),
-        logger=LOGGER,
-        session=async_get_clientsession(hass),
-    )
+    # Create appropriate client based on protocol type
+    if printer_object.protocol_type == ProtocolType.MQTT:
+        LOGGER.info(
+            "Using MQTT protocol for printer %s during config flow",
+            printer_object.name,
+        )
+        mqtt_host = user_input.get(CONF_MQTT_HOST, "localhost")
+        mqtt_port = int(user_input.get(CONF_MQTT_PORT, 1883))
+        mqtt_username = user_input.get(CONF_MQTT_USERNAME)
+        mqtt_password = user_input.get(CONF_MQTT_PASSWORD)
+        elegoo_printer = ElegooMqttClient(
+            mqtt_host=mqtt_host,
+            mqtt_port=mqtt_port,
+            mqtt_username=mqtt_username,
+            mqtt_password=mqtt_password,
+            logger=LOGGER,
+            printer=printer_object,
+        )
+        # MQTT doesn't support proxy
+        printer_object.proxy_enabled = False
+        LOGGER.debug(
+            "Connecting to MQTT printer: %s at broker %s:%s",
+            printer_object.name,
+            mqtt_host,
+            mqtt_port,
+        )
+        if await elegoo_printer.connect_printer(printer_object):
+            await elegoo_printer.disconnect()
+            return printer_object
+    else:
+        LOGGER.info(
+            "Using WebSocket/SDCP protocol for printer %s during config flow",
+            printer_object.name,
+        )
+        elegoo_printer = ElegooPrinterClient(
+            printer_object.ip_address,
+            config=MappingProxyType(user_input),
+            logger=LOGGER,
+            session=async_get_clientsession(hass),
+        )
+        printer_object.proxy_enabled = user_input.get(CONF_PROXY_ENABLED, False)
+        LOGGER.debug(
+            "Connecting to WebSocket printer: %s at %s with proxy enabled: %s",
+            printer_object.name,
+            printer_object.ip_address,
+            printer_object.proxy_enabled,
+        )
+        if await elegoo_printer.connect_printer(
+            printer_object, proxy_enabled=printer_object.proxy_enabled
+        ):
+            await elegoo_printer.disconnect()
+            return printer_object
 
-    printer_object.proxy_enabled = user_input.get(CONF_PROXY_ENABLED, False)
-    LOGGER.debug(
-        "Connecting to printer: %s at %s with proxy enabled: %s",
-        printer_object.name,
-        printer_object.ip_address,
-        printer_object.proxy_enabled,
-    )
-    if await elegoo_printer.connect_printer(
-        printer_object, proxy_enabled=printer_object.proxy_enabled
-    ):
-        return printer_object
     msg = f"Failed to connect to printer {printer_object.name} at {printer_object.ip_address}"  # noqa: E501
     raise ElegooConfigFlowConnectionError(msg)
 
@@ -207,9 +252,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             logger=LOGGER,
             session=async_get_clientsession(self.hass),
         )  # IP doesn't matter for discovery
-        self.discovered_printers = await self.hass.async_add_executor_job(
+        discovered = await self.hass.async_add_executor_job(
             elegoo_printer_client.discover_printer
         )
+
+        # Filter out proxy servers from discovered printers
+        self.discovered_printers = [p for p in discovered if not p.is_proxy]
 
         if self.discovered_printers:
             return await self.async_step_discover_printers()
@@ -248,6 +296,11 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
             if self.selected_printer:
+                # Check if printer uses MQTT protocol
+                if self.selected_printer.protocol_type == ProtocolType.MQTT:
+                    return await self.async_step_mqtt_options()
+
+                # For WebSocket/SDCP printers, show type-specific options
                 if self.selected_printer.printer_type == PrinterType.RESIN:
                     return self.async_show_form(
                         step_id="resin_options",
@@ -444,6 +497,85 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         default=self.selected_printer.proxy_enabled,
                     ): selector.BooleanSelector(
                         selector.BooleanSelectorConfig(),
+                    ),
+                }
+            ),
+            errors=_errors,
+        )
+
+    async def async_step_mqtt_options(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """Handle MQTT broker configuration for MQTT-enabled printers."""
+        _errors = {}
+        if user_input is not None and self.selected_printer:
+            printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
+            # Store MQTT broker settings
+            printer_to_validate.mqtt_host = user_input[CONF_MQTT_HOST]
+            printer_to_validate.mqtt_port = int(user_input[CONF_MQTT_PORT])
+            printer_to_validate.mqtt_username = user_input.get(CONF_MQTT_USERNAME)
+            printer_to_validate.mqtt_password = user_input.get(CONF_MQTT_PASSWORD)
+
+            try:
+                # Test MQTT connection with broker settings
+                validated_printer = await _async_test_connection(
+                    self.hass, printer_to_validate, user_input
+                )
+                await self.async_set_unique_id(unique_id=validated_printer.id)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=validated_printer.name or "Elegoo Printer",
+                    data=validated_printer.to_dict(),
+                )
+            except ElegooConfigFlowConnectionError as exception:
+                LOGGER.error("Connection error: %s", exception)
+                _errors["base"] = "connection"
+            except ElegooConfigFlowGeneralError as exception:
+                LOGGER.error("No printer found: %s", exception)
+                _errors["base"] = "mqtt_options_no_printer_found"
+            except PlatformNotReady as exception:
+                LOGGER.error(exception)
+                _errors["base"] = "connection"
+            except OSError as exception:
+                LOGGER.exception(exception)
+                _errors["base"] = "unknown"
+
+        return self.async_show_form(
+            step_id="mqtt_options",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_MQTT_HOST,
+                        default="localhost",
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                        ),
+                    ),
+                    vol.Required(
+                        CONF_MQTT_PORT,
+                        default=1883,
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1,
+                            max=65535,
+                            mode=selector.NumberSelectorMode.BOX,
+                        ),
+                    ),
+                    vol.Optional(
+                        CONF_MQTT_USERNAME,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                        ),
+                    ),
+                    vol.Optional(
+                        CONF_MQTT_PASSWORD,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.PASSWORD,
+                        ),
                     ),
                 }
             ),

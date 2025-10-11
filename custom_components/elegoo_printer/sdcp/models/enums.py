@@ -3,6 +3,39 @@
 from enum import Enum
 
 
+class ProtocolType(Enum):
+    """
+    Represents the communication protocol type used by the printer.
+
+    Attributes:
+        SDCP: Standard SDCP protocol over WebSocket.
+        MQTT: SDCP protocol over MQTT.
+
+    """
+
+    SDCP = "sdcp"
+    MQTT = "mqtt"
+
+    @classmethod
+    def from_version(cls, version: str | None) -> "ProtocolType":
+        """
+        Determine protocol type from version string.
+
+        Arguments:
+            version: The protocol version string from the printer.
+
+        Returns:
+            ProtocolType.MQTT if version starts with "V1", otherwise ProtocolType.SDCP.
+
+        """
+        if version:
+            # Extract major version for future-proof handling
+            version_upper = version.upper()
+            if version_upper.startswith("V1"):
+                return cls.MQTT
+        return cls.SDCP
+
+
 class ElegooMachineStatus(Enum):
     """
     Represents the different status states of an SDCP machine.
@@ -358,6 +391,20 @@ class PrinterType(Enum):
         """
         Return the printer type (RESIN or FDM) based on the provided model name.
 
+        This method identifies printer types for all Elegoo printers that support
+        the SDCP protocol (both WebSocket and MQTT variants).
+
+        Supported Models:
+            FDM Printers:
+                - Centauri series (Centauri, Centauri Carbon)
+                - Neptune series (Neptune 4, Neptune 4 Pro, Neptune 4 Plus,
+                  Neptune 4 Max)
+
+            Resin Printers:
+                - Mars series (Mars 3, Mars 4, Mars 4 Ultra, Mars 5, Mars 5 Ultra)
+                - Saturn series (Saturn 2, Saturn 3, Saturn 3 Ultra, Saturn 4,
+                  Saturn 4 Ultra, Saturn 4 Ultra 16K)
+
         Arguments:
             model (str): The printer model name to evaluate.
 
@@ -369,19 +416,24 @@ class PrinterType(Enum):
         if model is None:
             return None
 
-        fdm_printers = ["centauri carbon", "centauri"]
-        resin_printers = [
-            "mars 5",
-            "mars 5 ultra",
-            "saturn 4",
-            "saturn 4 ultra",
-            "saturn 4 ultra 16k",
+        # FDM printer keywords - matches Centauri and Neptune series
+        fdm_keywords = [
+            "centauri",  # Matches: Centauri, Centauri Carbon
+            "neptune",  # Matches: Neptune 4 series (all variants)
         ]
 
-        if model.lower() in fdm_printers:
+        # Resin printer keywords - matches Mars and Saturn series
+        resin_keywords = [
+            "mars",  # Matches: Mars 3, 4, 4 Ultra, 5, 5 Ultra
+            "saturn",  # Matches: Saturn 2, 3, 3 Ultra, 4, 4 Ultra
+        ]
+
+        model_lower = model.lower()
+
+        if any(keyword in model_lower for keyword in fdm_keywords):
             return cls.FDM
 
-        if model.lower() in resin_printers:
+        if any(keyword in model_lower for keyword in resin_keywords):
             return cls.RESIN
 
         return None

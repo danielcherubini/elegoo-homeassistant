@@ -22,8 +22,8 @@ def test_printer_type_from_model() -> None:
     assert PrinterType.from_model(None) is None
 
     # Test partial matches
-    assert PrinterType.from_model("My Centauri Printer") is None
-    assert PrinterType.from_model("My Mars 5 Printer") is None
+    assert PrinterType.from_model("My Centauri Printer") is PrinterType.FDM
+    assert PrinterType.from_model("My Mars 5 Printer") is PrinterType.RESIN
 
     # Test case sensitivity (shouldn't be case-sensitive)
     assert PrinterType.from_model("centauri carbon") is PrinterType.FDM
