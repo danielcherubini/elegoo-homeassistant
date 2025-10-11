@@ -18,15 +18,15 @@ import uuid
 import aiomqtt
 
 # Printer configuration
-MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
-MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
-MQTT_USERNAME = os.getenv("MQTT_USERNAME")
-MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 MAINBOARD_ID = "4c851c540107103d00000c0000000000"
 PRINTER_IP = "127.0.0.1"
 PRINTER_NAME = "Saturn 3 MQTT"
 UDP_PORT = 3000
 HOST = "0.0.0.0"
+
+# MQTT credentials (can be overridden by environment variables)
+MQTT_USERNAME = os.environ.get("MQTT_USERNAME", "")
+MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD", "")
 
 # Printer state
 print_history = {
@@ -294,7 +294,7 @@ async def mqtt_message_handler(mqtt_client, stop_event):
         print("Message handler cancelled")
 
 
-async def mqtt_connection_manager(mqtt_connect_event, stop_event):
+async def mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_event):
     """Manage MQTT connection after receiving M66666 command."""
     # Wait for M66666 command to trigger connection
     await mqtt_connect_event.wait()
@@ -302,22 +302,27 @@ async def mqtt_connection_manager(mqtt_connect_event, stop_event):
     if stop_event.is_set():
         return
 
-    print(f"\n🔌 Connecting to MQTT broker at {MQTT_HOST}:{MQTT_PORT}...")
+    broker_host = mqtt_broker_info.get("host")
+    broker_port = mqtt_broker_info.get("port")
+    broker_username = mqtt_broker_info.get("username") or MQTT_USERNAME
+    broker_password = mqtt_broker_info.get("password") or MQTT_PASSWORD
+
+    print(f"\n🔌 Connecting to MQTT broker at {broker_host}:{broker_port}...")
 
     try:
         # Build MQTT client configuration
         mqtt_kwargs = {
-            "hostname": MQTT_HOST,
-            "port": MQTT_PORT,
+            "hostname": broker_host,
+            "port": broker_port,
         }
-        if MQTT_USERNAME:
-            mqtt_kwargs["username"] = MQTT_USERNAME
-        if MQTT_PASSWORD:
-            mqtt_kwargs["password"] = MQTT_PASSWORD
+        if broker_username:
+            mqtt_kwargs["username"] = broker_username
+        if broker_password:
+            mqtt_kwargs["password"] = broker_password
 
         async with aiomqtt.Client(**mqtt_kwargs) as mqtt_client:
-            if MQTT_USERNAME:
-                print(f"✅ Connected to MQTT broker (authenticated as {MQTT_USERNAME})")
+            if broker_username:
+                print(f"✅ Connected to MQTT broker (authenticated as {broker_username})")
             else:
                 print("✅ Connected to MQTT broker")
 
@@ -356,11 +361,11 @@ async def mqtt_connection_manager(mqtt_connect_event, stop_event):
 
     except (OSError, TimeoutError) as e:
         print(f"❌ Failed to connect to MQTT broker: {e}")
-        print(f"💡 Make sure an MQTT broker is running on {MQTT_HOST}:{MQTT_PORT}")
+        print(f"💡 Make sure an MQTT broker is running on {broker_host}:{broker_port}")
         print("   You can start one with: mosquitto -v")
 
 
-async def udp_discovery_server(mqtt_connect_event, stop_event):
+async def udp_discovery_server(mqtt_connect_event, mqtt_broker_info, stop_event):
     """Handle UDP discovery requests and MQTT connection commands."""
     loop = asyncio.get_running_loop()
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
@@ -392,16 +397,38 @@ async def udp_discovery_server(mqtt_connect_event, stop_event):
                     print(f"✅ Sent discovery response to {addr}")
 
                 elif message.startswith("M66666"):
-                    # MQTT connection command: M66666 <port>
+                    # MQTT connection command: M66666 <host> <port> [username] [password]
+                    # Also supports legacy format: M66666 <port> (uses source IP as host)
                     parts = message.split()
-                    if len(parts) == 2:
-                        mqtt_port = parts[1]
+                    if len(parts) >= 3:
+                        # New format: M66666 <host> <port> [username] [password]
+                        mqtt_host = parts[1]
+                        mqtt_port = int(float(parts[2]))
+                        mqtt_username = parts[3] if len(parts) > 3 else None
+                        mqtt_password = parts[4] if len(parts) > 4 else None
+
                         print(f"\n🎯 Received M66666 command from {addr}")
+                        print(f"   Broker: {mqtt_host}:{mqtt_port}")
+                        if mqtt_username:
+                            print(f"   Username: {mqtt_username}")
+
+                        mqtt_broker_info["host"] = mqtt_host
+                        mqtt_broker_info["port"] = mqtt_port
+                        mqtt_broker_info["username"] = mqtt_username
+                        mqtt_broker_info["password"] = mqtt_password
+                        mqtt_connect_event.set()
+                    elif len(parts) == 2:
+                        # Legacy format: M66666 <port> (use source IP)
+                        mqtt_port = int(float(parts[1]))
+                        print(f"\n🎯 Received M66666 command from {addr} (legacy format)")
                         print(f"   Broker: {addr[0]}:{mqtt_port}")
-                        # Trigger MQTT connection
+                        mqtt_broker_info["host"] = addr[0]  # Use source IP
+                        mqtt_broker_info["port"] = mqtt_port
+                        mqtt_broker_info["username"] = None
+                        mqtt_broker_info["password"] = None
                         mqtt_connect_event.set()
                     else:
-                        print(f"⚠️  Received M66666 command from {addr} (no port specified)")
+                        print(f"⚠️  Received M66666 command from {addr} (invalid format)")
 
             except (socket.timeout, UnicodeDecodeError):
                 continue
@@ -416,6 +443,7 @@ async def main():
     """Main entry point."""
     stop_event = asyncio.Event()
     mqtt_connect_event = asyncio.Event()
+    mqtt_broker_info = {}  # Shared dict to store broker info from M66666
     loop = asyncio.get_running_loop()
 
     # Set up signal handlers
@@ -434,10 +462,14 @@ async def main():
     print("💡 Tip: Run discovery or send M66666 command to trigger MQTT connection\n")
 
     # Start UDP discovery server
-    udp_task = asyncio.create_task(udp_discovery_server(mqtt_connect_event, stop_event))
+    udp_task = asyncio.create_task(
+        udp_discovery_server(mqtt_connect_event, mqtt_broker_info, stop_event)
+    )
 
     # Start MQTT connection manager (waits for M66666 command)
-    mqtt_task = asyncio.create_task(mqtt_connection_manager(mqtt_connect_event, stop_event))
+    mqtt_task = asyncio.create_task(
+        mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_event)
+    )
 
     try:
         # Wait for stop signal

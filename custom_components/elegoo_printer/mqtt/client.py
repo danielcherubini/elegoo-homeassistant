@@ -148,8 +148,8 @@ class ElegooMqttClient:
         """
         Send UDP command to tell printer to connect to MQTT broker.
 
-        Uses the M66666 command with the MQTT port to instruct the printer
-        to connect to the MQTT broker at the source IP.
+        Uses the M66666 command with the MQTT broker host and port to instruct
+        the printer to connect to the specified MQTT broker.
 
         Arguments:
             printer_ip: The IP address of the printer.
@@ -163,8 +163,14 @@ class ElegooMqttClient:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
-            # Construct M66666 command with MQTT port
-            message = f"M66666 {self.mqtt_port}".encode()
+            # Construct M66666 command with MQTT broker host and port
+            # Format: M66666 <host> <port> [username] [password]
+            message_parts = ["M66666", str(self.mqtt_host), str(self.mqtt_port)]
+            if self.mqtt_username:
+                message_parts.append(self.mqtt_username)
+                if self.mqtt_password:
+                    message_parts.append(self.mqtt_password)
+            message = " ".join(message_parts).encode()
 
             # Send to printer's discovery port
             sock.sendto(message, (printer_ip, DISCOVERY_PORT))
