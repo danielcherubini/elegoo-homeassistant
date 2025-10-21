@@ -733,7 +733,7 @@ class ElegooPrinterApiClient:
             machine_id = self.printer.id or 0
             params = {
                 "machineType": f"ELEGOO {self.printer.model}",
-                "machineId": machine_id,
+                "machineId": 0,
                 "version": firmware_version,
                 "lan": "en",
                 "firmwareType": 1,
