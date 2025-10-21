@@ -115,17 +115,23 @@ class Printer:
                 j: dict[str, Any] = json.loads(json_string)  # Decode the JSON string
                 self.connection = j.get("Id")
                 data_dict = j.get("Data", j)
-                self.name = data_dict.get("Name")
-                self.model = data_dict.get("MachineName")
-                self.brand = data_dict.get("BrandName")
-                self.ip_address = data_dict.get("MainboardIP") or data_dict.get(
+
+                # Support both legacy Saturn (Attributes) and flat format
+                attrs = (
+                    data_dict.get("Attributes", data_dict)
+                )
+
+                self.name = attrs.get("Name")
+                self.model = attrs.get("MachineName")
+                self.brand = attrs.get("BrandName")
+                self.ip_address = attrs.get("MainboardIP") or attrs.get(
                     "ip_address"
                 )
-                self.protocol = data_dict.get("ProtocolVersion")
+                self.protocol = attrs.get("ProtocolVersion")
                 self.protocol_type = ProtocolType.from_version(self.protocol)
-                self.firmware = data_dict.get("FirmwareVersion")
-                self.id = data_dict.get("MainboardID")
-                self.is_proxy = data_dict.get("Proxy", False)
+                self.firmware = attrs.get("FirmwareVersion")
+                self.id = attrs.get("MainboardID")
+                self.is_proxy = attrs.get("Proxy", False)
 
                 self.printer_type = PrinterType.from_model(self.model)
             except json.JSONDecodeError:
@@ -186,36 +192,42 @@ class Printer:
         printer = cls(config=config)
         printer.connection = data.get("Id", data.get("connection"))
         data_dict = data.get("Data", data)
-        printer.name = data_dict.get("Name", data_dict.get("name"))
-        printer.model = data_dict.get("MachineName", data_dict.get("model"))
-        printer.brand = data_dict.get("BrandName", data_dict.get("brand"))
-        printer.ip_address = data_dict.get("MainboardIP", data_dict.get("ip_address"))
-        printer.protocol = data_dict.get("ProtocolVersion", data_dict.get("protocol"))
+
+        # Support both legacy Saturn (Attributes) and flat format
+        attrs = (
+            data_dict.get("Attributes", data_dict)
+        )
+
+        printer.name = attrs.get("Name", attrs.get("name"))
+        printer.model = attrs.get("MachineName", attrs.get("model"))
+        printer.brand = attrs.get("BrandName", attrs.get("brand"))
+        printer.ip_address = attrs.get("MainboardIP", attrs.get("ip_address"))
+        printer.protocol = attrs.get("ProtocolVersion", attrs.get("protocol"))
 
         # Determine protocol type from version or use stored value
-        protocol_type_str = data_dict.get("protocol_type")
+        protocol_type_str = attrs.get("protocol_type")
         if protocol_type_str:
             printer.protocol_type = ProtocolType(protocol_type_str)
         else:
             printer.protocol_type = ProtocolType.from_version(printer.protocol)
 
-        printer.firmware = data_dict.get("FirmwareVersion", data_dict.get("firmware"))
-        printer.id = data_dict.get("MainboardID", data_dict.get("id"))
+        printer.firmware = attrs.get("FirmwareVersion", attrs.get("firmware"))
+        printer.id = attrs.get("MainboardID", attrs.get("id"))
 
         printer.printer_type = PrinterType.from_model(printer.model)
-        printer.proxy_enabled = data_dict.get(
-            CONF_PROXY_ENABLED, data_dict.get("proxy_enabled", False)
+        printer.proxy_enabled = attrs.get(
+            CONF_PROXY_ENABLED, attrs.get("proxy_enabled", False)
         )
-        printer.camera_enabled = data_dict.get(
-            CONF_CAMERA_ENABLED, data_dict.get("camera_enabled", False)
+        printer.camera_enabled = attrs.get(
+            CONF_CAMERA_ENABLED, attrs.get("camera_enabled", False)
         )
-        printer.proxy_websocket_port = data_dict.get("proxy_websocket_port")
-        printer.proxy_video_port = data_dict.get("proxy_video_port")
-        printer.is_proxy = data_dict.get("Proxy", data_dict.get("is_proxy", False))
-        printer.mqtt_host = data_dict.get("mqtt_host")
-        printer.mqtt_port = data_dict.get("mqtt_port")
-        printer.mqtt_username = data_dict.get("mqtt_username")
-        printer.mqtt_password = data_dict.get("mqtt_password")
+        printer.proxy_websocket_port = attrs.get("proxy_websocket_port")
+        printer.proxy_video_port = attrs.get("proxy_video_port")
+        printer.is_proxy = attrs.get("Proxy", attrs.get("is_proxy", False))
+        printer.mqtt_host = attrs.get("mqtt_host")
+        printer.mqtt_port = attrs.get("mqtt_port")
+        printer.mqtt_username = attrs.get("mqtt_username")
+        printer.mqtt_password = attrs.get("mqtt_password")
         return printer
 
 

@@ -121,12 +121,12 @@ printer_status = {
     "ZOffset": 0.0,
     "PrintSpeed": 100,
     "PrintInfo": {
-        "Status": 0,
-        "CurrentLayer": 0,
-        "TotalLayer": 0,
+        "Status": 16,  # 16 = COMPLETE (Cassini compatible)
+        "CurrentLayer": 500,
+        "TotalLayer": 500,
         "CurrentTicks": 0,
         "TotalTicks": 0,
-        "Filename": "",
+        "Filename": "test_print_1.gcode",
         "ErrorNumber": 0,
         "TaskId": "b9a8b8f8-8b8b-4b8b-8b8b-8b8b8b8b8b8b",
         "PrintSpeed": 100,
@@ -345,16 +345,29 @@ async def udp_server(stop_event):
                 data, addr = await loop.run_in_executor(None, s.recvfrom, 1024)
                 if data == b"M99999":
                     print(f"Received discovery request from {addr}")
+                    # Using legacy Saturn format for compatibility with tools like Cassini
                     response = {
                         "Id": str(uuid.uuid4()),
                         "Data": {
-                            "Name": printer_attributes["Name"],
-                            "MachineName": printer_attributes["MachineName"],
-                            "BrandName": printer_attributes["BrandName"],
-                            "MainboardIP": PRINTER_IP,
-                            "MainboardID": MAINBOARD_ID,
-                            "ProtocolVersion": printer_attributes["ProtocolVersion"],
-                            "FirmwareVersion": printer_attributes["FirmwareVersion"],
+                            "Attributes": {
+                                "Name": printer_attributes["Name"],
+                                "MachineName": printer_attributes["MachineName"],
+                                "BrandName": printer_attributes["BrandName"],
+                                "MainboardIP": PRINTER_IP,
+                                "MainboardID": MAINBOARD_ID,
+                                "ProtocolVersion": printer_attributes["ProtocolVersion"],
+                                "FirmwareVersion": printer_attributes["FirmwareVersion"],
+                            },
+                            "Status": {
+                                "CurrentStatus": printer_status["CurrentStatus"][0],
+                                "PrintInfo": printer_status["PrintInfo"],
+                                "FileTransferInfo": {
+                                    "Status": 0,
+                                    "DownloadOffset": 0,
+                                    "FileTotalSize": 0,
+                                    "Filename": "",
+                                },
+                            },
                         },
                     }
                     s.sendto(json.dumps(response).encode("utf-8"), addr)

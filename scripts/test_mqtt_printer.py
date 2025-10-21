@@ -98,14 +98,14 @@ printer_status = {
     "ZOffset": 0.0,
     "PrintSpeed": 100,
     "PrintInfo": {
-        "Status": 0,
-        "CurrentLayer": 0,
-        "TotalLayer": 0,
+        "Status": 16,  # 16 = COMPLETE (Cassini compatible)
+        "CurrentLayer": 500,
+        "TotalLayer": 500,
         "CurrentTicks": 0,
         "TotalTicks": 0,
-        "Filename": "",
+        "Filename": "test_print_1.gcode",
         "ErrorNumber": 0,
-        "TaskId": "",
+        "TaskId": "b9a8b8f8-8b8b-4b8b-8b8b-8b8b8b8b8b8b",
         "PrintSpeed": 100,
     },
 }
@@ -118,8 +118,9 @@ def get_timestamp():
 
 async def publish_status(mqtt_client):
     """Publish printer status to MQTT."""
+    # Use legacy Saturn format with nested Status for compatibility
     status_message = {
-        **printer_status,
+        "Status": printer_status,
         "MainboardID": MAINBOARD_ID,
         "TimeStamp": get_timestamp(),
     }
@@ -130,7 +131,7 @@ async def publish_status(mqtt_client):
 async def publish_attributes(mqtt_client):
     """Publish printer attributes to MQTT."""
     attributes_message = {
-        **printer_attributes,
+        "Attributes": printer_attributes,
         "MainboardID": MAINBOARD_ID,
         "TimeStamp": get_timestamp(),
     }
@@ -381,16 +382,29 @@ async def udp_discovery_server(mqtt_connect_event, mqtt_broker_info, stop_event)
 
                 if message == "M99999":
                     print(f"🔍 Received discovery request from {addr}")
+                    # Using legacy Saturn format for compatibility with tools like Cassini
                     response = {
                         "Id": str(uuid.uuid4()),
                         "Data": {
-                            "Name": PRINTER_NAME,
-                            "MachineName": "Saturn 3",
-                            "BrandName": printer_attributes["BrandName"],
-                            "MainboardIP": PRINTER_IP,
-                            "MainboardID": MAINBOARD_ID,
-                            "ProtocolVersion": printer_attributes["ProtocolVersion"],
-                            "FirmwareVersion": printer_attributes["FirmwareVersion"],
+                            "Attributes": {
+                                "Name": PRINTER_NAME,
+                                "MachineName": "Saturn 3",
+                                "BrandName": printer_attributes["BrandName"],
+                                "MainboardIP": PRINTER_IP,
+                                "MainboardID": MAINBOARD_ID,
+                                "ProtocolVersion": printer_attributes["ProtocolVersion"],
+                                "FirmwareVersion": printer_attributes["FirmwareVersion"],
+                            },
+                            "Status": {
+                                "CurrentStatus": printer_status["CurrentStatus"][0],
+                                "PrintInfo": printer_status["PrintInfo"],
+                                "FileTransferInfo": {
+                                    "Status": 0,
+                                    "DownloadOffset": 0,
+                                    "FileTotalSize": 0,
+                                    "Filename": "",
+                                },
+                            },
                         },
                     }
                     sock.sendto(json.dumps(response).encode("utf-8"), addr)

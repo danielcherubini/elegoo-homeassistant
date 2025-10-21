@@ -195,7 +195,10 @@ class PrinterStatus:
         """Initialize a new PrinterStatus object from a dictionary."""
         if data is None:
             data = {}
-        status = data.get("Status", {"CurrentStatus": {}})
+
+        # Support both legacy Saturn (nested) and flat formats
+        status = data.get("Status", data)
+
         current_status_list = status.get("CurrentStatus", [])
         self.current_status: ElegooMachineStatus | None = ElegooMachineStatus.from_list(
             current_status_list

@@ -730,7 +730,6 @@ class ElegooPrinterApiClient:
             LOGGER.debug("Normalized firmware version: %s", firmware_version)
 
             # Construct the request parameters based on the API documentation
-            machine_id = self.printer.id or 0
             params = {
                 "machineType": f"ELEGOO {self.printer.model}",
                 "machineId": 0,
