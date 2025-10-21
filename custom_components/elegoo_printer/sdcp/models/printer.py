@@ -117,16 +117,12 @@ class Printer:
                 data_dict = j.get("Data", j)
 
                 # Support both legacy Saturn (Attributes) and flat format
-                attrs = (
-                    data_dict.get("Attributes", data_dict)
-                )
+                attrs = data_dict.get("Attributes", data_dict)
 
                 self.name = attrs.get("Name")
                 self.model = attrs.get("MachineName")
                 self.brand = attrs.get("BrandName")
-                self.ip_address = attrs.get("MainboardIP") or attrs.get(
-                    "ip_address"
-                )
+                self.ip_address = attrs.get("MainboardIP") or attrs.get("ip_address")
                 self.protocol = attrs.get("ProtocolVersion")
                 self.protocol_type = ProtocolType.from_version(self.protocol)
                 self.firmware = attrs.get("FirmwareVersion")
@@ -194,9 +190,7 @@ class Printer:
         data_dict = data.get("Data", data)
 
         # Support both legacy Saturn (Attributes) and flat format
-        attrs = (
-            data_dict.get("Attributes", data_dict)
-        )
+        attrs = data_dict.get("Attributes", data_dict)
 
         printer.name = attrs.get("Name", attrs.get("name"))
         printer.model = attrs.get("MachineName", attrs.get("model"))

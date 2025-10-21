@@ -170,15 +170,11 @@ class TestDiscoveryProtocol:
         # Points to proxy
         assert response["Data"]["Attributes"]["MainboardIP"] == "10.0.0.100"
         assert response["Data"]["Attributes"]["MainboardID"] == sample_printer.id
-        # noqa: E501
         assert (
-            response["Data"]["Attributes"]["ProtocolVersion"]
-            == sample_printer.protocol
+            response["Data"]["Attributes"]["ProtocolVersion"] == sample_printer.protocol
         )
-        # noqa: E501
         assert (
-            response["Data"]["Attributes"]["FirmwareVersion"]
-            == sample_printer.firmware
+            response["Data"]["Attributes"]["FirmwareVersion"] == sample_printer.firmware
         )
         assert response["Data"]["Status"]["CurrentStatus"] == 0
 

@@ -10,23 +10,25 @@ from custom_components.elegoo_printer.sdcp.models.status import PrinterStatus
 def test_printer_status_with_legacy_saturn_format() -> None:
     """Test PrinterStatus parsing with legacy Saturn nested Status format."""
     # Legacy Saturn MQTT format with nested Status
-    status_json = json.dumps({
-        "Status": {
-            "CurrentStatus": [1],
-            "PreviousStatus": 0,
-            "TempOfNozzle": 210.5,
-            "TempTargetNozzle": 210.0,
-            "PrintInfo": {
-                "Status": 3,
-                "CurrentLayer": 150,
-                "TotalLayer": 500,
-                "CurrentTicks": 60000,
-                "TotalTicks": 200000,
-                "Filename": "test_print.gcode",
-                "ErrorNumber": 0,
+    status_json = json.dumps(
+        {
+            "Status": {
+                "CurrentStatus": [1],
+                "PreviousStatus": 0,
+                "TempOfNozzle": 210.5,
+                "TempTargetNozzle": 210.0,
+                "PrintInfo": {
+                    "Status": 3,
+                    "CurrentLayer": 150,
+                    "TotalLayer": 500,
+                    "CurrentTicks": 60000,
+                    "TotalTicks": 200000,
+                    "Filename": "test_print.gcode",
+                    "ErrorNumber": 0,
+                },
             }
         }
-    })
+    )
 
     status = PrinterStatus.from_json(status_json)
 
@@ -42,21 +44,23 @@ def test_printer_status_with_legacy_saturn_format() -> None:
 def test_printer_status_with_modern_flat_format() -> None:
     """Test PrinterStatus parsing with modern flat format."""
     # Modern flat format (direct status fields)
-    status_json = json.dumps({
-        "CurrentStatus": [1],
-        "PreviousStatus": 0,
-        "TempOfNozzle": 210.5,
-        "TempTargetNozzle": 210.0,
-        "PrintInfo": {
-            "Status": 3,
-            "CurrentLayer": 150,
-            "TotalLayer": 500,
-            "CurrentTicks": 60000,
-            "TotalTicks": 200000,
-            "Filename": "test_print.gcode",
-            "ErrorNumber": 0,
+    status_json = json.dumps(
+        {
+            "CurrentStatus": [1],
+            "PreviousStatus": 0,
+            "TempOfNozzle": 210.5,
+            "TempTargetNozzle": 210.0,
+            "PrintInfo": {
+                "Status": 3,
+                "CurrentLayer": 150,
+                "TotalLayer": 500,
+                "CurrentTicks": 60000,
+                "TotalTicks": 200000,
+                "Filename": "test_print.gcode",
+                "ErrorNumber": 0,
+            },
         }
-    })
+    )
 
     status = PrinterStatus.from_json(status_json)
 

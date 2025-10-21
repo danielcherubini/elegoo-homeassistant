@@ -111,8 +111,12 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                                 "BrandName": getattr(printer, "brand", "Elegoo"),
                                 "MainboardIP": self.proxy_ip,  # Point to our proxy
                                 "MainboardID": getattr(printer, "id", None) or ip,
-                                "ProtocolVersion": getattr(printer, "protocol", "V3.0.0"),
-                                "FirmwareVersion": getattr(printer, "firmware", "V1.0.0"),
+                                "ProtocolVersion": getattr(
+                                    printer, "protocol", "V3.0.0"
+                                ),
+                                "FirmwareVersion": getattr(
+                                    printer, "firmware", "V1.0.0"
+                                ),
                                 "Proxy": True,
                             },
                             "Status": {
