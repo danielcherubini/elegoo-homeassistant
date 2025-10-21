@@ -721,32 +721,34 @@ class ElegooPrinterApiClient:
             data = response.json()
             LOGGER.debug("Firmware update response: %s", data)
 
-            # The API can return a string for certain errors
+            # Validate response format
             if not isinstance(data, dict):
-                if isinstance(data, str) and "格式" in data:
-                    LOGGER.warning(
-                        "Firmware update API returned format error: %s", data
-                    )
-                else:
-                    LOGGER.warning(
-                        "Firmware update response is not a dictionary: %s", data
-                    )
+                warning_msg = (
+                    "Firmware update API returned format error"
+                    if isinstance(data, str) and "格式" in data
+                    else "Firmware update response is not a dictionary"
+                )
+                LOGGER.warning("%s: %s", warning_msg, data)
                 return None
 
             # Check if the dictionary response contains an error message
             if "error" in data:
-                error_msg = data.get("error")
-                LOGGER.warning("Firmware update API returned error: %s", error_msg)
+                LOGGER.warning(
+                    "Firmware update API returned error: %s", data.get("error")
+                )
                 return None
+
+            # Extract the nested 'data' object from the response
+            # The API wraps the actual update info in a 'data' field
+            nested_data = data.get("data", data)
+            return nested_data if isinstance(nested_data, dict) else data
 
         except (ConnectionError, TimeoutError, HTTPStatusError, RequestError) as err:
             LOGGER.error("Network error checking for firmware updates: %s", err)
-            return None
         except (ValueError, KeyError) as err:
             LOGGER.error("Error parsing firmware update response: %s", err)
-            return None
-        else:
-            return data
+
+        return None
 
     async def async_is_firmware_update_available(self) -> bool:
         """
