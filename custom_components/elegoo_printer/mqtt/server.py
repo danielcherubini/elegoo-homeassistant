@@ -40,7 +40,9 @@ class ElegooMQTTBroker:
     _reference_count: int = 0
     _lock: asyncio.Lock = asyncio.Lock()
 
-    def __init__(self, host: str = MQTT_BROKER_HOST, port: int = MQTT_BROKER_PORT):
+    def __init__(
+        self, host: str = MQTT_BROKER_HOST, port: int = MQTT_BROKER_PORT
+    ) -> None:
         """
         Initialize the MQTT broker.
 
@@ -112,8 +114,8 @@ class ElegooMQTTBroker:
                 "MQTT Broker listening on %s",
                 self.server.sockets[0].getsockname(),
             )
-        except OSError as e:
-            _LOGGER.error("Failed to start MQTT broker on port %s: %s", self.port, e)
+        except OSError:
+            _LOGGER.exception("Failed to start MQTT broker on port %s", self.port)
             raise
 
     async def stop(self) -> None:
@@ -163,10 +165,10 @@ class ElegooMQTTBroker:
         """
         try:
             await self._handle_client_inner(reader, writer)
-        except Exception as e:
-            _LOGGER.exception("Exception handling MQTT client: %s", e)
+        except Exception:
+            _LOGGER.exception("Exception handling MQTT client")
 
-    async def _handle_client_inner(
+    async def _handle_client_inner(  # noqa: C901, PLR0912, PLR0915
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
         """
@@ -226,7 +228,7 @@ class ElegooMQTTBroker:
 
             # Process MQTT packets
             while True:
-                if len(data) < 2:
+                if len(data) < 2:  # noqa: PLR2004
                     break
 
                 msg_type = data[0] >> 4
@@ -258,7 +260,7 @@ class ElegooMQTTBroker:
 
                 elif msg_type == MQTT_PUBLISH:
                     qos = (msg_flags >> 1) & 0x3
-                    topic, packid, content = self._parse_publish(message)
+                    topic, packid, content = self._parse_publish(message, qos)
 
                     _LOGGER.debug("MQTT received message on topic: %s", topic)
                     self.incoming_messages.put_nowait(
@@ -268,9 +270,7 @@ class ElegooMQTTBroker:
                     # Forward message to all subscribed clients
                     async with self.subscriptions_lock:
                         if topic in self.subscriptions:
-                            for client_writer, client_qos in self.subscriptions[
-                                topic
-                            ].items():
+                            for client_writer in self.subscriptions[topic]:
                                 # Don't send back to the publishing client
                                 if client_writer != writer:
                                     try:
@@ -313,6 +313,13 @@ class ElegooMQTTBroker:
 
                 elif msg_type == MQTT_DISCONNECT:
                     _LOGGER.info("MQTT client %s disconnected", addr)
+
+                    # Cancel pending futures to avoid "Task was destroyed" warnings
+                    if not read_future.done():
+                        read_future.cancel()
+                    if not outgoing_messages_future.done():
+                        outgoing_messages_future.cancel()
+
                     writer.close()
                     await writer.wait_closed()
 
@@ -329,6 +336,12 @@ class ElegooMQTTBroker:
                     return
 
         # Cleanup on exit
+        # Cancel pending futures to avoid "Task was destroyed" warnings
+        if not read_future.done():
+            read_future.cancel()
+        if not outgoing_messages_future.done():
+            outgoing_messages_future.cancel()
+
         writer.close()
         await writer.wait_closed()
         if client_id and client_id in self.connected_clients:
@@ -415,8 +428,9 @@ class ElegooMQTTBroker:
             if byte & 0x80 == 0:
                 break
             multiplier *= 128
-            if multiplier > 2097152:
-                raise ValueError("Malformed MQTT Remaining Length")
+            if multiplier > 2097152:  # noqa: PLR2004
+                msg = "Malformed MQTT Remaining Length"
+                raise ValueError(msg)
 
         return value, bytes_read
 
@@ -459,8 +473,7 @@ class ElegooMQTTBroker:
 
         """
         topic_len = struct.unpack("!H", data[0:2])[0]
-        topic = data[2 : 2 + topic_len].decode("utf-8")
-        return topic
+        return data[2 : 2 + topic_len].decode("utf-8")
 
     def _encode_publish(self, topic: str, message: str, packid: int = 0) -> bytes:
         """

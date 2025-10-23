@@ -124,7 +124,7 @@ async def publish_status(mqtt_client):
         "MainboardID": MAINBOARD_ID,
         "TimeStamp": get_timestamp(),
     }
-    topic = f"sdcp/status/{MAINBOARD_ID}"
+    topic = f"/sdcp/status/{MAINBOARD_ID}"
     await mqtt_client.publish(topic, json.dumps(status_message))
 
 
@@ -135,7 +135,7 @@ async def publish_attributes(mqtt_client):
         "MainboardID": MAINBOARD_ID,
         "TimeStamp": get_timestamp(),
     }
-    topic = f"sdcp/attributes/{MAINBOARD_ID}"
+    topic = f"/sdcp/attributes/{MAINBOARD_ID}"
     await mqtt_client.publish(topic, json.dumps(attributes_message))
 
 
@@ -163,7 +163,7 @@ async def handle_request(mqtt_client, request):
     request_id = request["Data"].get("RequestID", "unknown")
     print(f"Handling command: {cmd} (RequestID: {request_id})")
 
-    response_topic = f"sdcp/response/{MAINBOARD_ID}"
+    response_topic = f"/sdcp/response/{MAINBOARD_ID}"
 
     if cmd == 0:  # Request Status Refresh
         response = create_response(request, {"Ack": 0})
@@ -274,7 +274,7 @@ async def status_publisher(mqtt_client, stop_event):
 
 async def mqtt_message_handler(mqtt_client, stop_event):
     """Handle incoming MQTT messages."""
-    request_topic = f"sdcp/request/{MAINBOARD_ID}"
+    request_topic = f"/sdcp/request/{MAINBOARD_ID}"
     await mqtt_client.subscribe(request_topic)
     print(f"Subscribed to {request_topic}")
 
@@ -340,10 +340,10 @@ async def mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_eve
             )
 
             print(f"\n📡 MQTT Printer ready and listening on topics:")
-            print(f"  - sdcp/request/{MAINBOARD_ID}")
-            print(f"  - Publishing to sdcp/status/{MAINBOARD_ID}")
-            print(f"  - Publishing to sdcp/attributes/{MAINBOARD_ID}")
-            print(f"  - Publishing to sdcp/response/{MAINBOARD_ID}")
+            print(f"  - /sdcp/request/{MAINBOARD_ID}")
+            print(f"  - Publishing to /sdcp/status/{MAINBOARD_ID}")
+            print(f"  - Publishing to /sdcp/attributes/{MAINBOARD_ID}")
+            print(f"  - Publishing to /sdcp/response/{MAINBOARD_ID}")
 
             # Wait for stop signal
             await stop_event.wait()

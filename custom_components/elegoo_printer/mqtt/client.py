@@ -233,12 +233,13 @@ class ElegooMqttClient:
             await self.mqtt_client.__aenter__()
 
             # Subscribe to all relevant topics for this printer
+            # Note: Leading slash is required to match printer's subscription pattern
             topics = [
-                f"{TOPIC_PREFIX}/{TOPIC_RESPONSE}/{self.printer.id}",
-                f"{TOPIC_PREFIX}/{TOPIC_STATUS}/{self.printer.id}",
-                f"{TOPIC_PREFIX}/{TOPIC_ATTRIBUTES}/{self.printer.id}",
-                f"{TOPIC_PREFIX}/{TOPIC_NOTICE}/{self.printer.id}",
-                f"{TOPIC_PREFIX}/{TOPIC_ERROR}/{self.printer.id}",
+                f"/{TOPIC_PREFIX}/{TOPIC_RESPONSE}/{self.printer.id}",
+                f"/{TOPIC_PREFIX}/{TOPIC_STATUS}/{self.printer.id}",
+                f"/{TOPIC_PREFIX}/{TOPIC_ATTRIBUTES}/{self.printer.id}",
+                f"/{TOPIC_PREFIX}/{TOPIC_NOTICE}/{self.printer.id}",
+                f"/{TOPIC_PREFIX}/{TOPIC_ERROR}/{self.printer.id}",
             ]
 
             for topic in topics:
@@ -602,7 +603,7 @@ class ElegooMqttClient:
                 "TimeStamp": ts,
                 "From": 0,
             },
-            "Topic": f"sdcp/request/{self.printer.id}",
+            "Topic": f"/sdcp/request/{self.printer.id}",
         }
 
         if DEBUG:
@@ -615,7 +616,8 @@ class ElegooMqttClient:
 
         if self.mqtt_client:
             try:
-                topic = f"{TOPIC_PREFIX}/{TOPIC_REQUEST}/{self.printer.id}"
+                # Leading slash required to match printer's subscription pattern
+                topic = f"/{TOPIC_PREFIX}/{TOPIC_REQUEST}/{self.printer.id}"
                 await self.mqtt_client.publish(topic, json.dumps(payload))
                 await asyncio.wait_for(event.wait(), timeout=10)
             except TimeoutError as e:
@@ -651,10 +653,14 @@ class ElegooMqttClient:
         try:
             data = json.loads(response)
             # Extract topic type from MQTT topic
-            # (e.g., "sdcp/response/..." -> "response")
+            # (e.g., "/sdcp/response/..." -> "response")
+            # Note: Leading slash results in empty string at index 0
             topic_parts = topic.split("/")
             if len(topic_parts) >= MQTT_TOPIC_MIN_PARTS:
-                topic_type = topic_parts[1]
+                # With leading slash: ['', 'sdcp', 'response', 'id']
+                # Without leading slash: ['sdcp', 'response', 'id']
+                # Use index 2 if there's a leading slash, otherwise index 1
+                topic_type = topic_parts[2] if topic_parts[0] == "" else topic_parts[1]
                 match topic_type:
                     case "response":
                         self._response_handler(data)
