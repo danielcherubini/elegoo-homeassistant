@@ -19,7 +19,7 @@ VENV ?= .venv
 # --- PHONY TARGETS ---
 # .PHONY ensures that make will run the command even if a file with the same
 # name as the target exists.
-.PHONY: all setup start debug devcontainer format lint fix clean help
+.PHONY: all setup start debug devcontainer test-server test-mqtt-printer test-mqtt-broker format lint fix clean help
 
 # --- DEFAULT TARGET ---
 # The default target that runs when you just type 'make'
@@ -62,6 +62,16 @@ devcontainer:
 test-server:
 	@echo "--> Starting the test server..."
 	@VIRTUAL_ENV=$(VENV) uv run --active $(PYTHON) scripts/test_server.py
+
+# Runs the MQTT test printer.
+test-mqtt-printer:
+	@echo "--> Starting the MQTT test printer..."
+	@VIRTUAL_ENV=$(VENV) uv run --active $(PYTHON) scripts/test_mqtt_printer.py
+
+# Runs the embedded MQTT broker test.
+test-mqtt-broker:
+	@echo "--> Starting the embedded MQTT broker..."
+	@VIRTUAL_ENV=$(VENV) uv run --active $(PYTHON) scripts/test_embedded_mqtt_broker.py
 
 # --- LINTING AND FORMATTING ---
 # Formats the code using Ruff.
@@ -106,10 +116,13 @@ help:
 	@echo "  start                Run the application in the virtual environment."
 	@echo "  debug                Run the application in debug mode."
 	@echo "  devcontainer         Run the application within a devcontainer."
-	@echo "  test-server          Run the test server for development."
+	@echo "  test-server          Run the WebSocket test server for development."
+	@echo "  test-mqtt-printer    Run the MQTT test printer."
+	@echo "  test-mqtt-broker     Run the embedded MQTT broker test."
 	@echo "  format               Format code using Ruff."
 	@echo "  lint                 Check for linting errors using Ruff."
 	@echo "  fix                  Fixes any issues it finds."
+	@echo "  test                 Run the test suite."
 	@echo "  clean                Remove Python artifacts and the virtual environment."
 	@echo "  help                 Show this help message."
 	@echo ""

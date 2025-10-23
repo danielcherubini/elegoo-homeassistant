@@ -99,7 +99,18 @@ async def async_setup_entry(
     )
 
     # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except Exception:
+        # If first refresh fails, clean up the client resources
+        try:
+            await client.elegoo_disconnect()
+            await client.elegoo_stop_mqtt_broker()
+            if client.server:
+                await ElegooPrinterServer.release_reference()
+        except Exception as cleanup_error:  # noqa: BLE001
+            LOGGER.warning("Error during cleanup after failed setup: %s", cleanup_error)
+        raise
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
@@ -132,6 +143,12 @@ async def async_unload_entry(
             LOGGER.warning(
                 "Error removing printer from proxy server: %s", e, exc_info=True
             )
+
+        # Stop MQTT broker if it was started by this client
+        try:
+            await asyncio.shield(client.elegoo_stop_mqtt_broker())
+        except (asyncio.CancelledError, OSError, RuntimeError) as e:
+            LOGGER.warning("Error stopping MQTT broker: %s", e, exc_info=True)
 
     return unload_ok
 

@@ -8,6 +8,11 @@ LOGGER: Logger = getLogger(__package__)
 MQTT_PORT = 1883
 MQTT_KEEPALIVE = 60
 
+# Embedded MQTT Broker Settings
+# Using 18830 to avoid conflict with Home Assistant's MQTT integration (1883)
+MQTT_BROKER_PORT = 18830
+MQTT_BROKER_HOST = "0.0.0.0"
+
 # MQTT Topics (based on SDCP protocol structure)
 # Topics follow pattern: sdcp/{message_type}/{printer_id}
 TOPIC_PREFIX = "sdcp"

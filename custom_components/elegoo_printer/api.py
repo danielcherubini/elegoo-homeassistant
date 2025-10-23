@@ -16,6 +16,7 @@ from PIL import Image as PILImage
 from PIL import UnidentifiedImageError
 
 from .const import (
+    CONF_MQTT_BROKER_ENABLED,
     CONF_MQTT_HOST,
     CONF_MQTT_PASSWORD,
     CONF_MQTT_PORT,
@@ -26,6 +27,7 @@ from .const import (
     LOGGER,
 )
 from .mqtt.client import ElegooMqttClient
+from .mqtt.server import ElegooMQTTBroker
 from .sdcp.models.elegoo_image import ElegooImage
 from .sdcp.models.enums import ProtocolType
 from .sdcp.models.printer import Printer, PrinterData
@@ -75,10 +77,12 @@ class ElegooPrinterApiClient:
         """  # noqa: E501
         self._ip_address = printer.ip_address
         self._proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
+        self._mqtt_broker_enabled: bool = config.get(CONF_MQTT_BROKER_ENABLED, False)
         self._logger = logger
         self.printer = printer
         self._hass_client = get_async_client(hass)
         self.server: ElegooPrinterServer | None = None
+        self.mqtt_broker: ElegooMQTTBroker | None = None
         self.hass: HomeAssistant = hass
         self._config_entry = config_entry
 
@@ -148,7 +152,7 @@ class ElegooPrinterApiClient:
         return printer_reachable
 
     @classmethod
-    async def async_create(
+    async def async_create(  # noqa: PLR0912, PLR0915
         cls,
         config: MappingProxyType[str, Any],
         logger: Logger,
@@ -181,6 +185,15 @@ class ElegooPrinterApiClient:
         # Create appropriate client based on protocol type
         if printer.protocol_type == ProtocolType.MQTT:
             logger.info("Using MQTT protocol for printer %s", printer.name)
+
+            # Start embedded MQTT broker if enabled
+            mqtt_broker_enabled = config.get(CONF_MQTT_BROKER_ENABLED, False)
+            if mqtt_broker_enabled:
+                printer = await self._setup_mqtt_broker_if_enabled(printer)
+                if printer is None:
+                    # Broker was required but failed to start
+                    return None
+
             # For MQTT, we need to get broker settings from config
             mqtt_host = config.get(CONF_MQTT_HOST, "localhost")
             mqtt_port = int(config.get(CONF_MQTT_PORT, 1883))
@@ -210,13 +223,16 @@ class ElegooPrinterApiClient:
 
         if not printer_reachable:
             logger.warning(
-                "Printer %s at %s is not reachable. Not starting proxy server.",
+                "Printer %s at %s is not reachable. Stopping any started services.",
                 printer.name,
                 printer.ip_address,
             )
             # This is probably unnecessary, but let's disconnect for completeness
             await self.client.disconnect()
-            # No proxy server was started by this client; nothing to release here
+            # Release MQTT broker reference if it was acquired
+            if self.mqtt_broker:
+                await ElegooMQTTBroker.release_instance()
+                self.mqtt_broker = None
             return None
 
         # Printer is reachable, now set up proxy if enabled
@@ -252,8 +268,13 @@ class ElegooPrinterApiClient:
                 if self.server:
                     await ElegooPrinterServer.release_reference()
                 self.server = None
+                # Release MQTT broker reference if it was acquired
+                if self.mqtt_broker:
+                    await ElegooMQTTBroker.release_instance()
+                    self.mqtt_broker = None
                 await self.client.disconnect()
                 self._proxy_server_enabled = False
+                self._mqtt_broker_enabled = False
                 return None
             logger.info("Polling Started")
 
@@ -266,8 +287,13 @@ class ElegooPrinterApiClient:
             if self.server:
                 await ElegooPrinterServer.release_reference()
             self.server = None
+            # Release MQTT broker reference if it was acquired
+            if self.mqtt_broker:
+                await ElegooMQTTBroker.release_instance()
+                self.mqtt_broker = None
             await self.client.disconnect()
             self._proxy_server_enabled = False
+            self._mqtt_broker_enabled = False
             return None
 
     @property
@@ -290,6 +316,12 @@ class ElegooPrinterApiClient:
         # Release reference instead of forcing shutdown
         await ElegooPrinterServer.release_reference()
         self.server = None
+
+    async def elegoo_stop_mqtt_broker(self) -> None:
+        """Release the MQTT broker reference if it is running."""
+        if self.mqtt_broker:
+            await ElegooMQTTBroker.release_instance()
+            self.mqtt_broker = None
 
     def get_local_ip(self) -> str:
         """Get the local IP for the proxy server, falling back to the printer's IP."""
@@ -676,6 +708,37 @@ class ElegooPrinterApiClient:
             )
             self.printer = proxy_printer
             return proxy_printer
+
+    async def _setup_mqtt_broker_if_enabled(self, printer: Printer) -> Printer | None:
+        """
+        Set up embedded MQTT broker if enabled and printer uses MQTT protocol.
+
+        Returns:
+            Printer object on success, or None if broker failed to start
+
+        """
+        if not self._mqtt_broker_enabled:
+            return printer
+
+        self._logger.debug(
+            "Getting shared MQTT broker instance for printer %s", printer.name
+        )
+        try:
+            self.mqtt_broker = await ElegooMQTTBroker.get_instance()
+        except OSError:
+            # When broker is explicitly enabled, server startup failures are fatal
+            self._logger.exception(
+                "Failed to start required MQTT broker; port may be in use"
+            )
+            self.mqtt_broker = None
+            return None
+        else:
+            self._logger.info(
+                "Embedded MQTT broker ready on %s:%s",
+                self.mqtt_broker.host,
+                self.mqtt_broker.port,
+            )
+            return printer
 
     def _normalize_firmware_version(self, version: str) -> str:
         """

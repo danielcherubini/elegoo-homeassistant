@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
+    CONF_MQTT_BROKER_ENABLED,
     CONF_PROXY_ENABLED,
     DEFAULT_FALLBACK_IP,
     WEBSOCKET_PORT,
@@ -92,6 +93,7 @@ class Printer:
     mqtt_port: int | None
     mqtt_username: str | None
     mqtt_password: str | None
+    mqtt_broker_enabled: bool
 
     def __init__(
         self,
@@ -147,6 +149,7 @@ class Printer:
         # Initialize config-based attributes for all instances
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
         self.camera_enabled = config.get(CONF_CAMERA_ENABLED, False)
+        self.mqtt_broker_enabled = config.get(CONF_MQTT_BROKER_ENABLED, False)
         self.proxy_websocket_port = None
         self.proxy_video_port = None
         self.mqtt_host = None
@@ -176,6 +179,7 @@ class Printer:
             "mqtt_port": self.mqtt_port,
             "mqtt_username": self.mqtt_username,
             "mqtt_password": self.mqtt_password,
+            "mqtt_broker_enabled": self.mqtt_broker_enabled,
         }
 
     @classmethod
@@ -214,6 +218,9 @@ class Printer:
         )
         printer.camera_enabled = attrs.get(
             CONF_CAMERA_ENABLED, attrs.get("camera_enabled", False)
+        )
+        printer.mqtt_broker_enabled = attrs.get(
+            CONF_MQTT_BROKER_ENABLED, attrs.get("mqtt_broker_enabled", False)
         )
         printer.proxy_websocket_port = attrs.get("proxy_websocket_port")
         printer.proxy_video_port = attrs.get("proxy_video_port")

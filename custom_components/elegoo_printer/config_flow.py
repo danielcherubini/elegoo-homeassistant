@@ -24,6 +24,7 @@ from .const import (
     LOGGER,
 )
 from .mqtt.client import ElegooMqttClient
+from .mqtt.const import MQTT_BROKER_PORT
 from .sdcp.exceptions import (
     ElegooConfigFlowConnectionError,
     ElegooConfigFlowGeneralError,
@@ -84,7 +85,7 @@ async def _async_test_connection(
             printer_object.name,
         )
         mqtt_host = user_input.get(CONF_MQTT_HOST, "localhost")
-        mqtt_port = int(user_input.get(CONF_MQTT_PORT, 1883))
+        mqtt_port = int(user_input.get(CONF_MQTT_PORT, MQTT_BROKER_PORT))
         mqtt_username = user_input.get(CONF_MQTT_USERNAME)
         mqtt_password = user_input.get(CONF_MQTT_PASSWORD)
         elegoo_printer = ElegooMqttClient(
@@ -97,11 +98,14 @@ async def _async_test_connection(
         )
         # MQTT doesn't support proxy
         printer_object.proxy_enabled = False
+        # Enable embedded MQTT broker if connecting to localhost
+        printer_object.mqtt_broker_enabled = mqtt_host in ("localhost", "127.0.0.1")
         LOGGER.debug(
-            "Connecting to MQTT printer: %s at broker %s:%s",
+            "Connecting to MQTT printer: %s at broker %s:%s (embedded broker: %s)",
             printer_object.name,
             mqtt_host,
             mqtt_port,
+            printer_object.mqtt_broker_enabled,
         )
         if await elegoo_printer.connect_printer(printer_object):
             await elegoo_printer.disconnect()
@@ -118,6 +122,8 @@ async def _async_test_connection(
             session=async_get_clientsession(hass),
         )
         printer_object.proxy_enabled = user_input.get(CONF_PROXY_ENABLED, False)
+        # WebSocket printers don't use MQTT broker
+        printer_object.mqtt_broker_enabled = False
         LOGGER.debug(
             "Connecting to WebSocket printer: %s at %s with proxy enabled: %s",
             printer_object.name,
@@ -298,7 +304,20 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             if self.selected_printer:
                 # Check if printer uses MQTT protocol
                 if self.selected_printer.protocol_type == ProtocolType.MQTT:
-                    return await self.async_step_mqtt_options()
+                    # Auto-configure MQTT printer with embedded broker
+                    printer = Printer.from_dict(self.selected_printer.to_dict())
+                    printer.mqtt_host = "localhost"
+                    printer.mqtt_port = MQTT_BROKER_PORT
+                    printer.mqtt_broker_enabled = True
+                    printer.mqtt_username = None
+                    printer.mqtt_password = None
+
+                    await self.async_set_unique_id(unique_id=printer.id)
+                    self._abort_if_unique_id_configured()
+                    return self.async_create_entry(
+                        title=printer.name or "Elegoo Printer",
+                        data=printer.to_dict(),
+                    )
 
                 # For WebSocket/SDCP printers, show type-specific options
                 if self.selected_printer.printer_type == PrinterType.RESIN:
@@ -512,10 +531,16 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None and self.selected_printer:
             printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
             # Store MQTT broker settings
-            printer_to_validate.mqtt_host = user_input[CONF_MQTT_HOST]
+            mqtt_host = user_input[CONF_MQTT_HOST]
+            printer_to_validate.mqtt_host = mqtt_host
             printer_to_validate.mqtt_port = int(user_input[CONF_MQTT_PORT])
             printer_to_validate.mqtt_username = user_input.get(CONF_MQTT_USERNAME)
             printer_to_validate.mqtt_password = user_input.get(CONF_MQTT_PASSWORD)
+            # Enable embedded MQTT broker if connecting to localhost
+            printer_to_validate.mqtt_broker_enabled = mqtt_host in (
+                "localhost",
+                "127.0.0.1",
+            )
 
             try:
                 # Test MQTT connection with broker settings
@@ -555,7 +580,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                     vol.Required(
                         CONF_MQTT_PORT,
-                        default=1883,
+                        default=MQTT_BROKER_PORT,  # Default to embedded broker port
                     ): selector.NumberSelector(
                         selector.NumberSelectorConfig(
                             min=1,
