@@ -33,12 +33,12 @@ print_history = {
     "b9a8b8f8-8b8b-4b8b-8b8b-8b8b8b8b8b8b": {
         "TaskId": "b9a8b8f8-8b8b-4b8b-8b8b-8b8b8b8b8b8b",
         "TaskName": "test_print_1.gcode",
-        "BeginTime": 1678886400,
-        "EndTime": 1678890000,
-        "TaskStatus": 9,
+        "BeginTime": int(time.time()) - 200,  # Started 200 seconds ago
+        "EndTime": 0,  # Not ended yet (currently printing)
+        "TaskStatus": 3,  # Printing
         "Thumbnail": f"http://{PRINTER_IP}:8000/thumb1.jpg",
         "SliceInformation": {},
-        "AlreadyPrintLayer": 500,
+        "AlreadyPrintLayer": 100,
         "MD5": "d41d8cd98f00b204e9800998ecf8427e",
         "CurrentLayerTalVolume": 15.5,
         "TimeLapseVideoStatus": 1,
@@ -78,31 +78,31 @@ printer_attributes = {
 }
 
 printer_status = {
-    "CurrentStatus": [0],  # Idle
+    "CurrentStatus": [1],  # Printing
     "PreviousStatus": 0,
-    "TempOfNozzle": 25,
-    "TempTargetNozzle": 0,
-    "TempOfHotbed": 25,
-    "TempTargetHotbed": 0,
+    "TempOfNozzle": 210,
+    "TempTargetNozzle": 210,
+    "TempOfHotbed": 60,
+    "TempTargetHotbed": 60,
     "TempOfBox": 25,
     "TempTargetBox": 0,
-    "CurrenCoord": "0.0,0.0,0.0",
+    "CurrenCoord": "150.0,150.0,20.0",
     "CurrentFanSpeed": {
-        "ModelFan": 0,
-        "ModeFan": 0,
-        "AuxiliaryFan": 0,
+        "ModelFan": 100,
+        "ModeFan": 100,
+        "AuxiliaryFan": 50,
         "BoxFan": 0,
     },
-    "LightStatus": {"SecondLight": 0},
+    "LightStatus": {"SecondLight": 1},
     "RgbLight": [255, 255, 255],
     "ZOffset": 0.0,
     "PrintSpeed": 100,
     "PrintInfo": {
-        "Status": 16,  # 16 = COMPLETE (Cassini compatible)
-        "CurrentLayer": 500,
+        "Status": 3,  # 3 = Printing (Exposuring)
+        "CurrentLayer": 100,
         "TotalLayer": 500,
-        "CurrentTicks": 0,
-        "TotalTicks": 0,
+        "CurrentTicks": 2000,
+        "TotalTicks": 10000,
         "Filename": "test_print_1.gcode",
         "ErrorNumber": 0,
         "TaskId": "b9a8b8f8-8b8b-4b8b-8b8b-8b8b8b8b8b8b",
@@ -177,18 +177,24 @@ async def handle_request(mqtt_client, request):
 
     elif cmd == 128:  # Start Print
         filename = request["Data"]["Data"].get("Filename", "unknown.gcode")
-        print(f"Starting print for file: {filename}")
+        print(f"🚀 Starting print for file: {filename}")
         printer_status["CurrentStatus"] = [1]  # Printing
-        printer_status["PrintInfo"]["Status"] = 1  # Homing
+        printer_status["PrintInfo"]["Status"] = 3  # Printing/Exposuring
         printer_status["PrintInfo"]["Filename"] = filename
         printer_status["PrintInfo"]["TaskId"] = str(uuid.uuid4())
-        printer_status["PrintInfo"]["TotalLayer"] = random.randint(100, 1000)
+        printer_status["PrintInfo"]["CurrentLayer"] = 0
+        printer_status["PrintInfo"]["TotalLayer"] = random.randint(100, 500)
+        printer_status["PrintInfo"]["CurrentTicks"] = 0
         printer_status["PrintInfo"]["TotalTicks"] = (
             printer_status["PrintInfo"]["TotalLayer"] * random.randint(10, 20)
         )
+        # Set printing temperatures
+        printer_status["TempTargetNozzle"] = 210
+        printer_status["TempTargetHotbed"] = 60
         response = create_response(request, {"Ack": 0})
         await mqtt_client.publish(response_topic, json.dumps(response))
         await publish_status(mqtt_client)
+        # Note: simulation runs continuously in background, will pick up the change
 
     elif cmd == 129:  # Pause Print
         print("Pausing print")
@@ -257,6 +263,48 @@ async def handle_request(mqtt_client, request):
         print(f"Unknown command: {cmd}")
         response = create_response(request, {"Ack": 1})  # Generic error
         await mqtt_client.publish(response_topic, json.dumps(response))
+
+
+async def simulate_printing(stop_event):
+    """Simulate printing progress by updating printer status."""
+    print("🔧 Starting print simulation...")
+    pi = printer_status["PrintInfo"]
+
+    while not stop_event.is_set() and pi["CurrentLayer"] < pi["TotalLayer"]:
+        if printer_status["CurrentStatus"] != [1]:  # Not printing
+            break
+
+        await asyncio.sleep(2)  # Update every 2 seconds
+
+        # Increment progress
+        pi["CurrentLayer"] += 1
+        pi["CurrentTicks"] += random.randint(15, 25)
+
+        # Update coordinates
+        layer_height = 0.05  # mm
+        x = random.uniform(50, 250)
+        y = random.uniform(50, 250)
+        z = pi["CurrentLayer"] * layer_height
+        printer_status["CurrenCoord"] = f"{x:.1f},{y:.1f},{z:.2f}"
+
+        # Slight temperature variations
+        printer_status["TempOfNozzle"] = 210 + random.uniform(-2, 2)
+        printer_status["TempOfHotbed"] = 60 + random.uniform(-1, 1)
+
+        print(
+            f"📊 Layer {pi['CurrentLayer']}/{pi['TotalLayer']} "
+            f"({pi['CurrentLayer']/pi['TotalLayer']*100:.1f}%)"
+        )
+
+    if not stop_event.is_set() and pi["CurrentLayer"] >= pi["TotalLayer"]:
+        print("✅ Print simulation completed")
+        printer_status["CurrentStatus"] = [0]  # Idle
+        printer_status["PrintInfo"]["Status"] = 16  # Complete
+        # Update history
+        task_id = printer_status["PrintInfo"]["TaskId"]
+        if task_id in print_history:
+            print_history[task_id]["EndTime"] = get_timestamp()
+            print_history[task_id]["TaskStatus"] = 9  # Complete
 
 
 async def status_publisher(mqtt_client, stop_event):
@@ -338,6 +386,7 @@ async def mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_eve
             handler_task = asyncio.create_task(
                 mqtt_message_handler(mqtt_client, stop_event)
             )
+            simulation_task = asyncio.create_task(simulate_printing(stop_event))
 
             print(f"\n📡 MQTT Printer ready and listening on topics:")
             print(f"  - /sdcp/request/{MAINBOARD_ID}")
@@ -352,9 +401,10 @@ async def mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_eve
             print("\n🛑 Shutting down MQTT connection...")
             status_task.cancel()
             handler_task.cancel()
+            simulation_task.cancel()
 
             try:
-                await asyncio.gather(status_task, handler_task)
+                await asyncio.gather(status_task, handler_task, simulation_task)
             except asyncio.CancelledError:
                 pass
 

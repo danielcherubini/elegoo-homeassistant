@@ -115,6 +115,8 @@ class ElegooMqttClient:
         self._background_tasks: set[asyncio.Task] = set()
         self._response_events: dict[str, asyncio.Event] = {}
         self._response_lock = asyncio.Lock()
+        self._status_update_event: asyncio.Event = asyncio.Event()
+        self._attributes_update_event: asyncio.Event = asyncio.Event()
 
     @property
     def is_connected(self) -> bool:
@@ -133,6 +135,10 @@ class ElegooMqttClient:
             for ev in self._response_events.values():
                 ev.set()
             self._response_events.clear()
+
+        # Unblock status/attributes waiters
+        self._status_update_event.set()
+        self._attributes_update_event.set()
 
         # Properly close MQTT connection
         if self.mqtt_client:
@@ -352,12 +358,26 @@ class ElegooMqttClient:
             The latest printer status information.
 
         """
+        # Clear the status event before sending the request
+        self._status_update_event.clear()
         await self._send_printer_cmd(CMD_REQUEST_STATUS_REFRESH)
+        # Wait for the status update to arrive (with timeout)
+        try:
+            await asyncio.wait_for(self._status_update_event.wait(), timeout=5)
+        except TimeoutError:
+            self.logger.debug("Timed out waiting for status update")
         return self.printer_data
 
     async def get_printer_attributes(self) -> PrinterData:
         """Retrieve the printer attributes."""
+        # Clear the attributes event before sending the request
+        self._attributes_update_event.clear()
         await self._send_printer_cmd(CMD_REQUEST_ATTRIBUTES)
+        # Wait for the attributes update to arrive (with timeout)
+        try:
+            await asyncio.wait_for(self._attributes_update_event.wait(), timeout=5)
+        except TimeoutError:
+            self.logger.debug("Timed out waiting for attributes update")
         return self.printer_data
 
     async def set_printer_video_stream(self, *, enable: bool) -> None:
@@ -728,6 +748,8 @@ class ElegooMqttClient:
             json.dumps(data), self.printer.printer_type
         )
         self.printer_data.status = printer_status
+        # Signal that status update has been received
+        self._status_update_event.set()
 
     def _attributes_handler(self, data: dict[str, Any]) -> None:
         """
@@ -742,6 +764,8 @@ class ElegooMqttClient:
             self.logger.info(msg)
         printer_attributes = PrinterAttributes.from_json(json.dumps(data))
         self.printer_data.attributes = printer_attributes
+        # Signal that attributes update has been received
+        self._attributes_update_event.set()
 
     def _print_history_handler(self, data_data: dict[str, Any]) -> None:
         """Parse and update the printer's print history details from the data."""
