@@ -80,25 +80,27 @@ class ElegooMachineStatus(Enum):
     @classmethod
     def from_int(cls, status_int: int) -> "ElegooMachineStatus | None":
         """
-        Converts an integer to an ElegooMachineStatus enum member.
+        Convert a single integer to an ElegooMachineStatus enum member.
+
+        MQTT printers send CurrentStatus as an integer. This method wraps
+        it in a list and calls from_list().
 
         Arguments:
-            status_int: The integer representing the print status.
+            status_int: An integer representing the machine status.
 
         Returns:
-            The corresponding ElegooMachineStatus enum member, or None if the
-            integer is not a valid status value.
+            The corresponding ElegooMachineStatus enum member, or None if
+            the integer is not a valid status value.
 
-        """  # noqa: D401
-        try:
-            return cls(status_int)  # Use cls() to create enum members
-        except ValueError:
-            return None
+        """
+        return cls.from_list([status_int])
 
     @classmethod
     def from_list(cls, status_list: list[int]) -> "ElegooMachineStatus | None":
         """
         Convert a list of integers to an ElegooMachineStatus enum member.
+
+        WebSocket printers send CurrentStatus as a list like [1].
 
         Arguments:
             status_list: A list of integers representing print statuses.
@@ -115,7 +117,10 @@ class ElegooMachineStatus(Enum):
             return None  # Return None if the list is empty or has more than one element
 
         status_int = status_list[0]
-        return cls.from_int(status_int)
+        try:
+            return cls(status_int)
+        except ValueError:
+            return None
 
 
 class ElegooPrintStatus(Enum):
