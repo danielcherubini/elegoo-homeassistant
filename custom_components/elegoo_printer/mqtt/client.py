@@ -672,6 +672,8 @@ class ElegooMqttClient:
         """
         try:
             data = json.loads(response)
+            self.logger.debug("Received MQTT message on topic: %s", topic)
+            self.logger.debug("Message structure keys: %s", list(data.keys()))
             # Extract topic type from MQTT topic
             # (e.g., "/sdcp/response/..." -> "response")
             # Note: Leading slash results in empty string at index 0
@@ -744,8 +746,20 @@ class ElegooMqttClient:
         if DEBUG:
             msg = f"status >> \n{json.dumps(data, indent=5)}"
             self.logger.info(msg)
+
+        # MQTT printers send status nested under data['Data']['Status']
+        # Extract the actual status data
+        if "Data" in data and "Status" in data["Data"]:
+            status_data = data["Data"]["Status"]
+        elif "Status" in data:
+            # Fallback for WebSocket format
+            status_data = data["Status"]
+        else:
+            self.logger.warning("Unknown status message format: %s", list(data.keys()))
+            return
+
         printer_status = PrinterStatus.from_json(
-            json.dumps(data), self.printer.printer_type
+            json.dumps(status_data), self.printer.printer_type
         )
         self.printer_data.status = printer_status
         # Signal that status update has been received
@@ -762,7 +776,20 @@ class ElegooMqttClient:
         if DEBUG:
             msg = f"attributes >> \n{json.dumps(data, indent=5)}"
             self.logger.info(msg)
-        printer_attributes = PrinterAttributes.from_json(json.dumps(data))
+
+        # MQTT printers send attributes nested under data['Data']['Attributes']
+        # Extract the actual attributes data
+        if "Data" in data and "Attributes" in data["Data"]:
+            attributes_data = data["Data"]["Attributes"]
+        elif "Attributes" in data:
+            # Fallback for WebSocket format
+            attributes_data = data["Attributes"]
+        else:
+            keys = list(data.keys())
+            self.logger.warning("Unknown attributes message format: %s", keys)
+            return
+
+        printer_attributes = PrinterAttributes.from_json(json.dumps(attributes_data))
         self.printer_data.attributes = printer_attributes
         # Signal that attributes update has been received
         self._attributes_update_event.set()

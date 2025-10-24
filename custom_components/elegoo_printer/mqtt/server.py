@@ -263,6 +263,11 @@ class ElegooMQTTBroker:
                     topic, packid, content = self._parse_publish(message, qos)
 
                     _LOGGER.debug("MQTT received message on topic: %s", topic)
+                    max_log_len = 500
+                    payload_preview = (
+                        content[:max_log_len] if len(content) > max_log_len else content
+                    )
+                    _LOGGER.debug("MQTT message payload: %s", payload_preview)
                     self.incoming_messages.put_nowait(
                         {"topic": topic, "payload": content}
                     )

@@ -118,11 +118,13 @@ def get_timestamp():
 
 async def publish_status(mqtt_client):
     """Publish printer status to MQTT."""
-    # Use legacy Saturn format with nested Status for compatibility
+    # Real MQTT printers send status nested under "Data" (not like WebSocket)
     status_message = {
-        "Status": printer_status,
-        "MainboardID": MAINBOARD_ID,
-        "TimeStamp": get_timestamp(),
+        "Data": {
+            "Status": printer_status,
+            "MainboardID": MAINBOARD_ID,
+            "TimeStamp": get_timestamp(),
+        }
     }
     topic = f"/sdcp/status/{MAINBOARD_ID}"
     await mqtt_client.publish(topic, json.dumps(status_message))
@@ -130,10 +132,13 @@ async def publish_status(mqtt_client):
 
 async def publish_attributes(mqtt_client):
     """Publish printer attributes to MQTT."""
+    # Real MQTT printers send attributes nested under "Data" (not like WebSocket)
     attributes_message = {
-        "Attributes": printer_attributes,
-        "MainboardID": MAINBOARD_ID,
-        "TimeStamp": get_timestamp(),
+        "Data": {
+            "Attributes": printer_attributes,
+            "MainboardID": MAINBOARD_ID,
+            "TimeStamp": get_timestamp(),
+        }
     }
     topic = f"/sdcp/attributes/{MAINBOARD_ID}"
     await mqtt_client.publish(topic, json.dumps(attributes_message))
