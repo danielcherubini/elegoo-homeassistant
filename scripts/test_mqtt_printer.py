@@ -78,7 +78,7 @@ printer_attributes = {
 }
 
 printer_status = {
-    "CurrentStatus": [1],  # Printing
+    "CurrentStatus": 1,  # Printing (MQTT format: integer, not list)
     "PreviousStatus": 0,
     "TempOfNozzle": 210,
     "TempTargetNozzle": 210,
@@ -183,7 +183,7 @@ async def handle_request(mqtt_client, request):
     elif cmd == 128:  # Start Print
         filename = request["Data"]["Data"].get("Filename", "unknown.gcode")
         print(f"🚀 Starting print for file: {filename}")
-        printer_status["CurrentStatus"] = [1]  # Printing
+        printer_status["CurrentStatus"] = 1  # Printing
         printer_status["PrintInfo"]["Status"] = 3  # Printing/Exposuring
         printer_status["PrintInfo"]["Filename"] = filename
         printer_status["PrintInfo"]["TaskId"] = str(uuid.uuid4())
@@ -210,7 +210,7 @@ async def handle_request(mqtt_client, request):
 
     elif cmd == 130:  # Stop Print
         print("Stopping print")
-        printer_status["CurrentStatus"] = [0]  # Idle
+        printer_status["CurrentStatus"] = 0  # Idle
         printer_status["PrintInfo"]["Status"] = 8  # Stopped
         response = create_response(request, {"Ack": 0})
         await mqtt_client.publish(response_topic, json.dumps(response))
@@ -276,7 +276,7 @@ async def simulate_printing(stop_event):
     pi = printer_status["PrintInfo"]
 
     while not stop_event.is_set() and pi["CurrentLayer"] < pi["TotalLayer"]:
-        if printer_status["CurrentStatus"] != [1]:  # Not printing
+        if printer_status["CurrentStatus"] != 1:  # Not printing
             break
 
         await asyncio.sleep(2)  # Update every 2 seconds
@@ -303,7 +303,7 @@ async def simulate_printing(stop_event):
 
     if not stop_event.is_set() and pi["CurrentLayer"] >= pi["TotalLayer"]:
         print("✅ Print simulation completed")
-        printer_status["CurrentStatus"] = [0]  # Idle
+        printer_status["CurrentStatus"] = 0  # Idle
         printer_status["PrintInfo"]["Status"] = 16  # Complete
         # Update history
         task_id = printer_status["PrintInfo"]["TaskId"]
@@ -451,7 +451,7 @@ async def udp_discovery_server(mqtt_connect_event, mqtt_broker_info, stop_event)
                                 "FirmwareVersion": printer_attributes["FirmwareVersion"],
                             },
                             "Status": {
-                                "CurrentStatus": printer_status["CurrentStatus"][0],
+                                "CurrentStatus": printer_status["CurrentStatus"],
                                 "PrintInfo": printer_status["PrintInfo"],
                                 "FileTransferInfo": {
                                     "Status": 0,
