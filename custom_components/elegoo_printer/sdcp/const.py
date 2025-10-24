@@ -38,3 +38,6 @@ CMD_TERMINATE_FILE_TRANSFER = 255
 
 # Control Commands
 CMD_CONTROL_DEVICE = 403
+
+# MQTT Auto-Push Commands
+CMD_SET_STATUS_UPDATE_PERIOD = 512  # Tell printer to auto-push status updates

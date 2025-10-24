@@ -244,6 +244,14 @@ async def handle_request(mqtt_client, request):
         response = create_response(request, response_data)
         await mqtt_client.publish(response_topic, json.dumps(response))
 
+    elif cmd == 512:  # Set Status Update Period
+        time_period = request["Data"]["Data"].get("TimePeriod", 5000)
+        print(f"📡 Setting auto-push status update period: {time_period}ms")
+        # Acknowledge the command
+        response = create_response(request, {"Ack": 0})
+        await mqtt_client.publish(response_topic, json.dumps(response))
+        # Note: The actual periodic publishing is handled by status_publisher()
+
     elif cmd == 16:  # Control Device (lights, fans, temps, etc)
         control_data = request["Data"]["Data"]
         print(f"Control device command: {control_data}")

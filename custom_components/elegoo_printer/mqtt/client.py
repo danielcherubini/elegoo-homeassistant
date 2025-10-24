@@ -30,6 +30,7 @@ from custom_components.elegoo_printer.sdcp.const import (
     CMD_REQUEST_STATUS_REFRESH,
     CMD_RETRIEVE_HISTORICAL_TASKS,
     CMD_RETRIEVE_TASK_DETAILS,
+    CMD_SET_STATUS_UPDATE_PERIOD,
     CMD_SET_VIDEO_STREAM,
     CMD_STOP_PRINT,
     DEBUG,
@@ -248,6 +249,15 @@ class ElegooMqttClient:
             self._is_connected = True
             self._listener_task = asyncio.create_task(self._mqtt_listener())
 
+            # Send connection handshake commands (like Cassini does)
+            # CMD_0 and CMD_1 are handshakes that trigger status/attributes
+            await self._send_printer_cmd(CMD_REQUEST_STATUS_REFRESH)
+            await self._send_printer_cmd(CMD_REQUEST_ATTRIBUTES)
+            # Tell printer to auto-push status updates every 5 seconds
+            await self._send_printer_cmd(
+                CMD_SET_STATUS_UPDATE_PERIOD, {"TimePeriod": 5000}
+            )
+
             msg = f"Client successfully connected via MQTT to: {self.printer.name}"
             self.logger.info(msg)
         except (TimeoutError, OSError) as e:
@@ -348,30 +358,29 @@ class ElegooMqttClient:
         """
         Retrieve the current status of the printer.
 
-        Sends a status request and returns the current printer_data immediately.
-        The background listener will update printer_data asynchronously when
-        the printer responds.
+        For MQTT printers, we don't need to request status - the printer
+        auto-pushes status updates every 5 seconds after we send
+        CMD_SET_STATUS_UPDATE_PERIOD during connection. The background
+        listener keeps printer_data fresh, so we just return it.
 
         Returns:
             The latest printer status information.
 
         """
-        await self._send_printer_cmd(CMD_REQUEST_STATUS_REFRESH)
         return self.printer_data
 
     async def get_printer_attributes(self) -> PrinterData:
         """
         Retrieve the printer attributes.
 
-        Sends an attributes request and returns the current printer_data immediately.
-        The background listener will update printer_data asynchronously when
-        the printer responds.
+        For MQTT printers, attributes are sent during the initial handshake
+        and don't change frequently, so we just return the cached data.
+        The background listener updates printer_data when attributes arrive.
 
         Returns:
             The latest printer attributes information.
 
         """
-        await self._send_printer_cmd(CMD_REQUEST_ATTRIBUTES)
         return self.printer_data
 
     async def set_printer_video_stream(self, *, enable: bool) -> None:
