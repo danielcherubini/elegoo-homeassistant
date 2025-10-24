@@ -683,12 +683,15 @@ class ElegooMqttClient:
                 # Without leading slash: ['sdcp', 'response', 'id']
                 # Use index 2 if there's a leading slash, otherwise index 1
                 topic_type = topic_parts[2] if topic_parts[0] == "" else topic_parts[1]
+                self.logger.debug("Routing to handler for topic_type: %s", topic_type)
                 match topic_type:
                     case "response":
                         self._response_handler(data)
                     case "status":
+                        self.logger.debug("Calling _status_handler")
                         self._status_handler(data)
                     case "attributes":
+                        self.logger.debug("Calling _attributes_handler")
                         self._attributes_handler(data)
                     case "notice":
                         msg = f"notice >> \n{json.dumps(data, indent=5)}"
@@ -743,16 +746,28 @@ class ElegooMqttClient:
                 JSON-compatible format.
 
         """
+        self.logger.debug("_status_handler called with keys: %s", list(data.keys()))
         if DEBUG:
             msg = f"status >> \n{json.dumps(data, indent=5)}"
             self.logger.info(msg)
 
         # MQTT printers send status nested under data['Data']['Status']
         # Extract the actual status data
-        if "Data" in data and "Status" in data["Data"]:
-            status_data = data["Data"]["Status"]
+        if "Data" in data:
+            self.logger.debug("Found 'Data' key, checking for 'Status'")
+            data_content = data["Data"]
+            self.logger.debug("Data content keys: %s", list(data_content.keys()))
+            if "Status" in data_content:
+                status_data = data_content["Status"]
+                self.logger.debug("Extracted status data successfully")
+            else:
+                self.logger.warning(
+                    "Data key present but no Status: %s", list(data_content.keys())
+                )
+                return
         elif "Status" in data:
             # Fallback for WebSocket format
+            self.logger.debug("Using WebSocket fallback format")
             status_data = data["Status"]
         else:
             self.logger.warning("Unknown status message format: %s", list(data.keys()))
@@ -763,6 +778,7 @@ class ElegooMqttClient:
         )
         self.printer_data.status = printer_status
         # Signal that status update has been received
+        self.logger.debug("Setting status update event")
         self._status_update_event.set()
 
     def _attributes_handler(self, data: dict[str, Any]) -> None:
@@ -773,16 +789,28 @@ class ElegooMqttClient:
             data: Dictionary containing printer attribute information.
 
         """
+        self.logger.debug("_attributes_handler called with keys: %s", list(data.keys()))
         if DEBUG:
             msg = f"attributes >> \n{json.dumps(data, indent=5)}"
             self.logger.info(msg)
 
         # MQTT printers send attributes nested under data['Data']['Attributes']
         # Extract the actual attributes data
-        if "Data" in data and "Attributes" in data["Data"]:
-            attributes_data = data["Data"]["Attributes"]
+        if "Data" in data:
+            self.logger.debug("Found 'Data' key, checking for 'Attributes'")
+            data_content = data["Data"]
+            self.logger.debug("Data content keys: %s", list(data_content.keys()))
+            if "Attributes" in data_content:
+                attributes_data = data_content["Attributes"]
+                self.logger.debug("Extracted attributes data successfully")
+            else:
+                self.logger.warning(
+                    "Data key present but no Attributes: %s", list(data_content.keys())
+                )
+                return
         elif "Attributes" in data:
             # Fallback for WebSocket format
+            self.logger.debug("Using WebSocket fallback format")
             attributes_data = data["Attributes"]
         else:
             keys = list(data.keys())
@@ -792,6 +820,7 @@ class ElegooMqttClient:
         printer_attributes = PrinterAttributes.from_json(json.dumps(attributes_data))
         self.printer_data.attributes = printer_attributes
         # Signal that attributes update has been received
+        self.logger.debug("Setting attributes update event")
         self._attributes_update_event.set()
 
     def _print_history_handler(self, data_data: dict[str, Any]) -> None:
