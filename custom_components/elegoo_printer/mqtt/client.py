@@ -367,6 +367,16 @@ class ElegooMqttClient:
             The latest printer status information.
 
         """
+        status = (
+            self.printer_data.status.current_status
+            if self.printer_data.status
+            else None
+        )
+        self.logger.debug(
+            "get_printer_status() returning printer_data (id: %s, status: %s)",
+            id(self.printer_data),
+            status,
+        )
         return self.printer_data
 
     async def get_printer_attributes(self) -> PrinterData:
@@ -381,6 +391,12 @@ class ElegooMqttClient:
             The latest printer attributes information.
 
         """
+        has_attrs = self.printer_data.attributes is not None
+        self.logger.debug(
+            "get_printer_attributes() returning (id: %s, has attributes: %s)",
+            id(self.printer_data),
+            has_attrs,
+        )
         return self.printer_data
 
     async def set_printer_video_stream(self, *, enable: bool) -> None:
@@ -782,7 +798,15 @@ class ElegooMqttClient:
             )
             self.logger.debug("PrinterStatus.from_json() succeeded")
             self.printer_data.status = printer_status
-            self.logger.debug("Assigned printer_data.status successfully")
+            print_info_status = (
+                printer_status.print_info.status if printer_status.print_info else None
+            )
+            self.logger.debug(
+                "Assigned printer_data.status (id: %s, status: %s, print_info: %s)",
+                id(self.printer_data),
+                printer_status.current_status,
+                print_info_status,
+            )
         except Exception:
             self.logger.exception("Exception in _status_handler")
 

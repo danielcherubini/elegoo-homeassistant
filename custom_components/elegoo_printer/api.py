@@ -403,6 +403,16 @@ class ElegooPrinterApiClient:
 
         """  # noqa: E501
         self.printer_data = await self.client.get_printer_status()
+        status = (
+            self.printer_data.status.current_status
+            if self.printer_data.status
+            else None
+        )
+        self._logger.debug(
+            "async_get_status() got printer_data (id: %s, status: %s)",
+            id(self.printer_data),
+            status,
+        )
         return self.printer_data
 
     async def async_get_attributes(self) -> PrinterData:
@@ -665,6 +675,16 @@ class ElegooPrinterApiClient:
         await self.async_get_print_history()
         await self.async_get_current_task()
         self.printer_data.calculate_current_job_end_time()
+        status = (
+            self.printer_data.status.current_status
+            if self.printer_data.status
+            else None
+        )
+        self._logger.debug(
+            "async_get_printer_data() returning printer_data (id: %s, status: %s)",
+            id(self.printer_data),
+            status,
+        )
         return self.printer_data
 
     async def _setup_proxy_if_enabled(self, printer: Printer) -> Printer | None:
