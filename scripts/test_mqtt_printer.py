@@ -105,7 +105,8 @@ printer_status = {
         "TotalTicks": 10000,
         "Filename": "test_print_1.gcode",
         "ErrorNumber": 0,
-        "TaskId": "b9a8b8f8-8b8b-4b8b-8b8b-8b8b8b8b8b8b",
+        # Note: Real MQTT printers do NOT send TaskId in PrintInfo
+        # This means task details (begin_time, end_time, thumbnail) are not available
         "PrintSpeed": 100,
     },
 }

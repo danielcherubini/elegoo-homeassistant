@@ -428,8 +428,15 @@ class ElegooMqttClient:
     async def async_get_printer_historical_tasks(
         self,
     ) -> dict[str, PrintHistoryDetail | None] | None:
-        """Asynchronously get the list of historical print tasks from the printer."""
-        await self._send_printer_cmd(CMD_RETRIEVE_HISTORICAL_TASKS)
+        """
+        Asynchronously get the list of historical print tasks from the printer.
+
+        MQTT printers do not provide task details, so we skip this request
+        to avoid unnecessary traffic.
+        """
+        self.logger.debug(
+            "Skipping historical tasks request (not available for MQTT printers)"
+        )
         return self.printer_data.print_history
 
     async def get_printer_task_detail(
@@ -518,31 +525,36 @@ class ElegooMqttClient:
         """
         Asynchronously retrieve the current print task details from the printer.
 
+        MQTT printers do not send TaskId in their status messages, so task
+        details (begin_time, end_time, thumbnail) are not available.
+
         Returns:
             The details of the current print task if available, otherwise None.
 
         """
         task_id = self.printer_data.status.print_info.task_id
-        self.logger.debug(
-            "async_get_printer_current_task: task_id from status = %s", task_id
-        )
-        if task_id:
-            self.logger.debug("Requesting task details for task_id: %s", task_id)
-            task = await self.get_printer_task_detail([task_id])
-            if task:
-                self.logger.debug(
-                    "Got task from printer: task_id=%s, begin_time=%s, end_time=%s",
-                    task.task_id,
-                    task.begin_time,
-                    task.end_time,
-                )
-            else:
-                self.logger.debug(
-                    "NO TASK RETURNED FROM PRINTER for task_id: %s", task_id
-                )
-            return task
-        self.logger.debug("No task_id in status, cannot fetch current task")
-        return None
+        if not task_id:
+            # MQTT printers don't send TaskId in PrintInfo status messages
+            # Task details (begin_time, end_time, thumbnail) are not available
+            self.logger.debug(
+                "No task_id in status (normal for MQTT printers), skipping task fetch"
+            )
+            return None
+
+        self.logger.debug("Requesting task details for task_id: %s", task_id)
+        task = await self.get_printer_task_detail([task_id])
+        if task:
+            self.logger.debug(
+                "Got task from printer: task_id=%s, begin_time=%s, end_time=%s",
+                task.task_id,
+                task.begin_time,
+                task.end_time,
+            )
+        else:
+            self.logger.debug(
+                "NO TASK RETURNED FROM PRINTER for task_id: %s", task_id
+            )
+        return task
 
     async def async_get_printer_last_task(self) -> PrintHistoryDetail | None:
         """Retrieve last task."""
