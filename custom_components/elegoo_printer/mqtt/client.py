@@ -773,13 +773,19 @@ class ElegooMqttClient:
             self.logger.warning("Unknown status message format: %s", list(data.keys()))
             return
 
-        printer_status = PrinterStatus.from_json(
-            json.dumps(status_data), self.printer.printer_type
-        )
-        self.printer_data.status = printer_status
-        # Signal that status update has been received
-        self.logger.debug("Setting status update event")
-        self._status_update_event.set()
+        try:
+            printer_status = PrinterStatus.from_json(
+                json.dumps(status_data), self.printer.printer_type
+            )
+            self.logger.debug("PrinterStatus.from_json() succeeded")
+            self.printer_data.status = printer_status
+            self.logger.debug("Assigned printer_data.status")
+            # Signal that status update has been received
+            self.logger.debug("Setting status update event")
+            self._status_update_event.set()
+            self.logger.debug("Status update event set successfully")
+        except Exception:
+            self.logger.exception("Exception in _status_handler")
 
     def _attributes_handler(self, data: dict[str, Any]) -> None:
         """
@@ -817,11 +823,19 @@ class ElegooMqttClient:
             self.logger.warning("Unknown attributes message format: %s", keys)
             return
 
-        printer_attributes = PrinterAttributes.from_json(json.dumps(attributes_data))
-        self.printer_data.attributes = printer_attributes
-        # Signal that attributes update has been received
-        self.logger.debug("Setting attributes update event")
-        self._attributes_update_event.set()
+        try:
+            printer_attributes = PrinterAttributes.from_json(
+                json.dumps(attributes_data)
+            )
+            self.logger.debug("PrinterAttributes.from_json() succeeded")
+            self.printer_data.attributes = printer_attributes
+            self.logger.debug("Assigned printer_data.attributes")
+            # Signal that attributes update has been received
+            self.logger.debug("Setting attributes update event")
+            self._attributes_update_event.set()
+            self.logger.debug("Attributes update event set successfully")
+        except Exception:
+            self.logger.exception("Exception in _attributes_handler")
 
     def _print_history_handler(self, data_data: dict[str, Any]) -> None:
         """Parse and update the printer's print history details from the data."""
