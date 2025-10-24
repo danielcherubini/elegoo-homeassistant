@@ -436,20 +436,32 @@ class ElegooMqttClient:
         self, id_list: list[str]
     ) -> PrintHistoryDetail | None:
         """Retrieve historical tasks from the printer."""
+        self.logger.debug("get_printer_task_detail called with id_list: %s", id_list)
+
         # Check cache first for all IDs
         for task_id in id_list:
             if task := self.printer_data.print_history.get(task_id):
+                self.logger.debug("Task %s found in cache", task_id)
                 return task
 
         # If not found in cache, fetch the first ID
         if id_list:
+            self.logger.debug(
+                "Task %s not in cache, requesting from printer", id_list[0]
+            )
             await self._send_printer_cmd(
                 CMD_RETRIEVE_TASK_DETAILS, data={"Id": [id_list[0]]}
             )
             # Wait briefly for handler to populate cache
             await asyncio.sleep(0.1)
-            return self.printer_data.print_history.get(id_list[0])
+            task = self.printer_data.print_history.get(id_list[0])
+            if task:
+                self.logger.debug("Task %s retrieved successfully", id_list[0])
+            else:
+                self.logger.debug("Task %s NOT in cache after request", id_list[0])
+            return task
 
+        self.logger.debug("Empty id_list, returning None")
         return None
 
     def get_printer_current_task(self) -> PrintHistoryDetail | None:
@@ -510,16 +522,26 @@ class ElegooMqttClient:
             The details of the current print task if available, otherwise None.
 
         """
-        if task_id := self.printer_data.status.print_info.task_id:
-            self.logger.debug("get_printer_current_task task_id: %s", task_id)
+        task_id = self.printer_data.status.print_info.task_id
+        self.logger.debug(
+            "async_get_printer_current_task: task_id from status = %s", task_id
+        )
+        if task_id:
+            self.logger.debug("Requesting task details for task_id: %s", task_id)
             task = await self.get_printer_task_detail([task_id])
             if task:
                 self.logger.debug(
-                    "get_printer_current_task: task from the api: %s", task.task_id
+                    "Got task from printer: task_id=%s, begin_time=%s, end_time=%s",
+                    task.task_id,
+                    task.begin_time,
+                    task.end_time,
                 )
             else:
-                self.logger.debug("get_printer_current_task: NO TASK FROM THE API")
+                self.logger.debug(
+                    "NO TASK RETURNED FROM PRINTER for task_id: %s", task_id
+                )
             return task
+        self.logger.debug("No task_id in status, cannot fetch current task")
         return None
 
     async def async_get_printer_last_task(self) -> PrintHistoryDetail | None:
@@ -872,12 +894,27 @@ class ElegooMqttClient:
             data_data: The data containing the print history details.
 
         """
+        self.logger.debug("_print_history_detail_handler received data")
         history_data_list = data_data.get("HistoryDetailList")
         if history_data_list:
+            self.logger.debug(
+                "Processing %d history detail(s)", len(history_data_list)
+            )
             for history_data in history_data_list:
                 detail = PrintHistoryDetail(history_data)
                 if detail.task_id is not None:
                     self.printer_data.print_history[detail.task_id] = detail
+                    self.logger.debug(
+                        "Added task %s to history (begin: %s, end: %s, thumbnail: %s)",
+                        detail.task_id,
+                        detail.begin_time,
+                        detail.end_time,
+                        detail.thumbnail is not None,
+                    )
+                else:
+                    self.logger.warning("Task detail has no task_id, skipping")
+        else:
+            self.logger.debug("No HistoryDetailList in data_data")
 
     def _print_video_handler(self, data_data: dict[str, Any]) -> None:
         """

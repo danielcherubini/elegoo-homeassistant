@@ -632,6 +632,14 @@ class ElegooPrinterApiClient:
             self.printer_data.current_job = current_task
             if current_task.task_id:
                 self.printer_data.print_history[current_task.task_id] = current_task
+            self._logger.debug(
+                "async_get_current_task: Got task %s (begin: %s, end: %s)",
+                current_task.task_id,
+                current_task.begin_time,
+                current_task.end_time,
+            )
+        else:
+            self._logger.debug("async_get_current_task: No current task")
         return current_task
 
     async def async_get_print_history(
