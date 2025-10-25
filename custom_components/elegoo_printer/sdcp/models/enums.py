@@ -3,6 +3,68 @@
 from enum import Enum
 
 
+class TransportType(Enum):
+    """
+    Represents the transport layer used for communication with the printer.
+
+    Both transports use the SDCP protocol, but differ in how messages are exchanged.
+
+    Attributes:
+        WEBSOCKET: SDCP over WebSocket connection (V3 printers).
+        MQTT: SDCP over MQTT broker (V1 printers).
+
+    """
+
+    WEBSOCKET = "websocket"
+    MQTT = "mqtt"
+
+
+class ProtocolVersion(Enum):
+    """
+    Represents the SDCP protocol version supported by the printer.
+
+    Attributes:
+        V1: SDCP V1.x - Used by MQTT printers (Neptune, Saturn 3 MQTT).
+        V3: SDCP V3.x - Used by WebSocket printers (most FDM/resin printers).
+
+    """
+
+    V1 = "V1"
+    V3 = "V3"
+
+    @classmethod
+    def from_version_string(cls, version: str | None) -> "ProtocolVersion":
+        """
+        Determine SDCP protocol version from version string.
+
+        Arguments:
+            version: The protocol version string from the printer
+                (e.g., "V1.0.0", "V3.0.0").
+
+        Returns:
+            ProtocolVersion.V1 if version starts with "V1",
+            otherwise ProtocolVersion.V3.
+
+        """
+        if version:
+            version_upper = version.upper()
+            if version_upper.startswith("V1"):
+                return cls.V1
+        return cls.V3
+
+    def get_transport_type(self) -> TransportType:
+        """
+        Get the corresponding transport type for this protocol version.
+
+        Returns:
+            TransportType.MQTT for V1, TransportType.WEBSOCKET for V3.
+
+        """
+        if self == ProtocolVersion.V1:
+            return TransportType.MQTT
+        return TransportType.WEBSOCKET
+
+
 class ElegooMachineStatus(Enum):
     """
     Represents the different status states of an SDCP machine.
@@ -47,25 +109,27 @@ class ElegooMachineStatus(Enum):
     @classmethod
     def from_int(cls, status_int: int) -> "ElegooMachineStatus | None":
         """
-        Converts an integer to an ElegooMachineStatus enum member.
+        Convert a single integer to an ElegooMachineStatus enum member.
+
+        MQTT printers send CurrentStatus as an integer. This method wraps
+        it in a list and calls from_list().
 
         Arguments:
-            status_int: The integer representing the print status.
+            status_int: An integer representing the machine status.
 
         Returns:
-            The corresponding ElegooMachineStatus enum member, or None if the
-            integer is not a valid status value.
+            The corresponding ElegooMachineStatus enum member, or None if
+            the integer is not a valid status value.
 
-        """  # noqa: D401
-        try:
-            return cls(status_int)  # Use cls() to create enum members
-        except ValueError:
-            return None
+        """
+        return cls.from_list([status_int])
 
     @classmethod
     def from_list(cls, status_list: list[int]) -> "ElegooMachineStatus | None":
         """
         Convert a list of integers to an ElegooMachineStatus enum member.
+
+        WebSocket printers send CurrentStatus as a list like [1].
 
         Arguments:
             status_list: A list of integers representing print statuses.
@@ -82,7 +146,10 @@ class ElegooMachineStatus(Enum):
             return None  # Return None if the list is empty or has more than one element
 
         status_int = status_list[0]
-        return cls.from_int(status_int)
+        try:
+            return cls(status_int)
+        except ValueError:
+            return None
 
 
 class ElegooPrintStatus(Enum):
@@ -358,6 +425,20 @@ class PrinterType(Enum):
         """
         Return the printer type (RESIN or FDM) based on the provided model name.
 
+        This method identifies printer types for all Elegoo printers that support
+        the SDCP protocol (both WebSocket and MQTT variants).
+
+        Supported Models:
+            FDM Printers:
+                - Centauri series (Centauri, Centauri Carbon)
+                - Neptune series (Neptune 4, Neptune 4 Pro, Neptune 4 Plus,
+                  Neptune 4 Max)
+
+            Resin Printers:
+                - Mars series (Mars 3, Mars 4, Mars 4 Ultra, Mars 5, Mars 5 Ultra)
+                - Saturn series (Saturn 2, Saturn 3, Saturn 3 Ultra, Saturn 4,
+                  Saturn 4 Ultra, Saturn 4 Ultra 16K)
+
         Arguments:
             model (str): The printer model name to evaluate.
 
@@ -369,19 +450,24 @@ class PrinterType(Enum):
         if model is None:
             return None
 
-        fdm_printers = ["centauri carbon", "centauri"]
-        resin_printers = [
-            "mars 5",
-            "mars 5 ultra",
-            "saturn 4",
-            "saturn 4 ultra",
-            "saturn 4 ultra 16k",
+        # FDM printer keywords - matches Centauri and Neptune series
+        fdm_keywords = [
+            "centauri",  # Matches: Centauri, Centauri Carbon
+            "neptune",  # Matches: Neptune 4 series (all variants)
         ]
 
-        if model.lower() in fdm_printers:
+        # Resin printer keywords - matches Mars and Saturn series
+        resin_keywords = [
+            "mars",  # Matches: Mars 3, 4, 4 Ultra, 5, 5 Ultra
+            "saturn",  # Matches: Saturn 2, 3, 3 Ultra, 4, 4 Ultra
+        ]
+
+        model_lower = model.lower()
+
+        if any(keyword in model_lower for keyword in fdm_keywords):
             return cls.FDM
 
-        if model.lower() in resin_printers:
+        if any(keyword in model_lower for keyword in resin_keywords):
             return cls.RESIN
 
         return None

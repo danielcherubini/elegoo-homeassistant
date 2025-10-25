@@ -6,6 +6,9 @@ from logging import Logger, getLogger
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 LOGGER: Logger = getLogger(__package__)
 
+# Connection Commands
+CMD_DISCONNECT = 64
+
 # Information Commands
 CMD_REQUEST_STATUS_REFRESH = 0
 CMD_REQUEST_ATTRIBUTES = 1
@@ -38,3 +41,6 @@ CMD_TERMINATE_FILE_TRANSFER = 255
 
 # Control Commands
 CMD_CONTROL_DEVICE = 403
+
+# MQTT Auto-Push Commands
+CMD_SET_STATUS_UPDATE_PERIOD = 512  # Tell printer to auto-push status updates

@@ -195,11 +195,20 @@ class PrinterStatus:
         """Initialize a new PrinterStatus object from a dictionary."""
         if data is None:
             data = {}
-        status = data.get("Status", {"CurrentStatus": {}})
-        current_status_list = status.get("CurrentStatus", [])
-        self.current_status: ElegooMachineStatus | None = ElegooMachineStatus.from_list(
-            current_status_list
-        )
+
+        # Support both legacy Saturn (nested) and flat formats
+        status = data.get("Status", data)
+
+        current_status_data = status.get("CurrentStatus", [])
+        # MQTT printers send CurrentStatus as int, WebSocket as list
+        if isinstance(current_status_data, int):
+            self.current_status: ElegooMachineStatus | None = (
+                ElegooMachineStatus.from_int(current_status_data)
+            )
+        else:
+            self.current_status: ElegooMachineStatus | None = (
+                ElegooMachineStatus.from_list(current_status_data)
+            )
 
         # Generic Status
         self.previous_status: int = status.get("PreviousStatus", 0)

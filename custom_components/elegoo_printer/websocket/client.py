@@ -20,6 +20,7 @@ from custom_components.elegoo_printer.const import (
     DEFAULT_FALLBACK_IP,
     DISCOVERY_MESSAGE,
     DISCOVERY_PORT,
+    DISCOVERY_TIMEOUT,
     WEBSOCKET_PORT,
 )
 from custom_components.elegoo_printer.sdcp.const import (
@@ -60,7 +61,6 @@ if TYPE_CHECKING:
 
 logging.getLogger("websocket").setLevel(logging.CRITICAL)
 
-DISCOVERY_TIMEOUT = 5
 DEFAULT_PORT = 54780
 
 
