@@ -17,14 +17,13 @@ from PIL import UnidentifiedImageError
 
 from .const import (
     CONF_MQTT_BROKER_ENABLED,
-    CONF_MQTT_HOST,
-    CONF_MQTT_PORT,
     CONF_PROXY_ENABLED,
     FIRMWARE_SERVICE_BASE_URL,
     FIRMWARE_UPDATE_ENDPOINT,
     LOGGER,
 )
 from .mqtt.client import ElegooMqttClient
+from .mqtt.const import MQTT_BROKER_PORT
 from .mqtt.server import ElegooMQTTBroker
 from .sdcp.models.elegoo_image import ElegooImage
 from .sdcp.models.enums import ProtocolType
@@ -184,24 +183,15 @@ class ElegooPrinterApiClient:
         if printer.protocol_type == ProtocolType.MQTT:
             logger.info("Using MQTT protocol for printer %s", printer.name)
 
-            # Start embedded MQTT broker if enabled
-            mqtt_broker_enabled = config.get(CONF_MQTT_BROKER_ENABLED, False)
-            if mqtt_broker_enabled:
-                printer = await self._setup_mqtt_broker_if_enabled(printer)
-                if printer is None:
-                    # Broker was required but failed to start
-                    return None
+            # Start embedded MQTT broker (always enabled for MQTT printers)
+            printer = await self._setup_mqtt_broker_if_enabled(printer)
+            if printer is None:
+                # Broker failed to start
+                return None
 
-            # For MQTT, we need to get broker settings from config
-            mqtt_host = config.get(CONF_MQTT_HOST, "localhost")
-            mqtt_port = int(config.get(CONF_MQTT_PORT, 1883))
-
-            # Validate MQTT configuration is provided
-            if mqtt_host == "localhost" and CONF_MQTT_HOST not in config:
-                logger.warning(
-                    "MQTT broker not configured for %s, using default localhost",
-                    printer.name,
-                )
+            # Always use embedded broker on localhost
+            mqtt_host = "localhost"
+            mqtt_port = self.mqtt_broker.port if self.mqtt_broker else MQTT_BROKER_PORT
 
             self.client = ElegooMqttClient(
                 mqtt_host=mqtt_host,

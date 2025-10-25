@@ -15,8 +15,6 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     CONF_CAMERA_ENABLED,
-    CONF_MQTT_HOST,
-    CONF_MQTT_PORT,
     CONF_PROXY_ENABLED,
     DOMAIN,
     LOGGER,
@@ -82,24 +80,21 @@ async def _async_test_connection(
             "Using MQTT protocol for printer %s during config flow",
             printer_object.name,
         )
-        mqtt_host = user_input.get(CONF_MQTT_HOST, "localhost")
-        mqtt_port = int(user_input.get(CONF_MQTT_PORT, MQTT_BROKER_PORT))
+        # Always use embedded MQTT broker on localhost
         elegoo_printer = ElegooMqttClient(
-            mqtt_host=mqtt_host,
-            mqtt_port=mqtt_port,
+            mqtt_host="localhost",
+            mqtt_port=MQTT_BROKER_PORT,
             logger=LOGGER,
             printer=printer_object,
         )
         # MQTT doesn't support proxy
         printer_object.proxy_enabled = False
-        # Enable embedded MQTT broker if connecting to localhost
-        printer_object.mqtt_broker_enabled = mqtt_host in ("localhost", "127.0.0.1")
+        # Embedded MQTT broker is always enabled for MQTT printers
+        printer_object.mqtt_broker_enabled = True
         LOGGER.debug(
-            "Connecting to MQTT printer: %s at broker %s:%s (embedded broker: %s)",
+            "Connecting to MQTT printer: %s at embedded broker localhost:%s",
             printer_object.name,
-            mqtt_host,
-            mqtt_port,
-            printer_object.mqtt_broker_enabled,
+            MQTT_BROKER_PORT,
         )
         if await elegoo_printer.connect_printer(printer_object):
             await elegoo_printer.disconnect()
@@ -524,15 +519,8 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         _errors = {}
         if user_input is not None and self.selected_printer:
             printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
-            # Store MQTT broker settings
-            mqtt_host = user_input[CONF_MQTT_HOST]
-            printer_to_validate.mqtt_host = mqtt_host
-            printer_to_validate.mqtt_port = int(user_input[CONF_MQTT_PORT])
-            # Enable embedded MQTT broker if connecting to localhost
-            printer_to_validate.mqtt_broker_enabled = mqtt_host in (
-                "localhost",
-                "127.0.0.1",
-            )
+            # Embedded MQTT broker is always enabled for MQTT printers
+            printer_to_validate.mqtt_broker_enabled = True
 
             try:
                 # Test MQTT connection with broker settings
@@ -558,30 +546,17 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.exception(exception)
                 _errors["base"] = "unknown"
 
+        # MQTT printers always use embedded broker - no configuration needed
+        # Skip this step and proceed directly to completion
         return self.async_show_form(
             step_id="mqtt_options",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_MQTT_HOST,
-                        default="localhost",
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                        ),
-                    ),
-                    vol.Required(
-                        CONF_MQTT_PORT,
-                        default=MQTT_BROKER_PORT,  # Default to embedded broker port
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(
-                            min=1,
-                            max=65535,
-                            mode=selector.NumberSelectorMode.BOX,
-                        ),
-                    ),
-                }
-            ),
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "info": (
+                    "MQTT printers use an embedded broker on localhost. "
+                    "No additional configuration required."
+                )
+            },
             errors=_errors,
         )
 

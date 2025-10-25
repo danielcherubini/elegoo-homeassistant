@@ -22,9 +22,7 @@ CONF_PROXY_ENABLED = "proxy_enabled"
 CONF_PROXY_WEBSOCKET_PORT = "proxy_websocket_port"
 CONF_PROXY_VIDEO_PORT = "proxy_video_port"
 
-# MQTT settings
-CONF_MQTT_HOST = "mqtt_host"
-CONF_MQTT_PORT = "mqtt_port"
+# MQTT settings (always uses embedded broker)
 CONF_MQTT_BROKER_ENABLED = "mqtt_broker_enabled"
 
 # Websocket and proxy settings
