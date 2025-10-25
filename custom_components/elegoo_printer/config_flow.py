@@ -23,7 +23,7 @@ from .sdcp.exceptions import (
     ElegooConfigFlowConnectionError,
     ElegooConfigFlowGeneralError,
 )
-from .sdcp.models.enums import PrinterType, ProtocolType
+from .sdcp.models.enums import PrinterType, TransportType
 from .sdcp.models.printer import Printer
 from .websocket.client import ElegooPrinterClient
 from .websocket.server import ElegooPrinterServer
@@ -72,10 +72,10 @@ async def _async_test_connection(
         msg = "IP address is required to connect to the printer"
         raise ElegooConfigFlowGeneralError(msg)
 
-    # Create appropriate client based on protocol type
-    if printer_object.protocol_type == ProtocolType.MQTT:
+    # Create appropriate client based on transport type
+    if printer_object.transport_type == TransportType.MQTT:
         LOGGER.info(
-            "Using MQTT protocol for printer %s during config flow",
+            "Using MQTT transport for printer %s during config flow",
             printer_object.name,
         )
         # Skip live connection test - embedded broker starts during setup
@@ -278,8 +278,8 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
             if self.selected_printer:
-                # Check if printer uses MQTT protocol
-                if self.selected_printer.protocol_type == ProtocolType.MQTT:
+                # Check if printer uses MQTT transport
+                if self.selected_printer.transport_type == TransportType.MQTT:
                     # Auto-configure MQTT printer with embedded broker
                     printer = Printer.from_dict(self.selected_printer.to_dict())
                     printer.mqtt_broker_enabled = True

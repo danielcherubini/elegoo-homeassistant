@@ -10,13 +10,14 @@ from .const import LOGGER
 from .definitions import (
     PRINTER_ATTRIBUTES_COMMON,
     PRINTER_ATTRIBUTES_RESIN,
+    PRINTER_ATTRIBUTES_V3_ONLY,
     PRINTER_STATUS_COMMON,
     PRINTER_STATUS_FDM,
     PRINTER_STATUS_RESIN,
     ElegooPrinterSensorEntityDescription,
 )
 from .entity import ElegooPrinterEntity
-from .sdcp.models.enums import PrinterType
+from .sdcp.models.enums import PrinterType, ProtocolVersion
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -37,23 +38,37 @@ async def async_setup_entry(
     """
     Asynchronously sets up Elegoo printer sensor entities for a configuration entry.
 
-    Adds sensor entities for printer statuses and attributes based on the printer type,
-    ensuring each entity is updated before being added to Home Assistant.
+    Adds sensor entities based on printer type (FDM/RESIN) and protocol version
+    (V1/V3). V1 (MQTT) printers get a subset of attributes compared to V3 printers.
     """
     coordinator: ElegooDataUpdateCoordinator = entry.runtime_data.coordinator
-    printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
+    printer = coordinator.config_entry.runtime_data.api.printer
+    printer_type = printer.printer_type
+    protocol_version = printer.protocol_version
 
     sensors: list[ElegooPrinterSensorEntityDescription] = []
+
+    # Common status sensors (all printers, both V1 and V3)
     sensors.extend(PRINTER_STATUS_COMMON)
+
+    # Common attributes (both V1 and V3)
     sensors.extend(PRINTER_ATTRIBUTES_COMMON)
 
+    # V3-only attributes (WebSocket/SDCP printers)
+    if protocol_version == ProtocolVersion.V3:
+        sensors.extend(PRINTER_ATTRIBUTES_V3_ONLY)
+
+    # Type-specific sensors (both V1 and V3)
     if printer_type == PrinterType.FDM:
         sensors.extend(PRINTER_STATUS_FDM)
     elif printer_type == PrinterType.RESIN:
         sensors.extend(PRINTER_STATUS_RESIN)
         sensors.extend(PRINTER_ATTRIBUTES_RESIN)
 
-    LOGGER.debug(f"Adding {len(sensors)} sensor entities")
+    LOGGER.debug(
+        f"Adding {len(sensors)} sensor entities for {protocol_version.value} "
+        f"{printer_type.value if printer_type else 'unknown'} printer"
+    )
     entities = [
         ElegooPrinterSensor(
             coordinator=coordinator,

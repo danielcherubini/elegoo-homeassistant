@@ -306,9 +306,9 @@ class ElegooMqttClient:
                             printer = Printer(printer_info)
                             discovered_printers.append(printer)
                             self.logger.debug(
-                                "Discovered printer: %s (protocol: %s)",
+                                "Discovered printer: %s (transport: %s)",
                                 printer.name,
-                                printer.protocol_type.value,
+                                printer.transport_type.value,
                             )
                         except (UnicodeDecodeError, ValueError, TypeError):
                             self.logger.exception("Failed to parse printer data")

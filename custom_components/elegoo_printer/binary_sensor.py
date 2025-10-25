@@ -11,9 +11,11 @@ from homeassistant.components.binary_sensor import (
 from .const import LOGGER
 from .definitions import (
     PRINTER_ATTRIBUTES_BINARY_COMMON,
+    PRINTER_ATTRIBUTES_BINARY_V3_ONLY,
     ElegooPrinterBinarySensorEntityDescription,
 )
 from .entity import ElegooPrinterEntity
+from .sdcp.models.enums import ProtocolVersion
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -30,11 +32,23 @@ async def async_setup_entry(
 ) -> None:
     """Set up the binary sensor platform."""
     coordinator: ElegooDataUpdateCoordinator = entry.runtime_data.coordinator
+    protocol_version = (
+        coordinator.config_entry.runtime_data.api.printer.protocol_version
+    )
 
     sensors: list[ElegooPrinterBinarySensorEntityDescription] = []
+
+    # Common binary sensors (both V1 and V3)
     sensors.extend(PRINTER_ATTRIBUTES_BINARY_COMMON)
 
-    LOGGER.debug(f"Adding {len(sensors)} binary sensor entities")
+    # V3-only binary sensors (WebSocket/SDCP printers)
+    if protocol_version == ProtocolVersion.V3:
+        sensors.extend(PRINTER_ATTRIBUTES_BINARY_V3_ONLY)
+
+    LOGGER.debug(
+        f"Adding {len(sensors)} binary sensor entities for "
+        f"{protocol_version.value} printer"
+    )
     async_add_entities(
         [
             ElegooPrinterBinarySensor(

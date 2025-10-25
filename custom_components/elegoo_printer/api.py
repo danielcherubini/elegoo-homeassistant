@@ -26,7 +26,7 @@ from .mqtt.client import ElegooMqttClient
 from .mqtt.const import MQTT_BROKER_PORT
 from .mqtt.server import ElegooMQTTBroker
 from .sdcp.models.elegoo_image import ElegooImage
-from .sdcp.models.enums import ProtocolType
+from .sdcp.models.enums import TransportType
 from .sdcp.models.printer import Printer, PrinterData
 from .websocket.client import ElegooPrinterClient
 from .websocket.server import ElegooPrinterServer
@@ -173,15 +173,15 @@ class ElegooPrinterApiClient:
 
         # First, test if printer is reachable before starting proxy server
         logger.debug(
-            "Testing connectivity to printer: %s at %s (protocol: %s)",
+            "Testing connectivity to printer: %s at %s (transport: %s)",
             printer.name,
             printer.ip_address,
-            printer.protocol_type.value,
+            printer.transport_type.value,
         )
 
-        # Create appropriate client based on protocol type
-        if printer.protocol_type == ProtocolType.MQTT:
-            logger.info("Using MQTT protocol for printer %s", printer.name)
+        # Create appropriate client based on transport type
+        if printer.transport_type == TransportType.MQTT:
+            logger.info("Using MQTT transport for printer %s", printer.name)
 
             # Start embedded MQTT broker (always enabled for MQTT printers)
             printer = await self._setup_mqtt_broker_if_enabled(printer)

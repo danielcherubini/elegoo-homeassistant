@@ -50,53 +50,20 @@ print_history = {
 printer_attributes = {
     "Name": PRINTER_NAME,
     "MachineName": "Saturn 3",
-    "BrandName": "ELEGOO",
     "ProtocolVersion": "V1.0.0",  # V1.x indicates MQTT protocol
     "FirmwareVersion": "V1.1.29",
-    "XYZsize": "300x300x400",
+    "Resolution": "11520x5120",
     "MainboardIP": PRINTER_IP,
     "MainboardID": MAINBOARD_ID,
-    "NumberOfVideoStreamConnected": 0,
-    "MaximumVideoStreamAllowed": 1,
-    "NumberOfCloudSDCPServicesConnected": 0,
-    "MaximumCloudSDCPSercicesAllowed": 1,
-    "NetworkStatus": "wlan",
-    "MainboardMAC": "00:11:22:33:44:55",
-    "UsbDiskStatus": 1,
-    "Capabilities": ["FILE_TRANSFER", "PRINT_CONTROL", "VIDEO_STREAM"],
-    "SupportFileType": ["GCODE"],
-    "DevicesStatus": {
-        "ZMotorStatus": 1,
-        "YMotorStatus": 1,
-        "XMotorStatus": 1,
-        "ExtruderMotorStatus": 1,
-        "RelaseFilmState": 1,
-    },
-    "CameraStatus": 1,
-    "RemainingMemory": 5 * 1024 * 1024 * 1024,  # 5GB
     "SDCPStatus": 1,
+    "LocalSDCPAddress": f"tcp://{PRINTER_IP}:18830",
+    "SDCPAddress": "",
+    "Capabilities": ["FILE_TRANSFER", "PRINT_CONTROL"],
 }
 
 printer_status = {
     "CurrentStatus": 1,  # Printing (MQTT format: integer, not list)
     "PreviousStatus": 0,
-    "TempOfNozzle": 210,
-    "TempTargetNozzle": 210,
-    "TempOfHotbed": 60,
-    "TempTargetHotbed": 60,
-    "TempOfBox": 25,
-    "TempTargetBox": 0,
-    "CurrenCoord": "150.0,150.0,20.0",
-    "CurrentFanSpeed": {
-        "ModelFan": 100,
-        "ModeFan": 100,
-        "AuxiliaryFan": 50,
-        "BoxFan": 0,
-    },
-    "LightStatus": {"SecondLight": 1},
-    "RgbLight": [255, 255, 255],
-    "ZOffset": 0.0,
-    "PrintSpeed": 100,
     "PrintInfo": {
         "Status": 3,  # 3 = Printing (Exposuring)
         "CurrentLayer": 100,
@@ -105,9 +72,13 @@ printer_status = {
         "TotalTicks": 10000,
         "Filename": "test_print_1.gcode",
         "ErrorNumber": 0,
-        # Note: Real MQTT printers do NOT send TaskId in PrintInfo
-        # This means task details (begin_time, end_time, thumbnail) are not available
-        "PrintSpeed": 100,
+    },
+    "FileTransferInfo": {
+        "Status": 0,
+        "DownloadOffset": 0,
+        "CheckOffset": 0,
+        "FileTotalSize": 0,
+        "Filename": "",
     },
 }
 
@@ -121,11 +92,12 @@ async def publish_status(mqtt_client):
     """Publish printer status to MQTT."""
     # Real MQTT printers send status nested under "Data" (not like WebSocket)
     status_message = {
+        "Id": str(uuid.uuid4()),
         "Data": {
             "Status": printer_status,
             "MainboardID": MAINBOARD_ID,
             "TimeStamp": get_timestamp(),
-        }
+        },
     }
     topic = f"/sdcp/status/{MAINBOARD_ID}"
     await mqtt_client.publish(topic, json.dumps(status_message))
@@ -135,11 +107,12 @@ async def publish_attributes(mqtt_client):
     """Publish printer attributes to MQTT."""
     # Real MQTT printers send attributes nested under "Data" (not like WebSocket)
     attributes_message = {
+        "Id": str(uuid.uuid4()),
         "Data": {
             "Attributes": printer_attributes,
             "MainboardID": MAINBOARD_ID,
             "TimeStamp": get_timestamp(),
-        }
+        },
     }
     topic = f"/sdcp/attributes/{MAINBOARD_ID}"
     await mqtt_client.publish(topic, json.dumps(attributes_message))
@@ -191,12 +164,9 @@ async def handle_request(mqtt_client, request, disconnect_event=None):
         printer_status["PrintInfo"]["CurrentLayer"] = 0
         printer_status["PrintInfo"]["TotalLayer"] = random.randint(100, 500)
         printer_status["PrintInfo"]["CurrentTicks"] = 0
-        printer_status["PrintInfo"]["TotalTicks"] = (
-            printer_status["PrintInfo"]["TotalLayer"] * random.randint(10, 20)
-        )
-        # Set printing temperatures
-        printer_status["TempTargetNozzle"] = 210
-        printer_status["TempTargetHotbed"] = 60
+        printer_status["PrintInfo"]["TotalTicks"] = printer_status["PrintInfo"][
+            "TotalLayer"
+        ] * random.randint(10, 20)
         response = create_response(request, {"Ack": 0})
         await mqtt_client.publish(response_topic, json.dumps(response))
         await publish_status(mqtt_client)
@@ -265,22 +235,10 @@ async def handle_request(mqtt_client, request, disconnect_event=None):
     elif cmd == 16:  # Control Device (lights, fans, temps, etc)
         control_data = request["Data"]["Data"]
         print(f"Control device command: {control_data}")
-
-        # Update printer state based on control data
-        if "LightStatus" in control_data:
-            printer_status["LightStatus"].update(control_data["LightStatus"])
-        if "TargetFanSpeed" in control_data:
-            printer_status["CurrentFanSpeed"].update(control_data["TargetFanSpeed"])
-        if "TempTargetNozzle" in control_data:
-            printer_status["TempTargetNozzle"] = control_data["TempTargetNozzle"]
-        if "TempTargetHotbed" in control_data:
-            printer_status["TempTargetHotbed"] = control_data["TempTargetHotbed"]
-        if "PrintSpeedPct" in control_data:
-            printer_status["PrintSpeed"] = control_data["PrintSpeedPct"]
-
+        # MQTT resin printers don't support control device commands
+        # Just acknowledge the request without updating any state
         response = create_response(request, {"Ack": 0})
         await mqtt_client.publish(response_topic, json.dumps(response))
-        await publish_status(mqtt_client)
 
     else:
         print(f"Unknown command: {cmd}")
@@ -303,20 +261,9 @@ async def simulate_printing(stop_event):
         pi["CurrentLayer"] += 1
         pi["CurrentTicks"] += random.randint(15, 25)
 
-        # Update coordinates
-        layer_height = 0.05  # mm
-        x = random.uniform(50, 250)
-        y = random.uniform(50, 250)
-        z = pi["CurrentLayer"] * layer_height
-        printer_status["CurrenCoord"] = f"{x:.1f},{y:.1f},{z:.2f}"
-
-        # Slight temperature variations
-        printer_status["TempOfNozzle"] = 210 + random.uniform(-2, 2)
-        printer_status["TempOfHotbed"] = 60 + random.uniform(-1, 1)
-
         print(
             f"📊 Layer {pi['CurrentLayer']}/{pi['TotalLayer']} "
-            f"({pi['CurrentLayer']/pi['TotalLayer']*100:.1f}%)"
+            f"({pi['CurrentLayer'] / pi['TotalLayer'] * 100:.1f}%)"
         )
 
     if not stop_event.is_set() and pi["CurrentLayer"] >= pi["TotalLayer"]:
@@ -356,7 +303,8 @@ async def mqtt_message_handler(mqtt_client, stop_event, disconnect_event):
 
             try:
                 payload = json.loads(message.payload.decode())
-                if message.topic.matches(request_topic):
+                topic_str = str(message.topic)
+                if topic_str == request_topic:
                     await handle_request(mqtt_client, payload, disconnect_event)
             except json.JSONDecodeError:
                 print(f"Invalid JSON received: {message.payload}")
@@ -397,7 +345,9 @@ async def mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_eve
 
         async with aiomqtt.Client(**mqtt_kwargs) as mqtt_client:
             if broker_username:
-                print(f"✅ Connected to MQTT broker (authenticated as {broker_username})")
+                print(
+                    f"✅ Connected to MQTT broker (authenticated as {broker_username})"
+                )
             else:
                 print("✅ Connected to MQTT broker")
 
@@ -406,9 +356,7 @@ async def mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_eve
             await publish_status(mqtt_client)
 
             # Start background tasks
-            status_task = asyncio.create_task(
-                status_publisher(mqtt_client, stop_event)
-            )
+            status_task = asyncio.create_task(status_publisher(mqtt_client, stop_event))
             handler_task = asyncio.create_task(
                 mqtt_message_handler(mqtt_client, stop_event, disconnect_event)
             )
@@ -456,7 +404,9 @@ async def mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_eve
                 print("\n⏳ Waiting for new M66666 command to reconnect...")
                 mqtt_connect_event.clear()  # Reset the connect event
                 # Recursively call to handle reconnection
-                await mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_event)
+                await mqtt_connection_manager(
+                    mqtt_connect_event, mqtt_broker_info, stop_event
+                )
 
     except (OSError, TimeoutError) as e:
         print(f"❌ Failed to connect to MQTT broker: {e}")
@@ -480,21 +430,25 @@ async def udp_discovery_server(mqtt_connect_event, mqtt_broker_info, stop_event)
 
                 if message == "M99999":
                     print(f"🔍 Received discovery request from {addr}")
-                    # Using legacy Saturn format for compatibility with tools like Cassini
+                    # Using legacy Saturn format for compatibility
+                    # MQTT printers don't send BrandName, so it's omitted
                     response = {
                         "Id": str(uuid.uuid4()),
                         "Data": {
                             "Attributes": {
                                 "Name": PRINTER_NAME,
                                 "MachineName": "Saturn 3",
-                                "BrandName": printer_attributes["BrandName"],
                                 "MainboardIP": PRINTER_IP,
                                 "MainboardID": MAINBOARD_ID,
-                                "ProtocolVersion": printer_attributes["ProtocolVersion"],
-                                "FirmwareVersion": printer_attributes["FirmwareVersion"],
+                                "ProtocolVersion": printer_attributes[
+                                    "ProtocolVersion"
+                                ],
+                                "FirmwareVersion": printer_attributes[
+                                    "FirmwareVersion"
+                                ],
                             },
                             "Status": {
-                                "CurrentStatus": printer_status["CurrentStatus"],
+                                "CurrentStatus": [printer_status["CurrentStatus"]],
                                 "PrintInfo": printer_status["PrintInfo"],
                                 "FileTransferInfo": {
                                     "Status": 0,
@@ -515,7 +469,13 @@ async def udp_discovery_server(mqtt_connect_event, mqtt_broker_info, stop_event)
                     if len(parts) >= 3:
                         # New format: M66666 <host> <port> [username] [password]
                         mqtt_host = parts[1]
-                        mqtt_port = int(float(parts[2]))
+                        try:
+                            mqtt_port = int(parts[2])
+                            if not (1 <= mqtt_port <= 65535):
+                                raise ValueError("port out of range")
+                        except ValueError:
+                            print(f"⚠️  Invalid port in M66666 from {addr}: {parts[2]}")
+                            continue
                         mqtt_username = parts[3] if len(parts) > 3 else None
                         mqtt_password = parts[4] if len(parts) > 4 else None
 
@@ -531,8 +491,18 @@ async def udp_discovery_server(mqtt_connect_event, mqtt_broker_info, stop_event)
                         mqtt_connect_event.set()
                     elif len(parts) == 2:
                         # Legacy format: M66666 <port> (use source IP)
-                        mqtt_port = int(float(parts[1]))
-                        print(f"\n🎯 Received M66666 command from {addr} (legacy format)")
+                        try:
+                            mqtt_port = int(parts[1])
+                            if not (1 <= mqtt_port <= 65535):
+                                raise ValueError("port out of range")
+                        except ValueError:
+                            print(
+                                f"⚠️  Invalid port in legacy M66666 from {addr}: {parts[1]}"
+                            )
+                            continue
+                        print(
+                            f"\n🎯 Received M66666 command from {addr} (legacy format)"
+                        )
                         print(f"   Broker: {addr[0]}:{mqtt_port}")
                         mqtt_broker_info["host"] = addr[0]  # Use source IP
                         mqtt_broker_info["port"] = mqtt_port
@@ -540,7 +510,9 @@ async def udp_discovery_server(mqtt_connect_event, mqtt_broker_info, stop_event)
                         mqtt_broker_info["password"] = None
                         mqtt_connect_event.set()
                     else:
-                        print(f"⚠️  Received M66666 command from {addr} (invalid format)")
+                        print(
+                            f"⚠️  Received M66666 command from {addr} (invalid format)"
+                        )
 
             except (socket.timeout, UnicodeDecodeError):
                 continue

@@ -22,6 +22,8 @@ MQTT_PUBLISH = 3
 MQTT_PUBACK = 4
 MQTT_SUBSCRIBE = 8
 MQTT_SUBACK = 9
+MQTT_PINGREQ = 12
+MQTT_PINGRESP = 13
 MQTT_DISCONNECT = 14
 
 
@@ -210,12 +212,14 @@ class ElegooMQTTBroker:
 
                 if topic in subscribed_topics:
                     qos = subscribed_topics[topic]
+                    # Only include packet ID for QoS > 0
+                    packid = self._next_pack_id() if qos > 0 else 0
+                    flags = (qos << 1) & 0x06  # Set QoS bits in flags
                     await self._send_msg(
                         writer,
                         MQTT_PUBLISH,
-                        payload=self._encode_publish(
-                            topic, payload, self._next_pack_id()
-                        ),
+                        flags=flags,
+                        payload=self._encode_publish(topic, payload, packid),
                     )
                 else:
                     _LOGGER.debug("MQTT SEND: Client not subscribed to %s", topic)
@@ -322,6 +326,10 @@ class ElegooMQTTBroker:
                     await self._send_msg(
                         writer, MQTT_SUBACK, packet_ident=packid, payload=bytes([qos])
                     )
+
+                elif msg_type == MQTT_PINGREQ:
+                    # Respond to keep-alive ping
+                    await self._send_msg(writer, MQTT_PINGRESP)
 
                 elif msg_type == MQTT_DISCONNECT:
                     _LOGGER.info("MQTT client %s disconnected", addr)

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.image import Image, ImageEntity
 
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
+from custom_components.elegoo_printer.sdcp.models.enums import ProtocolVersion
 
 from .const import LOGGER
 from .definitions import PRINTER_IMAGES
@@ -32,9 +33,19 @@ async def async_setup_entry(
     """
     Asynchronously sets up Elegoo Printer image entities for a Home Assistant config entry.
 
-    Creates and adds a CoverImage entity for each supported printer image, ensuring each entity is updated before being added to the platform.
+    Image entities (cover thumbnails) are only available for V3 (WebSocket/SDCP)
+    printers. V1 (MQTT) printers do not support task history or thumbnail fetching.
     """  # noqa: E501
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
+    protocol_version = (
+        coordinator.config_entry.runtime_data.api.printer.protocol_version
+    )
+
+    # Image platform only works with V3 (WebSocket/SDCP) printers
+    # V1 (MQTT) printers don't have async_get_task or async_get_thumbnail_image
+    if protocol_version != ProtocolVersion.V3:
+        LOGGER.debug("Skipping image entities for V1 (MQTT) printer")
+        return
 
     LOGGER.debug(f"Adding {len(PRINTER_IMAGES)} image entities")
     for image in PRINTER_IMAGES:

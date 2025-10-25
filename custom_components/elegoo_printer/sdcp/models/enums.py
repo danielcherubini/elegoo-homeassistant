@@ -3,37 +3,66 @@
 from enum import Enum
 
 
-class ProtocolType(Enum):
+class TransportType(Enum):
     """
-    Represents the communication protocol type used by the printer.
+    Represents the transport layer used for communication with the printer.
+
+    Both transports use the SDCP protocol, but differ in how messages are exchanged.
 
     Attributes:
-        SDCP: Standard SDCP protocol over WebSocket.
-        MQTT: SDCP protocol over MQTT.
+        WEBSOCKET: SDCP over WebSocket connection (V3 printers).
+        MQTT: SDCP over MQTT broker (V1 printers).
 
     """
 
-    SDCP = "sdcp"
+    WEBSOCKET = "websocket"
     MQTT = "mqtt"
 
+
+class ProtocolVersion(Enum):
+    """
+    Represents the SDCP protocol version supported by the printer.
+
+    Attributes:
+        V1: SDCP V1.x - Used by MQTT printers (Neptune, Saturn 3 MQTT).
+        V3: SDCP V3.x - Used by WebSocket printers (most FDM/resin printers).
+
+    """
+
+    V1 = "V1"
+    V3 = "V3"
+
     @classmethod
-    def from_version(cls, version: str | None) -> "ProtocolType":
+    def from_version_string(cls, version: str | None) -> "ProtocolVersion":
         """
-        Determine protocol type from version string.
+        Determine SDCP protocol version from version string.
 
         Arguments:
-            version: The protocol version string from the printer.
+            version: The protocol version string from the printer
+                (e.g., "V1.0.0", "V3.0.0").
 
         Returns:
-            ProtocolType.MQTT if version starts with "V1", otherwise ProtocolType.SDCP.
+            ProtocolVersion.V1 if version starts with "V1",
+            otherwise ProtocolVersion.V3.
 
         """
         if version:
-            # Extract major version for future-proof handling
             version_upper = version.upper()
             if version_upper.startswith("V1"):
-                return cls.MQTT
-        return cls.SDCP
+                return cls.V1
+        return cls.V3
+
+    def get_transport_type(self) -> TransportType:
+        """
+        Get the corresponding transport type for this protocol version.
+
+        Returns:
+            TransportType.MQTT for V1, TransportType.WEBSOCKET for V3.
+
+        """
+        if self == ProtocolVersion.V1:
+            return TransportType.MQTT
+        return TransportType.WEBSOCKET
 
 
 class ElegooMachineStatus(Enum):

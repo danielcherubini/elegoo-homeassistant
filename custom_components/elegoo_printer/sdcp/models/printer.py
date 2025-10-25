@@ -18,7 +18,7 @@ from custom_components.elegoo_printer.const import (
 from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStatus
 
 from .attributes import PrinterAttributes
-from .enums import PrinterType, ProtocolType
+from .enums import PrinterType, ProtocolVersion, TransportType
 from .status import PrinterStatus
 from .video import ElegooVideo
 
@@ -47,8 +47,9 @@ class Printer:
         model (str): The model name of the printer.
         brand (str): The brand of the printer.
         ip (str): The IP address of the printer.
-        protocol (str): The protocol version used by the printer.
-        protocol_type (ProtocolType): The communication protocol type (SDCP or MQTT).
+        protocol (str): The protocol version string (e.g., "V1.0.0", "V3.0.0").
+        transport_type (TransportType): The transport layer (MQTT or WebSocket).
+        protocol_version (ProtocolVersion): The SDCP protocol version (V1 or V3).
         firmware (str): The firmware version of the printer.
         id (str): The unique ID of the printer's mainboard.
         printer_type (PrinterType): The type of printer (RESIN or FDM).
@@ -80,7 +81,8 @@ class Printer:
     brand: str | None
     ip_address: str | None
     protocol: str | None
-    protocol_type: ProtocolType
+    transport_type: TransportType
+    protocol_version: ProtocolVersion
     firmware: str | None
     id: str | None
     printer_type: PrinterType | None
@@ -104,6 +106,8 @@ class Printer:
             self.brand = None
             self.ip_address = None
             self.protocol = None
+            self.protocol_version = ProtocolVersion.V3
+            self.transport_type = TransportType.WEBSOCKET
             self.firmware = None
             self.id = None
             self.printer_type = None
@@ -122,7 +126,10 @@ class Printer:
                 self.brand = attrs.get("BrandName")
                 self.ip_address = attrs.get("MainboardIP") or attrs.get("ip_address")
                 self.protocol = attrs.get("ProtocolVersion")
-                self.protocol_type = ProtocolType.from_version(self.protocol)
+                self.protocol_version = ProtocolVersion.from_version_string(
+                    self.protocol
+                )
+                self.transport_type = self.protocol_version.get_transport_type()
                 self.firmware = attrs.get("FirmwareVersion")
                 self.id = attrs.get("MainboardID")
                 self.is_proxy = attrs.get("Proxy", False)
@@ -136,7 +143,8 @@ class Printer:
                 self.brand = None
                 self.ip_address = None
                 self.protocol = None
-                self.protocol_type = ProtocolType.SDCP
+                self.protocol_version = ProtocolVersion.V3
+                self.transport_type = TransportType.WEBSOCKET
                 self.firmware = None
                 self.id = None
                 self.printer_type = None
@@ -158,7 +166,8 @@ class Printer:
             "brand": self.brand,
             "ip_address": self.ip_address,
             "protocol": self.protocol,
-            "protocol_type": self.protocol_type.value,
+            "transport_type": self.transport_type.value,
+            "protocol_version": self.protocol_version.value,
             "firmware": self.firmware,
             "id": self.id,
             "printer_type": self.printer_type.value if self.printer_type else None,
@@ -201,12 +210,20 @@ class Printer:
         printer.ip_address = attrs.get("MainboardIP", attrs.get("ip_address"))
         printer.protocol = attrs.get("ProtocolVersion", attrs.get("protocol"))
 
-        # Determine protocol type from version or use stored value
-        protocol_type_str = attrs.get("protocol_type")
-        if protocol_type_str:
-            printer.protocol_type = ProtocolType(protocol_type_str)
+        # Determine transport and version from stored values or protocol string
+        transport_type_str = attrs.get("transport_type")
+        protocol_version_str = attrs.get("protocol_version")
+
+        if transport_type_str and protocol_version_str:
+            # Use stored values if available (from to_dict)
+            printer.transport_type = TransportType(transport_type_str)
+            printer.protocol_version = ProtocolVersion(protocol_version_str)
         else:
-            printer.protocol_type = ProtocolType.from_version(printer.protocol)
+            # Derive from protocol version string
+            printer.protocol_version = ProtocolVersion.from_version_string(
+                printer.protocol
+            )
+            printer.transport_type = printer.protocol_version.get_transport_type()
 
         printer.firmware = attrs.get("FirmwareVersion", attrs.get("firmware"))
         printer.id = attrs.get("MainboardID", attrs.get("id"))
