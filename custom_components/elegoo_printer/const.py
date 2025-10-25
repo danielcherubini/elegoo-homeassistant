@@ -25,8 +25,6 @@ CONF_PROXY_VIDEO_PORT = "proxy_video_port"
 # MQTT settings
 CONF_MQTT_HOST = "mqtt_host"
 CONF_MQTT_PORT = "mqtt_port"
-CONF_MQTT_USERNAME = "mqtt_username"
-CONF_MQTT_PASSWORD = "mqtt_password"  # noqa: S105
 CONF_MQTT_BROKER_ENABLED = "mqtt_broker_enabled"
 
 # Websocket and proxy settings

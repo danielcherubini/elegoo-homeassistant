@@ -80,12 +80,10 @@ class ElegooMqttClient:
     rather than connecting directly to the printer.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         mqtt_host: str = "localhost",
         mqtt_port: int = MQTT_PORT,
-        mqtt_username: str | None = None,
-        mqtt_password: str | None = None,
         logger: Any = LOGGER,
         printer: Printer | None = None,
     ) -> None:
@@ -97,16 +95,12 @@ class ElegooMqttClient:
         Arguments:
             mqtt_host: The MQTT broker hostname.
             mqtt_port: The MQTT broker port.
-            mqtt_username: Optional MQTT broker username for authentication.
-            mqtt_password: Optional MQTT broker password for authentication.
             logger: The logger to use.
             printer: Optional Printer object with existing configuration.
 
         """
         self.mqtt_host = mqtt_host
         self.mqtt_port = mqtt_port
-        self.mqtt_username = mqtt_username
-        self.mqtt_password = mqtt_password
         self.mqtt_client: aiomqtt.Client | None = None
         self.printer: Printer = printer or Printer()
         self.printer_data = PrinterData(printer=self.printer)

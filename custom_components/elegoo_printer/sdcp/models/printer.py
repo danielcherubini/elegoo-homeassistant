@@ -91,8 +91,6 @@ class Printer:
     is_proxy: bool
     mqtt_host: str | None
     mqtt_port: int | None
-    mqtt_username: str | None
-    mqtt_password: str | None
     mqtt_broker_enabled: bool
 
     def __init__(
@@ -154,8 +152,6 @@ class Printer:
         self.proxy_video_port = None
         self.mqtt_host = None
         self.mqtt_port = None
-        self.mqtt_username = None
-        self.mqtt_password = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a dictionary containing all attributes of the Printer instance."""
@@ -177,8 +173,6 @@ class Printer:
             "is_proxy": self.is_proxy,
             "mqtt_host": self.mqtt_host,
             "mqtt_port": self.mqtt_port,
-            "mqtt_username": self.mqtt_username,
-            "mqtt_password": self.mqtt_password,
             "mqtt_broker_enabled": self.mqtt_broker_enabled,
         }
 
@@ -190,11 +184,8 @@ class Printer:
             dict: Dictionary representation with sensitive fields redacted.
 
         """
-        result = self.to_dict()
-        # Redact sensitive fields
-        if result.get("mqtt_password"):
-            result["mqtt_password"] = "***REDACTED***"  # noqa: S105
-        return result
+        # No sensitive fields to redact anymore since we removed MQTT auth
+        return self.to_dict()
 
     @classmethod
     def from_dict(
@@ -241,8 +232,6 @@ class Printer:
         printer.is_proxy = attrs.get("Proxy", attrs.get("is_proxy", False))
         printer.mqtt_host = attrs.get("mqtt_host")
         printer.mqtt_port = attrs.get("mqtt_port")
-        printer.mqtt_username = attrs.get("mqtt_username")
-        printer.mqtt_password = attrs.get("mqtt_password")
         return printer
 
 
