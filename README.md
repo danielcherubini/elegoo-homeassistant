@@ -12,26 +12,26 @@ Bring your Elegoo 3D printers into Home Assistant! This integration allows you t
 
 ## Index
 
-* [Features](#-features)
-* [Local Proxy Server](#️-local-proxy-server)
-* [Supported Printers](#️-supported-printers)
-* [Installation](#️-installation)
-* [Configuration](#-configuration)
-* [Entities](#-entities)
-* [Automation Blueprints](#automation-blueprints)
-* [Contributing](#️-contributing)
+- [Features](#-features)
+- [Local Proxy Server](#️-local-proxy-server)
+- [Supported Printers](#️-supported-printers)
+- [Installation](#️-installation)
+- [Configuration](#-configuration)
+- [Entities](#-entities)
+- [Automation Blueprints](#automation-blueprints)
+- [Contributing](#️-contributing)
 
 ---
 
 ## ✨ Features
 
-* **Broad Printer Support:** Compatible with a growing list of Elegoo resin and FDM printers.
-* **Comprehensive Sensor Data:** Exposes a wide range of printer attributes and real-time status sensors.
-* **Live Camera:** Monitor your print from anywhere.
-* **Print Thumbnails:** See an image of what you are currently printing directly in Home Assistant.
-* **Direct Printer Control:** Stop and pause prints, control temperatures, and adjust speeds.
-* **Local Proxy Server:** An optional built-in proxy to bypass printer connection limits, allowing multiple clients (slicers, monitoring tools) to connect simultaneously.
-* **Automation Blueprints:** Includes a ready-to-use blueprint for print progress notifications.
+- **Broad Printer Support:** Compatible with a growing list of Elegoo resin and FDM printers.
+- **Comprehensive Sensor Data:** Exposes a wide range of printer attributes and real-time status sensors.
+- **Live Camera:** Monitor your print from anywhere.
+- **Print Thumbnails:** See an image of what you are currently printing directly in Home Assistant.
+- **Direct Printer Control:** Stop and pause prints, control temperatures, and adjust speeds.
+- **Local Proxy Server:** An optional built-in proxy to bypass printer connection limits, allowing multiple clients (slicers, monitoring tools) to connect simultaneously.
+- **Automation Blueprints:** Includes a ready-to-use blueprint for print progress notifications.
 
 ---
 
@@ -49,47 +49,48 @@ You can enable the proxy server during the initial setup of the integration or a
 
 ## 🖨️ Supported Printers
 
-This integration is designed to work with Elegoo printers that use the `SDCP` protocol. The following models have been tested and are known to work:
+This integration is designed to work with Elegoo printers that use the `SDCP` protocol. SDCP can be transported over WebSocket (newer models) or MQTT (legacy models). The following models have been tested and are known to work:
 
-### ✅ Fully Supported Printers (WebSocket/SDCP)
+### ✅ Fully Supported Printers (SDCP over WebSocket)
 
 #### Resin Printers
 
-* Mars 5
-* Mars 5 Ultra
-* Saturn 3
-* Saturn 3 Ultra
-* Saturn 4
-* Saturn 4 Ultra
+- Mars 5
+- Mars 5 Ultra
+- Saturn 4
+- Saturn 4 Ultra
 
 #### FDM Printers
 
-* Centauri Carbon
+- Centauri Carbon
 
-### 🧪 Beta Support - Legacy MQTT Printers
+### 🧪 Beta Support - Legacy Printers (SDCP over MQTT)
 
-The following older models use the MQTT protocol and have **experimental/beta support**. Most features work, but some data may be missing or incomplete due to protocol differences:
+The following older models use **SDCP over MQTT** and have **experimental/beta support**. Most features work, but some data may be missing or incomplete due to transport differences:
 
 #### Resin Printers
 
-* Saturn 2
-* Saturn 2 8K
-* Mars 3
-* Mars 3 Pro
-* Mars 4
-* Mars 4 DLP
-* Mars 4 Max
-* Mars 4 Ultra
+- Saturn 2
+- Saturn 2 8K
+- Saturn 3
+- Saturn 3 Ultra
+- Mars 3
+- Mars 3 Pro
+- Mars 4
+- Mars 4 DLP
+- Mars 4 Max
+- Mars 4 Ultra
 
-**Note:** MQTT printer support is in early stages. If you experience any issues or notice missing/incorrect data, please [open a GitHub issue](https://github.com/danielcherubini/elegoo-homeassistant/issues) with details about your printer model and the problem you're encountering. Community contributions to improve MQTT support are greatly appreciated!
+**Note:** SDCP over MQTT support is in early stages. If you experience any issues or notice missing/incorrect data, please [open a GitHub issue](https://github.com/danielcherubini/elegoo-homeassistant/issues) with details about your printer model and the problem you're encountering. Community contributions to improve MQTT transport support are greatly appreciated!
 
-**Known Limitations for MQTT Printers:**
-- Begin Time, End Time, and Cover Image sensors will show "Unknown" (this data is not available via MQTT protocol)
+**Known Limitations for MQTT Transport:**
+
+- Begin Time, End Time, and Cover Image sensors will show "Unknown" (this data is not available via MQTT transport)
 - All other sensors (status, layers, temperatures, progress, etc.) work normally
 
 ---
 
-If your printer isn't listed but uses the `SDCP` or `MQTT` protocol, it may still work. Please [open an issue](https://github.com/danielcherubini/elegoo-homeassistant/issues) to let us know!
+If your printer isn't listed but uses SDCP (over WebSocket or MQTT), it may still work. Please [open an issue](https://github.com/danielcherubini/elegoo-homeassistant/issues) to let us know!
 
 ---
 
@@ -128,55 +129,55 @@ The integration creates the following entities for your printer.
 
 ### Camera
 
-| Entity | Description |
-| --- | --- |
+| Entity   | Description                                 |
+| -------- | ------------------------------------------- |
 | `Camera` | Displays a live video of the current print. |
 
 ### Image
 
-| Entity | Description |
-| --- | --- |
+| Entity      | Description                                |
+| ----------- | ------------------------------------------ |
 | `Thumbnail` | Displays a thumbnail of the current print. |
 
 ### Buttons
 
-| Button | Description |
-| --- | --- |
-| `Stop Print` | Stops the current print job. |
-| `Pause Print` | Pauses the current print job. |
-| `Resume Print` | Resumes a paused print job. |
+| Button         | Description                   |
+| -------------- | ----------------------------- |
+| `Stop Print`   | Stops the current print job.  |
+| `Pause Print`  | Pauses the current print job. |
+| `Resume Print` | Resumes a paused print job.   |
 
 ### Select
 
-| Select | Description |
-| --- | --- |
+| Select        | Description                                                    |
+| ------------- | -------------------------------------------------------------- |
 | `Print Speed` | Allows you to change the print speed (e.g., Standard, Silent). |
 
 ### Number
 
-| Number | Description | Unit |
-| --- | --- | --- |
-| `Target Bed Temp` | Sets the target temperature for the heated bed. | `°C` |
-| `Target Nozzle Temp`| Sets the target temperature for the nozzle. | `°C` |
+| Number               | Description                                     | Unit |
+| -------------------- | ----------------------------------------------- | ---- |
+| `Target Bed Temp`    | Sets the target temperature for the heated bed. | `°C` |
+| `Target Nozzle Temp` | Sets the target temperature for the nozzle.     | `°C` |
 
 ### Sensors
 
-| Sensor | Description | Unit |
-| --- | --- | --- |
-| `Status` | The current status of the printer. | |
-| `File Name` | The name of the file currently being printed. | |
-| `Print Progress` | The completion percentage of the current print.| `%` |
-| `Time Remaining` | Estimated time remaining for the current print.| `minutes`|
-| `Time Elapsed` | Time elapsed for the current print. | `minutes`|
-| `Layer` | The current layer being printed. | |
-| `Total Layers` | The total number of layers in the print job. | |
-| `Nozzle Temp` | The current temperature of the nozzle. | `°C` |
-| `Bed Temp` | The current temperature of the heated bed. | `°C` |
-| `Fan Speed` | The current speed of the cooling fan. | `%` |
-| `Print Speed` | The current print speed multiplier. | `%` |
-| `Print Error Reason`| The reason for the last print error. | |
-| `Firmware Version` | The firmware version of the printer. | |
-| `Z-Height` | The current height of the Z-axis. | `mm` |
+| Sensor               | Description                                     | Unit      |
+| -------------------- | ----------------------------------------------- | --------- |
+| `Status`             | The current status of the printer.              |           |
+| `File Name`          | The name of the file currently being printed.   |           |
+| `Print Progress`     | The completion percentage of the current print. | `%`       |
+| `Time Remaining`     | Estimated time remaining for the current print. | `minutes` |
+| `Time Elapsed`       | Time elapsed for the current print.             | `minutes` |
+| `Layer`              | The current layer being printed.                |           |
+| `Total Layers`       | The total number of layers in the print job.    |           |
+| `Nozzle Temp`        | The current temperature of the nozzle.          | `°C`      |
+| `Bed Temp`           | The current temperature of the heated bed.      | `°C`      |
+| `Fan Speed`          | The current speed of the cooling fan.           | `%`       |
+| `Print Speed`        | The current print speed multiplier.             | `%`       |
+| `Print Error Reason` | The reason for the last print error.            |           |
+| `Firmware Version`   | The firmware version of the printer.            |           |
+| `Z-Height`           | The current height of the Z-axis.               | `mm`      |
 
 ---
 
