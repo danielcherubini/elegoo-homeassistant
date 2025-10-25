@@ -73,9 +73,13 @@ async def monitor_printer(
         )
 
     logger.info(f"Connecting to printer: {printer.name} at {printer.ip_address}")
-    connected = await elegoo_printer.connect_printer(
-        printer, proxy_enabled=printer.proxy_enabled
-    )
+    # MQTT client doesn't accept proxy_enabled parameter
+    if printer.protocol_type == ProtocolType.MQTT:
+        connected = await elegoo_printer.connect_printer(printer)
+    else:
+        connected = await elegoo_printer.connect_printer(
+            printer, proxy_enabled=printer.proxy_enabled
+        )
 
     if connected:
         logger.info(f"✅ Connected to {printer.name} ({printer.model})")
@@ -94,7 +98,10 @@ async def monitor_printer(
                 # Get status
                 printer_data = await elegoo_printer.get_printer_status()
                 print_info = printer_data.status.print_info
-                logger.info(f"[{printer.name}] Progress: {print_info.percent_complete}% | Remaining: {print_info.remaining_ticks}ms")
+                if print_info:
+                    logger.info(f"[{printer.name}] Progress: {print_info.percent_complete}% | Remaining: {print_info.remaining_ticks}ms")
+                else:
+                    logger.info(f"[{printer.name}] Status received (no print_info yet)")
 
                 # Try to get video for WebSocket printers
                 if printer.protocol_type != ProtocolType.MQTT:

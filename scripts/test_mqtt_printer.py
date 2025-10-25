@@ -159,7 +159,7 @@ def create_response(request_data, data):
     }
 
 
-async def handle_request(mqtt_client, request):
+async def handle_request(mqtt_client, request, disconnect_event=None):
     """Handle incoming MQTT request."""
     if "Data" not in request:
         print(f"Invalid request: {request}")
@@ -253,6 +253,15 @@ async def handle_request(mqtt_client, request):
         await mqtt_client.publish(response_topic, json.dumps(response))
         # Note: The actual periodic publishing is handled by status_publisher()
 
+    elif cmd == 64:  # Disconnect
+        print("🔌 Received disconnect command from client")
+        response = create_response(request, {"Ack": 0})
+        await mqtt_client.publish(response_topic, json.dumps(response))
+        # Signal disconnection to close the MQTT connection
+        if disconnect_event:
+            print("🛑 Initiating disconnect from MQTT broker...")
+            disconnect_event.set()
+
     elif cmd == 16:  # Control Device (lights, fans, temps, etc)
         control_data = request["Data"]["Data"]
         print(f"Control device command: {control_data}")
@@ -334,7 +343,7 @@ async def status_publisher(mqtt_client, stop_event):
             print("Error publishing status, will retry")
 
 
-async def mqtt_message_handler(mqtt_client, stop_event):
+async def mqtt_message_handler(mqtt_client, stop_event, disconnect_event):
     """Handle incoming MQTT messages."""
     request_topic = f"/sdcp/request/{MAINBOARD_ID}"
     await mqtt_client.subscribe(request_topic)
@@ -342,13 +351,13 @@ async def mqtt_message_handler(mqtt_client, stop_event):
 
     try:
         async for message in mqtt_client.messages:
-            if stop_event.is_set():
+            if stop_event.is_set() or disconnect_event.is_set():
                 break
 
             try:
                 payload = json.loads(message.payload.decode())
                 if message.topic.matches(request_topic):
-                    await handle_request(mqtt_client, payload)
+                    await handle_request(mqtt_client, payload, disconnect_event)
             except json.JSONDecodeError:
                 print(f"Invalid JSON received: {message.payload}")
             except (OSError, TimeoutError, KeyError, ValueError) as e:
@@ -371,6 +380,9 @@ async def mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_eve
     broker_password = mqtt_broker_info.get("password") or MQTT_PASSWORD
 
     print(f"\n🔌 Connecting to MQTT broker at {broker_host}:{broker_port}...")
+
+    # Create disconnect event to handle graceful disconnect on CMD_DISCONNECT
+    disconnect_event = asyncio.Event()
 
     try:
         # Build MQTT client configuration
@@ -398,7 +410,7 @@ async def mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_eve
                 status_publisher(mqtt_client, stop_event)
             )
             handler_task = asyncio.create_task(
-                mqtt_message_handler(mqtt_client, stop_event)
+                mqtt_message_handler(mqtt_client, stop_event, disconnect_event)
             )
             simulation_task = asyncio.create_task(simulate_printing(stop_event))
 
@@ -408,8 +420,23 @@ async def mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_eve
             print(f"  - Publishing to /sdcp/attributes/{MAINBOARD_ID}")
             print(f"  - Publishing to /sdcp/response/{MAINBOARD_ID}")
 
-            # Wait for stop signal
-            await stop_event.wait()
+            # Wait for stop signal or disconnect command
+            done, pending = await asyncio.wait(
+                [
+                    asyncio.create_task(stop_event.wait()),
+                    asyncio.create_task(disconnect_event.wait()),
+                ],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            # Cancel pending waits
+            for task in pending:
+                task.cancel()
+
+            if disconnect_event.is_set():
+                print("\n🔌 Disconnect command received, closing MQTT connection...")
+            else:
+                print("\n🛑 Stop signal received, shutting down MQTT connection...")
 
             # Clean shutdown
             print("\n🛑 Shutting down MQTT connection...")
@@ -423,6 +450,13 @@ async def mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_eve
                 pass
 
             print("✅ MQTT connection shut down gracefully")
+
+            # If disconnected by command (not stop signal), wait for new M66666 to reconnect
+            if disconnect_event.is_set() and not stop_event.is_set():
+                print("\n⏳ Waiting for new M66666 command to reconnect...")
+                mqtt_connect_event.clear()  # Reset the connect event
+                # Recursively call to handle reconnection
+                await mqtt_connection_manager(mqtt_connect_event, mqtt_broker_info, stop_event)
 
     except (OSError, TimeoutError) as e:
         print(f"❌ Failed to connect to MQTT broker: {e}")

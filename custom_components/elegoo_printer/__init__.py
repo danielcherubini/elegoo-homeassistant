@@ -145,9 +145,10 @@ async def async_unload_entry(
             )
 
         # Stop MQTT broker if it was started by this client
+        # Don't use shield here - we want this to be cancellable
         try:
-            await asyncio.shield(client.elegoo_stop_mqtt_broker())
-        except (asyncio.CancelledError, OSError, RuntimeError) as e:
+            await client.elegoo_stop_mqtt_broker()
+        except (OSError, RuntimeError) as e:
             LOGGER.warning("Error stopping MQTT broker: %s", e, exc_info=True)
 
     return unload_ok

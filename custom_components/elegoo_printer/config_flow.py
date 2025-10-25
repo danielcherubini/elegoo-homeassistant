@@ -19,8 +19,6 @@ from .const import (
     DOMAIN,
     LOGGER,
 )
-from .mqtt.client import ElegooMqttClient
-from .mqtt.const import MQTT_BROKER_PORT
 from .sdcp.exceptions import (
     ElegooConfigFlowConnectionError,
     ElegooConfigFlowGeneralError,
@@ -80,50 +78,39 @@ async def _async_test_connection(
             "Using MQTT protocol for printer %s during config flow",
             printer_object.name,
         )
-        # Always use embedded MQTT broker on localhost
-        elegoo_printer = ElegooMqttClient(
-            mqtt_host="localhost",
-            mqtt_port=MQTT_BROKER_PORT,
-            logger=LOGGER,
-            printer=printer_object,
-        )
-        # MQTT doesn't support proxy
-        printer_object.proxy_enabled = False
-        # Embedded MQTT broker is always enabled for MQTT printers
+        # Skip live connection test - embedded broker starts during setup
+        # Persist embedded-broker defaults
         printer_object.mqtt_broker_enabled = True
+        printer_object.proxy_enabled = False
         LOGGER.debug(
-            "Connecting to MQTT printer: %s at embedded broker localhost:%s",
-            printer_object.name,
-            MQTT_BROKER_PORT,
-        )
-        if await elegoo_printer.connect_printer(printer_object):
-            await elegoo_printer.disconnect()
-            return printer_object
-    else:
-        LOGGER.info(
-            "Using WebSocket/SDCP protocol for printer %s during config flow",
+            "Prepared MQTT printer %s for embedded broker (no connect test in flow)",
             printer_object.name,
         )
-        elegoo_printer = ElegooPrinterClient(
-            printer_object.ip_address,
-            config=MappingProxyType(user_input),
-            logger=LOGGER,
-            session=async_get_clientsession(hass),
-        )
-        printer_object.proxy_enabled = user_input.get(CONF_PROXY_ENABLED, False)
-        # WebSocket printers don't use MQTT broker
-        printer_object.mqtt_broker_enabled = False
-        LOGGER.debug(
-            "Connecting to WebSocket printer: %s at %s with proxy enabled: %s",
-            printer_object.name,
-            printer_object.ip_address,
-            printer_object.proxy_enabled,
-        )
-        if await elegoo_printer.connect_printer(
-            printer_object, proxy_enabled=printer_object.proxy_enabled
-        ):
-            await elegoo_printer.disconnect()
-            return printer_object
+        return printer_object
+    LOGGER.info(
+        "Using WebSocket/SDCP protocol for printer %s during config flow",
+        printer_object.name,
+    )
+    elegoo_printer = ElegooPrinterClient(
+        printer_object.ip_address,
+        config=MappingProxyType(user_input),
+        logger=LOGGER,
+        session=async_get_clientsession(hass),
+    )
+    printer_object.proxy_enabled = user_input.get(CONF_PROXY_ENABLED, False)
+    # WebSocket printers don't use MQTT broker
+    printer_object.mqtt_broker_enabled = False
+    LOGGER.debug(
+        "Connecting to WebSocket printer: %s at %s with proxy enabled: %s",
+        printer_object.name,
+        printer_object.ip_address,
+        printer_object.proxy_enabled,
+    )
+    if await elegoo_printer.connect_printer(
+        printer_object, proxy_enabled=printer_object.proxy_enabled
+    ):
+        await elegoo_printer.disconnect()
+        return printer_object
 
     msg = f"Failed to connect to printer {printer_object.name} at {printer_object.ip_address}"  # noqa: E501
     raise ElegooConfigFlowConnectionError(msg)
@@ -295,11 +282,8 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 if self.selected_printer.protocol_type == ProtocolType.MQTT:
                     # Auto-configure MQTT printer with embedded broker
                     printer = Printer.from_dict(self.selected_printer.to_dict())
-                    printer.mqtt_host = "localhost"
-                    printer.mqtt_port = MQTT_BROKER_PORT
                     printer.mqtt_broker_enabled = True
-                    printer.mqtt_username = None
-                    printer.mqtt_password = None
+                    printer.proxy_enabled = False
 
                     await self.async_set_unique_id(unique_id=printer.id)
                     self._abort_if_unique_id_configured()
@@ -508,55 +492,6 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                 }
             ),
-            errors=_errors,
-        )
-
-    async def async_step_mqtt_options(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ) -> config_entries.ConfigFlowResult:
-        """Handle MQTT broker configuration for MQTT-enabled printers."""
-        _errors = {}
-        if user_input is not None and self.selected_printer:
-            printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
-            # Embedded MQTT broker is always enabled for MQTT printers
-            printer_to_validate.mqtt_broker_enabled = True
-
-            try:
-                # Test MQTT connection with broker settings
-                validated_printer = await _async_test_connection(
-                    self.hass, printer_to_validate, user_input
-                )
-                await self.async_set_unique_id(unique_id=validated_printer.id)
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=validated_printer.name or "Elegoo Printer",
-                    data=validated_printer.to_dict(),
-                )
-            except ElegooConfigFlowConnectionError as exception:
-                LOGGER.error("Connection error: %s", exception)
-                _errors["base"] = "connection"
-            except ElegooConfigFlowGeneralError as exception:
-                LOGGER.error("No printer found: %s", exception)
-                _errors["base"] = "mqtt_options_no_printer_found"
-            except PlatformNotReady as exception:
-                LOGGER.error(exception)
-                _errors["base"] = "connection"
-            except OSError as exception:
-                LOGGER.exception(exception)
-                _errors["base"] = "unknown"
-
-        # MQTT printers always use embedded broker - no configuration needed
-        # Skip this step and proceed directly to completion
-        return self.async_show_form(
-            step_id="mqtt_options",
-            data_schema=vol.Schema({}),
-            description_placeholders={
-                "info": (
-                    "MQTT printers use an embedded broker on localhost. "
-                    "No additional configuration required."
-                )
-            },
             errors=_errors,
         )
 

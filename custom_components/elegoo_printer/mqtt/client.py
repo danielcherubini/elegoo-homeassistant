@@ -25,6 +25,7 @@ from custom_components.elegoo_printer.const import (
 from custom_components.elegoo_printer.sdcp.const import (
     CMD_CONTINUE_PRINT,
     CMD_CONTROL_DEVICE,
+    CMD_DISCONNECT,
     CMD_PAUSE_PRINT,
     CMD_REQUEST_ATTRIBUTES,
     CMD_REQUEST_STATUS_REFRESH,
@@ -119,6 +120,15 @@ class ElegooMqttClient:
     async def disconnect(self) -> None:
         """Disconnect from the printer."""
         self.logger.info("Closing MQTT connection to printer")
+
+        # Send disconnect command to printer if connected
+        if self._is_connected and self.mqtt_client:
+            try:
+                self.logger.debug("Sending disconnect command to printer")
+                await self._send_printer_cmd(CMD_DISCONNECT, {})
+            except (ElegooPrinterConnectionError, ElegooPrinterTimeoutError, OSError):
+                self.logger.debug("Failed to send disconnect command")
+
         if self._listener_task:
             self._listener_task.cancel()
             self._listener_task = None
@@ -159,12 +169,9 @@ class ElegooMqttClient:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
             # Construct M66666 command with MQTT broker host and port
-            # Format: M66666 <host> <port> [username] [password]
+            # Format: M66666 <host> <port>
+            # No authentication - embedded broker doesn't require credentials
             message_parts = ["M66666", str(self.mqtt_host), str(self.mqtt_port)]
-            if self.mqtt_username:
-                message_parts.append(self.mqtt_username)
-                if self.mqtt_password:
-                    message_parts.append(self.mqtt_password)
             message = " ".join(message_parts).encode()
 
             # Send to printer's discovery port
@@ -211,17 +218,12 @@ class ElegooMqttClient:
 
         try:
             # Build client configuration
+            # No authentication required - embedded broker is unauthenticated
             client_kwargs = {
                 "hostname": self.mqtt_host,
                 "port": self.mqtt_port,
                 "keepalive": MQTT_KEEPALIVE,
             }
-
-            # Add authentication if credentials provided
-            if self.mqtt_username:
-                client_kwargs["username"] = self.mqtt_username
-            if self.mqtt_password:
-                client_kwargs["password"] = self.mqtt_password
 
             self.mqtt_client = aiomqtt.Client(**client_kwargs)
 
@@ -247,9 +249,9 @@ class ElegooMqttClient:
             # CMD_0 and CMD_1 are handshakes that trigger status/attributes
             await self._send_printer_cmd(CMD_REQUEST_STATUS_REFRESH)
             await self._send_printer_cmd(CMD_REQUEST_ATTRIBUTES)
-            # Tell printer to auto-push status updates every 5 seconds
+            # Tell printer to auto-push status updates every 2 seconds
             await self._send_printer_cmd(
-                CMD_SET_STATUS_UPDATE_PERIOD, {"TimePeriod": 5000}
+                CMD_SET_STATUS_UPDATE_PERIOD, {"TimePeriod": 2000}
             )
 
             msg = f"Client successfully connected via MQTT to: {self.printer.name}"
@@ -310,7 +312,7 @@ class ElegooMqttClient:
                             )
                         except (UnicodeDecodeError, ValueError, TypeError):
                             self.logger.exception("Failed to parse printer data")
-                    except TimeoutError:
+                    except socket.timeout:
                         break  # Timeout, no more responses
             except OSError as e:
                 msg_str = f"Socket error during discovery: {e}"
@@ -341,9 +343,11 @@ class ElegooMqttClient:
                     self.logger.exception("Error processing MQTT message")
         except asyncio.CancelledError:
             self.logger.debug("MQTT listener cancelled.")
-        except (TimeoutError, OSError, aiomqtt.MqttError) as e:
-            self.logger.debug("MQTT listener exception: %s", e)
-            raise ElegooPrinterConnectionError from e
+        except (TimeoutError, OSError, aiomqtt.MqttError):
+            self.logger.exception("MQTT listener exception")
+            # Don't raise - let the finally block run to clean up
+            # Raising here causes "Task exception was never retrieved"
+            return
         finally:
             self._is_connected = False
             self.logger.info("MQTT listener stopped.")
@@ -484,9 +488,9 @@ class ElegooMqttClient:
         """Retrieve last task."""
         if self.printer_data.print_history:
 
-            def sort_key(tid: str) -> int:
+            def sort_key(tid: str) -> float:
                 task = self.printer_data.print_history.get(tid)
-                return task.end_time or 0 if task else 0
+                return task.end_time.timestamp() if task and task.end_time else 0.0
 
             last_task_id = max(
                 self.printer_data.print_history.keys(),
@@ -551,9 +555,9 @@ class ElegooMqttClient:
         """Retrieve last task."""
         if self.printer_data.print_history:
 
-            def sort_key(tid: str) -> int:
+            def sort_key(tid: str) -> float:
                 task = self.printer_data.print_history.get(tid)
-                return task.end_time or 0 if task else 0
+                return task.end_time.timestamp() if task and task.end_time else 0.0
 
             last_task_id = max(
                 self.printer_data.print_history.keys(),
@@ -691,7 +695,7 @@ class ElegooMqttClient:
                     request_id,
                 )
                 raise ElegooPrinterTimeoutError from e
-            except OSError as e:
+            except (OSError, aiomqtt.MqttError) as e:
                 self._is_connected = False
                 self.logger.info("MQTT connection error")
                 raise ElegooPrinterConnectionError from e

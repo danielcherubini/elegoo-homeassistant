@@ -6,6 +6,9 @@ from logging import Logger, getLogger
 DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
 LOGGER: Logger = getLogger(__package__)
 
+# Connection Commands
+CMD_DISCONNECT = 64
+
 # Information Commands
 CMD_REQUEST_STATUS_REFRESH = 0
 CMD_REQUEST_ATTRIBUTES = 1

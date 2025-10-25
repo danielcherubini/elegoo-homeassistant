@@ -74,11 +74,12 @@ class ElegooMQTTBroker:
         """
         async with cls._lock:
             if cls._instance is None:
+                _LOGGER.debug("Creating new MQTT broker instance")
+                cls._reference_count = 0  # Reset count when creating new instance
                 cls._instance = cls()
                 await cls._instance.start()
-                _LOGGER.info("Created new MQTT broker instance (ref count: 1)")
             cls._reference_count += 1
-            _LOGGER.debug(
+            _LOGGER.info(
                 "MQTT broker reference count increased to %s", cls._reference_count
             )
             return cls._instance
@@ -123,8 +124,14 @@ class ElegooMQTTBroker:
         self._running = False
         if self.server:
             self.server.close()
-            await self.server.wait_closed()
-            _LOGGER.info("MQTT Broker stopped")
+            try:
+                # Use timeout to prevent hanging during shutdown
+                await asyncio.wait_for(self.server.wait_closed(), timeout=5.0)
+                _LOGGER.info("MQTT Broker stopped")
+            except TimeoutError:
+                _LOGGER.warning("MQTT Broker stop timed out, forcing shutdown")
+            finally:
+                self.server = None
 
     async def serve_forever(self) -> None:
         """Run the broker server forever."""
