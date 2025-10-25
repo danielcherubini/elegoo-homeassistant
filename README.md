@@ -51,7 +51,9 @@ You can enable the proxy server during the initial setup of the integration or a
 
 This integration is designed to work with Elegoo printers that use the `SDCP` protocol. The following models have been tested and are known to work:
 
-### Resin Printers
+### ✅ Fully Supported Printers (WebSocket/SDCP)
+
+#### Resin Printers
 
 * Mars 5
 * Mars 5 Ultra
@@ -60,11 +62,34 @@ This integration is designed to work with Elegoo printers that use the `SDCP` pr
 * Saturn 4
 * Saturn 4 Ultra
 
-### FDM Printers
+#### FDM Printers
 
 * Centauri Carbon
 
-If your printer isn't listed but uses the `SDCP` protocol, it may still work. Please [open an issue](https://github.com/danielcherubini/elegoo-homeassistant/issues) to let us know!
+### 🧪 Beta Support - Legacy MQTT Printers
+
+The following older models use the MQTT protocol and have **experimental/beta support**. Most features work, but some data may be missing or incomplete due to protocol differences:
+
+#### Resin Printers
+
+* Saturn 2
+* Saturn 2 8K
+* Mars 3
+* Mars 3 Pro
+* Mars 4
+* Mars 4 DLP
+* Mars 4 Max
+* Mars 4 Ultra
+
+**Note:** MQTT printer support is in early stages. If you experience any issues or notice missing/incorrect data, please [open a GitHub issue](https://github.com/danielcherubini/elegoo-homeassistant/issues) with details about your printer model and the problem you're encountering. Community contributions to improve MQTT support are greatly appreciated!
+
+**Known Limitations for MQTT Printers:**
+- Begin Time, End Time, and Cover Image sensors will show "Unknown" (this data is not available via MQTT protocol)
+- All other sensors (status, layers, temperatures, progress, etc.) work normally
+
+---
+
+If your printer isn't listed but uses the `SDCP` or `MQTT` protocol, it may still work. Please [open an issue](https://github.com/danielcherubini/elegoo-homeassistant/issues) to let us know!
 
 ---
 
