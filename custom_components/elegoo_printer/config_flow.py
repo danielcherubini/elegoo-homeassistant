@@ -677,7 +677,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                     self.hass, printer, user_input
                 )
                 tested_printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
-                LOGGER.debug("Tested printer: %s", tested_printer.to_dict())
+                LOGGER.debug("Tested printer: %s", tested_printer.to_dict_safe())
                 return self.async_create_entry(
                     title=tested_printer.name,
                     data=tested_printer.to_dict(),

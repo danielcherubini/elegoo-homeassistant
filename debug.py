@@ -46,7 +46,7 @@ def print_printer_info(printer: Any, index: int | None = None) -> None:
     logger.info("-" * 80)
     logger.info("JSON Representation (for GitHub issues):")
     logger.info("-" * 80)
-    printer_dict = printer.to_dict()
+    printer_dict = printer.to_dict_safe()
     logger.info(json.dumps(printer_dict, indent=2))
     logger.info("=" * 80)
 

@@ -182,6 +182,20 @@ class Printer:
             "mqtt_broker_enabled": self.mqtt_broker_enabled,
         }
 
+    def to_dict_safe(self) -> dict[str, Any]:
+        """
+        Return a dictionary representation safe for logging (excludes passwords).
+
+        Returns:
+            dict: Dictionary representation with sensitive fields redacted.
+
+        """
+        result = self.to_dict()
+        # Redact sensitive fields
+        if result.get("mqtt_password"):
+            result["mqtt_password"] = "***REDACTED***"  # noqa: S105
+        return result
+
     @classmethod
     def from_dict(
         cls,

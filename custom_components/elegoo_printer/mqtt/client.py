@@ -139,7 +139,7 @@ class ElegooMqttClient:
         if self.mqtt_client:
             try:
                 await self.mqtt_client.__aexit__(None, None, None)
-            except (OSError, TimeoutError, aiomqtt.MqttError):
+            except (TimeoutError, OSError, aiomqtt.MqttError):
                 self.logger.exception("Error during MQTT disconnect")
 
         self.mqtt_client = None
@@ -260,7 +260,7 @@ class ElegooMqttClient:
 
             msg = f"Client successfully connected via MQTT to: {self.printer.name}"
             self.logger.info(msg)
-        except (TimeoutError, OSError) as e:
+        except (TimeoutError, OSError, aiomqtt.MqttError) as e:
             msg = f"Failed to connect via MQTT to {self.printer.name}: {e}"
             self.logger.debug(msg)
             self.logger.info(
@@ -347,7 +347,7 @@ class ElegooMqttClient:
                     self.logger.exception("Error processing MQTT message")
         except asyncio.CancelledError:
             self.logger.debug("MQTT listener cancelled.")
-        except (OSError, TimeoutError, aiomqtt.MqttError) as e:
+        except (TimeoutError, OSError, aiomqtt.MqttError) as e:
             self.logger.debug("MQTT listener exception: %s", e)
             raise ElegooPrinterConnectionError from e
         finally:
@@ -459,8 +459,7 @@ class ElegooMqttClient:
             await self._send_printer_cmd(
                 CMD_RETRIEVE_TASK_DETAILS, data={"Id": [id_list[0]]}
             )
-            # Wait briefly for handler to populate cache
-            await asyncio.sleep(0.1)
+            # Handler populates cache before setting event, no sleep needed
             task = self.printer_data.print_history.get(id_list[0])
             if task:
                 self.logger.debug("Task %s retrieved successfully", id_list[0])
@@ -778,9 +777,6 @@ class ElegooMqttClient:
             self.logger.debug(msg)
         inner_data = data.get("Data")
         if inner_data:
-            request_id = inner_data.get("RequestID")
-            if request_id:
-                self._set_response_event_sync(request_id)
             data_data = inner_data.get("Data", {})
             cmd: int = inner_data.get("Cmd", 0)
             if cmd == CMD_RETRIEVE_HISTORICAL_TASKS:
@@ -789,6 +785,10 @@ class ElegooMqttClient:
                 self._print_history_detail_handler(data_data)
             elif cmd == CMD_SET_VIDEO_STREAM:
                 self._print_video_handler(data_data)
+            # Signal waiters after handlers have updated state to avoid races
+            request_id = inner_data.get("RequestID")
+            if request_id:
+                self._set_response_event_sync(request_id)
 
     def _status_handler(self, data: dict[str, Any]) -> None:
         """
