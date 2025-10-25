@@ -199,6 +199,14 @@ class ElegooPrinterApiClient:
             mqtt_port = int(config.get(CONF_MQTT_PORT, 1883))
             mqtt_username = config.get(CONF_MQTT_USERNAME)
             mqtt_password = config.get(CONF_MQTT_PASSWORD)
+
+            # Validate MQTT configuration is provided
+            if mqtt_host == "localhost" and CONF_MQTT_HOST not in config:
+                logger.warning(
+                    "MQTT broker not configured for %s, using default localhost",
+                    printer.name,
+                )
+
             self.client = ElegooMqttClient(
                 mqtt_host=mqtt_host,
                 mqtt_port=mqtt_port,
@@ -209,6 +217,9 @@ class ElegooPrinterApiClient:
             )
             # Ensure proxy state doesn't affect connection logic for MQTT
             self._proxy_server_enabled = False
+            # Store broker settings for connectivity test
+            self._mqtt_host = mqtt_host
+            self._mqtt_port = mqtt_port
         else:
             logger.info("Using WebSocket/SDCP protocol for printer %s", printer.name)
             self.client = ElegooPrinterClient(
@@ -218,8 +229,34 @@ class ElegooPrinterApiClient:
                 session=session,
             )
 
-        # Discover printers via broadcast and verify target IP is found
-        printer_reachable = await self._discover_printer_with_fallback(printer)
+        # Test connectivity: for MQTT test broker, for WebSocket test printer
+        if isinstance(self.client, ElegooMqttClient):
+            # For MQTT, verify broker connectivity instead of printer
+            try:
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(self._mqtt_host, self._mqtt_port),
+                    timeout=5.0,
+                )
+                writer.close()
+                await writer.wait_closed()
+                printer_reachable = True
+                logger.debug(
+                    "MQTT broker at %s:%s is reachable",
+                    self._mqtt_host,
+                    self._mqtt_port,
+                )
+            except (TimeoutError, ConnectionRefusedError, OSError) as e:
+                logger.warning(
+                    "MQTT broker at %s:%s is not reachable for printer %s: %s",
+                    self._mqtt_host,
+                    self._mqtt_port,
+                    printer.name,
+                    e,
+                )
+                printer_reachable = False
+        else:
+            # For WebSocket, discover and test printer directly
+            printer_reachable = await self._discover_printer_with_fallback(printer)
 
         if not printer_reachable:
             logger.warning(
@@ -339,15 +376,29 @@ class ElegooPrinterApiClient:
         """  # noqa: E501
         printer = self.printer
 
-        # First, test if printer is reachable
+        # First, test if printer/broker is reachable
         self._logger.debug(
             "Testing connectivity before reconnect to printer: %s at %s",
             printer.name,
             printer.ip_address,
         )
 
-        # Discover printers via broadcast and verify target IP is found
-        printer_reachable = await self._discover_printer_with_fallback(printer)
+        # Test connectivity: for MQTT test broker, for WebSocket test printer
+        if isinstance(self.client, ElegooMqttClient):
+            # For MQTT, verify broker connectivity
+            try:
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(self._mqtt_host, self._mqtt_port),
+                    timeout=5.0,
+                )
+                writer.close()
+                await writer.wait_closed()
+                printer_reachable = True
+            except (TimeoutError, ConnectionRefusedError, OSError):
+                printer_reachable = False
+        else:
+            # For WebSocket, discover and test printer
+            printer_reachable = await self._discover_printer_with_fallback(printer)
 
         if not printer_reachable:
             self._logger.debug(

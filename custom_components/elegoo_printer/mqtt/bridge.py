@@ -105,20 +105,31 @@ class ElegooMqttBridge:
         self.logger.info("Stopping MQTT bridge server")
         self.running = False
 
-        # Cancel tasks
-        if self._discovery_task:
-            self._discovery_task.cancel()
-        if self._mqtt_task:
-            self._mqtt_task.cancel()
+        # Cancel tasks with error handling
+        for task in [self._discovery_task, self._mqtt_task]:
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass  # Expected when cancelling
+                except Exception:
+                    self.logger.exception("Error during task cancellation")
 
-        # Disconnect from printers
+        # Disconnect from printers with error handling
         for client in self.printer_clients.values():
-            await client.disconnect()
+            try:
+                await client.disconnect()
+            except Exception:
+                self.logger.exception("Error disconnecting printer")
         self.printer_clients.clear()
 
-        # Disconnect from MQTT
+        # Disconnect from MQTT with error handling
         if self.mqtt_client:
-            await self.mqtt_client.__aexit__(None, None, None)
+            try:
+                await self.mqtt_client.__aexit__(None, None, None)
+            except Exception:
+                self.logger.exception("Error disconnecting from MQTT")
 
     async def _discovery_loop(self) -> None:
         """Periodically discover printers on the network."""
