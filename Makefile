@@ -19,7 +19,7 @@ VENV ?= .venv
 # --- PHONY TARGETS ---
 # .PHONY ensures that make will run the command even if a file with the same
 # name as the target exists.
-.PHONY: all setup start debug devcontainer test-server test-mqtt-printer test-mqtt-broker format lint fix clean help
+.PHONY: all setup start debug devcontainer test test-server test-mqtt-printer test-mqtt-broker format lint fix clean help
 
 # --- DEFAULT TARGET ---
 # The default target that runs when you just type 'make'
