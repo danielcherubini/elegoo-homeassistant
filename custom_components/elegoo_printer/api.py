@@ -975,7 +975,7 @@ class ElegooPrinterApiClient:
                 "model",
                 "brand",
                 "firmware",
-                "protocol",
+                "protocol_type",
                 "ip_address",
             ]
             has_changes = False
