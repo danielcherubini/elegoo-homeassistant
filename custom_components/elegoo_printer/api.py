@@ -229,7 +229,7 @@ class ElegooPrinterApiClient:
                     self._mqtt_host,
                     self._mqtt_port,
                 )
-            except (TimeoutError, ConnectionRefusedError, OSError) as e:
+            except (asyncio.TimeoutError, ConnectionRefusedError, OSError) as e:
                 logger.warning(
                     "MQTT broker at %s:%s is not reachable for printer %s: %s",
                     self._mqtt_host,
@@ -378,7 +378,7 @@ class ElegooPrinterApiClient:
                 writer.close()
                 await writer.wait_closed()
                 printer_reachable = True
-            except (TimeoutError, ConnectionRefusedError, OSError):
+            except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
                 printer_reachable = False
         else:
             # For WebSocket, discover and test printer

@@ -8,6 +8,7 @@ with Elegoo printers, rather than connecting directly to the printer.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import secrets
 import socket
@@ -131,6 +132,8 @@ class ElegooMqttClient:
 
         if self._listener_task:
             self._listener_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._listener_task
             self._listener_task = None
 
         # Unblock any waiters
@@ -143,7 +146,7 @@ class ElegooMqttClient:
         if self.mqtt_client:
             try:
                 await self.mqtt_client.__aexit__(None, None, None)
-            except (TimeoutError, OSError, aiomqtt.MqttError):
+            except (asyncio.TimeoutError, OSError, aiomqtt.MqttError):
                 self.logger.exception("Error during MQTT disconnect")
 
         self.mqtt_client = None
@@ -256,7 +259,7 @@ class ElegooMqttClient:
 
             msg = f"Client successfully connected via MQTT to: {self.printer.name}"
             self.logger.info(msg)
-        except (TimeoutError, OSError, aiomqtt.MqttError) as e:
+        except (asyncio.TimeoutError, OSError, aiomqtt.MqttError) as e:
             msg = f"Failed to connect via MQTT to {self.printer.name}: {e}"
             self.logger.debug(msg)
             self.logger.info(
@@ -343,7 +346,7 @@ class ElegooMqttClient:
                     self.logger.exception("Error processing MQTT message")
         except asyncio.CancelledError:
             self.logger.debug("MQTT listener cancelled.")
-        except (TimeoutError, OSError, aiomqtt.MqttError):
+        except (asyncio.TimeoutError, OSError, aiomqtt.MqttError):
             self.logger.exception("MQTT listener exception")
             # Don't raise - let the finally block run to clean up
             # Raising here causes "Task exception was never retrieved"
@@ -688,7 +691,7 @@ class ElegooMqttClient:
                 topic = f"/{TOPIC_PREFIX}/{TOPIC_REQUEST}/{self.printer.id}"
                 await self.mqtt_client.publish(topic, json.dumps(payload))
                 await asyncio.wait_for(event.wait(), timeout=10)
-            except TimeoutError as e:
+            except asyncio.TimeoutError as e:
                 self.logger.debug(
                     "Timed out waiting for response to cmd %s (RequestID=%s)",
                     cmd,
