@@ -544,9 +544,7 @@ class ElegooMqttClient:
                 task.end_time,
             )
         else:
-            self.logger.debug(
-                "NO TASK RETURNED FROM PRINTER for task_id: %s", task_id
-            )
+            self.logger.debug("NO TASK RETURNED FROM PRINTER for task_id: %s", task_id)
         return task
 
     async def async_get_printer_last_task(self) -> PrintHistoryDetail | None:
@@ -903,9 +901,7 @@ class ElegooMqttClient:
         self.logger.debug("_print_history_detail_handler received data")
         history_data_list = data_data.get("HistoryDetailList")
         if history_data_list:
-            self.logger.debug(
-                "Processing %d history detail(s)", len(history_data_list)
-            )
+            self.logger.debug("Processing %d history detail(s)", len(history_data_list))
             for history_data in history_data_list:
                 detail = PrintHistoryDetail(history_data)
                 if detail.task_id is not None:
