@@ -145,3 +145,74 @@ def test_printer_from_dict() -> None:
     assert printer.id == "ABCDEF"
     assert printer.printer_type == PrinterType.FDM
     assert not printer.proxy_enabled
+
+
+def test_printer_initialization_with_legacy_saturn_format() -> None:
+    """Test that Printer handles legacy Saturn format with Attributes."""
+    printer_json = json.dumps(
+        {
+            "Id": "legacy123",
+            "Data": {
+                "Attributes": {
+                    "Name": "Saturn 3 Ultra",
+                    "MachineName": "ELEGOO Saturn 3 Ultra",
+                    "BrandName": "ELEGOO",
+                    "MainboardIP": "192.168.1.200",
+                    "ProtocolVersion": "V1.0.0",
+                    "FirmwareVersion": "V1.4.2",
+                    "MainboardID": "ABCD1234ABCD1234",
+                },
+                "Status": {
+                    "CurrentStatus": 0,
+                    "PrintInfo": {
+                        "Status": 16,
+                        "CurrentLayer": 500,
+                        "TotalLayer": 500,
+                    },
+                },
+            },
+        }
+    )
+    printer = Printer(printer_json)
+
+    assert printer.connection == "legacy123"
+    assert printer.name == "Saturn 3 Ultra"
+    assert printer.model == "ELEGOO Saturn 3 Ultra"
+    assert printer.brand == "ELEGOO"
+    assert printer.ip_address == "192.168.1.200"
+    assert printer.protocol == "V1.0.0"
+    assert printer.firmware == "V1.4.2"
+    assert printer.id == "ABCD1234ABCD1234"
+    assert printer.printer_type == PrinterType.RESIN
+
+
+def test_printer_from_dict_with_legacy_saturn_format() -> None:
+    """Test that from_dict handles legacy Saturn format with Attributes."""
+    printer_dict = {
+        "Id": "legacy456",
+        "Data": {
+            "Attributes": {
+                "Name": "Saturn 3",
+                "MachineName": "ELEGOO Saturn 3",
+                "BrandName": "ELEGOO",
+                "MainboardIP": "192.168.1.201",
+                "ProtocolVersion": "V1.0.0",
+                "FirmwareVersion": "V1.1.29",
+                "MainboardID": "4c851c540107103d",
+            },
+            "Status": {
+                "CurrentStatus": 0,
+            },
+        },
+    }
+    printer = Printer.from_dict(printer_dict)
+
+    assert printer.connection == "legacy456"
+    assert printer.name == "Saturn 3"
+    assert printer.model == "ELEGOO Saturn 3"
+    assert printer.brand == "ELEGOO"
+    assert printer.ip_address == "192.168.1.201"
+    assert printer.protocol == "V1.0.0"
+    assert printer.firmware == "V1.1.29"
+    assert printer.id == "4c851c540107103d"
+    assert printer.printer_type == PrinterType.RESIN

@@ -71,16 +71,23 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
 
             if not printers:
                 # If no printers discovered, send a generic proxy response
+                # Using legacy Saturn format for compatibility with tools like Cassini
                 response_payload = {
                     "Id": os.urandom(8).hex(),
                     "Data": {
-                        "Name": "Elegoo Proxy Server",
-                        "MachineName": "Elegoo Proxy Server",
-                        "BrandName": "Elegoo",
-                        "MainboardIP": self.proxy_ip,
-                        "MainboardID": "proxy",
-                        "ProtocolVersion": "V3.0.0",
-                        "FirmwareVersion": "V1.0.0",
+                        "Attributes": {
+                            "Name": "Elegoo Proxy Server",
+                            "MachineName": "Elegoo Proxy Server",
+                            "BrandName": "Elegoo",
+                            "MainboardIP": self.proxy_ip,
+                            "MainboardID": "proxy",
+                            "ProtocolVersion": "V3.0.0",
+                            "FirmwareVersion": "V1.0.0",
+                            "Proxy": True,
+                        },
+                        "Status": {
+                            "CurrentStatus": 0,
+                        },
                     },
                 }
                 json_string = json.dumps(response_payload)
@@ -91,19 +98,30 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
                     )
             else:
                 # Send a response for each discovered printer via centralized proxy
+                # Using legacy Saturn format for compatibility with tools like Cassini
                 for ip, printer in printers.items():
                     printer_name = getattr(printer, "name", "Elegoo")
                     display_name = printer_name
                     response_payload = {
                         "Id": getattr(printer, "connection", os.urandom(8).hex()),
                         "Data": {
-                            "Name": display_name,
-                            "MachineName": display_name,
-                            "BrandName": getattr(printer, "brand", "Elegoo"),
-                            "MainboardIP": self.proxy_ip,  # Point to our proxy
-                            "MainboardID": getattr(printer, "id", None) or ip,
-                            "ProtocolVersion": getattr(printer, "protocol", "V3.0.0"),
-                            "FirmwareVersion": getattr(printer, "firmware", "V1.0.0"),
+                            "Attributes": {
+                                "Name": display_name,
+                                "MachineName": display_name,
+                                "BrandName": getattr(printer, "brand", "Elegoo"),
+                                "MainboardIP": self.proxy_ip,  # Point to our proxy
+                                "MainboardID": getattr(printer, "id", None) or ip,
+                                "ProtocolVersion": getattr(
+                                    printer, "protocol", "V3.0.0"
+                                ),
+                                "FirmwareVersion": getattr(
+                                    printer, "firmware", "V1.0.0"
+                                ),
+                                "Proxy": True,
+                            },
+                            "Status": {
+                                "CurrentStatus": 0,
+                            },
                         },
                     }
                     json_string = json.dumps(response_payload)

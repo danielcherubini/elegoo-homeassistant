@@ -148,7 +148,39 @@ class ElegooPrinterNumberEntityDescription(NumberEntityDescription):
 
 PRINT_SPEED_PRESETS = {"Silent": 50, "Balanced": 100, "Sport": 130, "Ludicrous": 160}
 
+# Attributes common to both V1 (MQTT) and V3 (WebSocket/SDCP) printers
 PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+    ElegooPrinterSensorEntityDescription(
+        key="remaining_memory",
+        name="Remaining Memory",
+        icon="mdi:memory",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfInformation.BITS,
+        suggested_unit_of_measurement=UnitOfInformation.MEGABYTES,
+        suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda printer_data: printer_data.attributes.remaining_memory,
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="mainboard_ip",
+        name="IP Address",
+        icon="mdi:ip-network",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda printer_data: printer_data.attributes.mainboard_ip,
+    ),
+)
+
+# Attributes only available on V3 (WebSocket/SDCP) printers
+# V1 (MQTT) printers do not send these fields
+PRINTER_ATTRIBUTES_V3_ONLY: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+    ElegooPrinterSensorEntityDescription(
+        key="printer_url",
+        name="Printer URL",
+        icon="mdi:link-variant",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda printer_data: printer_data.printer_url,
+    ),
     ElegooPrinterSensorEntityDescription(
         key="video_stream_connected",
         name="Video Stream Connected",
@@ -166,30 +198,11 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         value_fn=lambda printer_data: printer_data.attributes.max_video_stream_allowed,
     ),
     ElegooPrinterSensorEntityDescription(
-        key="remaining_memory",
-        name="Remaining Memory",
-        icon="mdi:memory",
-        device_class=SensorDeviceClass.DATA_SIZE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfInformation.BITS,
-        suggested_unit_of_measurement=UnitOfInformation.MEGABYTES,
-        suggested_display_precision=2,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.attributes.remaining_memory,
-    ),
-    ElegooPrinterSensorEntityDescription(
         key="mainboard_mac",
         name="MAC Address",
         icon="mdi:network",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.mainboard_mac,
-    ),
-    ElegooPrinterSensorEntityDescription(
-        key="mainboard_ip",
-        name="IP Address",
-        icon="mdi:ip-network",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.attributes.mainboard_ip,
     ),
     ElegooPrinterSensorEntityDescription(
         key="num_cloud_sdcp_services_connected",
@@ -207,15 +220,9 @@ PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: printer_data.attributes.max_cloud_sdcp_services_allowed,  # noqa: E501
     ),
-    ElegooPrinterSensorEntityDescription(
-        key="printer_url",
-        name="Printer URL",
-        icon="mdi:link-variant",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.printer_url,
-    ),
 )
 
+# Binary sensors common to both V1 (MQTT) and V3 (WebSocket/SDCP) printers
 PRINTER_ATTRIBUTES_BINARY_COMMON: tuple[
     ElegooPrinterBinarySensorEntityDescription, ...
 ] = (
@@ -237,6 +244,12 @@ PRINTER_ATTRIBUTES_BINARY_COMMON: tuple[
         if printer_data is not None
         else False,
     ),
+)
+
+# Binary sensors only available on V3 (WebSocket/SDCP) printers
+PRINTER_ATTRIBUTES_BINARY_V3_ONLY: tuple[
+    ElegooPrinterBinarySensorEntityDescription, ...
+] = (
     ElegooPrinterBinarySensorEntityDescription(
         key="firmware_update_available",
         name="Firmware Update Available",

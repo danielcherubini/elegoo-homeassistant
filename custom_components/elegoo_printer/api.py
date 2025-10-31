@@ -16,12 +16,18 @@ from PIL import Image as PILImage
 from PIL import UnidentifiedImageError
 
 from .const import (
+    CONF_MQTT_BROKER_ENABLED,
     CONF_PROXY_ENABLED,
     FIRMWARE_SERVICE_BASE_URL,
     FIRMWARE_UPDATE_ENDPOINT,
     LOGGER,
 )
+from .mqtt.client import ElegooMqttClient
+from .mqtt.const import MQTT_BROKER_PORT
+from .mqtt.server import ElegooMQTTBroker
+from .sdcp.exceptions import ElegooPrinterConnectionError
 from .sdcp.models.elegoo_image import ElegooImage
+from .sdcp.models.enums import TransportType
 from .sdcp.models.printer import Printer, PrinterData
 from .websocket.client import ElegooPrinterClient
 from .websocket.server import ElegooPrinterServer
@@ -48,7 +54,7 @@ class ElegooPrinterApiClient:
     _THUMBNAIL_TIMEOUT = 10  # seconds
 
     _ip_address: str | None
-    client: ElegooPrinterClient
+    client: ElegooPrinterClient | ElegooMqttClient
     _logger: Logger
     printer: Printer
     printer_data: PrinterData
@@ -69,10 +75,12 @@ class ElegooPrinterApiClient:
         """  # noqa: E501
         self._ip_address = printer.ip_address
         self._proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
+        self._mqtt_broker_enabled: bool = config.get(CONF_MQTT_BROKER_ENABLED, False)
         self._logger = logger
         self.printer = printer
         self._hass_client = get_async_client(hass)
         self.server: ElegooPrinterServer | None = None
+        self.mqtt_broker: ElegooMQTTBroker | None = None
         self.hass: HomeAssistant = hass
         self._config_entry = config_entry
 
@@ -142,7 +150,7 @@ class ElegooPrinterApiClient:
         return printer_reachable
 
     @classmethod
-    async def async_create(
+    async def async_create(  # noqa: PLR0912, PLR0915
         cls,
         config: MappingProxyType[str, Any],
         logger: Logger,
@@ -166,33 +174,92 @@ class ElegooPrinterApiClient:
 
         # First, test if printer is reachable before starting proxy server
         logger.debug(
-            "Testing connectivity to printer: %s at %s",
+            "Testing connectivity to printer: %s at %s (transport: %s)",
             printer.name,
             printer.ip_address,
-        )
-        self.client = ElegooPrinterClient(
-            printer.ip_address,
-            config=config,
-            logger=logger,
-            session=session,
+            printer.transport_type.value,
         )
 
-        # Discover printers via broadcast and verify target IP is found
-        printer_reachable = await self._discover_printer_with_fallback(printer)
+        # Create appropriate client based on transport type
+        if printer.transport_type == TransportType.MQTT:
+            logger.info("Using MQTT transport for printer %s", printer.name)
+
+            # Start embedded MQTT broker (always enabled for MQTT printers)
+            printer = await self._setup_mqtt_broker_if_enabled(printer)
+            if printer is None:
+                # Broker failed to start
+                return None
+
+            # Always use embedded broker on localhost
+            mqtt_host = "localhost"
+            mqtt_port = self.mqtt_broker.port if self.mqtt_broker else MQTT_BROKER_PORT
+
+            self.client = ElegooMqttClient(
+                mqtt_host=mqtt_host,
+                mqtt_port=mqtt_port,
+                logger=logger,
+                printer=printer,
+            )
+            # Ensure proxy state doesn't affect connection logic for MQTT
+            self._proxy_server_enabled = False
+            # Store broker settings for connectivity test
+            self._mqtt_host = mqtt_host
+            self._mqtt_port = mqtt_port
+        else:
+            logger.info("Using WebSocket/SDCP protocol for printer %s", printer.name)
+            self.client = ElegooPrinterClient(
+                printer.ip_address,
+                config=config,
+                logger=logger,
+                session=session,
+            )
+
+        # Test connectivity: for MQTT test broker, for WebSocket test printer
+        if isinstance(self.client, ElegooMqttClient):
+            # For MQTT, verify broker connectivity instead of printer
+            try:
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(self._mqtt_host, self._mqtt_port),
+                    timeout=5.0,
+                )
+                writer.close()
+                await writer.wait_closed()
+                printer_reachable = True
+                logger.debug(
+                    "MQTT broker at %s:%s is reachable",
+                    self._mqtt_host,
+                    self._mqtt_port,
+                )
+            except (asyncio.TimeoutError, ConnectionRefusedError, OSError) as e:
+                logger.warning(
+                    "MQTT broker at %s:%s is not reachable for printer %s: %s",
+                    self._mqtt_host,
+                    self._mqtt_port,
+                    printer.name,
+                    e,
+                )
+                printer_reachable = False
+        else:
+            # For WebSocket, discover and test printer directly
+            printer_reachable = await self._discover_printer_with_fallback(printer)
 
         if not printer_reachable:
             logger.warning(
-                "Printer %s at %s is not reachable. Not starting proxy server.",
+                "Printer %s at %s is not reachable. Stopping any started services.",
                 printer.name,
                 printer.ip_address,
             )
             # This is probably unnecessary, but let's disconnect for completeness
             await self.client.disconnect()
-            # No proxy server was started by this client; nothing to release here
+            # Release MQTT broker reference if it was acquired
+            if self.mqtt_broker:
+                await ElegooMQTTBroker.release_instance()
+                self.mqtt_broker = None
             return None
 
         # Printer is reachable, now set up proxy if enabled
-        if proxy_server_enabled:
+        # Note: MQTT doesn't support proxy mode yet, only WebSocket does
+        if proxy_server_enabled and not isinstance(self.client, ElegooMqttClient):
             printer = await self._setup_proxy_if_enabled(printer)
             if printer is None:
                 # Proxy was required but failed to start
@@ -211,16 +278,25 @@ class ElegooPrinterApiClient:
             proxy_server_enabled,
         )
         try:
-            connected = await self.client.connect_printer(
-                printer, proxy_enabled=proxy_server_enabled
-            )
+            # MQTT doesn't support proxy mode yet, only WebSocket does
+            if isinstance(self.client, ElegooMqttClient):
+                connected = await self.client.connect_printer(printer)
+            else:
+                connected = await self.client.connect_printer(
+                    printer, proxy_enabled=proxy_server_enabled
+                )
             if not connected:
                 # Release only our proxy reference if any
                 if self.server:
                     await ElegooPrinterServer.release_reference()
                 self.server = None
+                # Release MQTT broker reference if it was acquired
+                if self.mqtt_broker:
+                    await ElegooMQTTBroker.release_instance()
+                    self.mqtt_broker = None
                 await self.client.disconnect()
                 self._proxy_server_enabled = False
+                self._mqtt_broker_enabled = False
                 return None
             logger.info("Polling Started")
 
@@ -228,13 +304,18 @@ class ElegooPrinterApiClient:
             await self._update_config_entry_if_needed(printer)
 
             return self  # noqa: TRY300
-        except (ConnectionError, TimeoutError):
+        except (ConnectionError, TimeoutError, ElegooPrinterConnectionError):
             # Release only our proxy reference if any
             if self.server:
                 await ElegooPrinterServer.release_reference()
             self.server = None
+            # Release MQTT broker reference if it was acquired
+            if self.mqtt_broker:
+                await ElegooMQTTBroker.release_instance()
+                self.mqtt_broker = None
             await self.client.disconnect()
             self._proxy_server_enabled = False
+            self._mqtt_broker_enabled = False
             return None
 
     @property
@@ -258,6 +339,12 @@ class ElegooPrinterApiClient:
         await ElegooPrinterServer.release_reference()
         self.server = None
 
+    async def elegoo_stop_mqtt_broker(self) -> None:
+        """Release the MQTT broker reference if it is running."""
+        if self.mqtt_broker:
+            await ElegooMQTTBroker.release_instance()
+            self.mqtt_broker = None
+
     def get_local_ip(self) -> str:
         """Get the local IP for the proxy server, falling back to the printer's IP."""
         if self.server:
@@ -274,15 +361,29 @@ class ElegooPrinterApiClient:
         """  # noqa: E501
         printer = self.printer
 
-        # First, test if printer is reachable
+        # First, test if printer/broker is reachable
         self._logger.debug(
             "Testing connectivity before reconnect to printer: %s at %s",
             printer.name,
             printer.ip_address,
         )
 
-        # Discover printers via broadcast and verify target IP is found
-        printer_reachable = await self._discover_printer_with_fallback(printer)
+        # Test connectivity: for MQTT test broker, for WebSocket test printer
+        if isinstance(self.client, ElegooMqttClient):
+            # For MQTT, verify broker connectivity
+            try:
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(self._mqtt_host, self._mqtt_port),
+                    timeout=5.0,
+                )
+                writer.close()
+                await writer.wait_closed()
+                printer_reachable = True
+            except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
+                printer_reachable = False
+        else:
+            # For WebSocket, discover and test printer
+            printer_reachable = await self._discover_printer_with_fallback(printer)
 
         if not printer_reachable:
             self._logger.debug(
@@ -297,7 +398,8 @@ class ElegooPrinterApiClient:
             return False
 
         # Printer is reachable, handle proxy server if enabled
-        if self._proxy_server_enabled:
+        # Note: MQTT doesn't support proxy mode yet, only WebSocket does
+        if self._proxy_server_enabled and not isinstance(self.client, ElegooMqttClient):
             # Release existing reference before creating new one
             if self.server is not None:
                 await ElegooPrinterServer.release_reference()
@@ -313,10 +415,14 @@ class ElegooPrinterApiClient:
             printer.ip_address,
             self._proxy_server_enabled and self.server is not None,
         )
-        connected = await self.client.connect_printer(
-            printer,
-            proxy_enabled=self._proxy_server_enabled and self.server is not None,
-        )
+        # MQTT doesn't support proxy mode yet, only WebSocket does
+        if isinstance(self.client, ElegooMqttClient):
+            connected = await self.client.connect_printer(printer)
+        else:
+            connected = await self.client.connect_printer(
+                printer,
+                proxy_enabled=self._proxy_server_enabled and self.server is not None,
+            )
 
         # Update config entry with fresh printer data if reconnection was successful
         if connected:
@@ -333,6 +439,16 @@ class ElegooPrinterApiClient:
 
         """  # noqa: E501
         self.printer_data = await self.client.get_printer_status()
+        status = (
+            self.printer_data.status.current_status
+            if self.printer_data.status
+            else None
+        )
+        self._logger.debug(
+            "async_get_status() got printer_data (id: %s, status: %s)",
+            id(self.printer_data),
+            status,
+        )
         return self.printer_data
 
     async def async_get_attributes(self) -> PrinterData:
@@ -552,6 +668,14 @@ class ElegooPrinterApiClient:
             self.printer_data.current_job = current_task
             if current_task.task_id:
                 self.printer_data.print_history[current_task.task_id] = current_task
+            self._logger.debug(
+                "async_get_current_task: Got task %s (begin: %s, end: %s)",
+                current_task.task_id,
+                current_task.begin_time,
+                current_task.end_time,
+            )
+        else:
+            self._logger.debug("async_get_current_task: No current task")
         return current_task
 
     async def async_get_print_history(
@@ -595,6 +719,16 @@ class ElegooPrinterApiClient:
         await self.async_get_print_history()
         await self.async_get_current_task()
         self.printer_data.calculate_current_job_end_time()
+        status = (
+            self.printer_data.status.current_status
+            if self.printer_data.status
+            else None
+        )
+        self._logger.debug(
+            "async_get_printer_data() returning printer_data (id: %s, status: %s)",
+            id(self.printer_data),
+            status,
+        )
         return self.printer_data
 
     async def _setup_proxy_if_enabled(self, printer: Printer) -> Printer | None:
@@ -638,6 +772,37 @@ class ElegooPrinterApiClient:
             )
             self.printer = proxy_printer
             return proxy_printer
+
+    async def _setup_mqtt_broker_if_enabled(self, printer: Printer) -> Printer | None:
+        """
+        Set up embedded MQTT broker if enabled and printer uses MQTT protocol.
+
+        Returns:
+            Printer object on success, or None if broker failed to start
+
+        """
+        if not self._mqtt_broker_enabled:
+            return printer
+
+        self._logger.debug(
+            "Getting shared MQTT broker instance for printer %s", printer.name
+        )
+        try:
+            self.mqtt_broker = await ElegooMQTTBroker.get_instance()
+        except OSError:
+            # When broker is explicitly enabled, server startup failures are fatal
+            self._logger.exception(
+                "Failed to start required MQTT broker; port may be in use"
+            )
+            self.mqtt_broker = None
+            return None
+        else:
+            self._logger.info(
+                "Embedded MQTT broker ready on %s:%s",
+                self.mqtt_broker.host,
+                self.mqtt_broker.port,
+            )
+            return printer
 
     def _normalize_firmware_version(self, version: str) -> str:
         """
@@ -811,7 +976,7 @@ class ElegooPrinterApiClient:
                 "model",
                 "brand",
                 "firmware",
-                "protocol",
+                "protocol_type",
                 "ip_address",
             ]
             has_changes = False

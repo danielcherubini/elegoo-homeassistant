@@ -13,12 +13,17 @@ from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import CONF_CAMERA_ENABLED, CONF_PROXY_ENABLED, DOMAIN, LOGGER
+from .const import (
+    CONF_CAMERA_ENABLED,
+    CONF_PROXY_ENABLED,
+    DOMAIN,
+    LOGGER,
+)
 from .sdcp.exceptions import (
     ElegooConfigFlowConnectionError,
     ElegooConfigFlowGeneralError,
 )
-from .sdcp.models.enums import PrinterType
+from .sdcp.models.enums import PrinterType, TransportType
 from .sdcp.models.printer import Printer
 from .websocket.client import ElegooPrinterClient
 from .websocket.server import ElegooPrinterServer
@@ -67,16 +72,36 @@ async def _async_test_connection(
         msg = "IP address is required to connect to the printer"
         raise ElegooConfigFlowGeneralError(msg)
 
+    # Create appropriate client based on transport type
+    if printer_object.transport_type == TransportType.MQTT:
+        LOGGER.info(
+            "Using MQTT transport for printer %s during config flow",
+            printer_object.name,
+        )
+        # Skip live connection test - embedded broker starts during setup
+        # Persist embedded-broker defaults
+        printer_object.mqtt_broker_enabled = True
+        printer_object.proxy_enabled = False
+        LOGGER.debug(
+            "Prepared MQTT printer %s for embedded broker (no connect test in flow)",
+            printer_object.name,
+        )
+        return printer_object
+    LOGGER.info(
+        "Using WebSocket/SDCP protocol for printer %s during config flow",
+        printer_object.name,
+    )
     elegoo_printer = ElegooPrinterClient(
         printer_object.ip_address,
         config=MappingProxyType(user_input),
         logger=LOGGER,
         session=async_get_clientsession(hass),
     )
-
     printer_object.proxy_enabled = user_input.get(CONF_PROXY_ENABLED, False)
+    # WebSocket printers don't use MQTT broker
+    printer_object.mqtt_broker_enabled = False
     LOGGER.debug(
-        "Connecting to printer: %s at %s with proxy enabled: %s",
+        "Connecting to WebSocket printer: %s at %s with proxy enabled: %s",
         printer_object.name,
         printer_object.ip_address,
         printer_object.proxy_enabled,
@@ -84,7 +109,9 @@ async def _async_test_connection(
     if await elegoo_printer.connect_printer(
         printer_object, proxy_enabled=printer_object.proxy_enabled
     ):
+        await elegoo_printer.disconnect()
         return printer_object
+
     msg = f"Failed to connect to printer {printer_object.name} at {printer_object.ip_address}"  # noqa: E501
     raise ElegooConfigFlowConnectionError(msg)
 
@@ -207,9 +234,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             logger=LOGGER,
             session=async_get_clientsession(self.hass),
         )  # IP doesn't matter for discovery
-        self.discovered_printers = await self.hass.async_add_executor_job(
+        discovered = await self.hass.async_add_executor_job(
             elegoo_printer_client.discover_printer
         )
+
+        # Filter out proxy servers from discovered printers
+        self.discovered_printers = [p for p in discovered if not p.is_proxy]
 
         if self.discovered_printers:
             return await self.async_step_discover_printers()
@@ -248,6 +278,21 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
             if self.selected_printer:
+                # Check if printer uses MQTT transport
+                if self.selected_printer.transport_type == TransportType.MQTT:
+                    # Auto-configure MQTT printer with embedded broker
+                    printer = Printer.from_dict(self.selected_printer.to_dict())
+                    printer.mqtt_broker_enabled = True
+                    printer.proxy_enabled = False
+
+                    await self.async_set_unique_id(unique_id=printer.id)
+                    self._abort_if_unique_id_configured()
+                    return self.async_create_entry(
+                        title=printer.name or "Elegoo Printer",
+                        data=printer.to_dict(),
+                    )
+
+                # For WebSocket/SDCP printers, show type-specific options
                 if self.selected_printer.printer_type == PrinterType.RESIN:
                     return self.async_show_form(
                         step_id="resin_options",
@@ -481,13 +526,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
     """Options flow handler for Elegoo Printer."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """
-        Initialize the options flow handler.
-
-        Arguments:
-            config_entry: The configuration entry for which the options are being managed.
-
-        """  # noqa: E501
+        """Initialize options flow."""
         self.config_entry = config_entry
 
     async def async_step_init(
@@ -530,7 +569,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                     self.hass, printer, user_input
                 )
                 tested_printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
-                LOGGER.debug("Tested printer: %s", tested_printer.to_dict())
+                LOGGER.debug("Tested printer: %s", tested_printer.to_dict_safe())
                 return self.async_create_entry(
                     title=tested_printer.name,
                     data=tested_printer.to_dict(),

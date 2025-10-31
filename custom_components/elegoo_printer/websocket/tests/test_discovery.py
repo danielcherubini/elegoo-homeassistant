@@ -124,12 +124,15 @@ class TestDiscoveryProtocol:
         mock_transport.sendto.assert_called_once()
         sent_data, addr = mock_transport.sendto.call_args[0]
 
-        # Parse and verify response
+        # Parse and verify response uses legacy Saturn format with Attributes
         response = json.loads(sent_data.decode())
-        assert response["Data"]["Name"] == "Elegoo Proxy Server"
-        assert response["Data"]["MachineName"] == "Elegoo Proxy Server"
-        assert response["Data"]["MainboardIP"] == "10.0.0.100"
-        assert response["Data"]["MainboardID"] == "proxy"
+        assert "Attributes" in response["Data"]
+        assert "Status" in response["Data"]
+        assert response["Data"]["Attributes"]["Name"] == "Elegoo Proxy Server"
+        assert response["Data"]["Attributes"]["MachineName"] == "Elegoo Proxy Server"
+        assert response["Data"]["Attributes"]["MainboardIP"] == "10.0.0.100"
+        assert response["Data"]["Attributes"]["MainboardID"] == "proxy"
+        assert response["Data"]["Status"]["CurrentStatus"] == 0
         assert addr == ("127.0.0.1", 12345)
 
     def test_datagram_received_with_printers(
@@ -156,16 +159,24 @@ class TestDiscoveryProtocol:
         mock_transport.sendto.assert_called_once()
         sent_data, _addr = mock_transport.sendto.call_args[0]
 
-        # Parse and verify response
+        # Parse and verify response uses legacy Saturn format with Attributes
         response = json.loads(sent_data.decode())
         assert response["Id"] == sample_printer.connection
-        assert response["Data"]["Name"] == sample_printer.name
-        assert response["Data"]["MachineName"] == sample_printer.name
-        assert response["Data"]["BrandName"] == sample_printer.brand
-        assert response["Data"]["MainboardIP"] == "10.0.0.100"  # Points to proxy
-        assert response["Data"]["MainboardID"] == sample_printer.id
-        assert response["Data"]["ProtocolVersion"] == sample_printer.protocol
-        assert response["Data"]["FirmwareVersion"] == sample_printer.firmware
+        assert "Attributes" in response["Data"]
+        assert "Status" in response["Data"]
+        assert response["Data"]["Attributes"]["Name"] == sample_printer.name
+        assert response["Data"]["Attributes"]["MachineName"] == sample_printer.name
+        assert response["Data"]["Attributes"]["BrandName"] == sample_printer.brand
+        # Points to proxy
+        assert response["Data"]["Attributes"]["MainboardIP"] == "10.0.0.100"
+        assert response["Data"]["Attributes"]["MainboardID"] == sample_printer.id
+        assert (
+            response["Data"]["Attributes"]["ProtocolVersion"] == sample_printer.protocol
+        )
+        assert (
+            response["Data"]["Attributes"]["FirmwareVersion"] == sample_printer.firmware
+        )
+        assert response["Data"]["Status"]["CurrentStatus"] == 0
 
     def test_datagram_received_printer_without_attributes(
         self, discovery_protocol: DiscoveryProtocol, mock_printer_registry: Mock
@@ -196,22 +207,25 @@ class TestDiscoveryProtocol:
         sent_data, _ = mock_transport.sendto.call_args[0]
         response = json.loads(sent_data.decode())
 
+        # Verify legacy Saturn format with Attributes
+        assert "Attributes" in response["Data"]
+        assert "Status" in response["Data"]
         # Should handle None attributes (getattr returns None when attr exists
         # but is None)
         assert (
-            response["Data"]["Name"] is None
+            response["Data"]["Attributes"]["Name"] is None
         )  # getattr returns None when attribute exists but is None
         assert (
-            response["Data"]["BrandName"] is None
+            response["Data"]["Attributes"]["BrandName"] is None
         )  # getattr returns None when attribute exists but is None
         assert (
-            response["Data"]["MainboardID"] == "192.168.1.100"
+            response["Data"]["Attributes"]["MainboardID"] == "192.168.1.100"
         )  # Falls back to IP when id is None
         assert (
-            response["Data"]["ProtocolVersion"] is None
+            response["Data"]["Attributes"]["ProtocolVersion"] is None
         )  # getattr returns None when attribute exists but is None
         assert (
-            response["Data"]["FirmwareVersion"] is None
+            response["Data"]["Attributes"]["FirmwareVersion"] is None
         )  # getattr returns None when attribute exists but is None
 
     def test_datagram_received_multiple_printers(

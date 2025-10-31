@@ -22,11 +22,15 @@ CONF_PROXY_ENABLED = "proxy_enabled"
 CONF_PROXY_WEBSOCKET_PORT = "proxy_websocket_port"
 CONF_PROXY_VIDEO_PORT = "proxy_video_port"
 
+# MQTT settings (always uses embedded broker)
+CONF_MQTT_BROKER_ENABLED = "mqtt_broker_enabled"
+
 # Websocket and proxy settings
 DEFAULT_BROADCAST_ADDRESS = "255.255.255.255"
 DEFAULT_FALLBACK_IP = "8.8.8.8"
 DISCOVERY_MESSAGE = "M99999"
 DISCOVERY_PORT = 3000
+DISCOVERY_TIMEOUT = 5
 PROXY_HOST = "127.0.0.1"
 VIDEO_ENDPOINT = "video"
 VIDEO_PORT = 3031
