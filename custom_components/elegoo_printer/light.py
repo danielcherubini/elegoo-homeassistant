@@ -97,8 +97,9 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         or defaults to white if none is provided. For on/off lights, enables the light.
         Updates the printer with the new light status and requests a state refresh.
         """
-        light_status = self.light_status
-        light_status.second_light = True
+        # Create a new LightStatus object to avoid modifying the cached state
+        light_status = LightStatus()
+        light_status.second_light = 1  # Use integer 1 for ON
         light_status.rgb_light = [255, 255, 255]
         await self._elegoo_printer_client.set_light_status(light_status)
 
@@ -112,8 +113,9 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         For on/off lights, turns the light off.
         Updates the printer with the new state and requests a data refresh.
         """
-        light_status = self.light_status
-        light_status.second_light = False
+        # Create a new LightStatus object to avoid modifying the cached state
+        light_status = LightStatus()
+        light_status.second_light = 0  # Use integer 0 for OFF
         light_status.rgb_light = [0, 0, 0]
         await self._elegoo_printer_client.set_light_status(light_status)
 
