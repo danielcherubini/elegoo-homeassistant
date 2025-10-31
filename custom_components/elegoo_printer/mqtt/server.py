@@ -130,7 +130,7 @@ class ElegooMQTTBroker:
                 # Use timeout to prevent hanging during shutdown
                 await asyncio.wait_for(self.server.wait_closed(), timeout=5.0)
                 _LOGGER.info("MQTT Broker stopped")
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 _LOGGER.warning("MQTT Broker stop timed out, forcing shutdown")
             finally:
                 self.server = None
