@@ -91,32 +91,26 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:  # noqa: ARG002
         """
-        Asynchronously turns the light on.
+        Asynchronously turns the chamber light on.
 
-        For RGB lights, sets the color to the specified RGB value
-        or defaults to white if none is provided. For on/off lights, enables the light.
-        Updates the printer with the new light status and requests a state refresh.
+        Sets the light status to ON (second_light=1) and sends the command
+        to the printer. Updates the coordinator state after the operation.
         """
         # Create a new LightStatus object to avoid modifying the cached state
-        light_status = LightStatus()
-        light_status.second_light = 1  # Use integer 1 for ON
-        light_status.rgb_light = [255, 255, 255]
+        light_status = LightStatus({"SecondLight": 1, "RgbLight": [255, 255, 255]})
         await self._elegoo_printer_client.set_light_status(light_status)
 
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:  # noqa: ARG002
         """
-        Asynchronously turns off the printer light.
+        Asynchronously turns off the chamber light.
 
-        For RGB lights, sets all color channels to zero.
-        For on/off lights, turns the light off.
-        Updates the printer with the new state and requests a data refresh.
+        Sets the light status to OFF (second_light=0) and sends the command
+        to the printer. Updates the coordinator state after the operation.
         """
         # Create a new LightStatus object to avoid modifying the cached state
-        light_status = LightStatus()
-        light_status.second_light = 0  # Use integer 0 for OFF
-        light_status.rgb_light = [0, 0, 0]
+        light_status = LightStatus({"SecondLight": 0, "RgbLight": [0, 0, 0]})
         await self._elegoo_printer_client.set_light_status(light_status)
 
         await self.coordinator.async_request_refresh()
