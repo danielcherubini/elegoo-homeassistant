@@ -25,6 +25,7 @@ from .const import (
 from .mqtt.client import ElegooMqttClient
 from .mqtt.const import MQTT_BROKER_PORT
 from .mqtt.server import ElegooMQTTBroker
+from .sdcp.exceptions import ElegooPrinterConnectionError
 from .sdcp.models.elegoo_image import ElegooImage
 from .sdcp.models.enums import TransportType
 from .sdcp.models.printer import Printer, PrinterData
@@ -303,7 +304,7 @@ class ElegooPrinterApiClient:
             await self._update_config_entry_if_needed(printer)
 
             return self  # noqa: TRY300
-        except (ConnectionError, TimeoutError):
+        except (ConnectionError, TimeoutError, ElegooPrinterConnectionError):
             # Release only our proxy reference if any
             if self.server:
                 await ElegooPrinterServer.release_reference()
