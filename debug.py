@@ -157,33 +157,25 @@ async def main() -> None:
                 for i, printer in enumerate(discovered_printers, start=1):
                     print_printer_info(printer, index=i)
 
-                # Filter out proxy servers for monitoring
-                non_proxy_printers = [
-                    p for p in discovered_printers if not p.is_proxy
-                ]
-
-                if not non_proxy_printers:
-                    logger.warning("⚠️  No printers to monitor (all were proxy servers)")
-                    return
-
                 # Ask user which printer to monitor
                 logger.info("=" * 80)
                 logger.info("Select a printer to monitor:")
-                for i, printer in enumerate(non_proxy_printers, start=1):
+                for i, printer in enumerate(discovered_printers, start=1):
+                    proxy_suffix = " (Proxy)" if printer.is_proxy else ""
                     logger.info(
-                        f"  {i}. {printer.name} ({printer.model}) - {printer.transport_type.value}"
+                        f"  {i}. {printer.name}{proxy_suffix} - {printer.transport_type.value}"
                     )
                 logger.info("=" * 80)
 
                 # Get user selection
                 while True:
                     try:
-                        choice = input(f"Enter printer number (1-{len(non_proxy_printers)}): ")
+                        choice = input(f"Enter printer number (1-{len(discovered_printers)}): ")
                         printer_index = int(choice) - 1
-                        if 0 <= printer_index < len(non_proxy_printers):
-                            selected_printer = non_proxy_printers[printer_index]
+                        if 0 <= printer_index < len(discovered_printers):
+                            selected_printer = discovered_printers[printer_index]
                             break
-                        logger.error(f"Please enter a number between 1 and {len(non_proxy_printers)}")
+                        logger.error(f"Please enter a number between 1 and {len(discovered_printers)}")
                     except ValueError:
                         logger.error("Please enter a valid number")
                     except KeyboardInterrupt:
