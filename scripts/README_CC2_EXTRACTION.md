@@ -4,7 +4,9 @@ This script helps gather diagnostic data from Centauri Carbon 2 printers to impr
 
 ## Purpose
 
-The `extract_cc2_data.py` script connects to your Centauri Carbon 2 printer and runs various SDCP commands to extract information about:
+The `extract_cc2_data.py` script connects to your Centauri Carbon 2 printer and captures **RAW WebSocket data** by running various SDCP commands.
+
+**What it captures:**
 - Printer capabilities and attributes
 - Current status
 - Print history
@@ -13,7 +15,9 @@ The `extract_cc2_data.py` script connects to your Centauri Carbon 2 printer and 
 - File management features
 - Time-lapse features
 
-All data is saved to a JSON file that can be shared with developers to improve support.
+**Important:** This script captures the **raw JSON messages** sent and received over WebSocket, without any data parsing or model processing. This ensures we capture ALL data even if the printer has new/different fields that existing code doesn't know about.
+
+All data is saved to a **JSONL (JSON Lines) file** that can be shared with developers to improve support.
 
 ## Requirements
 
@@ -61,38 +65,69 @@ This skips the interactive selection and goes straight to the specified printer.
 
 ## Output
 
-The script creates a timestamped JSON file in the `cc2_extractions/` directory:
+The script creates a timestamped **JSONL (JSON Lines) file** in the `cc2_extractions/` directory:
 
 ```
-cc2_extractions/cc2_extraction_20250102_143052.json
+cc2_extractions/cc2_raw_extraction_20250102_143052.jsonl
 ```
 
-This file contains:
-- Printer information (model, firmware, IP, etc.)
-- Responses from all supported SDCP commands
-- Any errors encountered during extraction
-- Timestamps for each operation
+### JSONL Format
+
+Each line is a complete JSON object representing one WebSocket message:
+
+```json
+{"timestamp": "2025-01-02T14:30:52.123456", "direction": "send", "message": {...}}
+{"timestamp": "2025-01-02T14:30:52.456789", "direction": "recv", "message": {...}}
+{"timestamp": "2025-01-02T14:30:53.789012", "direction": "recv", "message": {...}}
+```
+
+**Fields:**
+- `timestamp`: When the message was sent/received
+- `direction`: Either `"send"` (we sent to printer) or `"recv"` (printer sent to us)
+- `message`: The complete raw JSON WebSocket message
+
+**Benefits of JSONL:**
+- ✅ Easy to parse line-by-line
+- ✅ Won't break if one message is malformed
+- ✅ Can grep/filter for specific commands
+- ✅ Preserves exact send/receive order
+- ✅ No data is lost or transformed by models
 
 ## Sharing Data
 
 To help improve Centauri Carbon 2 support:
 
 1. Run the extraction script on your printer
-2. Locate the JSON file in `cc2_extractions/`
+2. Locate the **JSONL file** in `cc2_extractions/`
 3. Create a GitHub issue at: https://github.com/your-repo/elegoo_homeassistant/issues
-4. Attach the JSON file to the issue
-5. Include any additional context about your printer (model, firmware version, any issues you've encountered)
+4. Attach the JSONL file to the issue
+5. Include any additional context about your printer:
+   - Exact model name
+   - Firmware version
+   - Any accessories (AMS, enclosure, etc.)
+   - Any issues you've encountered
+
+**Privacy Note:** The JSONL file contains printer information like IP address, printer name, and file names. You may want to review it before sharing if you have sensitive file names.
 
 ## Safety
 
 The script only runs **read-only** commands and will NOT:
-- ❌ Move printer axes
-- ❌ Delete files
-- ❌ Modify printer settings
-- ❌ Start, stop, or pause prints
-- ❌ Delete print history
+- ❌ Move printer axes (skips XYZ move/home commands)
+- ❌ Delete files (skips file delete commands)
+- ❌ Modify printer settings (skips rename/modify commands)
+- ❌ Start, stop, or pause prints (skips print control)
+- ❌ Delete print history (skips history delete)
+- ❌ Load/unload filament (skips AMS loading commands)
 
 All commands are safe to run on a printer that is idle or actively printing.
+
+**What it DOES send:**
+- Status requests (read current state)
+- Attribute requests (read printer info)
+- File list requests (read available files)
+- History requests (read print history)
+- AMS slot/mapping info requests (read multi-material config)
+- Video/time-lapse enable/disable (temporary, reverts after capture)
 
 ## Troubleshooting
 
