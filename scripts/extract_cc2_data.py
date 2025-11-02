@@ -412,6 +412,7 @@ class RawDataExtractor:
         logger.info("   - Print control (pause/stop/resume)")
         logger.info("   - Delete history")
         logger.info("   - AMS loading/unloading")
+        logger.info("   - Control Device (CMD 403)")
         logger.info("   Require Specific Data:")
         logger.info("   - Get File Info (needs valid filename)")
         logger.info("   - Task Details (needs task ID)")
