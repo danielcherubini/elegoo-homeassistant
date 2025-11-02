@@ -17,6 +17,9 @@ coverage.xml
 config/*
 !config/configuration.yaml
 
+# CC2 extraction output
+cc2_extractions/
+
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
