@@ -344,12 +344,7 @@ class RawDataExtractor:
             return
         await asyncio.sleep(5)
 
-        # File management
-        if not await self.send_raw_command(CMD_RETRIEVE_FILE_LIST, "File List"):
-            logger.warning("⚠️  Connection lost, stopping extraction")
-            return
-        await asyncio.sleep(5)
-
+        # Skip file management commands - CMD_RETRIEVE_FILE_LIST (258) crashes printer
         # Skip CMD_GET_FILE_INFO - requires specific filename we don't know
 
         # History
@@ -421,6 +416,8 @@ class RawDataExtractor:
         logger.info("   - Get File Info (needs valid filename)")
         logger.info("   - Task Details (needs task ID)")
         logger.info("   - Export Time-Lapse (needs task ID)")
+        logger.info("   Crashes Printer:")
+        logger.info("   - Retrieve File List (CMD 258)")
 
         # Listen for status updates and any delayed responses
         logger.info("\n" + "=" * 80)
