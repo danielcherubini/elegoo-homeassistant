@@ -69,6 +69,9 @@ class RawDataExtractor:
         self.websocket: aiohttp.ClientWebSocketResponse | None = None
         self.session: aiohttp.ClientSession | None = None
         self.message_count = {"sent": 0, "received": 0}
+        self._response_events: dict[str, asyncio.Event] = {}
+        self._response_lock = asyncio.Lock()
+        self._listener_task: asyncio.Task | None = None
 
         # Create output file with header
         with open(self.output_file, "w") as f:
@@ -184,20 +187,60 @@ class RawDataExtractor:
 
         logger.debug(json.dumps(message, indent=2, default=str))
 
+        # If this is a response, check if anyone is waiting for it
+        if direction == "recv":
+            inner_data = message.get("Data", {})
+            request_id = inner_data.get("RequestID")
+            if request_id:
+                asyncio.create_task(self._set_response_event(request_id))
+
+    async def _set_response_event(self, request_id: str) -> None:
+        """Signal that a response with this RequestID was received."""
+        async with self._response_lock:
+            if event := self._response_events.get(request_id):
+                event.set()
+            else:
+                logger.debug(f"Received response for RequestID={request_id} (no waiter)")
+
+    async def _listen_background(self) -> None:
+        """Background task to continuously listen for messages."""
+        if not self.websocket:
+            return
+
+        try:
+            async for msg in self.websocket:
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    message = json.loads(msg.data)
+                    self.save_message("recv", message)
+                elif msg.type == aiohttp.WSMsgType.ERROR:
+                    logger.error(f"WebSocket error: {self.websocket.exception()}")
+                    break
+                elif msg.type == aiohttp.WSMsgType.CLOSED:
+                    logger.warning("WebSocket closed by server")
+                    break
+        except asyncio.CancelledError:
+            logger.debug("Background listener cancelled")
+        except Exception as e:
+            logger.error(f"Background listener error: {e}")
+
     async def send_raw_command(
-        self, cmd: int, cmd_name: str, data: dict[str, Any] | None = None
-    ) -> None:
+        self, cmd: int, cmd_name: str, data: dict[str, Any] | None = None, timeout: float = 10.0
+    ) -> bool:
         """
-        Send a raw SDCP command without parsing the response.
+        Send a raw SDCP command and wait for the response.
 
         Args:
             cmd: Command ID from const.py
             cmd_name: Human-readable command name for logging
             data: Command data payload (optional)
+            timeout: How long to wait for response in seconds
+
+        Returns:
+            True if response received, False if timeout
         """
         if not self.websocket:
             logger.error("❌ Not connected!")
-            return
+            return False
 
         request_id = secrets.token_hex(8)
         payload = {
@@ -213,52 +256,45 @@ class RawDataExtractor:
             "Topic": f"sdcp/request/{self.mainboard_id}",
         }
 
-        logger.info(f"  → Sending: {cmd_name} (Cmd={cmd})")
-        self.save_message("send", payload)
+        # Create event to wait for response
+        event = asyncio.Event()
+        async with self._response_lock:
+            self._response_events[request_id] = event
 
-        await self.websocket.send_str(json.dumps(payload, default=str))
+        try:
+            logger.info(f"  → Sending: {cmd_name} (Cmd={cmd})")
+            self.save_message("send", payload)
+            await self.websocket.send_str(json.dumps(payload, default=str))
 
-        # Brief delay to let response arrive
-        await asyncio.sleep(0.5)
+            # Wait for response
+            logger.debug(f"  ⏳ Waiting for response (RequestID={request_id})...")
+            try:
+                await asyncio.wait_for(event.wait(), timeout=timeout)
+                logger.debug(f"  ✓ Response received for {cmd_name}")
+                return True
+            except asyncio.TimeoutError:
+                logger.warning(f"  ⏱ Timeout waiting for response to {cmd_name}")
+                return False
 
-    async def listen_for_messages(self, duration: int) -> None:
+        finally:
+            # Clean up event
+            async with self._response_lock:
+                self._response_events.pop(request_id, None)
+
+    async def listen_for_additional_messages(self, duration: int) -> None:
         """
-        Listen for incoming WebSocket messages for a specified duration.
+        Continue listening for additional messages (status updates, etc.).
 
-        Captures all status updates, responses, notices, and errors.
+        The background listener is already running, so we just sleep.
 
         Args:
             duration: How long to listen in seconds
         """
-        if not self.websocket:
-            logger.error("❌ Not connected!")
-            return
-
-        logger.info(f"👂 Listening for messages for {duration} seconds...")
-        end_time = asyncio.get_event_loop().time() + duration
+        logger.info(f"👂 Listening for additional messages for {duration} seconds...")
+        logger.info("   (Capturing status updates, notices, etc.)")
 
         try:
-            while asyncio.get_event_loop().time() < end_time:
-                try:
-                    msg = await asyncio.wait_for(
-                        self.websocket.receive(), timeout=1.0
-                    )
-
-                    if msg.type == aiohttp.WSMsgType.TEXT:
-                        message = json.loads(msg.data)
-                        self.save_message("recv", message)
-                    elif msg.type == aiohttp.WSMsgType.ERROR:
-                        logger.error(
-                            f"WebSocket error: {self.websocket.exception()}"
-                        )
-                        break
-                    elif msg.type == aiohttp.WSMsgType.CLOSED:
-                        logger.warning("WebSocket closed by server")
-                        break
-
-                except asyncio.TimeoutError:
-                    continue  # No message, keep listening
-
+            await asyncio.sleep(duration)
         except KeyboardInterrupt:
             logger.info("\n🛑 Interrupted by user")
 
@@ -276,6 +312,9 @@ class RawDataExtractor:
         # Connect
         if not await self.connect_websocket(printer):
             return
+
+        # Start background listener
+        self._listener_task = asyncio.create_task(self._listen_background())
 
         # Wait for initial connection to stabilize
         await asyncio.sleep(2)
@@ -340,9 +379,16 @@ class RawDataExtractor:
 
         # Listen for status updates and any delayed responses
         logger.info("\n" + "=" * 80)
-        await self.listen_for_messages(duration=30)
+        await self.listen_for_additional_messages(duration=30)
 
         # Cleanup
+        if self._listener_task:
+            self._listener_task.cancel()
+            try:
+                await self._listener_task
+            except asyncio.CancelledError:
+                pass
+
         if self.websocket:
             await self.websocket.close()
         if self.session:
