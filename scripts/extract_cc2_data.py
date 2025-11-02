@@ -236,10 +236,15 @@ class RawDataExtractor:
             timeout: How long to wait for response in seconds
 
         Returns:
-            True if response received, False if timeout
+            True if response received, False if timeout or connection closed
         """
         if not self.websocket:
             logger.error("❌ Not connected!")
+            return False
+
+        # Check if connection is still alive
+        if self.websocket.closed:
+            logger.error("❌ WebSocket connection is closed!")
             return False
 
         request_id = secrets.token_hex(8)
@@ -275,6 +280,10 @@ class RawDataExtractor:
             except asyncio.TimeoutError:
                 logger.warning(f"  ⏱ Timeout waiting for response to {cmd_name}")
                 return False
+
+        except Exception as e:
+            logger.error(f"❌ Error sending {cmd_name}: {e}")
+            return False
 
         finally:
             # Clean up event
@@ -323,73 +332,95 @@ class RawDataExtractor:
         logger.info("-" * 80)
 
         # Core status and attributes
-        await self.send_raw_command(
+        if not await self.send_raw_command(
             CMD_REQUEST_STATUS_REFRESH, "Status Refresh"
-        )
+        ):
+            logger.warning("⚠️  Connection lost, stopping extraction")
+            return
         await asyncio.sleep(5)
 
-        await self.send_raw_command(CMD_REQUEST_ATTRIBUTES, "Attributes")
+        if not await self.send_raw_command(CMD_REQUEST_ATTRIBUTES, "Attributes"):
+            logger.warning("⚠️  Connection lost, stopping extraction")
+            return
         await asyncio.sleep(5)
 
         # File management
-        await self.send_raw_command(CMD_RETRIEVE_FILE_LIST, "File List")
+        if not await self.send_raw_command(CMD_RETRIEVE_FILE_LIST, "File List"):
+            logger.warning("⚠️  Connection lost, stopping extraction")
+            return
         await asyncio.sleep(5)
 
-        await self.send_raw_command(
-            CMD_GET_FILE_INFO, "Get File Info (CC2)", {"FileName": "test.gcode"}
-        )
-        await asyncio.sleep(5)
+        # Skip CMD_GET_FILE_INFO - requires specific filename we don't know
 
         # History
-        await self.send_raw_command(
+        if not await self.send_raw_command(
             CMD_RETRIEVE_HISTORICAL_TASKS, "Historical Tasks"
-        )
+        ):
+            logger.warning("⚠️  Connection lost, stopping extraction")
+            return
         await asyncio.sleep(5)
         # Note: Task details would need a specific task ID, skip for now
 
         # Video stream
-        await self.send_raw_command(
+        if not await self.send_raw_command(
             CMD_SET_VIDEO_STREAM, "Video Stream ON", {"Enable": 1}
-        )
+        ):
+            logger.warning("⚠️  Connection lost, stopping extraction")
+            return
         await asyncio.sleep(5)
 
-        await self.send_raw_command(
+        if not await self.send_raw_command(
             CMD_SET_VIDEO_STREAM, "Video Stream OFF", {"Enable": 0}
-        )
+        ):
+            logger.warning("⚠️  Connection lost, stopping extraction")
+            return
         await asyncio.sleep(5)
 
         # Time-lapse
-        await self.send_raw_command(
+        if not await self.send_raw_command(
             CMD_SET_TIME_LAPSE_PHOTOGRAPHY, "Time-Lapse ON", {"Enable": 1}
-        )
+        ):
+            logger.warning("⚠️  Connection lost, stopping extraction")
+            return
         await asyncio.sleep(5)
 
-        await self.send_raw_command(
+        if not await self.send_raw_command(
             CMD_SET_TIME_LAPSE_PHOTOGRAPHY, "Time-Lapse OFF", {"Enable": 0}
-        )
+        ):
+            logger.warning("⚠️  Connection lost, stopping extraction")
+            return
         await asyncio.sleep(5)
 
         # NEW Centauri Carbon 2 commands
         logger.info("\n🎨 Testing NEW Centauri Carbon 2 Commands...")
         logger.info("-" * 80)
 
-        await self.send_raw_command(
+        if not await self.send_raw_command(
             CMD_AMS_GET_SLOT_LIST, "AMS Get Slot List (CC2)"
-        )
+        ):
+            logger.warning("⚠️  Connection lost, stopping extraction")
+            return
         await asyncio.sleep(5)
 
-        await self.send_raw_command(
+        if not await self.send_raw_command(
             CMD_AMS_GET_MAPPING_INFO, "AMS Get Mapping Info (CC2)"
-        )
+        ):
+            logger.warning("⚠️  Connection lost, stopping extraction")
+            return
         await asyncio.sleep(5)
         # Export time-lapse would need a task ID, skip for now
 
-        logger.info("\n⚠️  Skipped Commands (Potentially Destructive):")
+        logger.info("\n⚠️  Skipped Commands:")
+        logger.info("   Potentially Destructive:")
         logger.info("   - XYZ Move/Home (could move axes)")
         logger.info("   - File rename/delete operations")
         logger.info("   - Print control (pause/stop/resume)")
         logger.info("   - Delete history")
         logger.info("   - AMS loading/unloading")
+        logger.info("   Require Specific Data:")
+        logger.info("   - Get File Info (needs valid filename)")
+        logger.info("   - Task Details (needs task ID)")
+        logger.info("   - Export Time-Lapse (needs task ID)")
 
         # Listen for status updates and any delayed responses
         logger.info("\n" + "=" * 80)
