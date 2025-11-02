@@ -7,6 +7,7 @@ This script helps gather diagnostic data from Centauri Carbon 2 printers to impr
 The `extract_cc2_data.py` script connects to your Centauri Carbon 2 printer and captures **RAW WebSocket data** by running various SDCP commands.
 
 **What it captures:**
+- UDP discovery response (raw printer advertisement data)
 - Printer capabilities and attributes
 - Current status
 - Print history
@@ -73,8 +74,14 @@ cc2_extractions/cc2_raw_extraction_20250102_143052.jsonl
 
 ### JSONL Format
 
-Each line is a complete JSON object representing one WebSocket message:
+Each line is a complete JSON object. There are two types of entries:
 
+**Discovery entries:**
+```json
+{"timestamp": "2025-01-02T14:30:50.000000", "direction": "discovery", "source_address": "192.168.1.100:3000", "raw_response": "..."}
+```
+
+**WebSocket message entries:**
 ```json
 {"timestamp": "2025-01-02T14:30:52.123456", "direction": "send", "message": {...}}
 {"timestamp": "2025-01-02T14:30:52.456789", "direction": "recv", "message": {...}}
@@ -82,9 +89,11 @@ Each line is a complete JSON object representing one WebSocket message:
 ```
 
 **Fields:**
-- `timestamp`: When the message was sent/received
-- `direction`: Either `"send"` (we sent to printer) or `"recv"` (printer sent to us)
-- `message`: The complete raw JSON WebSocket message
+- `timestamp`: When the message/discovery occurred
+- `direction`: Either `"discovery"` (UDP discovery response), `"send"` (we sent to printer), or `"recv"` (printer sent to us)
+- `message`: The complete raw JSON WebSocket message (for send/recv entries)
+- `raw_response`: The raw UDP discovery response string (for discovery entries)
+- `source_address`: IP:port of discovery response (for discovery entries)
 
 **Benefits of JSONL:**
 - ✅ Easy to parse line-by-line

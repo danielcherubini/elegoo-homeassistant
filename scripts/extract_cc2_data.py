@@ -117,11 +117,23 @@ class RawDataExtractor:
                         data, addr = sock.recvfrom(8192)
                         logger.debug(f"Discovery response from {addr}")
                         printer_info = data.decode("utf-8")
+
+                        # Save raw discovery response
+                        discovery_entry = {
+                            "timestamp": datetime.now().isoformat(),
+                            "direction": "discovery",
+                            "source_address": f"{addr[0]}:{addr[1]}",
+                            "raw_response": printer_info,
+                        }
+                        with open(self.output_file, "a") as f:
+                            f.write(json.dumps(discovery_entry, default=str) + "\n")
+
                         printer = Printer(printer_info)
                         discovered_printers.append(printer)
                         logger.info(
                             f"   Found: {printer.name} @ {printer.ip_address}"
                         )
+                        logger.info(f"📝 Saved discovery data for {printer.name}")
                     except TimeoutError:
                         break
             except OSError as e:
