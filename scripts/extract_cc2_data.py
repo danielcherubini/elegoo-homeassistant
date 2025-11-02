@@ -278,7 +278,7 @@ class RawDataExtractor:
                 logger.debug(f"  ✓ Response received for {cmd_name}")
                 return True
             except asyncio.TimeoutError:
-                logger.warning(f"  ⏱ Timeout waiting for response to {cmd_name}")
+                logger.info(f"  ⏱ Timeout for {cmd_name} (may not be supported)")
                 return False
 
         except Exception as e:
@@ -332,15 +332,15 @@ class RawDataExtractor:
         logger.info("-" * 80)
 
         # Core status and attributes
-        if not await self.send_raw_command(
-            CMD_REQUEST_STATUS_REFRESH, "Status Refresh"
-        ):
-            logger.warning("⚠️  Connection lost, stopping extraction")
+        await self.send_raw_command(CMD_REQUEST_STATUS_REFRESH, "Status Refresh")
+        if self.websocket.closed:
+            logger.error("⚠️  Connection closed, stopping extraction")
             return
         await asyncio.sleep(5)
 
-        if not await self.send_raw_command(CMD_REQUEST_ATTRIBUTES, "Attributes"):
-            logger.warning("⚠️  Connection lost, stopping extraction")
+        await self.send_raw_command(CMD_REQUEST_ATTRIBUTES, "Attributes")
+        if self.websocket.closed:
+            logger.error("⚠️  Connection closed, stopping extraction")
             return
         await asyncio.sleep(5)
 
@@ -348,59 +348,63 @@ class RawDataExtractor:
         # Skip CMD_GET_FILE_INFO - requires specific filename we don't know
 
         # History
-        if not await self.send_raw_command(
-            CMD_RETRIEVE_HISTORICAL_TASKS, "Historical Tasks"
-        ):
-            logger.warning("⚠️  Connection lost, stopping extraction")
+        await self.send_raw_command(CMD_RETRIEVE_HISTORICAL_TASKS, "Historical Tasks")
+        if self.websocket.closed:
+            logger.error("⚠️  Connection closed, stopping extraction")
             return
         await asyncio.sleep(5)
         # Note: Task details would need a specific task ID, skip for now
 
         # Video stream
-        if not await self.send_raw_command(
+        await self.send_raw_command(
             CMD_SET_VIDEO_STREAM, "Video Stream ON", {"Enable": 1}
-        ):
-            logger.warning("⚠️  Connection lost, stopping extraction")
+        )
+        if self.websocket.closed:
+            logger.error("⚠️  Connection closed, stopping extraction")
             return
         await asyncio.sleep(5)
 
-        if not await self.send_raw_command(
+        await self.send_raw_command(
             CMD_SET_VIDEO_STREAM, "Video Stream OFF", {"Enable": 0}
-        ):
-            logger.warning("⚠️  Connection lost, stopping extraction")
+        )
+        if self.websocket.closed:
+            logger.error("⚠️  Connection closed, stopping extraction")
             return
         await asyncio.sleep(5)
 
         # Time-lapse
-        if not await self.send_raw_command(
+        await self.send_raw_command(
             CMD_SET_TIME_LAPSE_PHOTOGRAPHY, "Time-Lapse ON", {"Enable": 1}
-        ):
-            logger.warning("⚠️  Connection lost, stopping extraction")
+        )
+        if self.websocket.closed:
+            logger.error("⚠️  Connection closed, stopping extraction")
             return
         await asyncio.sleep(5)
 
-        if not await self.send_raw_command(
+        await self.send_raw_command(
             CMD_SET_TIME_LAPSE_PHOTOGRAPHY, "Time-Lapse OFF", {"Enable": 0}
-        ):
-            logger.warning("⚠️  Connection lost, stopping extraction")
+        )
+        if self.websocket.closed:
+            logger.error("⚠️  Connection closed, stopping extraction")
             return
         await asyncio.sleep(5)
 
-        # NEW Centauri Carbon 2 commands
+        # NEW Centauri Carbon 2 commands (may not be supported on all printers)
         logger.info("\n🎨 Testing NEW Centauri Carbon 2 Commands...")
         logger.info("-" * 80)
+        logger.info("   (These may timeout if your printer doesn't have AMS)")
 
-        if not await self.send_raw_command(
-            CMD_AMS_GET_SLOT_LIST, "AMS Get Slot List (CC2)"
-        ):
-            logger.warning("⚠️  Connection lost, stopping extraction")
+        await self.send_raw_command(CMD_AMS_GET_SLOT_LIST, "AMS Get Slot List (CC2)")
+        if self.websocket.closed:
+            logger.error("⚠️  Connection closed, stopping extraction")
             return
         await asyncio.sleep(5)
 
-        if not await self.send_raw_command(
+        await self.send_raw_command(
             CMD_AMS_GET_MAPPING_INFO, "AMS Get Mapping Info (CC2)"
-        ):
-            logger.warning("⚠️  Connection lost, stopping extraction")
+        )
+        if self.websocket.closed:
+            logger.error("⚠️  Connection closed, stopping extraction")
             return
         await asyncio.sleep(5)
         # Export time-lapse would need a task ID, skip for now
@@ -425,6 +429,7 @@ class RawDataExtractor:
         await self.listen_for_additional_messages(duration=30)
 
         # Cleanup
+        logger.info("🧹 Cleaning up connections...")
         if self._listener_task:
             self._listener_task.cancel()
             try:
@@ -432,10 +437,19 @@ class RawDataExtractor:
             except asyncio.CancelledError:
                 pass
 
-        if self.websocket:
-            await self.websocket.close()
-        if self.session:
-            await self.session.close()
+        try:
+            if self.websocket and not self.websocket.closed:
+                await self.websocket.close()
+        except Exception as e:
+            logger.debug(f"Error closing websocket: {e}")
+
+        try:
+            if self.session and not self.session.closed:
+                await self.session.close()
+                # Give aiohttp time to close connections properly
+                await asyncio.sleep(0.25)
+        except Exception as e:
+            logger.debug(f"Error closing session: {e}")
 
         logger.info("\n" + "=" * 80)
         logger.info("✅ RAW Data Extraction Complete!")
