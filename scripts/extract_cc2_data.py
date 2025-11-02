@@ -326,37 +326,48 @@ class RawDataExtractor:
         await self.send_raw_command(
             CMD_REQUEST_STATUS_REFRESH, "Status Refresh"
         )
+        await asyncio.sleep(5)
+
         await self.send_raw_command(CMD_REQUEST_ATTRIBUTES, "Attributes")
+        await asyncio.sleep(5)
 
         # File management
         await self.send_raw_command(CMD_RETRIEVE_FILE_LIST, "File List")
+        await asyncio.sleep(5)
+
         await self.send_raw_command(
             CMD_GET_FILE_INFO, "Get File Info (CC2)", {"FileName": "test.gcode"}
         )
+        await asyncio.sleep(5)
 
         # History
         await self.send_raw_command(
             CMD_RETRIEVE_HISTORICAL_TASKS, "Historical Tasks"
         )
+        await asyncio.sleep(5)
         # Note: Task details would need a specific task ID, skip for now
 
         # Video stream
         await self.send_raw_command(
             CMD_SET_VIDEO_STREAM, "Video Stream ON", {"Enable": 1}
         )
-        await asyncio.sleep(1)
+        await asyncio.sleep(5)
+
         await self.send_raw_command(
             CMD_SET_VIDEO_STREAM, "Video Stream OFF", {"Enable": 0}
         )
+        await asyncio.sleep(5)
 
         # Time-lapse
         await self.send_raw_command(
             CMD_SET_TIME_LAPSE_PHOTOGRAPHY, "Time-Lapse ON", {"Enable": 1}
         )
-        await asyncio.sleep(1)
+        await asyncio.sleep(5)
+
         await self.send_raw_command(
             CMD_SET_TIME_LAPSE_PHOTOGRAPHY, "Time-Lapse OFF", {"Enable": 0}
         )
+        await asyncio.sleep(5)
 
         # NEW Centauri Carbon 2 commands
         logger.info("\n🎨 Testing NEW Centauri Carbon 2 Commands...")
@@ -365,9 +376,12 @@ class RawDataExtractor:
         await self.send_raw_command(
             CMD_AMS_GET_SLOT_LIST, "AMS Get Slot List (CC2)"
         )
+        await asyncio.sleep(5)
+
         await self.send_raw_command(
             CMD_AMS_GET_MAPPING_INFO, "AMS Get Mapping Info (CC2)"
         )
+        await asyncio.sleep(5)
         # Export time-lapse would need a task ID, skip for now
 
         logger.info("\n⚠️  Skipped Commands (Potentially Destructive):")
