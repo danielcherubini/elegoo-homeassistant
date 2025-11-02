@@ -39,7 +39,7 @@ This will install `uv` (if needed) and set up all dependencies automatically.
 
 ## Usage
 
-### Option 1: Let the script discover your printer
+### Option 1: Interactive selection (recommended)
 
 ```bash
 make extract
@@ -48,13 +48,16 @@ make extract
 The script will:
 1. Search your network for Elegoo printers
 2. Display all discovered printers
-3. Let you select which one to test
+3. **Ask you to select which printer to test** (if multiple are found)
+4. Run all diagnostic commands on the selected printer
 
-### Option 2: Specify your printer's IP address
+### Option 2: Specify your printer's IP address (skip selection)
 
 ```bash
 make extract PRINTER_IP=192.168.1.100
 ```
+
+This skips the interactive selection and goes straight to the specified printer.
 
 ## Output
 

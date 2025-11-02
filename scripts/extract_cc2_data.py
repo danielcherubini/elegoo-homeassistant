@@ -265,25 +265,60 @@ async def main() -> None:
                 ip_address=printer_ip or "localhost", session=session, logger=logger
             )
 
-            # Discover printer
-            logger.info("🔍 Discovering printer...")
+            # Discover printers
+            logger.info("🔍 Discovering printers on network...")
             if printer_ip:
+                logger.info(f"   Targeting printer at {printer_ip}")
                 discovered = client.discover_printer(printer_ip)
             else:
                 discovered = client.discover_printer()
 
             if not discovered:
-                logger.error("❌ No printer found!")
+                logger.error("❌ No printers found!")
                 return
 
-            printer = discovered[0]
-            logger.info(f"✅ Found: {printer.name} ({printer.model})")
-            logger.info(f"   IP: {printer.ip_address}")
-            logger.info(f"   ID: {printer.id}")
+            # If only one printer or specific IP provided, use it
+            if len(discovered) == 1 or printer_ip:
+                selected_printer = discovered[0]
+                logger.info(f"✅ Found: {selected_printer.name} ({selected_printer.model})")
+                logger.info(f"   IP: {selected_printer.ip_address}")
+                logger.info(f"   ID: {selected_printer.id}")
+            else:
+                # Multiple printers found - let user choose
+                logger.info(f"🎯 Found {len(discovered)} printer(s):")
+                logger.info("=" * 80)
+
+                # Show printer list
+                for i, printer in enumerate(discovered, start=1):
+                    proxy_suffix = " (Proxy)" if printer.is_proxy else ""
+                    logger.info(
+                        f"  {i}. {printer.name}{proxy_suffix} - {printer.model} @ {printer.ip_address}"
+                    )
+
+                logger.info("=" * 80)
+
+                # Get user selection
+                while True:
+                    try:
+                        choice = input(f"Enter printer number (1-{len(discovered)}): ")
+                        printer_index = int(choice) - 1
+                        if 0 <= printer_index < len(discovered):
+                            selected_printer = discovered[printer_index]
+                            break
+                        logger.error(
+                            f"Please enter a number between 1 and {len(discovered)}"
+                        )
+                    except ValueError:
+                        logger.error("Please enter a valid number")
+                    except KeyboardInterrupt:
+                        logger.info("\n🛑 Cancelled by user")
+                        return
+
+                logger.info(f"📍 Selected: {selected_printer.name}")
 
             # Connect
             logger.info("🔌 Connecting to printer...")
-            connected = await client.connect_printer(printer, proxy_enabled=False)
+            connected = await client.connect_printer(selected_printer, proxy_enabled=False)
 
             if not connected:
                 logger.error("❌ Failed to connect!")
