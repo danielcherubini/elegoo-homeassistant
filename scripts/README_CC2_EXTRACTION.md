@@ -27,21 +27,22 @@ All data is saved to a JSON file that can be shared with developers to improve s
 ```bash
 git clone https://github.com/your-repo/elegoo_homeassistant.git
 cd elegoo_homeassistant
+git checkout feature/cc2
 ```
 
-2. Install dependencies:
+2. Set up the development environment:
 ```bash
-pip install -r requirements.txt
-# OR using uv:
-uv sync
+make setup
 ```
+
+This will install `uv` (if needed) and set up all dependencies automatically.
 
 ## Usage
 
 ### Option 1: Let the script discover your printer
 
 ```bash
-python scripts/extract_cc2_data.py
+make extract
 ```
 
 The script will:
@@ -52,13 +53,7 @@ The script will:
 ### Option 2: Specify your printer's IP address
 
 ```bash
-python scripts/extract_cc2_data.py 192.168.1.100
-```
-
-Or set the `PRINTER_IP` environment variable:
-```bash
-export PRINTER_IP=192.168.1.100
-python scripts/extract_cc2_data.py
+make extract PRINTER_IP=192.168.1.100
 ```
 
 ## Output
@@ -116,15 +111,23 @@ All commands are safe to run on a printer that is idle or actively printing.
 
 ## Advanced Usage
 
-### Using with uv
+### Running directly with uv (without Makefile)
 
 ```bash
 uv run scripts/extract_cc2_data.py
+# Or with specific IP:
+uv run scripts/extract_cc2_data.py 192.168.1.100
 ```
 
 ### Collecting data from multiple printers
 
-Run the script multiple times, once for each printer. Each run creates a separate timestamped file.
+Run the script multiple times, once for each printer. Each run creates a separate timestamped file:
+
+```bash
+make extract PRINTER_IP=192.168.1.100
+make extract PRINTER_IP=192.168.1.101
+make extract PRINTER_IP=192.168.1.102
+```
 
 ## Support
 
