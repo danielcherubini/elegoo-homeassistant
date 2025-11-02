@@ -19,7 +19,7 @@ VENV ?= .venv
 # --- PHONY TARGETS ---
 # .PHONY ensures that make will run the command even if a file with the same
 # name as the target exists.
-.PHONY: all setup start debug devcontainer test test-server test-mqtt-printer test-mqtt-broker format lint fix clean help
+.PHONY: all setup start debug devcontainer test test-server test-mqtt-printer test-mqtt-broker extract format lint fix clean help
 
 # --- DEFAULT TARGET ---
 # The default target that runs when you just type 'make'
@@ -73,6 +73,18 @@ test-mqtt-broker:
 	@echo "--> Starting the embedded MQTT broker..."
 	@VIRTUAL_ENV=$(VENV) uv run --active $(PYTHON) scripts/test_embedded_mqtt_broker.py
 
+# Extracts data from a Centauri Carbon 2 printer for compatibility testing.
+# Usage: make extract [PRINTER_IP=192.168.1.100]
+extract:
+	@echo "--> Running Centauri Carbon 2 data extraction..."
+	@if [ -n "$(PRINTER_IP)" ]; then \
+		echo "--> Targeting printer at $(PRINTER_IP)"; \
+		PRINTER_IP=$(PRINTER_IP) VIRTUAL_ENV=$(VENV) uv run --active $(PYTHON) scripts/extract_cc2_data.py $(PRINTER_IP); \
+	else \
+		echo "--> Auto-discovering printers on network..."; \
+		VIRTUAL_ENV=$(VENV) uv run --active $(PYTHON) scripts/extract_cc2_data.py; \
+	fi
+
 # --- LINTING AND FORMATTING ---
 # Formats the code using Ruff.
 format:
@@ -119,6 +131,8 @@ help:
 	@echo "  test-server          Run the WebSocket test server for development."
 	@echo "  test-mqtt-printer    Run the MQTT test printer."
 	@echo "  test-mqtt-broker     Run the embedded MQTT broker test."
+	@echo "  extract              Extract data from a Centauri Carbon 2 printer."
+	@echo "                       Use 'make extract PRINTER_IP=x.x.x.x' for a specific printer."
 	@echo "  format               Format code using Ruff."
 	@echo "  lint                 Check for linting errors using Ruff."
 	@echo "  fix                  Fixes any issues it finds."
