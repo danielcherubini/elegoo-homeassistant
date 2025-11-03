@@ -453,19 +453,10 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         options=[reason.name.lower() for reason in ElegooErrorStatusReason],
         value_fn=lambda printer_data: (
-            printer_data.print_history[
-                printer_data.status.print_info.task_id
-            ].error_status_reason.name.lower()
+            printer_data.current_job.error_status_reason.name.lower()
             if printer_data
-            and printer_data.status
-            and printer_data.status.print_info
-            and printer_data.status.print_info.task_id
-            and printer_data.print_history
-            and printer_data.status.print_info.task_id in printer_data.print_history
-            and printer_data.print_history[printer_data.status.print_info.task_id]
-            and printer_data.print_history[
-                printer_data.status.print_info.task_id
-            ].error_status_reason
+            and printer_data.current_job
+            and printer_data.current_job.error_status_reason
             else None
         ),
     ),
