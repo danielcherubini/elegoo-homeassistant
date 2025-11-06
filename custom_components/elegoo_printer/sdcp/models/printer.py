@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
+    CONF_EXTERNAL_IP,
     CONF_MQTT_BROKER_ENABLED,
     CONF_PROXY_ENABLED,
     DEFAULT_FALLBACK_IP,
@@ -92,6 +93,7 @@ class Printer:
     proxy_video_port: int | None
     is_proxy: bool
     mqtt_broker_enabled: bool
+    external_ip: str | None
 
     def __init__(
         self,
@@ -154,6 +156,7 @@ class Printer:
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
         self.camera_enabled = config.get(CONF_CAMERA_ENABLED, False)
         self.mqtt_broker_enabled = config.get(CONF_MQTT_BROKER_ENABLED, False)
+        self.external_ip = config.get(CONF_EXTERNAL_IP)
         self.proxy_websocket_port = None
         self.proxy_video_port = None
 
@@ -177,6 +180,7 @@ class Printer:
             "proxy_video_port": self.proxy_video_port,
             "is_proxy": self.is_proxy,
             "mqtt_broker_enabled": self.mqtt_broker_enabled,
+            "external_ip": self.external_ip,
         }
 
     def to_dict_safe(self) -> dict[str, Any]:
@@ -241,6 +245,7 @@ class Printer:
         printer.proxy_websocket_port = attrs.get("proxy_websocket_port")
         printer.proxy_video_port = attrs.get("proxy_video_port")
         printer.is_proxy = attrs.get("Proxy", attrs.get("is_proxy", False))
+        printer.external_ip = attrs.get(CONF_EXTERNAL_IP, attrs.get("external_ip"))
         return printer
 
 
@@ -318,17 +323,22 @@ class PrinterData:
             )
 
     @staticmethod
-    def get_local_ip(target_ip: str) -> str:
+    def get_local_ip(target_ip: str, external_ip: str | None = None) -> str:
         """
         Determine the local IP address used for outbound communication.
 
         Args:
             target_ip: The target IP to determine the route to.
+            external_ip: Optional external IP override (for Kubernetes/Docker setups).
 
         Returns:
-            The local IP address, or "127.0.0.1" if detection fails.
+            The external IP if provided, otherwise the detected local IP address,
+            or "127.0.0.1" if detection fails.
 
         """
+        if external_ip:
+            return external_ip
+
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 # Doesn't have to be reachable
@@ -345,7 +355,8 @@ class PrinterData:
 
         if self.printer.proxy_enabled:
             # Use centralized proxy on port 3030 (MainboardID routing handles the rest)
-            proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
+            external_ip = getattr(self.printer, "external_ip", None)
+            proxy_ip = PrinterData.get_local_ip(self.printer.ip_address, external_ip)
             return f"http://{proxy_ip}:{WEBSOCKET_PORT}"
 
         # Use direct printer URL

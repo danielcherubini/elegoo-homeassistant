@@ -15,6 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     CONF_CAMERA_ENABLED,
+    CONF_EXTERNAL_IP,
     CONF_PROXY_ENABLED,
     DOMAIN,
     LOGGER,
@@ -44,6 +45,13 @@ OPTIONS_SCHEMA = vol.Schema(
             CONF_PROXY_ENABLED,
         ): selector.BooleanSelector(
             selector.BooleanSelectorConfig(),
+        ),
+        vol.Optional(
+            CONF_EXTERNAL_IP,
+        ): selector.TextSelector(
+            selector.TextSelectorConfig(
+                type=selector.TextSelectorType.TEXT,
+            ),
         ),
     },
 )
@@ -599,6 +607,13 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_PROXY_ENABLED,
             ): selector.BooleanSelector(
                 selector.BooleanSelectorConfig(),
+            ),
+            vol.Optional(
+                CONF_EXTERNAL_IP,
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(
+                    type=selector.TextSelectorType.TEXT,
+                ),
             ),
         }
 

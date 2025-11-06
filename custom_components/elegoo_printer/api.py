@@ -545,7 +545,10 @@ class ElegooPrinterApiClient:
             if self.printer.proxy_enabled:
                 # Replace printer host with centralized proxy and set id=query
                 try:
-                    proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
+                    external_ip = getattr(self.printer, "external_ip", None)
+                    proxy_ip = PrinterData.get_local_ip(
+                        self.printer.ip_address, external_ip
+                    )
                     parts = urlsplit(thumbnail_url)
                     scheme = parts.scheme or "http"
                     netloc = parts.netloc or self.printer.ip_address

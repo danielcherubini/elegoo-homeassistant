@@ -12,6 +12,7 @@ ATTRIBUTION = "Data provided by Elegoo"
 # Configuration keys
 CONF_BRAND = "brand"
 CONF_CAMERA_ENABLED = "camera_enabled"
+CONF_EXTERNAL_IP = "external_ip"
 CONF_FIRMWARE = "firmware"
 CONF_ID = "id"
 CONF_IP = "ip_address"

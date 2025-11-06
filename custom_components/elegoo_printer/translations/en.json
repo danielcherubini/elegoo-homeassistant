@@ -6,7 +6,11 @@
         "data": {
           "ip_address": "Printer IP Address",
           "centauri_carbon": "Is this an FDM Printer",
-          "proxy_enabled": "Enable the proxy server"
+          "proxy_enabled": "Enable the proxy server",
+          "external_ip": "External IP Address (optional, for Kubernetes/Docker setups)"
+        },
+        "data_description": {
+          "external_ip": "Override auto-detected IP address. Leave blank for automatic detection. Use this if running Home Assistant in Kubernetes or Docker with external load balancer."
         }
       }
     }
@@ -25,7 +29,11 @@
         "description": "If you need help with the configuration have a look here: https://github.com/danielcherubini/elegoo-homeassistant",
         "data": {
           "ip_address": "Printer IP Address",
-          "proxy_enabled": "Enable the proxy server"
+          "proxy_enabled": "Enable the proxy server",
+          "external_ip": "External IP Address (optional, for Kubernetes/Docker setups)"
+        },
+        "data_description": {
+          "external_ip": "Override auto-detected IP address. Leave blank for automatic detection. Use this if running Home Assistant in Kubernetes or Docker with external load balancer."
         }
       },
       "fdm_options": {
