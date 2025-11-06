@@ -386,6 +386,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             printer_object: Printer = validation_result["printer"]
 
             if not _errors:
+                printer_object.external_ip = user_input.get(CONF_EXTERNAL_IP)
                 await self.async_set_unique_id(unique_id=printer_object.id)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(

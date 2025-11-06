@@ -7,10 +7,10 @@
           "ip_address": "Printer IP Address",
           "centauri_carbon": "Is this an FDM Printer",
           "proxy_enabled": "Enable the proxy server",
-          "external_ip": "External IP Address (optional, for Kubernetes/Docker setups)"
+          "external_ip": "External Address (optional, for advanced network setups)"
         },
         "data_description": {
-          "external_ip": "Override auto-detected IP address. Leave blank for automatic detection. Use this if running Home Assistant in Kubernetes or Docker with external load balancer."
+          "external_ip": "Override auto-detected address with an IP address or hostname. Leave blank for automatic detection. Use for Kubernetes/Docker setups or when behind a reverse proxy. Ports 3030 and 3031 will be appended automatically."
         }
       }
     }
@@ -30,10 +30,10 @@
         "data": {
           "ip_address": "Printer IP Address",
           "proxy_enabled": "Enable the proxy server",
-          "external_ip": "External IP Address (optional, for Kubernetes/Docker setups)"
+          "external_ip": "External Address (optional, for advanced network setups)"
         },
         "data_description": {
-          "external_ip": "Override auto-detected IP address. Leave blank for automatic detection. Use this if running Home Assistant in Kubernetes or Docker with external load balancer."
+          "external_ip": "Override auto-detected address with an IP address or hostname. Leave blank for automatic detection. Use for Kubernetes/Docker setups or when behind a reverse proxy. Ports 3030 and 3031 will be appended automatically."
         }
       },
       "fdm_options": {
