@@ -6,7 +6,11 @@
         "data": {
           "ip_address": "Printer IP Address",
           "centauri_carbon": "Is this an FDM Printer",
-          "proxy_enabled": "Enable the proxy server"
+          "proxy_enabled": "Enable the proxy server",
+          "external_ip": "External Address (optional, for advanced network setups)"
+        },
+        "data_description": {
+          "external_ip": "Override auto-detected address with an IP address or hostname. Leave blank for automatic detection. Use for Kubernetes/Docker setups or when behind a reverse proxy. Ports 3030 and 3031 will be appended automatically."
         }
       }
     }
@@ -25,7 +29,11 @@
         "description": "If you need help with the configuration have a look here: https://github.com/danielcherubini/elegoo-homeassistant",
         "data": {
           "ip_address": "Printer IP Address",
-          "proxy_enabled": "Enable the proxy server"
+          "proxy_enabled": "Enable the proxy server",
+          "external_ip": "External Address (optional, for advanced network setups)"
+        },
+        "data_description": {
+          "external_ip": "Override auto-detected address with an IP address or hostname. Leave blank for automatic detection. Use for Kubernetes/Docker setups or when behind a reverse proxy. Ports 3030 and 3031 will be appended automatically."
         }
       },
       "fdm_options": {

@@ -164,7 +164,7 @@ class ElegooPrinterApiClient:
         sets up a proxy server, and attempts to connect to the printer. It returns an
         initialized client instance on success, otherwise None.
         """
-        printer = Printer.from_dict(dict(config))
+        printer = Printer.from_dict(dict(config), config=config)
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
         logger.debug("CONFIGURATION %s", config)
         self = ElegooPrinterApiClient(
@@ -545,7 +545,10 @@ class ElegooPrinterApiClient:
             if self.printer.proxy_enabled:
                 # Replace printer host with centralized proxy and set id=query
                 try:
-                    proxy_ip = PrinterData.get_local_ip(self.printer.ip_address)
+                    external_ip = getattr(self.printer, "external_ip", None)
+                    proxy_ip = PrinterData.get_local_ip(
+                        self.printer.ip_address, external_ip
+                    )
                     parts = urlsplit(thumbnail_url)
                     scheme = parts.scheme or "http"
                     netloc = parts.netloc or self.printer.ip_address

@@ -15,6 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     CONF_CAMERA_ENABLED,
+    CONF_EXTERNAL_IP,
     CONF_PROXY_ENABLED,
     DOMAIN,
     LOGGER,
@@ -44,6 +45,13 @@ OPTIONS_SCHEMA = vol.Schema(
             CONF_PROXY_ENABLED,
         ): selector.BooleanSelector(
             selector.BooleanSelectorConfig(),
+        ),
+        vol.Optional(
+            CONF_EXTERNAL_IP,
+        ): selector.TextSelector(
+            selector.TextSelectorConfig(
+                type=selector.TextSelectorType.TEXT,
+            ),
         ),
     },
 )
@@ -378,6 +386,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             printer_object: Printer = validation_result["printer"]
 
             if not _errors:
+                printer_object.external_ip = user_input.get(CONF_EXTERNAL_IP)
                 await self.async_set_unique_id(unique_id=printer_object.id)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
@@ -569,6 +578,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                     self.hass, printer, user_input
                 )
                 tested_printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+                tested_printer.external_ip = user_input.get(CONF_EXTERNAL_IP)
                 LOGGER.debug("Tested printer: %s", tested_printer.to_dict_safe())
                 return self.async_create_entry(
                     title=tested_printer.name,
@@ -599,6 +609,13 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_PROXY_ENABLED,
             ): selector.BooleanSelector(
                 selector.BooleanSelectorConfig(),
+            ),
+            vol.Optional(
+                CONF_EXTERNAL_IP,
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(
+                    type=selector.TextSelectorType.TEXT,
+                ),
             ),
         }
 

@@ -195,7 +195,8 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         # Use centralized proxy with MainboardID routing
         printer = coordinator.config_entry.runtime_data.api.printer
         if printer.proxy_enabled:
-            proxy_ip = PrinterData.get_local_ip(printer.ip_address)
+            external_ip = getattr(printer, "external_ip", None)
+            proxy_ip = PrinterData.get_local_ip(printer.ip_address, external_ip)
             # Use centralized proxy on port 3031 with MainboardID as query parameter
             mjpeg_url = f"http://{proxy_ip}:{VIDEO_PORT}/video?id={printer.id}"
         else:

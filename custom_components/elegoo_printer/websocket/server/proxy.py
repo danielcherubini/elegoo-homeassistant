@@ -26,6 +26,7 @@ from custom_components.elegoo_printer.const import (
     VIDEO_PORT,
     WEBSOCKET_PORT,
 )
+from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
 
 from .discovery import DiscoveryProtocol
 from .registry import PrinterRegistry
@@ -648,7 +649,22 @@ class ElegooPrinterServer:
                         video_url, target = self._find_video_url_in_data(data)
                         if video_url:
                             video_url_str = str(video_url)
-                            proxy_ip = get_local_ip()
+
+                            # Get printer and external_ip from registry
+                            printer = self.printer_registry.get_printer_by_mainboard_id(
+                                mainboard_id
+                            )
+                            external_ip = (
+                                getattr(printer, "external_ip", None)
+                                if printer
+                                else None
+                            )
+
+                            # Use external_ip if configured
+                            target_ip = (
+                                printer.ip_address if printer else DEFAULT_FALLBACK_IP
+                            )
+                            proxy_ip = PrinterData.get_local_ip(target_ip, external_ip)
 
                             # Handle URLs without scheme (e.g., "10.0.0.184:3031/video")
                             if not video_url_str.startswith(("http://", "https://")):

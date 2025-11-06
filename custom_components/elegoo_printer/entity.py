@@ -8,6 +8,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     ATTRIBUTION,
     CONF_BRAND,
+    CONF_EXTERNAL_IP,
     CONF_FIRMWARE,
     CONF_ID,
     CONF_IP,
@@ -50,7 +51,8 @@ class ElegooPrinterEntity(CoordinatorEntity[ElegooDataUpdateCoordinator]):
         if device_ip:
             if proxy_enabled:
                 # Use centralized proxy with MainboardID query parameter
-                proxy_ip = PrinterData.get_local_ip(device_ip)
+                external_ip = config_data.get(CONF_EXTERNAL_IP)
+                proxy_ip = PrinterData.get_local_ip(device_ip, external_ip)
                 configuration_url = f"http://{proxy_ip}:{WEBSOCKET_PORT}?id={device_id}"
             else:
                 configuration_url = f"http://{device_ip}:{WEBSOCKET_PORT}"
