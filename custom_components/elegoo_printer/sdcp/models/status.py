@@ -81,6 +81,8 @@ class PrintInfo:
         filename (str): Print File Name.
         error_number (ElegooPrintError): Error Number (refer to documentation).
         task_id (str): Current Task ID.
+        total_extrusion (float | None): Total filament extrusion in mm for the print job.
+        current_extrusion (float | None): Current filament extrusion in mm.
 
     """
 
@@ -159,6 +161,20 @@ class PrintInfo:
         error_number_int = data.get("ErrorNumber", 0)
         self.error_number = ElegooPrintError.from_int(error_number_int)
         self.task_id = data.get("TaskId")
+
+        # Filament extrusion data (FDM only)
+        # The printer sends these with hex-encoded keys, so we need to check both formats
+        # Use explicit None check to handle 0 values correctly
+        self.total_extrusion: float | None = (
+            data.get("TotalExtrusion")
+            if "TotalExtrusion" in data
+            else data.get("54 6F 74 61 6C 45 78 74 72 75 73 69 6F 6E 00")  # Hex for "TotalExtrusion"
+        )
+        self.current_extrusion: float | None = (
+            data.get("CurrentExtrusion")
+            if "CurrentExtrusion" in data
+            else data.get("43 75 72 72 65 6E 74 45 78 74 72 75 73 69 6F 6E 00")  # Hex for "CurrentExtrusion"
+        )
 
 
 class PrinterStatus:
