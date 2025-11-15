@@ -616,6 +616,32 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         suggested_display_precision=2,
         value_fn=lambda printer_data: _get_current_coord_value(printer_data, 2),
     ),
+    # --- Total Extrusion Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="total_extrusion",
+        name="Total Extrusion",
+        icon="mdi:printer-3d-nozzle",
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=2,
+        value_fn=lambda printer_data: printer_data.status.print_info.total_extrusion
+        if printer_data and printer_data.status and printer_data.status.print_info
+        else None,
+    ),
+    # --- Current Extrusion Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="current_extrusion",
+        name="Current Extrusion",
+        icon="mdi:printer-3d-nozzle",
+        device_class=SensorDeviceClass.DISTANCE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=2,
+        value_fn=lambda printer_data: printer_data.status.print_info.current_extrusion
+        if printer_data and printer_data.status and printer_data.status.print_info
+        else None,
+    ),
 )
 
 PRINTER_IMAGES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
