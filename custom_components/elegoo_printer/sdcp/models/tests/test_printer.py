@@ -40,11 +40,11 @@ class TestOpenCentauriDetection:
         ],
     )
     def test_is_open_centauri(
-        self, model: str | None, firmware: str | None, expected: bool
+        self, model: str | None, firmware: str | None, expected: bool  # noqa: FBT001
     ) -> None:
         """Test Open Centauri detection with various firmware patterns."""
-        result = Printer._is_open_centauri(model, firmware)
-        assert result == expected, (
+        result = Printer._is_open_centauri(model, firmware)  # noqa: SLF001
+        assert result == expected, (  # noqa: S101
             f"Expected {expected} for model='{model}' firmware='{firmware}', "
             f"got {result}"
         )
