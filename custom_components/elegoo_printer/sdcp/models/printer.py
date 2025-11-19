@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import socket
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
@@ -176,8 +177,13 @@ class Printer:
             firmware: The firmware version string
 
         Returns:
-            True if model contains "centauri" and firmware contains "OC" or "O"
-            (case-insensitive), False otherwise.
+            True if model contains "centauri" and firmware contains "OC" anywhere
+            or contains a standalone "O" marker (word boundary), False otherwise.
+
+        Examples:
+            - "V0.1.0 O" -> matches (standalone O)
+            - "V0.2.0OC" -> matches (contains OC)
+            - "V0.1.0 OCEAN" -> does not match (O is not standalone)
 
         """
         if not model or not firmware:
@@ -187,9 +193,17 @@ class Printer:
         firmware_upper = firmware.upper()
 
         # Check if it's a Centauri printer and has Open Centauri firmware
-        return "centauri" in model_lower and (
-            "OC" in firmware_upper or "O" in firmware_upper
+        # Match "OC" or "O" as standalone markers (word boundaries or end of string)
+        # This matches: "V0.1.0 O", "V0.1.0O", "V0.2.0OC", "V0.2.0 OC"
+        # But not: "OCEAN", "OFFICIAL" (OC/O must be standalone or at end)
+        has_oc_marker = bool(
+            re.search(r"\bOC\b", firmware_upper)
+            or re.search(r"\bO\b", firmware_upper)
+            or re.search(r"OC$", firmware_upper)
+            or re.search(r"O$", firmware_upper)
         )
+
+        return "centauri" in model_lower and has_oc_marker
 
     def to_dict(self) -> dict[str, Any]:
         """Return a dictionary containing all attributes of the Printer instance."""
