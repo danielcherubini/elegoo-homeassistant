@@ -89,8 +89,8 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         # For the standard on/off light
         result = self.entity_description.value_fn(self.light_status)
         LOGGER.debug(
-            f"Chamber Light is_on check: second_light={self.light_status.second_light}, "
-            f"is_on={result}"
+            f"Chamber Light is_on: second_light={self.light_status.second_light}, "
+            f"result={result}"
         )
         return result
 
@@ -102,7 +102,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         to the printer. Updates the coordinator state after the operation.
         """
         LOGGER.debug(
-            f"Chamber Light turn_on called. Current second_light={self.light_status.second_light}"
+            f"Chamber Light turn_on: second_light={self.light_status.second_light}"
         )
 
         # Skip command if light is already on (avoid toggle behavior)
@@ -125,7 +125,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         to the printer. Updates the coordinator state after the operation.
         """
         LOGGER.debug(
-            f"Chamber Light turn_off called. Current second_light={self.light_status.second_light}"
+            f"Chamber Light turn_off: second_light={self.light_status.second_light}"
         )
 
         # Skip command if light is already off (avoid toggle behavior)
