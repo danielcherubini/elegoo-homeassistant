@@ -87,7 +87,12 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
 
         """  # noqa: E501
         # For the standard on/off light
-        return self.entity_description.value_fn(self.light_status)
+        result = self.entity_description.value_fn(self.light_status)
+        LOGGER.debug(
+            f"Chamber Light is_on: second_light={self.light_status.second_light}, "
+            f"result={result}"
+        )
+        return result
 
     async def async_turn_on(self, **kwargs: Any) -> None:  # noqa: ARG002
         """
@@ -96,8 +101,18 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         Sets the light status to ON (second_light=1) and sends the command
         to the printer. Updates the coordinator state after the operation.
         """
+        LOGGER.debug(
+            f"Chamber Light turn_on: second_light={self.light_status.second_light}"
+        )
+
+        # Skip command if light is already on (avoid toggle behavior)
+        if self.light_status.second_light:
+            LOGGER.debug("Light is already ON, skipping command to avoid toggle")
+            return
+
         # Create a new LightStatus object to avoid modifying the cached state
         light_status = LightStatus({"SecondLight": 1, "RgbLight": [255, 255, 255]})
+        LOGGER.debug(f"Sending turn_on command: {light_status.to_dict()}")
         await self._elegoo_printer_client.set_light_status(light_status)
 
         await self.coordinator.async_request_refresh()
@@ -109,8 +124,18 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         Sets the light status to OFF (second_light=0) and sends the command
         to the printer. Updates the coordinator state after the operation.
         """
+        LOGGER.debug(
+            f"Chamber Light turn_off: second_light={self.light_status.second_light}"
+        )
+
+        # Skip command if light is already off (avoid toggle behavior)
+        if self.light_status.second_light == 0:
+            LOGGER.debug("Light is already OFF, skipping command to avoid toggle")
+            return
+
         # Create a new LightStatus object to avoid modifying the cached state
         light_status = LightStatus({"SecondLight": 0, "RgbLight": [0, 0, 0]})
+        LOGGER.debug(f"Sending turn_off command: {light_status.to_dict()}")
         await self._elegoo_printer_client.set_light_status(light_status)
 
         await self.coordinator.async_request_refresh()
