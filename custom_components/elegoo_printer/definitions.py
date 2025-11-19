@@ -616,6 +616,10 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         suggested_display_precision=2,
         value_fn=lambda printer_data: _get_current_coord_value(printer_data, 2),
     ),
+)
+
+# FDM sensors only available on Open Centauri firmware (patched Centauri Carbon)
+PRINTER_STATUS_FDM_OPEN_CENTAURI: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     # --- Total Extrusion Sensor ---
     ElegooPrinterSensorEntityDescription(
         key="total_extrusion",

@@ -13,6 +13,7 @@ from .definitions import (
     PRINTER_ATTRIBUTES_V3_ONLY,
     PRINTER_STATUS_COMMON,
     PRINTER_STATUS_FDM,
+    PRINTER_STATUS_FDM_OPEN_CENTAURI,
     PRINTER_STATUS_RESIN,
     ElegooPrinterSensorEntityDescription,
 )
@@ -61,6 +62,10 @@ async def async_setup_entry(
     # Type-specific sensors (both V1 and V3)
     if printer_type == PrinterType.FDM:
         sensors.extend(PRINTER_STATUS_FDM)
+
+        # Open Centauri specific sensors (patched Centauri Carbon firmware)
+        if printer.open_centauri:
+            sensors.extend(PRINTER_STATUS_FDM_OPEN_CENTAURI)
     elif printer_type == PrinterType.RESIN:
         sensors.extend(PRINTER_STATUS_RESIN)
         sensors.extend(PRINTER_ATTRIBUTES_RESIN)

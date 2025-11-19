@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import socket
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
@@ -94,8 +95,9 @@ class Printer:
     is_proxy: bool
     mqtt_broker_enabled: bool
     external_ip: str | None
+    open_centauri: bool
 
-    def __init__(
+    def __init__(  # noqa: PLR0915
         self,
         json_string: str | None = None,
         config: MappingProxyType[str, Any] = MappingProxyType({}),
@@ -114,6 +116,7 @@ class Printer:
             self.id = None
             self.printer_type = None
             self.is_proxy = False
+            self.open_centauri = False
         else:
             try:
                 j: dict[str, Any] = json.loads(json_string)  # Decode the JSON string
@@ -137,6 +140,9 @@ class Printer:
                 self.is_proxy = attrs.get("Proxy", False)
 
                 self.printer_type = PrinterType.from_model(self.model)
+
+                # Check if this is a Centauri printer with Open Centauri firmware
+                self.open_centauri = self._is_open_centauri(self.model, self.firmware)
             except json.JSONDecodeError:
                 # Handle the error appropriately (e.g., log it, raise an exception)
                 self.connection = None
@@ -151,6 +157,7 @@ class Printer:
                 self.id = None
                 self.printer_type = None
                 self.is_proxy = False
+                self.open_centauri = False
 
         # Initialize config-based attributes for all instances
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
@@ -159,6 +166,44 @@ class Printer:
         self.external_ip = config.get(CONF_EXTERNAL_IP)
         self.proxy_websocket_port = None
         self.proxy_video_port = None
+
+    @staticmethod
+    def _is_open_centauri(model: str | None, firmware: str | None) -> bool:
+        """
+        Check if this is a Centauri printer with Open Centauri firmware.
+
+        Args:
+            model: The printer model name
+            firmware: The firmware version string
+
+        Returns:
+            True if model contains "centauri" and firmware contains "OC" anywhere
+            or contains a standalone "O" marker (word boundary), False otherwise.
+
+        Examples:
+            - "V0.1.0 O" -> matches (standalone O)
+            - "V0.2.0OC" -> matches (contains OC)
+            - "V0.1.0 OCEAN" -> does not match (O is not standalone)
+
+        """
+        if not model or not firmware:
+            return False
+
+        model_lower = model.lower()
+        firmware_upper = firmware.upper()
+
+        # Check if it's a Centauri printer and has Open Centauri firmware
+        # Match "OC" or "O" as standalone markers (word boundaries or end of string)
+        # This matches: "V0.1.0 O", "V0.1.0O", "V0.2.0OC", "V0.2.0 OC"
+        # But not: "OCEAN", "OFFICIAL" (OC/O must be standalone or at end)
+        has_oc_marker = bool(
+            re.search(r"\bOC\b", firmware_upper)
+            or re.search(r"\bO\b", firmware_upper)
+            or re.search(r"OC$", firmware_upper)
+            or re.search(r"O$", firmware_upper)
+        )
+
+        return "centauri" in model_lower and has_oc_marker
 
     def to_dict(self) -> dict[str, Any]:
         """Return a dictionary containing all attributes of the Printer instance."""
@@ -181,6 +226,7 @@ class Printer:
             "is_proxy": self.is_proxy,
             "mqtt_broker_enabled": self.mqtt_broker_enabled,
             "external_ip": self.external_ip,
+            "open_centauri": self.open_centauri,
         }
 
     def to_dict_safe(self) -> dict[str, Any]:
@@ -246,6 +292,12 @@ class Printer:
         printer.proxy_video_port = attrs.get("proxy_video_port")
         printer.is_proxy = attrs.get("Proxy", attrs.get("is_proxy", False))
         printer.external_ip = attrs.get(CONF_EXTERNAL_IP, attrs.get("external_ip"))
+
+        # Calculate open_centauri based on model and firmware
+        printer.open_centauri = Printer._is_open_centauri(
+            printer.model, printer.firmware
+        )
+
         return printer
 
 
