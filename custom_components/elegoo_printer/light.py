@@ -129,7 +129,7 @@ class ElegooLight(ElegooPrinterEntity, LightEntity):
         )
 
         # Skip command if light is already off (avoid toggle behavior)
-        if not self.light_status.second_light:
+        if self.light_status.second_light == 0:
             LOGGER.debug("Light is already OFF, skipping command to avoid toggle")
             return
 
