@@ -139,6 +139,16 @@ class ElegooPrinterSelectEntityDescription(SelectEntityDescription):
 
 
 @dataclass(kw_only=True)
+class ElegooPrinterDynamicSelectEntityDescription(SelectEntityDescription):
+    """Select entity description with dynamic options for Elegoo Printers."""
+
+    options_fn: Callable[..., list[str]]
+    current_option_fn: Callable[..., str | None]
+    select_option_fn: Callable[..., Coroutine[Any, Any, None]]
+    available_fn: Callable[..., bool] = lambda printer_data: printer_data
+
+
+@dataclass(kw_only=True)
 class ElegooPrinterNumberEntityDescription(NumberEntityDescription):
     """Number entity description for Elegoo Printers."""
 
@@ -803,5 +813,27 @@ FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
         | FanEntityFeature.TURN_OFF,
         value_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan > 0,
         percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan,  # noqa: E501
+    ),
+)
+
+PRINTER_FILE_SELECT: tuple[ElegooPrinterDynamicSelectEntityDescription, ...] = (
+    ElegooPrinterDynamicSelectEntityDescription(
+        key="print_file",
+        name="Print File",
+        translation_key="print_file",
+        icon="mdi:file-document",
+        entity_category=EntityCategory.CONFIG,
+        options_fn=lambda printer_data: (
+            sorted(list(printer_data.file_list.keys()))
+            if printer_data and printer_data.file_list
+            else []
+        ),
+        current_option_fn=lambda printer_data: None,  # Action-based, no current selection
+        select_option_fn=lambda api, filename: api.async_start_print(filename),
+        available_fn=lambda printer_data: (
+            printer_data
+            and printer_data.status.current_status != ElegooMachineStatus.PRINTING
+            and bool(printer_data.file_list)
+        ),
     ),
 )

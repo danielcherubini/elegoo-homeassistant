@@ -145,6 +145,23 @@
       "end_time": {
         "name": "End Time"
       }
+    },
+    "select": {
+      "print_file": {
+        "name": "Print File"
+      }
+    }
+  },
+  "services": {
+    "start_print": {
+      "name": "Start Print",
+      "description": "Start printing a file from the printer's storage",
+      "fields": {
+        "filename": {
+          "name": "Filename",
+          "description": "Name of the G-code file to print"
+        }
+      }
     }
   }
 }

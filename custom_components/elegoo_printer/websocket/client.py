@@ -29,9 +29,11 @@ from custom_components.elegoo_printer.sdcp.const import (
     CMD_PAUSE_PRINT,
     CMD_REQUEST_ATTRIBUTES,
     CMD_REQUEST_STATUS_REFRESH,
+    CMD_RETRIEVE_FILE_LIST,
     CMD_RETRIEVE_HISTORICAL_TASKS,
     CMD_RETRIEVE_TASK_DETAILS,
     CMD_SET_VIDEO_STREAM,
+    CMD_START_PRINT,
     CMD_STOP_PRINT,
     DEBUG,
     LOGGER,
@@ -43,6 +45,7 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterTimeoutError,
 )
 from custom_components.elegoo_printer.sdcp.models.attributes import PrinterAttributes
+from custom_components.elegoo_printer.sdcp.models.file_info import FileInfo
 from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
@@ -321,6 +324,34 @@ class ElegooPrinterClient:
     async def print_resume(self) -> None:
         """Resume/continue the current print."""
         await self._send_printer_cmd(CMD_CONTINUE_PRINT, {})
+
+    async def start_print(self, filename: str, start_layer: int = 0) -> None:
+        """
+        Start printing a file from printer storage.
+
+        Args:
+            filename: Name of the G-code file to print
+            start_layer: Layer to start from (default 0)
+
+        Raises:
+            ElegooPrinterNotConnectedError: If printer not connected
+            ElegooPrinterTimeoutError: If command times out
+        """
+        data = {
+            "Filename": filename,
+            "StartLayer": start_layer,
+        }
+        await self._send_printer_cmd(CMD_START_PRINT, data)
+
+    async def async_get_file_list(self) -> dict[str, FileInfo]:
+        """
+        Asynchronously retrieve the list of files available on the printer.
+
+        Returns:
+            Dictionary mapping filename to FileInfo objects.
+        """
+        await self._send_printer_cmd(CMD_RETRIEVE_FILE_LIST)
+        return self.printer_data.file_list
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """
@@ -660,6 +691,8 @@ class ElegooPrinterClient:
                     self._print_history_detail_handler(data_data)
                 elif cmd == CMD_SET_VIDEO_STREAM:
                     self._print_video_handler(data_data)
+                elif cmd == CMD_RETRIEVE_FILE_LIST:
+                    self._file_list_handler(data_data)
         except json.JSONDecodeError:
             self.logger.exception("Invalid JSON")
 
@@ -728,6 +761,34 @@ class ElegooPrinterClient:
 
         """
         self.printer_data.video = ElegooVideo(data_data)
+
+    def _file_list_handler(self, data_data: dict[str, Any]) -> None:
+        """
+        Parse and update the printer's file list from response data.
+
+        Expected data format:
+        {
+            "FileList": [
+                {"FileName": "model.gcode", "FileSize": 12345, ...},
+                ...
+            ]
+        }
+
+        Arguments:
+            data_data: Dictionary containing file list information.
+
+        """
+        file_list = data_data.get("FileList", [])
+        if file_list:
+            # Clear existing file list and rebuild
+            self.printer_data.file_list.clear()
+            for file_data in file_list:
+                file_info = FileInfo(file_data)
+                if file_info.filename:
+                    self.printer_data.file_list[file_info.filename] = file_info
+            self.logger.debug(
+                "Updated file list with %d files", len(self.printer_data.file_list)
+            )
 
     async def _set_response_event(self, request_id: str) -> asyncio.Event:
         """Set the event for a given request ID."""

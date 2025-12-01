@@ -39,6 +39,9 @@ from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
 from .websocket.server import ElegooPrinterServer
 
+# Service names
+SERVICE_START_PRINT = "start_print"
+
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
@@ -113,6 +116,33 @@ async def async_setup_entry(
         raise
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Register services
+    async def handle_start_print(call):
+        """Handle start_print service call."""
+        filename = call.data.get("filename")
+
+        if not filename:
+            LOGGER.error("start_print service requires 'filename' parameter")
+            return
+
+        # Get the API client from the entry
+        api_client = entry.runtime_data.api
+
+        try:
+            await api_client.async_start_print(filename, start_layer=0)
+            LOGGER.info("Started print job for file: %s", filename)
+        except ValueError as e:
+            LOGGER.error("Invalid filename '%s': %s", filename, e)
+        except Exception as e:
+            LOGGER.error("Failed to start print '%s': %s", filename, e)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_START_PRINT,
+        handle_start_print,
+    )
+
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     return True

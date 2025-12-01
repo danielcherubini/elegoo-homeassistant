@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from .sdcp.models.enums import ElegooFan
+    from .sdcp.models.file_info import FileInfo
     from .sdcp.models.print_history_detail import (
         PrintHistoryDetail,
     )
@@ -692,6 +693,33 @@ class ElegooPrinterApiClient:
 
         """  # noqa: E501
         return await self.client.async_get_printer_historical_tasks()
+
+    async def async_get_file_list(self) -> dict[str, FileInfo]:
+        """
+        Asynchronously retrieve the list of files available on the printer.
+
+        Returns:
+            Dictionary mapping filename to FileInfo objects.
+        """
+        return await self.client.async_get_file_list()
+
+    async def async_start_print(
+        self, filename: str, start_layer: int = 0
+    ) -> None:
+        """
+        Start printing a file from printer storage.
+
+        Args:
+            filename: Name of the G-code file to print
+            start_layer: Layer to start from (always 0 for this implementation)
+
+        Raises:
+            ValueError: If filename is empty or invalid
+        """
+        if not filename or not filename.strip():
+            raise ValueError("Filename cannot be empty")
+
+        await self.client.start_print(filename.strip(), start_layer)
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """Set the speed of a fan."""

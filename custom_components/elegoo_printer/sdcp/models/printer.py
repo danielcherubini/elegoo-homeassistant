@@ -21,6 +21,7 @@ from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStat
 
 from .attributes import PrinterAttributes
 from .enums import PrinterType, ProtocolVersion, TransportType
+from .file_info import FileInfo
 from .status import PrinterStatus
 from .video import ElegooVideo
 
@@ -322,6 +323,7 @@ class PrinterData:
     current_job: PrintHistoryDetail | None
     video: ElegooVideo
     firmware_update_info: FirmwareUpdateInfo
+    file_list: dict[str, FileInfo]
 
     def __init__(
         self,
@@ -344,6 +346,7 @@ class PrinterData:
             "package_url": None,
             "changelog": None,
         }
+        self.file_list: dict[str, FileInfo] = {}
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
         """Round datetime object to minutes."""
