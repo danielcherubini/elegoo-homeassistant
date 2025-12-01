@@ -700,12 +700,11 @@ class ElegooPrinterApiClient:
 
         Returns:
             Dictionary mapping filename to FileInfo objects.
+
         """
         return await self.client.async_get_file_list()
 
-    async def async_start_print(
-        self, filename: str, start_layer: int = 0
-    ) -> None:
+    async def async_start_print(self, filename: str, start_layer: int = 0) -> None:
         """
         Start printing a file from printer storage.
 
@@ -715,9 +714,11 @@ class ElegooPrinterApiClient:
 
         Raises:
             ValueError: If filename is empty or invalid
+
         """
         if not filename or not filename.strip():
-            raise ValueError("Filename cannot be empty")
+            msg = "Filename cannot be empty"
+            raise ValueError(msg)
 
         await self.client.start_print(filename.strip(), start_layer)
 

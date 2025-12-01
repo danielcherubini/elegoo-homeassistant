@@ -824,11 +824,11 @@ PRINTER_FILE_SELECT: tuple[ElegooPrinterDynamicSelectEntityDescription, ...] = (
         icon="mdi:file-document",
         entity_category=EntityCategory.CONFIG,
         options_fn=lambda printer_data: (
-            sorted(list(printer_data.file_list.keys()))
+            sorted(printer_data.file_list.keys())
             if printer_data and printer_data.file_list
             else []
         ),
-        current_option_fn=lambda printer_data: None,  # Action-based, no current selection
+        current_option_fn=lambda _: None,  # Action-based
         select_option_fn=lambda api, filename: api.async_start_print(filename),
         available_fn=lambda printer_data: (
             printer_data

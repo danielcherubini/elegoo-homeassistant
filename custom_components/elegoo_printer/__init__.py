@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from aiohttp import ClientError
 from homeassistant.components.sensor import SensorDeviceClass
@@ -24,6 +24,10 @@ from homeassistant.helpers.entity_registry import (
 )
 from homeassistant.loader import async_get_loaded_integration
 
+from custom_components.elegoo_printer.sdcp.exceptions import (
+    ElegooPrinterNotConnectedError,
+    ElegooPrinterTimeoutError,
+)
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 from .api import ElegooPrinterApiClient
@@ -118,7 +122,7 @@ async def async_setup_entry(
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Register services
-    async def handle_start_print(call):
+    async def handle_start_print(call: Any) -> None:
         """Handle start_print service call."""
         filename = call.data.get("filename")
 
@@ -134,7 +138,7 @@ async def async_setup_entry(
             LOGGER.info("Started print job for file: %s", filename)
         except ValueError as e:
             LOGGER.error("Invalid filename '%s': %s", filename, e)
-        except Exception as e:
+        except (ElegooPrinterNotConnectedError, ElegooPrinterTimeoutError) as e:
             LOGGER.error("Failed to start print '%s': %s", filename, e)
 
     hass.services.async_register(

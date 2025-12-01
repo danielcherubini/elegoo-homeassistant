@@ -29,12 +29,16 @@ async def async_setup_entry(
     entities = []
 
     if printer_type == PrinterType.FDM:
-        for description in PRINTER_SELECT_TYPES:
-            entities.append(ElegooPrintSpeedSelect(coordinator, description))
+        entities.extend(
+            ElegooPrintSpeedSelect(coordinator, description)
+            for description in PRINTER_SELECT_TYPES
+        )
 
     # Add file select entity for all printer types
-    for description in PRINTER_FILE_SELECT:
-        entities.append(ElegooPrintFileSelect(coordinator, description))
+    entities.extend(
+        ElegooPrintFileSelect(coordinator, description)
+        for description in PRINTER_FILE_SELECT
+    )
 
     if entities:
         async_add_entities(entities, update_before_add=True)
@@ -89,7 +93,9 @@ class ElegooPrintFileSelect(ElegooPrinterEntity, SelectEntity):
     ) -> None:
         """Initialize file select entity."""
         super().__init__(coordinator)
-        self.entity_description: ElegooPrinterDynamicSelectEntityDescription = description
+        self.entity_description: ElegooPrinterDynamicSelectEntityDescription = (
+            description
+        )
         self._api = None
 
         self._attr_unique_id = coordinator.generate_unique_id(description.key)
@@ -103,10 +109,8 @@ class ElegooPrintFileSelect(ElegooPrinterEntity, SelectEntity):
         try:
             await self._api.async_get_file_list()
             await self.coordinator.async_request_refresh()
-        except Exception as e:
-            self.coordinator.logger.warning(
-                "Failed to fetch initial file list: %s", e
-            )
+        except (ConnectionError, TimeoutError) as e:
+            self.coordinator.logger.warning("Failed to fetch initial file list: %s", e)
 
     @property
     def options(self) -> list[str]:
@@ -138,13 +142,9 @@ class ElegooPrintFileSelect(ElegooPrinterEntity, SelectEntity):
                 await self.entity_description.select_option_fn(self._api, option)
                 await self.coordinator.async_request_refresh()
                 self.async_write_ha_state()
-            except ValueError as e:
-                self.coordinator.logger.error(
-                    "Invalid filename '%s': %s", option, e
-                )
+            except ValueError:
+                self.coordinator.logger.exception("Invalid filename '%s'", option)
                 raise
-            except Exception as e:
-                self.coordinator.logger.error(
-                    "Failed to start print '%s': %s", option, e
-                )
+            except (ConnectionError, TimeoutError):
+                self.coordinator.logger.exception("Failed to start print '%s'", option)
                 raise

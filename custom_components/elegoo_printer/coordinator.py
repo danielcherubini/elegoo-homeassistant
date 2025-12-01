@@ -61,7 +61,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             # Fetch file list periodically
             try:
                 await self.config_entry.runtime_data.api.async_get_file_list()
-            except Exception as e:
+            except (ConnectionError, TimeoutError) as e:
                 # Don't fail the entire update if file list fetch fails
                 LOGGER.debug("Failed to update file list: %s", e)
 

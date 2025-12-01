@@ -623,6 +623,7 @@ class ElegooMqttClient:
         Raises:
             ElegooPrinterNotConnectedError: If printer not connected
             ElegooPrinterTimeoutError: If command times out
+
         """
         data = {
             "Filename": filename,
@@ -636,6 +637,7 @@ class ElegooMqttClient:
 
         Returns:
             Dictionary mapping filename to FileInfo objects.
+
         """
         await self._send_printer_cmd(CMD_RETRIEVE_FILE_LIST)
         return self.printer_data.file_list

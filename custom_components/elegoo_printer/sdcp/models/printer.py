@@ -21,11 +21,11 @@ from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStat
 
 from .attributes import PrinterAttributes
 from .enums import PrinterType, ProtocolVersion, TransportType
-from .file_info import FileInfo
 from .status import PrinterStatus
 from .video import ElegooVideo
 
 if TYPE_CHECKING:
+    from .file_info import FileInfo
     from .print_history_detail import PrintHistoryDetail
 from typing import TypedDict
 
