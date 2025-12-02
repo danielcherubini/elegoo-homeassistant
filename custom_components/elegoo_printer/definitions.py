@@ -832,7 +832,7 @@ PRINTER_FILE_SELECT: tuple[ElegooPrinterDynamicSelectEntityDescription, ...] = (
         select_option_fn=lambda api, filename: api.async_start_print(filename),
         available_fn=lambda printer_data: (
             printer_data
-            and printer_data.status.current_status != ElegooMachineStatus.PRINTING
+            and printer_data.status.current_status == ElegooMachineStatus.IDLE
             and bool(printer_data.file_list)
         ),
     ),

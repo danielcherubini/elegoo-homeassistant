@@ -781,13 +781,13 @@ class ElegooPrinterClient:
 
         """
         file_list = data_data.get("FileList", [])
+        # Clear existing file list unconditionally to avoid stale entries
+        self.printer_data.file_list.clear()
+        for file_data in file_list:
+            file_info = FileInfo(file_data)
+            if file_info.filename:
+                self.printer_data.file_list[file_info.filename] = file_info
         if file_list:
-            # Clear existing file list and rebuild
-            self.printer_data.file_list.clear()
-            for file_data in file_list:
-                file_info = FileInfo(file_data)
-                if file_info.filename:
-                    self.printer_data.file_list[file_info.filename] = file_info
             self.logger.debug(
                 "Updated file list with %d files", len(self.printer_data.file_list)
             )
