@@ -743,6 +743,26 @@ async def _stop_print_action(client: ElegooPrinterClient) -> None:
     return await client.print_stop()
 
 
+async def _home_all_action(client: ElegooPrinterClient) -> None:
+    """Home all axes action."""
+    return await client.home_axis("XYZ")
+
+
+async def _home_x_action(client: ElegooPrinterClient) -> None:
+    """Home X axis action."""
+    return await client.home_axis("X")
+
+
+async def _home_y_action(client: ElegooPrinterClient) -> None:
+    """Home Y axis action."""
+    return await client.home_axis("Y")
+
+
+async def _home_z_action(client: ElegooPrinterClient) -> None:
+    """Home Z axis action."""
+    return await client.home_axis("Z")
+
+
 PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (
     ElegooPrinterButtonEntityDescription(
         key="pause_print",
@@ -768,6 +788,41 @@ PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (
         available_fn=lambda client: client.printer_data.status.current_status
         in [ElegooMachineStatus.PRINTING]
         or client.printer_data.status.print_info.status == ElegooPrintStatus.PAUSED,
+    ),
+)
+
+PRINTER_FDM_BUTTONS_V3_ONLY: tuple[ElegooPrinterButtonEntityDescription, ...] = (
+    ElegooPrinterButtonEntityDescription(
+        key="home_all",
+        name="Home All",
+        action_fn=_home_all_action,
+        icon="mdi:home",
+        available_fn=lambda client: client.printer_data.status.current_status
+        == ElegooMachineStatus.IDLE,
+    ),
+    ElegooPrinterButtonEntityDescription(
+        key="home_x",
+        name="Home X",
+        action_fn=_home_x_action,
+        icon="mdi:axis-x-arrow",
+        available_fn=lambda client: client.printer_data.status.current_status
+        == ElegooMachineStatus.IDLE,
+    ),
+    ElegooPrinterButtonEntityDescription(
+        key="home_y",
+        name="Home Y",
+        action_fn=_home_y_action,
+        icon="mdi:axis-y-arrow",
+        available_fn=lambda client: client.printer_data.status.current_status
+        == ElegooMachineStatus.IDLE,
+    ),
+    ElegooPrinterButtonEntityDescription(
+        key="home_z",
+        name="Home Z",
+        action_fn=_home_z_action,
+        icon="mdi:axis-z-arrow",
+        available_fn=lambda client: client.printer_data.status.current_status
+        == ElegooMachineStatus.IDLE,
     ),
 )
 
