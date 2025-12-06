@@ -331,6 +331,13 @@ class ElegooPrinterClient:
             axis: Axis to home - "X", "Y", "Z", or "XYZ" for all axes
 
         """
+        allowed_axes = {"X", "Y", "Z", "XYZ"}
+        if axis not in allowed_axes:
+            msg = (
+                f"Invalid axis '{axis}'. "
+                f"Must be one of: {', '.join(sorted(allowed_axes))}"
+            )
+            raise ValueError(msg)
         data = {"Axis": axis}
         await self._send_printer_cmd(CMD_XYZ_HOME_CONTROL, data)
 
