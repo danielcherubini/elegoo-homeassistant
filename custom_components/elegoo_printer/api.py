@@ -345,6 +345,39 @@ class ElegooPrinterApiClient:
             await ElegooMQTTBroker.release_instance()
             self.mqtt_broker = None
 
+    async def async_upload_file(
+        self,
+        path: str,
+        *,
+        start_when_done: bool = False,
+        display_name: str | None = None,
+        clean_cache: int = 1,
+        check: int = 0,
+        compress: int = 0,
+    ) -> bool:
+        """Upload a local file to the printer.
+
+        Only supported for MQTT transport at this time.
+        """
+        if isinstance(self.client, ElegooMqttClient):
+            return await self.client.upload_file_from_path(
+                path,
+                display_name=display_name,
+                clean_cache=clean_cache,
+                check=check,
+                compress=compress,
+                start_when_done=start_when_done,
+            )
+        LOGGER.warning("Upload is only supported for MQTT transport currently")
+        return False
+
+    async def async_start_print(self, filename: str, *, start_layer: int = 0) -> bool:
+        """Start a print of an existing file on the printer."""
+        if isinstance(self.client, ElegooMqttClient):
+            return await self.client.start_print(filename, start_layer=start_layer)
+        # WebSocket path also supports start print
+        return await self.client.start_print(filename, start_layer=start_layer)
+
     def get_local_ip(self) -> str:
         """Get the local IP for the proxy server, falling back to the printer's IP."""
         if self.server:

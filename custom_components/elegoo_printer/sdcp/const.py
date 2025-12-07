@@ -42,6 +42,7 @@ CMD_SET_TIME_LAPSE_PHOTOGRAPHY = 387
 
 # File Transfer Commands
 CMD_TERMINATE_FILE_TRANSFER = 255
+CMD_UPLOAD_FILE = 256
 
 # Manual Control Commands (Centauri Carbon 2)
 CMD_XYZ_MOVE_CONTROL = 401

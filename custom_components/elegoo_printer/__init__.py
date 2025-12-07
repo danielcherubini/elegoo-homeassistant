@@ -38,6 +38,11 @@ from .const import (
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
 from .websocket.server import ElegooPrinterServer
+from homeassistant.helpers.event import async_track_point_in_time
+from datetime import datetime
+import voluptuous as vol
+from homeassistant.helpers import config_validation as cv
+from homeassistant.core import ServiceCall
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -115,7 +120,157 @@ async def async_setup_entry(
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
+    # Register services once
+    domain_store = hass.data.setdefault(DOMAIN, {})
+    if not domain_store.get("services_registered"):
+        _register_services(hass)
+        domain_store["services_registered"] = True
+
     return True
+
+
+def _get_api_for_service(hass, call: ServiceCall) -> ElegooPrinterApiClient | None:
+    """Resolve API client from entity_id or device_id in service call."""
+    ent_reg = er.async_get(hass)
+    dev_reg = dr.async_get(hass)
+    api: ElegooPrinterApiClient | None = None
+
+    entity_id = call.data.get("entity_id")
+    device_id = call.data.get("device_id")
+
+    entry_id: str | None = None
+    if entity_id:
+        ent = ent_reg.async_get(entity_id)
+        if ent:
+            entry_id = ent.config_entry_id
+    elif device_id:
+        dev = dev_reg.async_get(device_id)
+        if dev and dev.config_entries:
+            # Take first associated config entry
+            entry_id = next(iter(dev.config_entries))
+
+    if entry_id:
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry and getattr(entry, "runtime_data", None):
+            api = entry.runtime_data.api
+    return api
+
+
+def _register_services(hass) -> None:
+    """Register domain services for upload, start, and schedule."""
+
+    async def handle_upload(call: ServiceCall) -> None:
+        api = _get_api_for_service(hass, call)
+        if not api:
+            LOGGER.warning("No printer resolved for upload_file service")
+            return
+        path = call.data.get("path")
+        start_when_done = bool(call.data.get("start_when_done", False))
+        display_name = call.data.get("filename")
+        if not path:
+            LOGGER.warning("'path' is required for upload_file")
+            return
+        await api.async_upload_file(
+            path,
+            start_when_done=start_when_done,
+            display_name=display_name,
+        )
+
+    hass.services.async_register(
+        DOMAIN,
+        "upload_file",
+        handle_upload,
+        schema=vol.Schema(
+            {
+                vol.Optional("entity_id"): cv.entity_id,
+                vol.Optional("device_id"): cv.string,
+                vol.Required("path"): cv.path,
+                vol.Optional("start_when_done", default=False): cv.boolean,
+                vol.Optional("filename"): cv.string,
+            }
+        ),
+    )
+
+    async def handle_start(call: ServiceCall) -> None:
+        api = _get_api_for_service(hass, call)
+        if not api:
+            LOGGER.warning("No printer resolved for start_print service")
+            return
+        filename = call.data.get("filename")
+        start_layer = int(call.data.get("start_layer", 0))
+        if not filename:
+            LOGGER.warning("'filename' is required for start_print")
+            return
+        await api.async_start_print(filename, start_layer=start_layer)
+
+    hass.services.async_register(
+        DOMAIN,
+        "start_print",
+        handle_start,
+        schema=vol.Schema(
+            {
+                vol.Optional("entity_id"): cv.entity_id,
+                vol.Optional("device_id"): cv.string,
+                vol.Required("filename"): cv.string,
+                vol.Optional("start_layer", default=0): cv.positive_int,
+            }
+        ),
+    )
+
+    async def handle_schedule(call: ServiceCall) -> None:
+        api = _get_api_for_service(hass, call)
+        if not api:
+            LOGGER.warning("No printer resolved for schedule_print service")
+            return
+
+        when_str = call.data.get("when")
+        filename = call.data.get("filename")
+        path = call.data.get("path")
+        start_layer = int(call.data.get("start_layer", 0))
+        start_when_done = bool(call.data.get("start_when_done", True))
+
+        if not when_str:
+            LOGGER.warning("'when' is required for schedule_print")
+            return
+        try:
+            when_dt = datetime.fromisoformat(when_str)
+        except ValueError:
+            LOGGER.warning("Invalid ISO datetime for 'when': %s", when_str)
+            return
+
+        async def _run_scheduled(_now) -> None:
+            try:
+                if path:
+                    await api.async_upload_file(
+                        path,
+                        start_when_done=start_when_done,
+                        display_name=call.data.get("filename"),
+                    )
+                elif filename:
+                    await api.async_start_print(filename, start_layer=start_layer)
+                else:
+                    LOGGER.warning("Either 'path' or 'filename' required for schedule_print")
+            except Exception as e:  # noqa: BLE001
+                LOGGER.exception("Scheduled print failed: %s", e)
+
+        async_track_point_in_time(hass, _run_scheduled, when_dt)
+
+    hass.services.async_register(
+        DOMAIN,
+        "schedule_print",
+        handle_schedule,
+        schema=vol.Schema(
+            {
+                vol.Optional("entity_id"): cv.entity_id,
+                vol.Optional("device_id"): cv.string,
+                vol.Required("when"): cv.string,
+                vol.Optional("filename"): cv.string,
+                vol.Optional("path"): cv.path,
+                vol.Optional("start_layer", default=0): cv.positive_int,
+                vol.Optional("start_when_done", default=True): cv.boolean,
+            }
+        ),
+    )
 
 
 async def async_unload_entry(

@@ -26,6 +26,7 @@ from custom_components.elegoo_printer.const import (
 from custom_components.elegoo_printer.sdcp.const import (
     CMD_CONTINUE_PRINT,
     CMD_CONTROL_DEVICE,
+    CMD_START_PRINT,
     CMD_PAUSE_PRINT,
     CMD_REQUEST_ATTRIBUTES,
     CMD_REQUEST_STATUS_REFRESH,
@@ -331,6 +332,22 @@ class ElegooPrinterClient:
         pct = max(0, min(100, int(percentage)))
         data = {"TargetFanSpeed": {fan.value: pct}}
         await self._send_printer_cmd(CMD_CONTROL_DEVICE, data)
+
+    async def start_print(self, filename: str, *, start_layer: int = 0) -> bool:
+        """Start printing a file already present on the printer (WebSocket)."""
+        if not self.is_connected:
+            raise ElegooPrinterNotConnectedError("Not connected")
+        data = {"Filename": filename, "StartLayer": int(start_layer)}
+        await self._send_printer_cmd(CMD_START_PRINT, data)
+        # Assume success if printer transitions to a non-idle print status soon
+        tries = 0
+        while tries < 5:
+            await asyncio.sleep(1)
+            status = self.printer_data.status
+            if status and status.print_info and status.print_info.status is not None:
+                return True
+            tries += 1
+        return False
 
     async def set_print_speed(self, percentage: int) -> None:
         """

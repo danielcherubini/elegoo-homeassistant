@@ -8,6 +8,7 @@ with Elegoo printers, rather than connecting directly to the printer.
 from __future__ import annotations
 
 import asyncio
+import os
 import contextlib
 import json
 import secrets
@@ -26,12 +27,14 @@ from custom_components.elegoo_printer.const import (
 from custom_components.elegoo_printer.sdcp.const import (
     CMD_CONTINUE_PRINT,
     CMD_CONTROL_DEVICE,
+    CMD_START_PRINT,
     CMD_DISCONNECT,
     CMD_PAUSE_PRINT,
     CMD_REQUEST_ATTRIBUTES,
     CMD_REQUEST_STATUS_REFRESH,
     CMD_RETRIEVE_HISTORICAL_TASKS,
     CMD_RETRIEVE_TASK_DETAILS,
+    CMD_UPLOAD_FILE,
     CMD_SET_STATUS_UPDATE_PERIOD,
     CMD_SET_VIDEO_STREAM,
     CMD_STOP_PRINT,
@@ -56,6 +59,7 @@ from custom_components.elegoo_printer.sdcp.models.status import (
     PrinterStatus,
 )
 from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
+from custom_components.elegoo_printer.mqtt.file_server import ElegooFileHost
 
 from .const import (
     MQTT_KEEPALIVE,
@@ -112,6 +116,10 @@ class ElegooMqttClient:
         self._background_tasks: set[asyncio.Task] = set()
         self._response_events: dict[str, asyncio.Event] = {}
         self._response_lock = asyncio.Lock()
+        # File transfer tracking
+        self._file_host: ElegooFileHost | None = None
+        self._file_transfer_event: asyncio.Event | None = None
+        self._file_transfer_status: dict[str, Any] | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -271,6 +279,109 @@ class ElegooMqttClient:
             return False
         else:
             return True
+
+    async def start_print(self, filename: str, *, start_layer: int = 0) -> bool:
+        """Start printing a file already on the printer."""
+        if not self.is_connected:
+            raise ElegooPrinterNotConnectedError("Not connected to MQTT broker")
+
+        data = {"Filename": filename, "StartLayer": int(start_layer)}
+        await self._send_printer_cmd(CMD_START_PRINT, data)
+
+        # Watch a few status updates to confirm transition into printing
+        tries = 0
+        while tries < 5:
+            await asyncio.sleep(1)
+            status = self.printer_data.status
+            if status and status.current_status is not None:
+                # Any active print status value indicates success
+                if status.print_info and status.print_info.status is not None:
+                    return True
+            tries += 1
+        return False
+
+    async def upload_file_from_path(
+        self,
+        path: str,
+        *,
+        display_name: str | None = None,
+        clean_cache: int = 1,
+        check: int = 0,
+        compress: int = 0,
+        start_when_done: bool = False,
+    ) -> bool:
+        """Upload a local file to the printer using MQTT file transfer.
+
+        Returns True on successful transfer (optionally also starting the print).
+        """
+        if not self.is_connected:
+            raise ElegooPrinterNotConnectedError("Not connected to MQTT broker")
+
+        # Ensure file host is running
+        if self._file_host is None:
+            self._file_host = ElegooFileHost()
+            await self._file_host.start()
+
+        # Register file and build command payload
+        hosted = await self._file_host.register_file(path, name=display_name)
+
+        # Compute local IP the printer will reach (same node as MQTT broker)
+        local_ip = PrinterData.get_local_ip(self.printer.ip_address)
+        url = f"http://${{ipaddr}}:{self._file_host.port}/{hosted.name}"
+
+        cmd_data = {
+            "Check": int(check),
+            "CleanCache": int(clean_cache),
+            "Compress": int(compress),
+            "FileSize": hosted.size,
+            "Filename": display_name or os.path.basename(path),
+            "MD5": hosted.md5,
+            "URL": url,
+        }
+
+        # Prepare transfer event
+        self._file_transfer_event = asyncio.Event()
+        self._file_transfer_status = None
+
+        await self._send_printer_cmd(CMD_UPLOAD_FILE, cmd_data)
+
+        # Wait for completion by watching status updates that carry FileTransferInfo
+        try:
+            # 10 minutes max (large files)
+            await asyncio.wait_for(self._wait_for_file_transfer_end(), timeout=600)
+        except asyncio.TimeoutError:
+            LOGGER.warning("File upload timed out")
+            await self._file_host.unregister_file(hosted.name)
+            return False
+
+        # Clean route after transfer completes
+        await self._file_host.unregister_file(hosted.name)
+
+        if not self._file_transfer_status:
+            return False
+
+        status_code = self._file_transfer_status.get("Status")
+        if status_code == 2:  # DONE
+            if start_when_done:
+                filename = self._file_transfer_status.get("Filename") or (
+                    display_name or os.path.basename(path)
+                )
+                return await self.start_print(filename)
+            return True
+        return False
+
+    async def _wait_for_file_transfer_end(self) -> None:
+        if self._file_transfer_event is None:
+            return
+        while True:
+            await self._file_transfer_event.wait()
+            # Consume and check
+            self._file_transfer_event.clear()
+            if not self._file_transfer_status:
+                continue
+            st = self._file_transfer_status.get("Status")
+            if st in (2, 3):  # DONE or ERROR
+                return
 
     def discover_printer(
         self, broadcast_address: str = DEFAULT_BROADCAST_ADDRESS
@@ -826,6 +937,14 @@ class ElegooMqttClient:
             return
 
         try:
+            # Capture file transfer progress if present (MQTT printers provide this)
+            if isinstance(status_data, dict) and "FileTransferInfo" in status_data:
+                fti = status_data.get("FileTransferInfo") or {}
+                self._file_transfer_status = fti
+                if self._file_transfer_event:
+                    # Notify waiter for progress/terminal
+                    self._file_transfer_event.set()
+
             printer_status = PrinterStatus.from_json(
                 json.dumps(status_data), self.printer.printer_type
             )
