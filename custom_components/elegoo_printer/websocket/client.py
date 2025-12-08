@@ -35,6 +35,7 @@ from custom_components.elegoo_printer.sdcp.const import (
     CMD_SET_VIDEO_STREAM,
     CMD_START_PRINT,
     CMD_STOP_PRINT,
+    CMD_XYZ_HOME_CONTROL,
     DEBUG,
     LOGGER,
 )
@@ -354,6 +355,24 @@ class ElegooPrinterClient:
         """
         await self._send_printer_cmd(CMD_RETRIEVE_FILE_LIST)
         return self.printer_data.file_list
+
+    async def home_axis(self, axis: str) -> None:
+        """
+        Home one or more printer axes.
+
+        Args:
+            axis: Axis to home - "X", "Y", "Z", or "XYZ" for all axes
+
+        """
+        allowed_axes = {"X", "Y", "Z", "XYZ"}
+        if axis not in allowed_axes:
+            msg = (
+                f"Invalid axis '{axis}'. "
+                f"Must be one of: {', '.join(sorted(allowed_axes))}"
+            )
+            raise ValueError(msg)
+        data = {"Axis": axis}
+        await self._send_printer_cmd(CMD_XYZ_HOME_CONTROL, data)
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """
