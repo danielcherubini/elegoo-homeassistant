@@ -10,9 +10,14 @@ from custom_components.elegoo_printer.coordinator import ElegooDataUpdateCoordin
 from custom_components.elegoo_printer.data import ElegooPrinterConfigEntry
 from custom_components.elegoo_printer.definitions import (
     PRINTER_FDM_BUTTONS,
+    PRINTER_FDM_BUTTONS_V3_ONLY,
     ElegooPrinterButtonEntityDescription,
 )
 from custom_components.elegoo_printer.entity import ElegooPrinterEntity
+from custom_components.elegoo_printer.sdcp.models.enums import (
+    PrinterType,
+    ProtocolVersion,
+)
 
 from .const import LOGGER
 
@@ -32,12 +37,26 @@ async def async_setup_entry(
     if the connected printer is identified as an FDM model.
     """
     coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
+    printer = coordinator.config_entry.runtime_data.api.printer
 
     LOGGER.debug(f"Adding {len(PRINTER_FDM_BUTTONS)} button entities")
     for description in PRINTER_FDM_BUTTONS:
         async_add_entities(
             [ElegooSimpleButton(coordinator, description)], update_before_add=True
         )
+
+    # Add V3-only buttons for FDM printers
+    if (
+        printer.protocol_version == ProtocolVersion.V3
+        and printer.printer_type == PrinterType.FDM
+    ):
+        LOGGER.debug(
+            f"Adding {len(PRINTER_FDM_BUTTONS_V3_ONLY)} V3-only button entities"
+        )
+        for description in PRINTER_FDM_BUTTONS_V3_ONLY:
+            async_add_entities(
+                [ElegooSimpleButton(coordinator, description)], update_before_add=True
+            )
 
 
 class ElegooSimpleButton(ElegooPrinterEntity, ButtonEntity):
