@@ -639,7 +639,7 @@ class ElegooMqttClient:
             Dictionary mapping filename to FileInfo objects.
 
         """
-        await self._send_printer_cmd(CMD_RETRIEVE_FILE_LIST)
+        await self._send_printer_cmd(CMD_RETRIEVE_FILE_LIST, {"Url": "/local"})
         return self.printer_data.file_list
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
@@ -991,7 +991,10 @@ class ElegooMqttClient:
         self.printer_data.file_list.clear()
         for file_data in file_list:
             file_info = FileInfo(file_data)
-            if file_info.filename:
+            # Only include files (type == 1), not directories
+            if file_info.filename and (
+                file_info.file_type is None or file_info.file_type == 1
+            ):
                 self.printer_data.file_list[file_info.filename] = file_info
         if file_list:
             self.logger.debug(

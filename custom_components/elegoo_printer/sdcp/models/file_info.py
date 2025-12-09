@@ -12,14 +12,26 @@ class FileInfo:
 
         Expected data format (based on SDCP patterns):
         {
-            "FileName": str,
+            "name": str,  # Full path like "/local/filename.gcode"
+            "FileName": str,  # Alternative field name
             "FileSize": int,  # in bytes
             "CreateTime": int,  # timestamp
+            "type": int,  # 1 = file, other = directory
         }
         """
-        self.filename: str = data.get("FileName", "")
+        # Handle both "name" (web interface) and "FileName" (legacy)
+        filename_raw = data.get("name", data.get("FileName", ""))
+
+        # Extract just the filename from full path
+        # (e.g., "/local/file.gcode" -> "file.gcode")
+        if "/" in filename_raw:
+            self.filename = filename_raw.split("/")[-1]
+        else:
+            self.filename = filename_raw
+
         self.file_size: int | None = data.get("FileSize")
         self.create_time: int | None = data.get("CreateTime")
+        self.file_type: int | None = data.get("type")  # 1 = file
 
     def __repr__(self) -> str:
         """Return string representation."""
