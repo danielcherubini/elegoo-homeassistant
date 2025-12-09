@@ -5,6 +5,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from custom_components.elegoo_printer.sdcp.exceptions import (
+    ElegooPrinterConnectionError,
+    ElegooPrinterNotConnectedError,
+    ElegooPrinterTimeoutError,
+)
 from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
 
 from .coordinator import ElegooDataUpdateCoordinator
@@ -109,7 +114,13 @@ class ElegooPrintFileSelect(ElegooPrinterEntity, SelectEntity):
         try:
             await self._api.async_get_file_list()
             await self.coordinator.async_request_refresh()
-        except (ConnectionError, TimeoutError) as e:
+        except (
+            ConnectionError,
+            TimeoutError,
+            ElegooPrinterConnectionError,
+            ElegooPrinterNotConnectedError,
+            ElegooPrinterTimeoutError,
+        ) as e:
             self.coordinator.logger.warning("Failed to fetch initial file list: %s", e)
 
     @property
