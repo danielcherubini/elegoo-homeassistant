@@ -28,7 +28,7 @@ from .mqtt.const import MQTT_BROKER_PORT
 from .mqtt.server import ElegooMQTTBroker
 from .sdcp.exceptions import ElegooPrinterConnectionError
 from .sdcp.models.elegoo_image import ElegooImage
-from .sdcp.models.enums import TransportType
+from .sdcp.models.enums import ElegooMachineStatus, TransportType
 from .sdcp.models.printer import Printer, PrinterData
 from .websocket.client import ElegooPrinterClient
 from .websocket.server import ElegooPrinterServer
@@ -87,6 +87,7 @@ class ElegooPrinterApiClient:
         self._config_entry = config_entry
         self._last_file_list_fetch: datetime | None = None
         self._file_list_cooldown = timedelta(minutes=5)  # 5 minute cooldown
+        self._file_list_lock = asyncio.Lock()  # Serialize file list fetches
 
     async def _discover_printer_with_fallback(
         self,
@@ -703,26 +704,55 @@ class ElegooPrinterApiClient:
 
         Rate limited to prevent overwhelming the printer with requests.
         Only fetches if cooldown period has elapsed since last fetch.
+        Uses locking to prevent race conditions from concurrent callers.
 
         Returns:
             Dictionary mapping filename to FileInfo objects.
 
         """
-        now = datetime.now(UTC)
+        async with self._file_list_lock:
+            now = datetime.now(UTC)
 
-        # Check if we're within the cooldown period
-        if self._last_file_list_fetch is not None:
-            time_since_last_fetch = now - self._last_file_list_fetch
-            if time_since_last_fetch < self._file_list_cooldown:
-                self._logger.debug(
-                    "File list fetch skipped (cooldown active, %s remaining)",
-                    self._file_list_cooldown - time_since_last_fetch,
-                )
-                return self.client.printer_data.file_list
+            # Check if we're within the cooldown period (under lock)
+            if self._last_file_list_fetch is not None:
+                time_since_last_fetch = now - self._last_file_list_fetch
+                if time_since_last_fetch < self._file_list_cooldown:
+                    # Return cached data if available and non-empty
+                    cached_list = self.client.printer_data.file_list
+                    if cached_list:
+                        self._logger.debug(
+                            "File list fetch skipped (cooldown active, %s remaining)",
+                            self._file_list_cooldown - time_since_last_fetch,
+                        )
+                        return cached_list
+                    # If cache is empty, log warning and proceed to fetch
+                    self._logger.warning(
+                        "Cached file list is empty during cooldown, fetching anyway"
+                    )
 
-        # Fetch file list and update timestamp
-        self._last_file_list_fetch = now
-        return await self.client.async_get_file_list()
+            # Attempt to fetch file list from printer
+            try:
+                result = await self.client.async_get_file_list()
+
+                # Only update timestamp if we got a successful response
+                if result:
+                    self._last_file_list_fetch = now
+                    self._logger.debug(
+                        "File list fetched successfully (%d files)", len(result)
+                    )
+                else:
+                    self._logger.warning("File list fetch returned empty result")
+
+                return result  # noqa: TRY300
+            except Exception:
+                # Don't update timestamp on failure so next call can retry
+                self._logger.exception("Failed to fetch file list")
+                # Return cached data if available, otherwise re-raise
+                cached_list = self.client.printer_data.file_list
+                if cached_list:
+                    self._logger.debug("Returning cached file list after fetch failure")
+                    return cached_list
+                raise
 
     async def async_start_print(self, filename: str, start_layer: int = 0) -> None:
         """
@@ -730,17 +760,75 @@ class ElegooPrinterApiClient:
 
         Args:
             filename: Name of the G-code file to print
-            start_layer: Layer to start from (always 0 for this implementation)
+            start_layer: Must be 0 (starting from any other layer is not supported)
 
         Raises:
-            ValueError: If filename is empty or invalid
+            ValueError: If filename is empty, start_layer is not 0, file not found,
+                       or integrity check fails
+            RuntimeError: If printer is not idle or busy
 
         """
+        # Validate inputs
         if not filename or not filename.strip():
             msg = "Filename cannot be empty"
             raise ValueError(msg)
 
-        await self.client.start_print(filename.strip(), start_layer)
+        if start_layer != 0:
+            msg = (
+                f"start_layer must be 0 (got {start_layer}). "
+                "Starting from other layers is not supported."
+            )
+            raise ValueError(msg)
+
+        # Check printer state
+        printer_status = self.client.printer_data.status
+        if not printer_status:
+            msg = "Cannot start print: printer status unavailable"
+            raise RuntimeError(msg)
+
+        if printer_status.current_status != ElegooMachineStatus.IDLE:
+            status_name = (
+                printer_status.current_status.name
+                if printer_status.current_status
+                else "unknown"
+            )
+            msg = f"Cannot start print: printer is {status_name} (must be IDLE)"
+            raise RuntimeError(msg)
+
+        # Attempt to start print
+        try:
+            await self.client.start_print(filename.strip(), start_layer)
+        except ValueError as e:
+            # Map known error codes from client to user-friendly messages
+            error_str = str(e).lower()
+            error_map = {
+                ("busy", "1"): ("Printer is busy", RuntimeError),
+                ("not found", "2"): ("File not found on printer storage", ValueError),
+                ("integrity", "3"): ("File failed integrity check", ValueError),
+                ("i/o", "4"): ("I/O error reading file", ValueError),
+                ("resolution", "incompatible", "5"): (
+                    "File has incompatible resolution",
+                    ValueError,
+                ),
+                ("format", "6"): ("File has unsupported format", ValueError),
+                ("model", "7"): (
+                    "File is incompatible with this printer model",
+                    ValueError,
+                ),
+            }
+
+            for keywords, (message, exc_type) in error_map.items():
+                if any(keyword in error_str for keyword in keywords):
+                    msg = f"{message}: '{filename}'"
+                    raise exc_type(msg) from e
+
+            # Re-raise with original error if not recognized
+            raise
+        except Exception as e:
+            # Catch unexpected errors and provide user-friendly message
+            self._logger.exception("Unexpected error starting print '%s'", filename)
+            msg = f"Failed to start print '{filename}': {e}"
+            raise RuntimeError(msg) from e
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """Set the speed of a fan."""
