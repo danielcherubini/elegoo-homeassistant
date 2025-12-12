@@ -58,18 +58,8 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                 await self.config_entry.runtime_data.api.async_get_printer_data()
             )
 
-            # Fetch file list periodically
-            try:
-                await self.config_entry.runtime_data.api.async_get_file_list()
-            except (
-                ConnectionError,
-                TimeoutError,
-                ElegooPrinterConnectionError,
-                ElegooPrinterNotConnectedError,
-                ElegooPrinterTimeoutError,
-            ) as e:
-                # Don't fail the entire update if file list fetch fails
-                LOGGER.debug("Failed to update file list: %s", e)
+            # File list is only fetched on-demand (when select entity is accessed)
+            # to avoid overwhelming the printer with requests
 
             # Check if we need to update firmware info
             now = datetime.now(UTC)
