@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -84,6 +85,8 @@ class ElegooPrinterApiClient:
         self.mqtt_broker: ElegooMQTTBroker | None = None
         self.hass: HomeAssistant = hass
         self._config_entry = config_entry
+        self._last_file_list_fetch: datetime | None = None
+        self._file_list_cooldown = timedelta(minutes=5)  # 5 minute cooldown
 
     async def _discover_printer_with_fallback(
         self,
@@ -698,10 +701,27 @@ class ElegooPrinterApiClient:
         """
         Asynchronously retrieve the list of files available on the printer.
 
+        Rate limited to prevent overwhelming the printer with requests.
+        Only fetches if cooldown period has elapsed since last fetch.
+
         Returns:
             Dictionary mapping filename to FileInfo objects.
 
         """
+        now = datetime.now(UTC)
+
+        # Check if we're within the cooldown period
+        if self._last_file_list_fetch is not None:
+            time_since_last_fetch = now - self._last_file_list_fetch
+            if time_since_last_fetch < self._file_list_cooldown:
+                self._logger.debug(
+                    "File list fetch skipped (cooldown active, %s remaining)",
+                    self._file_list_cooldown - time_since_last_fetch,
+                )
+                return self.client.printer_data.file_list
+
+        # Fetch file list and update timestamp
+        self._last_file_list_fetch = now
         return await self.client.async_get_file_list()
 
     async def async_start_print(self, filename: str, start_layer: int = 0) -> None:
