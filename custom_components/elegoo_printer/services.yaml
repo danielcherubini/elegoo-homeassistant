@@ -1,0 +1,13 @@
+# Services for Elegoo Printer Integration
+
+start_print:
+  name: Start Print
+  description: Start printing a file from the printer's storage
+  fields:
+    filename:
+      name: Filename
+      description: Name of the G-code file to print (must exist on printer storage)
+      required: true
+      example: "model.gcode"
+      selector:
+        text:

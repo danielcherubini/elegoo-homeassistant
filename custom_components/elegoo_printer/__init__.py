@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import asyncio
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import voluptuous as vol
 from aiohttp import ClientError
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import CONF_IP_ADDRESS, Platform, UnitOfTime
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -24,6 +26,10 @@ from homeassistant.helpers.entity_registry import (
 )
 from homeassistant.loader import async_get_loaded_integration
 
+from custom_components.elegoo_printer.sdcp.exceptions import (
+    ElegooPrinterNotConnectedError,
+    ElegooPrinterTimeoutError,
+)
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 from .api import ElegooPrinterApiClient
@@ -38,6 +44,16 @@ from .const import (
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
 from .websocket.server import ElegooPrinterServer
+
+# Service names
+SERVICE_START_PRINT = "start_print"
+
+# Service schema
+SERVICE_START_PRINT_SCHEMA = vol.Schema(
+    {
+        vol.Required("filename"): cv.string,
+    }
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -113,6 +129,42 @@ async def async_setup_entry(
         raise
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Register services only once (on first entry setup)
+    if not hass.services.has_service(DOMAIN, SERVICE_START_PRINT):
+
+        async def handle_start_print(call: Any) -> None:
+            """Handle start_print service call."""
+            filename = call.data["filename"]
+
+            # Get all entries for this integration
+            entries = hass.config_entries.async_entries(DOMAIN)
+
+            if not entries:
+                LOGGER.error("No Elegoo printer entries found")
+                return
+
+            # For now, use the first entry. In the future, could add device targeting.
+            target_entry = entries[0]
+            api_client = target_entry.runtime_data.api
+
+            try:
+                await api_client.async_start_print(filename, start_layer=0)
+                LOGGER.info("Started print job for file: %s", filename)
+            except ValueError as e:
+                msg = f"Invalid filename '{filename}': {e}"
+                LOGGER.error(msg)
+            except (ElegooPrinterNotConnectedError, ElegooPrinterTimeoutError) as e:
+                msg = f"Failed to start print '{filename}': {e}"
+                LOGGER.error(msg)
+
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_START_PRINT,
+            handle_start_print,
+            schema=SERVICE_START_PRINT_SCHEMA,
+        )
+
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     return True
