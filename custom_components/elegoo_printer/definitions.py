@@ -288,15 +288,14 @@ PRINTER_BINARY_STATUS_RESIN_VAT_HEATER: tuple[
     ElegooPrinterBinarySensorEntityDescription, ...
 ] = (
     ElegooPrinterBinarySensorEntityDescription(
-        key="vat_preheating",
-        name="Vat Preheating",
+        key="vat_heating",
+        name="Vat Heating",
         icon="mdi:heat-wave",
         device_class=BinarySensorDeviceClass.RUNNING,
         value_fn=lambda printer_data: (
             printer_data
             and printer_data.status
-            and printer_data.status.print_info
-            and printer_data.status.print_info.status == ElegooPrintStatus.PREHEATING
+            and printer_data.status.heat_status == 1
         ),
     ),
 )
@@ -511,7 +510,7 @@ PRINTER_STATUS_RESIN_VAT_HEATER: tuple[ElegooPrinterSensorEntityDescription, ...
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda printer_data: printer_data.status.temp_of_box
+        value_fn=lambda printer_data: printer_data.status.temp_of_tank
         if printer_data and printer_data.status
         else None,
     ),
@@ -523,7 +522,7 @@ PRINTER_STATUS_RESIN_VAT_HEATER: tuple[ElegooPrinterSensorEntityDescription, ...
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda printer_data: printer_data.status.temp_target_box
+        value_fn=lambda printer_data: printer_data.status.temp_target_tank
         if printer_data and printer_data.status
         else None,
     ),
