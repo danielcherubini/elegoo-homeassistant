@@ -102,6 +102,7 @@ class Printer:
     mqtt_broker_enabled: bool
     external_ip: str | None
     open_centauri: bool
+    has_vat_heater: bool
 
     def __init__(  # noqa: PLR0915
         self,
@@ -253,6 +254,7 @@ class Printer:
             "mqtt_broker_enabled": self.mqtt_broker_enabled,
             "external_ip": self.external_ip,
             "open_centauri": self.open_centauri,
+            "has_vat_heater": self.has_vat_heater,
         }
 
     def to_dict_safe(self) -> dict[str, Any]:
