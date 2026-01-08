@@ -282,6 +282,25 @@ PRINTER_ATTRIBUTES_BINARY_V3_ONLY: tuple[
     ),
 )
 
+
+# Binary sensors only available on printers with vat heating
+PRINTER_BINARY_STATUS_RESIN_VAT_HEATER: tuple[
+    ElegooPrinterBinarySensorEntityDescription, ...
+] = (
+    ElegooPrinterBinarySensorEntityDescription(
+        key="vat_preheating",
+        name="Vat Preheating",
+        icon="mdi:heat-wave",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        value_fn=lambda printer_data: (
+            printer_data
+            and printer_data.status
+            and printer_data.status.print_info
+            and printer_data.status.print_info.status == ElegooPrintStatus.PREHEATING
+        ),
+    ),
+)
+
 PRINTER_ATTRIBUTES_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="release_film_max",
@@ -478,6 +497,35 @@ PRINTER_STATUS_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:film",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda printer_data: printer_data.status.release_film,
+    ),
+)
+
+
+# Resin sensors only available on printers with vat heating
+PRINTER_STATUS_RESIN_VAT_HEATER: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+    # --- Current Vat Temperature Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="vat_temp",
+        name="Vat Temp",
+        icon="mdi:thermometer",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda printer_data: printer_data.status.temp_of_box
+        if printer_data and printer_data.status
+        else None,
+    ),
+    # --- Target Vat Temperature Sensor ---
+    ElegooPrinterSensorEntityDescription(
+        key="vat_temp_target",
+        name="Target Vat Temp",
+        icon="mdi:thermometer",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda printer_data: printer_data.status.temp_target_box
+        if printer_data and printer_data.status
+        else None,
     ),
 )
 

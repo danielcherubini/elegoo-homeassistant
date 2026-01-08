@@ -28,6 +28,12 @@ if TYPE_CHECKING:
     from .print_history_detail import PrintHistoryDetail
 from typing import TypedDict
 
+# Printer models that support vat heating
+PRINTERS_WITH_VAT_HEATER = [
+    "Saturn 4 Ultra 16K",
+    # Add future models here as needed
+]
+
 
 class FirmwareUpdateInfo(TypedDict, total=False):
     """Represent a Firmware Update Object."""
@@ -143,6 +149,9 @@ class Printer:
 
                 # Check if this is a Centauri printer with Open Centauri firmware
                 self.open_centauri = self._is_open_centauri(self.model, self.firmware)
+
+                # Check if this printer has vat heating capability
+                self.has_vat_heater = self._has_vat_heater(self.model)
             except json.JSONDecodeError:
                 # Handle the error appropriately (e.g., log it, raise an exception)
                 self.connection = None
@@ -158,6 +167,7 @@ class Printer:
                 self.printer_type = None
                 self.is_proxy = False
                 self.open_centauri = False
+                self.has_vat_heater = False
 
         # Initialize config-based attributes for all instances
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
@@ -204,6 +214,22 @@ class Printer:
         )
 
         return "centauri" in model_lower and has_oc_marker
+
+    @staticmethod
+    def _has_vat_heater(model: str | None) -> bool:
+        """
+        Check if this printer model has vat heating capability.
+
+        Args:
+            model: The printer model name
+
+        Returns:
+            True if model is in the list of printers with vat heaters, False otherwise.
+
+        """
+        if not model:
+            return False
+        return model in PRINTERS_WITH_VAT_HEATER
 
     def to_dict(self) -> dict[str, Any]:
         """Return a dictionary containing all attributes of the Printer instance."""
@@ -297,6 +323,9 @@ class Printer:
         printer.open_centauri = Printer._is_open_centauri(
             printer.model, printer.firmware
         )
+
+        # Check if this printer has vat heating capability
+        printer.has_vat_heater = Printer._has_vat_heater(printer.model)
 
         return printer
 
