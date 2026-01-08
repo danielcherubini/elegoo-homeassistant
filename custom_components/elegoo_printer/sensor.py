@@ -15,6 +15,7 @@ from .definitions import (
     PRINTER_STATUS_FDM,
     PRINTER_STATUS_FDM_OPEN_CENTAURI,
     PRINTER_STATUS_RESIN,
+    PRINTER_STATUS_RESIN_VAT_HEATER,
     ElegooPrinterSensorEntityDescription,
 )
 from .entity import ElegooPrinterEntity
@@ -69,6 +70,10 @@ async def async_setup_entry(
     elif printer_type == PrinterType.RESIN:
         sensors.extend(PRINTER_STATUS_RESIN)
         sensors.extend(PRINTER_ATTRIBUTES_RESIN)
+
+        # Vat heater specific sensors
+        if printer.has_vat_heater:
+            sensors.extend(PRINTER_STATUS_RESIN_VAT_HEATER)
 
     LOGGER.debug(
         f"Adding {len(sensors)} sensor entities for {protocol_version.value} "

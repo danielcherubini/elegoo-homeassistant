@@ -198,6 +198,9 @@ class PrinterStatus:
         temp_of_nozzle (float): The temperature of the nozzle.
         temp_target_hotbed (float): The target temperature of the hotbed.
         temp_target_nozzle (float): The target temperature of the nozzle.
+        temp_of_tank (float): The temperature of the resin tank/vat.
+        temp_target_tank (float): The target temperature of the resin tank/vat.
+        heat_status (int): The vat heating status (0 = off, 1 = on).
         current_coord (str): The current coordinates of the printer.
         z_offset (float): The z-offset of the printer.
         current_fan_speed (CurrentFanSpeed): The current fan speed.
@@ -244,6 +247,11 @@ class PrinterStatus:
         self.temp_of_nozzle: float = round(status.get("TempOfNozzle", 0.0), 2)
         self.temp_target_hotbed: float = round(status.get("TempTargetHotbed", 0), 2)
         self.temp_target_nozzle: float = round(status.get("TempTargetNozzle", 0), 2)
+
+        # Vat heating (resin printers with heating capability)
+        self.temp_of_tank: float = round(status.get("TempOfTank", 0), 2)
+        self.temp_target_tank: float = round(status.get("TempTargetTank", 0), 2)
+        self.heat_status: int = status.get("HeatStatus", 0)
 
         # Position and Offset
         self.current_coord: str = status.get("CurrenCoord", "0.00,0.00,0.00")
