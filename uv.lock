@@ -677,7 +677,7 @@ wheels = [
 
 [[package]]
 name = "elegoo-printer"
-version = "2.5.0+homebeta.1"
+version = "2.5.1b1"
 source = { virtual = "." }
 dependencies = [
     { name = "aiomqtt" },
