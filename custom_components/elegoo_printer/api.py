@@ -59,6 +59,8 @@ class ElegooPrinterApiClient:
     printer: Printer
     printer_data: PrinterData
     hass: HomeAssistant
+    _mqtt_host: str
+    _mqtt_port: int
 
     def __init__(
         self,
@@ -345,7 +347,7 @@ class ElegooPrinterApiClient:
             await ElegooMQTTBroker.release_instance()
             self.mqtt_broker = None
 
-    def get_local_ip(self) -> str:
+    def get_local_ip(self) -> str | None:
         """Get the local IP for the proxy server, falling back to the printer's IP."""
         if self.server:
             return self.server.get_local_ip()

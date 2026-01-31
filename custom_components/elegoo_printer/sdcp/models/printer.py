@@ -406,7 +406,7 @@ class PrinterData:
             )
 
     @staticmethod
-    def get_local_ip(target_ip: str, external_ip: str | None = None) -> str:
+    def get_local_ip(target_ip: str, external_ip: str | None = None) -> str | None:
         """
         Determine the local IP address used for outbound communication.
 
