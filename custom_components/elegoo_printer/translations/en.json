@@ -2,7 +2,7 @@
   "options": {
     "step": {
       "init": {
-        "description": "If you need help with the configuration have a look here: https://github.com/danielcherubini/elegoo-homeassistant",
+        "description": "For help with configuration, please see the project's GitHub page.",
         "data": {
           "ip_address": "Printer IP Address",
           "centauri_carbon": "Is this an FDM Printer",
@@ -26,7 +26,7 @@
       },
       "manual_ip": {
         "title": "Manual Setup",
-        "description": "If you need help with the configuration have a look here: https://github.com/danielcherubini/elegoo-homeassistant",
+        "description": "For help with configuration, please see the project's GitHub page.",
         "data": {
           "ip_address": "Printer IP Address",
           "proxy_enabled": "Enable the proxy server",
@@ -38,14 +38,14 @@
       },
       "fdm_options": {
         "title": "FDM Printer Options",
-        "description": "Configure additional options for your selected printer. [Read more about the proxy server](https://github.com/danielcherubini/elegoo-homeassistant/discussions/185).",
+        "description": "Configure additional options for your selected printer. See the project's GitHub page for more information about the proxy server.",
         "data": {
           "proxy_enabled": "Enable the proxy server"
         }
       },
       "resin_options": {
         "title": "Resin Printer Options",
-        "description": "Enabling the camera can create instability in the printer. Use at your own risk. [Read more for details and best practices](https://github.com/danielcherubini/elegoo-homeassistant/discussions/199).",
+        "description": "Enabling the camera can create instability in the printer. Use at your own risk. See the project's GitHub page for details and best practices.",
         "data": {
           "camera_enabled": "Enable the camera"
         }
