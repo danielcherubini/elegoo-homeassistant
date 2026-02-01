@@ -554,6 +554,13 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.ConfigFlowResult:
         """Handle the configuration of CC2 printer options."""
         _errors = {}
+
+        # Check if this printer requires access code (token_status=1 from discovery)
+        requires_access_code = (
+            self.selected_printer is not None
+            and self.selected_printer.cc2_token_status == 1
+        )
+
         if user_input is not None and self.selected_printer:
             printer = Printer.from_dict(self.selected_printer.to_dict())
             # CC2 printers don't use embedded broker or proxy
@@ -563,41 +570,43 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             # Store access code if provided
             access_code = user_input.get(CONF_CC2_ACCESS_CODE)
 
-            try:
-                validated_printer = await _async_test_connection(
-                    self.hass, printer, user_input
-                )
-                await self.async_set_unique_id(unique_id=validated_printer.id)
-                self._abort_if_unique_id_configured()
+            # Validate access code is provided when required
+            if requires_access_code and not access_code:
+                _errors["base"] = "cc2_access_code_required"
+            else:
+                try:
+                    validated_printer = await _async_test_connection(
+                        self.hass, printer, user_input
+                    )
+                    await self.async_set_unique_id(unique_id=validated_printer.id)
+                    self._abort_if_unique_id_configured()
 
-                # Add access code to printer data
-                printer_data = validated_printer.to_dict()
-                if access_code:
-                    printer_data[CONF_CC2_ACCESS_CODE] = access_code
+                    # Add access code to printer data
+                    printer_data = validated_printer.to_dict()
+                    if access_code:
+                        printer_data[CONF_CC2_ACCESS_CODE] = access_code
 
-                return self.async_create_entry(
-                    title=validated_printer.name or "Elegoo Printer",
-                    data=printer_data,
-                )
-            except ElegooConfigFlowConnectionError as exception:
-                LOGGER.error("Connection error: %s", exception)
-                _errors["base"] = "connection"
-            except ElegooConfigFlowGeneralError as exception:
-                LOGGER.error("No printer found: %s", exception)
-                _errors["base"] = "cc2_options_no_printer_found"
-            except PlatformNotReady as exception:
-                LOGGER.error(exception)
-                _errors["base"] = "connection"
-            except OSError as exception:
-                LOGGER.exception(exception)
-                _errors["base"] = "unknown"
+                    return self.async_create_entry(
+                        title=validated_printer.name or "Elegoo Printer",
+                        data=printer_data,
+                    )
+                except ElegooConfigFlowConnectionError as exception:
+                    LOGGER.error("Connection error: %s", exception)
+                    _errors["base"] = "connection"
+                except ElegooConfigFlowGeneralError as exception:
+                    LOGGER.error("No printer found: %s", exception)
+                    _errors["base"] = "cc2_options_no_printer_found"
+                except PlatformNotReady as exception:
+                    LOGGER.error(exception)
+                    _errors["base"] = "connection"
+                except OSError as exception:
+                    LOGGER.exception(exception)
+                    _errors["base"] = "unknown"
 
-        # Show form for CC2 options
-        # Check if this printer requires access code (token_status from discovery)
+        # Show form for CC2 options - make access code required if token_status=1
+        code_field = vol.Required if requires_access_code else vol.Optional
         data_schema = {
-            vol.Optional(
-                CONF_CC2_ACCESS_CODE,
-            ): selector.TextSelector(
+            code_field(CONF_CC2_ACCESS_CODE): selector.TextSelector(
                 selector.TextSelectorConfig(
                     type=selector.TextSelectorType.PASSWORD,
                 ),

@@ -94,7 +94,8 @@
       "no_printer_selected_or_ip_provided": "Please select a discovered printer or provide an IP address.",
       "manual_options_no_printer_found": "The selected printer could not be found to apply options.",
       "init_no_printer_found": "Failed to initialize: The printer could not be found.",
-      "cc2_options_no_printer_found": "The CC2 printer could not be found."
+      "cc2_options_no_printer_found": "The CC2 printer could not be found.",
+      "cc2_access_code_required": "This printer requires an access code for authentication."
     },
     "abort": {
       "already_configured": "This entry is already configured."

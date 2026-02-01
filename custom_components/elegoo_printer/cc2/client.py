@@ -535,7 +535,11 @@ class ElegooCC2Client:
         """Request full status from printer."""
         try:
             await self._send_command(CC2_CMD_GET_STATUS)
-        except (ElegooPrinterTimeoutError, ElegooPrinterConnectionError):
+        except (
+            ElegooPrinterTimeoutError,
+            ElegooPrinterConnectionError,
+            ElegooPrinterNotConnectedError,
+        ):
             self.logger.warning("Failed to request full status")
 
     def _handle_attributes(self, attrs_data: dict[str, Any]) -> None:

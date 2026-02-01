@@ -201,12 +201,16 @@ class CC2StatusMapper:
             )
 
         # Map time info (CC2 uses seconds, convert to ms)
-        current_time = job_data.get("print_time", 0)
-        total_time = job_data.get("total_time", 0)
+        current_time = job_data.get("print_time")
+        total_time = job_data.get("total_time")
 
         # FDM printers report time in seconds, convert to ms
-        print_info.current_ticks = int(current_time * 1000) if current_time else None
-        print_info.total_ticks = int(total_time * 1000) if total_time else None
+        print_info.current_ticks = (
+            int(current_time * 1000) if current_time is not None else None
+        )
+        print_info.total_ticks = (
+            int(total_time * 1000) if total_time is not None else None
+        )
         if print_info.current_ticks is not None and print_info.total_ticks is not None:
             print_info.remaining_ticks = max(
                 0, print_info.total_ticks - print_info.current_ticks

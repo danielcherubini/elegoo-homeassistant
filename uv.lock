@@ -747,7 +747,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "amqtt", specifier = ">=0.11.0b1" },
+    { name = "amqtt", specifier = ">=0.11.3" },
     { name = "pytest", specifier = ">=8.4.1" },
     { name = "ruff", specifier = ">=0.9.10" },
     { name = "ty", specifier = ">=0.0.1a21" },

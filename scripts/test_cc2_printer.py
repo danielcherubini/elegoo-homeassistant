@@ -179,6 +179,16 @@ async def handle_command(mqtt_client, client_id: str, payload: dict):
     print(f"📨 Command from {client_id}: method={method}, id={request_id}")
 
     response_topic = f"elegoo/{SERIAL_NUMBER}/{client_id}/api_response"
+
+    # Reject commands from unregistered clients
+    if client_id not in registered_clients:
+        print(f"⚠️  Ignoring command from unregistered client: {client_id}")
+        response = create_response(
+            request_id, method, {"error_code": 1002, "error": "not registered"}
+        )
+        await mqtt_client.publish(response_topic, json.dumps(response))
+        return
+
     result = {"error_code": 0}
 
     if method == CC2_CMD_GET_ATTRIBUTES:
