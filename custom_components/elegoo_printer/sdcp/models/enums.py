@@ -12,11 +12,13 @@ class TransportType(Enum):
     Attributes:
         WEBSOCKET: SDCP over WebSocket connection (V3 printers).
         MQTT: SDCP over MQTT broker (V1 printers).
+        CC2_MQTT: CC2 MQTT protocol (printer runs broker, HA connects to printer).
 
     """
 
     WEBSOCKET = "websocket"
     MQTT = "mqtt"
+    CC2_MQTT = "cc2_mqtt"
 
 
 class ProtocolVersion(Enum):
@@ -26,11 +28,13 @@ class ProtocolVersion(Enum):
     Attributes:
         V1: SDCP V1.x - Used by MQTT printers (Neptune, Saturn 3 MQTT).
         V3: SDCP V3.x - Used by WebSocket printers (most FDM/resin printers).
+        CC2: CC2 protocol - Used by Centauri Carbon 2 printers (inverted MQTT).
 
     """
 
     V1 = "V1"
     V3 = "V3"
+    CC2 = "CC2"
 
     @classmethod
     def from_version_string(cls, version: str | None) -> "ProtocolVersion":
@@ -45,6 +49,9 @@ class ProtocolVersion(Enum):
             ProtocolVersion.V1 if version starts with "V1",
             otherwise ProtocolVersion.V3.
 
+        Note:
+            CC2 is detected via discovery response format, not version string.
+
         """
         if version:
             version_upper = version.upper()
@@ -57,11 +64,14 @@ class ProtocolVersion(Enum):
         Get the corresponding transport type for this protocol version.
 
         Returns:
-            TransportType.MQTT for V1, TransportType.WEBSOCKET for V3.
+            TransportType.MQTT for V1, TransportType.WEBSOCKET for V3,
+            TransportType.CC2_MQTT for CC2.
 
         """
         if self == ProtocolVersion.V1:
             return TransportType.MQTT
+        if self == ProtocolVersion.CC2:
+            return TransportType.CC2_MQTT
         return TransportType.WEBSOCKET
 
 

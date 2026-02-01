@@ -14,6 +14,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "amqtt>=0.11.0b1",
     "pytest>=8.4.1",
     "ruff>=0.9.10",
     "ty>=0.0.1a21",
@@ -60,3 +61,5 @@ max-complexity = 25
 pythonpath = [
   "."
 ]
+testpaths = ["custom_components"]
+norecursedirs = ["scripts"]

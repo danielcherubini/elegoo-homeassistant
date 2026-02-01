@@ -13,8 +13,10 @@ from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .cc2.discovery import CC2Discovery
 from .const import (
     CONF_CAMERA_ENABLED,
+    CONF_CC2_ACCESS_CODE,
     CONF_EXTERNAL_IP,
     CONF_PROXY_ENABLED,
     DOMAIN,
@@ -81,6 +83,21 @@ async def _async_test_connection(
         raise ElegooConfigFlowGeneralError(msg)
 
     # Create appropriate client based on transport type
+    if printer_object.transport_type == TransportType.CC2_MQTT:
+        LOGGER.info(
+            "Using CC2 MQTT transport for printer %s during config flow",
+            printer_object.name,
+        )
+        # Skip live connection test - CC2 connects to printer's broker during setup
+        # No embedded broker needed for CC2
+        printer_object.mqtt_broker_enabled = False
+        printer_object.proxy_enabled = False
+        LOGGER.debug(
+            "Prepared CC2 printer %s (no connect test in flow)",
+            printer_object.name,
+        )
+        return printer_object
+
     if printer_object.transport_type == TransportType.MQTT:
         LOGGER.info(
             "Using MQTT transport for printer %s during config flow",
@@ -236,7 +253,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             The result of the configuration flow step.
 
         """  # noqa: E501
-        # Initiate discovery
+        # Initiate discovery for WebSocket/MQTT printers
         elegoo_printer_client = ElegooPrinterClient(
             "0.0.0.0",  # noqa: S104
             logger=LOGGER,
@@ -246,14 +263,28 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             elegoo_printer_client.discover_printer
         )
 
+        # Also discover CC2 printers
+        cc2_discovered = await self.hass.async_add_executor_job(
+            CC2Discovery.discover_as_printers
+        )
+        LOGGER.debug("Discovered %d CC2 printer(s)", len(cc2_discovered))
+
+        # Merge discovered printers, avoiding duplicates by serial number
+        all_printers = list(discovered)
+        existing_ids = {p.id for p in all_printers if p.id}
+        for cc2_printer in cc2_discovered:
+            if cc2_printer.id and cc2_printer.id not in existing_ids:
+                all_printers.append(cc2_printer)
+                existing_ids.add(cc2_printer.id)
+
         # Filter out proxy servers from discovered printers
-        self.discovered_printers = [p for p in discovered if not p.is_proxy]
+        self.discovered_printers = [p for p in all_printers if not p.is_proxy]
 
         if self.discovered_printers:
             return await self.async_step_discover_printers()
         return await self.async_step_manual_ip()
 
-    async def async_step_discover_printers(
+    async def async_step_discover_printers(  # noqa: PLR0911
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
@@ -286,6 +317,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
             if self.selected_printer:
+                # Check if printer uses CC2 MQTT transport
+                if self.selected_printer.transport_type == TransportType.CC2_MQTT:
+                    # CC2 printers may need access code - check token_status
+                    # Store in context for later use
+                    return await self.async_step_cc2_options()
+
                 # Check if printer uses MQTT transport
                 if self.selected_printer.transport_type == TransportType.MQTT:
                     # Auto-configure MQTT printer with embedded broker
@@ -504,6 +541,73 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors=_errors,
         )
 
+    async def async_step_cc2_options(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """Handle the configuration of CC2 printer options."""
+        _errors = {}
+        if user_input is not None and self.selected_printer:
+            printer = Printer.from_dict(self.selected_printer.to_dict())
+            # CC2 printers don't use embedded broker or proxy
+            printer.mqtt_broker_enabled = False
+            printer.proxy_enabled = False
+
+            # Store access code if provided
+            access_code = user_input.get(CONF_CC2_ACCESS_CODE)
+
+            try:
+                validated_printer = await _async_test_connection(
+                    self.hass, printer, user_input
+                )
+                await self.async_set_unique_id(unique_id=validated_printer.id)
+                self._abort_if_unique_id_configured()
+
+                # Add access code to printer data
+                printer_data = validated_printer.to_dict()
+                if access_code:
+                    printer_data[CONF_CC2_ACCESS_CODE] = access_code
+
+                return self.async_create_entry(
+                    title=validated_printer.name or "Elegoo Printer",
+                    data=printer_data,
+                )
+            except ElegooConfigFlowConnectionError as exception:
+                LOGGER.error("Connection error: %s", exception)
+                _errors["base"] = "connection"
+            except ElegooConfigFlowGeneralError as exception:
+                LOGGER.error("No printer found: %s", exception)
+                _errors["base"] = "cc2_options_no_printer_found"
+            except PlatformNotReady as exception:
+                LOGGER.error(exception)
+                _errors["base"] = "connection"
+            except OSError as exception:
+                LOGGER.exception(exception)
+                _errors["base"] = "unknown"
+
+        # Show form for CC2 options
+        # Check if this printer requires access code (token_status from discovery)
+        data_schema = {
+            vol.Optional(
+                CONF_CC2_ACCESS_CODE,
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(
+                    type=selector.TextSelectorType.PASSWORD,
+                ),
+            ),
+        }
+
+        return self.async_show_form(
+            step_id="cc2_options",
+            data_schema=vol.Schema(data_schema),
+            errors=_errors,
+            description_placeholders={
+                "printer_name": (
+                    self.selected_printer.name if self.selected_printer else "CC2"
+                ),
+            },
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(
@@ -542,12 +646,9 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """
-        Display and manage the options form for an existing Elegoo printer configuration.
+        Display the options form for an existing Elegoo printer configuration.
 
-        Allows users to update printer settings such as IP address and proxy usage.
-        Validates the updated configuration by testing connectivity to the printer
-        before saving changes. If validation fails, displays relevant error messages
-        on the form.
+        Routes to appropriate options step based on printer transport type.
 
         Arguments:
             user_input: The user input data.
@@ -555,10 +656,99 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         Returns:
             The result of the configuration flow step.
 
-        """  # noqa: E501
+        """
+        current_settings = {
+            **(self.config_entry.data or {}),
+            **(self.config_entry.options or {}),
+        }
+        printer = Printer.from_dict(current_settings)
+
+        # Route to appropriate options based on transport type
+        if printer.transport_type == TransportType.CC2_MQTT:
+            return await self.async_step_cc2_options(user_input)
+        if printer.transport_type == TransportType.MQTT:
+            return await self.async_step_mqtt_options(user_input)
+        return await self.async_step_websocket_options(user_input)
+
+    async def async_step_cc2_options(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Handle options for CC2 printers."""
         _errors = {}
-        # Create a dictionary of the current settings by merging data and options.
-        # This ensures the form is always populated with the current effective values.
+        current_settings = {
+            **(self.config_entry.data or {}),
+            **(self.config_entry.options or {}),
+        }
+        printer = Printer.from_dict(current_settings)
+
+        if user_input is not None:
+            printer.ip_address = user_input.get(CONF_IP_ADDRESS, printer.ip_address)
+            printer_data = printer.to_dict()
+            access_code = user_input.get(CONF_CC2_ACCESS_CODE)
+            if access_code:
+                printer_data[CONF_CC2_ACCESS_CODE] = access_code
+
+            return self.async_create_entry(
+                title=printer.name,
+                data=printer_data,
+            )
+
+        data_schema = {
+            vol.Required(CONF_IP_ADDRESS): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
+            ),
+            vol.Optional(CONF_CC2_ACCESS_CODE): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD),
+            ),
+        }
+
+        return self.async_show_form(
+            step_id="cc2_options",
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema(data_schema),
+                suggested_values=current_settings,
+            ),
+            errors=_errors,
+        )
+
+    async def async_step_mqtt_options(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Handle options for MQTT printers (embedded broker)."""
+        _errors = {}
+        current_settings = {
+            **(self.config_entry.data or {}),
+            **(self.config_entry.options or {}),
+        }
+        printer = Printer.from_dict(current_settings)
+
+        if user_input is not None:
+            printer.ip_address = user_input.get(CONF_IP_ADDRESS, printer.ip_address)
+            return self.async_create_entry(
+                title=printer.name,
+                data=printer.to_dict(),
+            )
+
+        data_schema = {
+            vol.Required(CONF_IP_ADDRESS): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
+            ),
+        }
+
+        return self.async_show_form(
+            step_id="mqtt_options",
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema(data_schema),
+                suggested_values=current_settings,
+            ),
+            errors=_errors,
+        )
+
+    async def async_step_websocket_options(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Handle options for WebSocket/SDCP printers."""
+        _errors = {}
         current_settings = {
             **(self.config_entry.data or {}),
             **(self.config_entry.options or {}),
@@ -566,10 +756,9 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         printer = Printer.from_dict(current_settings)
         LOGGER.debug("data: %s", self.config_entry.data)
         LOGGER.debug("options: %s", self.config_entry.options)
+
         if user_input is not None:
-            # No port assignment needed - centralized proxy with MainboardID routing
             if not user_input[CONF_PROXY_ENABLED]:
-                # Clear ports if proxy is disabled
                 printer.proxy_websocket_port = None
                 printer.proxy_video_port = None
 
@@ -598,29 +787,19 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 _errors["base"] = "unknown"
 
         data_schema = {
-            vol.Required(
-                CONF_IP_ADDRESS,
-            ): selector.TextSelector(
-                selector.TextSelectorConfig(
-                    type=selector.TextSelectorType.TEXT,
-                ),
+            vol.Required(CONF_IP_ADDRESS): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
             ),
-            vol.Required(
-                CONF_PROXY_ENABLED,
-            ): selector.BooleanSelector(
+            vol.Required(CONF_PROXY_ENABLED): selector.BooleanSelector(
                 selector.BooleanSelectorConfig(),
             ),
-            vol.Optional(
-                CONF_EXTERNAL_IP,
-            ): selector.TextSelector(
-                selector.TextSelectorConfig(
-                    type=selector.TextSelectorType.TEXT,
-                ),
+            vol.Optional(CONF_EXTERNAL_IP): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
             ),
         }
 
         return self.async_show_form(
-            step_id="init",
+            step_id="websocket_options",
             data_schema=self.add_suggested_values_to_schema(
                 vol.Schema(data_schema),
                 suggested_values=current_settings,

@@ -26,6 +26,10 @@ CONF_PROXY_VIDEO_PORT = "proxy_video_port"
 # MQTT settings (always uses embedded broker)
 CONF_MQTT_BROKER_ENABLED = "mqtt_broker_enabled"
 
+# CC2-specific settings
+CONF_CC2_ACCESS_CODE = "cc2_access_code"
+CONF_CC2_TOKEN_STATUS = "cc2_token_status"  # noqa: S105
+
 # Websocket and proxy settings
 DEFAULT_BROADCAST_ADDRESS = "255.255.255.255"
 DEFAULT_FALLBACK_IP = "8.8.8.8"
