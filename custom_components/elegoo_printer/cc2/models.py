@@ -132,18 +132,22 @@ class CC2StatusMapper:
 
         # Map fan speeds
         fan_data = cc2_data.get("fan_speeds", {})
-        status.current_fan_speed = CurrentFanSpeed({
-            "ModelFan": fan_data.get("fan", 0),
-            "AuxiliaryFan": fan_data.get("aux_fan", 0),
-            "BoxFan": fan_data.get("box_fan", 0),
-        })
+        status.current_fan_speed = CurrentFanSpeed(
+            {
+                "ModelFan": fan_data.get("fan", 0),
+                "AuxiliaryFan": fan_data.get("aux_fan", 0),
+                "BoxFan": fan_data.get("box_fan", 0),
+            }
+        )
 
         # Map light status
         light_data = cc2_data.get("light_status", {})
-        status.light_status = LightStatus({
-            "SecondLight": light_data.get("enabled", 0),
-            "RgbLight": light_data.get("rgb", [0, 0, 0]),
-        })
+        status.light_status = LightStatus(
+            {
+                "SecondLight": light_data.get("enabled", 0),
+                "RgbLight": light_data.get("rgb", [0, 0, 0]),
+            }
+        )
 
         # Map print info
         print_info = cls._map_print_info(cc2_data, printer_type)
@@ -180,9 +184,7 @@ class CC2StatusMapper:
 
         # Map sub-status to print status
         sub_status = cc2_data.get("sub_status", 0)
-        print_info.status = cls.PRINT_STATUS_MAP.get(
-            sub_status, ElegooPrintStatus.IDLE
-        )
+        print_info.status = cls.PRINT_STATUS_MAP.get(sub_status, ElegooPrintStatus.IDLE)
 
         # Map print job data
         job_data = cc2_data.get("print_job", {})
@@ -234,9 +236,7 @@ class CC2StatusMapper:
                     0,
                     min(
                         100,
-                        round(
-                            print_info.current_layer / print_info.total_layers * 100
-                        ),
+                        round(print_info.current_layer / print_info.total_layers * 100),
                     ),
                 )
         else:

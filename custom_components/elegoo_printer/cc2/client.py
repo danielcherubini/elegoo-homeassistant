@@ -131,9 +131,7 @@ class ElegooCC2Client:
     def is_connected(self) -> bool:
         """Return true if the client is connected and registered."""
         return (
-            self._is_connected
-            and self._is_registered
-            and self.mqtt_client is not None
+            self._is_connected and self._is_registered and self.mqtt_client is not None
         )
 
     async def connect_printer(self, printer: Printer) -> bool:
