@@ -87,6 +87,8 @@ class CC2DiscoveredPrinter:
         printer.brand = "ELEGOO"
         # No embedded broker needed for CC2 - printer runs its own
         printer.mqtt_broker_enabled = False
+        # Preserve token status so config flow knows if access code is required
+        printer.cc2_token_status = self.token_status
 
         return printer
 

@@ -275,8 +275,10 @@ class Printer:
             dict: Dictionary representation with sensitive fields redacted.
 
         """
-        # No sensitive fields to redact anymore since we removed MQTT auth
-        return self.to_dict()
+        data = self.to_dict()
+        # Redact CC2 access code to prevent logging secrets
+        data.pop("cc2_access_code", None)
+        return data
 
     @classmethod
     def from_dict(

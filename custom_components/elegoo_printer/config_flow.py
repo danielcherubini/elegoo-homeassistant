@@ -175,7 +175,7 @@ async def _async_validate_input(  # noqa: PLR0912
         if not printer_object:
             _errors["base"] = "invalid_printer_selection"
     elif CONF_IP_ADDRESS in user_input:
-        # Manual IP entry
+        # Manual IP entry - try WebSocket discovery first, then CC2
         ip_address = user_input[CONF_IP_ADDRESS]
         elegoo_printer = ElegooPrinterClient(
             ip_address,
@@ -189,8 +189,15 @@ async def _async_validate_input(  # noqa: PLR0912
         if printers:
             printer_object = printers[0]
         else:
-            _errors["base"] = "no_printer_found"
-            return {"printer": None, "errors": _errors}
+            # Try CC2 discovery as fallback
+            cc2_printers = await hass.async_add_executor_job(
+                CC2Discovery.discover_as_printers, ip_address
+            )
+            if cc2_printers:
+                printer_object = cc2_printers[0]
+            else:
+                _errors["base"] = "no_printer_found"
+                return {"printer": None, "errors": _errors}
     if printer_object:
         # Assign ports if proxy is enabled
         if user_input.get(CONF_PROXY_ENABLED, False):

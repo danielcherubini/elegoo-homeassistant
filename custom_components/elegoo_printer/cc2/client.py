@@ -214,8 +214,6 @@ class ElegooCC2Client:
         else:
             return True
 
-        return False
-
     async def disconnect(self) -> None:
         """Disconnect from the CC2 printer."""
         self.logger.info("Closing CC2 connection to printer")
