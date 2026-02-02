@@ -256,4 +256,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    # Windows requires SelectorEventLoop for aiodns compatibility
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())

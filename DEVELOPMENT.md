@@ -161,10 +161,23 @@ If you can't set up the full development environment but want to help debug prin
 2. Connect to your printer:
    - **Host:** Your printer's IP address
    - **Port:** 1883
-   - **Username:** `bblp`
-   - **Password:** (leave empty, or use your access code)
+   - **Username/Password:** See table below
 3. Subscribe to `elegoo/#` to see all topics
 4. Share screenshots or exports of the messages you see
+
+### MQTT Credentials by Printer Model
+
+| Printer | Username | Password |
+|---------|----------|----------|
+| **CC1** (Centauri Carbon 1) | `bblp` | (empty or access code) |
+| **CC2** (Centauri Carbon 2) | `admin` | Check Elegoo Slicer logs* |
+
+*CC2 generates a unique password. To find it:
+1. Open Elegoo Slicer and connect to your CC2
+2. Check the slicer's log files for MQTT credentials
+3. The password is typically a numeric string (e.g., `20250604`)
+
+> **Note:** CC2 connections may drop after a short time. This is expected behavior we're still investigating.
 
 ## Project Structure
 
@@ -217,7 +230,15 @@ These packages require C++ compilation. Install Visual C++ Build Tools (see Wind
 
 ### Windows: `Cannot open compiler generated file` error
 
-This is a path length issue. Enable long paths (see Windows setup) or clone to a shorter path like `C:\elegoo`.
+This is a path length issue. You have three options:
+
+1. **Enable long paths** (see Windows setup above)
+2. **Clone to a shorter path** like `C:\elegoo`
+3. **Use a shorter uv cache path:**
+   ```powershell
+   $env:UV_CACHE_DIR = "C:\uv"
+   uv sync --all-groups
+   ```
 
 ### Windows: `uv` command not found
 
