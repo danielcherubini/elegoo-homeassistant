@@ -45,7 +45,7 @@ MQTT_USERNAME = "elegoo"
 MQTT_PASSWORD = "123456"  # noqa: S105
 
 # =============================================================================
-# CC2 PROTOCOL CONSTANTS
+# CC2 PROTOCOL CONSTANTS (from elegoo-link COMMAND_MAPPING_TABLE)
 # =============================================================================
 
 # Command IDs (requests from client)
@@ -54,18 +54,28 @@ CC2_CMD_GET_STATUS = 1002
 CC2_CMD_START_PRINT = 1020
 CC2_CMD_PAUSE_PRINT = 1021
 CC2_CMD_STOP_PRINT = 1022
-CC2_CMD_RESUME_PRINT = 1023  # Not in elegoo-link but logical
+CC2_CMD_RESUME_PRINT = 1023
 CC2_CMD_HOME_AXES = 1026
 CC2_CMD_MOVE_AXES = 1027
 CC2_CMD_SET_TEMPERATURE = 1028
+CC2_CMD_SET_LIGHT = 1029
 CC2_CMD_SET_FAN_SPEED = 1030
 CC2_CMD_SET_PRINT_SPEED = 1031
+CC2_CMD_PRINT_TASK_LIST = 1036
+CC2_CMD_PRINT_TASK_DETAIL = 1037
+CC2_CMD_DELETE_PRINT_TASK = 1038
+CC2_CMD_VIDEO_STREAM = 1042
 CC2_CMD_UPDATE_PRINTER_NAME = 1043
-CC2_CMD_SET_VIDEO_STREAM = 1050
+CC2_CMD_GET_FILE_LIST = 1044
+CC2_CMD_GET_FILE_DETAIL = 1046
+CC2_CMD_DELETE_FILE = 1047
+CC2_CMD_GET_DISK_INFO = 1048
 CC2_CMD_FILE_DOWNLOAD = 1057
 CC2_CMD_CANCEL_FILE_DOWNLOAD = 1058
-CC2_CMD_GET_CANVAS_STATUS = 2005
+
+# Canvas/AMS commands
 CC2_CMD_SET_AUTO_REFILL = 2004
+CC2_CMD_GET_CANVAS_STATUS = 2005
 
 # Event IDs (push notifications from printer)
 CC2_EVENT_STATUS = 6000
@@ -76,6 +86,7 @@ STATUS_INITIALIZING = 0
 STATUS_IDLE = 1
 STATUS_PRINTING = 2
 STATUS_FILAMENT_OPERATING = 3
+STATUS_FILAMENT_OPERATING_2 = 4
 STATUS_AUTO_LEVELING = 5
 STATUS_PID_CALIBRATING = 6
 STATUS_RESONANCE_TESTING = 7
@@ -88,19 +99,42 @@ STATUS_EXTRUDER_OPERATING = 13
 STATUS_EMERGENCY_STOP = 14
 STATUS_POWER_LOSS_RECOVERY = 15
 
-# Print sub-status codes
+# Print sub-status codes (from elegoo-link elegoo_fdm_cc2_message_adapter.cpp)
 SUB_STATUS_NONE = 0
 SUB_STATUS_EXTRUDER_PREHEATING = 1045
+SUB_STATUS_EXTRUDER_PREHEATING_2 = 1096
 SUB_STATUS_BED_PREHEATING = 1405
+SUB_STATUS_BED_PREHEATING_2 = 1906
 SUB_STATUS_PRINTING = 2075
 SUB_STATUS_PRINTING_COMPLETED = 2077
 SUB_STATUS_PAUSING = 2501
 SUB_STATUS_PAUSED = 2502
+SUB_STATUS_PAUSED_2 = 2505
 SUB_STATUS_RESUMING = 2401
+SUB_STATUS_RESUMING_COMPLETED = 2402
 SUB_STATUS_STOPPING = 2503
 SUB_STATUS_STOPPED = 2504
 SUB_STATUS_HOMING = 2801
+SUB_STATUS_HOMING_COMPLETED = 2802
+SUB_STATUS_HOMING_FAILED = 2803
 SUB_STATUS_AUTO_LEVELING = 2901
+SUB_STATUS_AUTO_LEVELING_COMPLETED = 2902
+
+# Filament operating sub-status codes (status=3,4)
+SUB_STATUS_FILAMENT_LOADING = 1133
+SUB_STATUS_FILAMENT_LOADING_COMPLETED = 1136
+SUB_STATUS_FILAMENT_UNLOADING = 1144
+SUB_STATUS_FILAMENT_UNLOADING_COMPLETED = 1145
+
+# Extruder operating sub-status codes (status=13)
+SUB_STATUS_EXTRUDER_LOADING = 1061
+SUB_STATUS_EXTRUDER_UNLOADING = 1062
+SUB_STATUS_EXTRUDER_LOADING_COMPLETED = 1063
+SUB_STATUS_EXTRUDER_UNLOADING_COMPLETED = 1064
+
+# File transfer sub-status codes (status=11)
+SUB_STATUS_UPLOADING_FILE = 3000
+SUB_STATUS_UPLOADING_FILE_COMPLETED = 3001
 
 # Speed modes
 SPEED_MODE_SILENT = 0
@@ -140,8 +174,8 @@ printer_status = {
         "fan": {"speed": 255.0},      # 100%
         "heater_fan": {"speed": 255.0},  # 100%
     },
-    "gcode_move": {
-        "extruder": 138.87,
+    "gcode_move_inf": {
+        "e": 138.87,
         "speed": 9019,
         "speed_mode": SPEED_MODE_BALANCED,
         "x": 88.148,
@@ -363,11 +397,16 @@ async def handle_command(mqtt_client, client_id: str, payload: dict):
 
     elif method == CC2_CMD_SET_PRINT_SPEED:
         mode = params.get("mode", SPEED_MODE_BALANCED)
-        printer_status["gcode_move"]["speed_mode"] = mode
+        printer_status["gcode_move_inf"]["speed_mode"] = mode
         mode_names = {0: "Silent", 1: "Balanced", 2: "Sport", 3: "Ludicrous"}
         print(f"⚡ Speed mode: {mode_names.get(mode, 'Unknown')}")
 
-    elif method == CC2_CMD_SET_VIDEO_STREAM:
+    elif method == CC2_CMD_SET_LIGHT:
+        brightness = params.get("brightness", 0)
+        printer_status["led"]["status"] = 1 if brightness > 0 else 0
+        print(f"💡 Light: {'on' if brightness > 0 else 'off'} ({brightness})")
+
+    elif method == CC2_CMD_VIDEO_STREAM:
         enable = params.get("enable", 0)
         print(f"📹 Video stream: {'enabled' if enable else 'disabled'}")
         result = {

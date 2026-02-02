@@ -39,16 +39,21 @@ from .const import (
     CC2_STATUS_SELF_CHECKING,
     CC2_STATUS_UPDATING,
     CC2_STATUS_VIDEO_COMPOSING,
+    CC2_SUBSTATUS_AUTO_LEVELING,
+    CC2_SUBSTATUS_AUTO_LEVELING_COMPLETED,
     CC2_SUBSTATUS_BED_PREHEATING,
     CC2_SUBSTATUS_BED_PREHEATING_2,
     CC2_SUBSTATUS_EXTRUDER_PREHEATING,
     CC2_SUBSTATUS_EXTRUDER_PREHEATING_2,
+    CC2_SUBSTATUS_HOMING,
+    CC2_SUBSTATUS_HOMING_COMPLETED,
     CC2_SUBSTATUS_PAUSED,
     CC2_SUBSTATUS_PAUSED_2,
     CC2_SUBSTATUS_PAUSING,
     CC2_SUBSTATUS_PRINTING,
     CC2_SUBSTATUS_PRINTING_COMPLETED,
     CC2_SUBSTATUS_RESUMING,
+    CC2_SUBSTATUS_RESUMING_COMPLETED,
     CC2_SUBSTATUS_STOPPED,
     CC2_SUBSTATUS_STOPPING,
 )
@@ -81,19 +86,31 @@ class CC2StatusMapper:
     }
 
     # Map CC2 sub-status codes to ElegooPrintStatus
+    # Based on elegoo-link elegoo_fdm_cc2_message_adapter.cpp
     PRINT_STATUS_MAP: ClassVar[dict[int, ElegooPrintStatus]] = {
+        # Preheating states
         CC2_SUBSTATUS_EXTRUDER_PREHEATING: ElegooPrintStatus.PREHEATING,
         CC2_SUBSTATUS_EXTRUDER_PREHEATING_2: ElegooPrintStatus.PREHEATING,
         CC2_SUBSTATUS_BED_PREHEATING: ElegooPrintStatus.PREHEATING,
         CC2_SUBSTATUS_BED_PREHEATING_2: ElegooPrintStatus.PREHEATING,
+        # Printing states
         CC2_SUBSTATUS_PRINTING: ElegooPrintStatus.PRINTING,
         CC2_SUBSTATUS_PRINTING_COMPLETED: ElegooPrintStatus.COMPLETE,
+        # Pause/resume states
         CC2_SUBSTATUS_PAUSING: ElegooPrintStatus.PAUSING,
         CC2_SUBSTATUS_PAUSED: ElegooPrintStatus.PAUSED,
         CC2_SUBSTATUS_PAUSED_2: ElegooPrintStatus.PAUSED,
         CC2_SUBSTATUS_RESUMING: ElegooPrintStatus.PRINTING,
+        CC2_SUBSTATUS_RESUMING_COMPLETED: ElegooPrintStatus.PRINTING,
+        # Stop states
         CC2_SUBSTATUS_STOPPING: ElegooPrintStatus.STOPPING,
         CC2_SUBSTATUS_STOPPED: ElegooPrintStatus.STOPPED,
+        # Homing during print
+        CC2_SUBSTATUS_HOMING: ElegooPrintStatus.PRINTING,
+        CC2_SUBSTATUS_HOMING_COMPLETED: ElegooPrintStatus.PRINTING,
+        # Leveling during print
+        CC2_SUBSTATUS_AUTO_LEVELING: ElegooPrintStatus.LEVELING,
+        CC2_SUBSTATUS_AUTO_LEVELING_COMPLETED: ElegooPrintStatus.LEVELING,
     }
 
     @classmethod
@@ -168,8 +185,10 @@ class CC2StatusMapper:
         print_info = cls._map_print_info(cc2_data, printer_type)
         status.print_info = print_info
 
-        # Map position from gcode_move
-        pos = cc2_data.get("gcode_move", {})
+        # Map position - try gcode_move_inf first (official), fallback to gcode_move
+        pos = cc2_data.get("gcode_move_inf", {})
+        if not pos:
+            pos = cc2_data.get("gcode_move", {})
         x = pos.get("x", 0)
         y = pos.get("y", 0)
         z = pos.get("z", 0)
@@ -275,8 +294,10 @@ class CC2StatusMapper:
         else:
             print_info.percent_complete = None
 
-        # Map print speed from gcode_move speed_mode
-        gcode_move = cc2_data.get("gcode_move", {})
+        # Map print speed from gcode_move/gcode_move_inf speed_mode
+        gcode_move = cc2_data.get("gcode_move_inf", {})
+        if not gcode_move:
+            gcode_move = cc2_data.get("gcode_move", {})
         speed_mode = gcode_move.get("speed_mode", 1)
         # 0=Silent(50%), 1=Balanced(100%), 2=Sport(150%), 3=Ludicrous(200%)
         speed_map = {0: 50, 1: 100, 2: 150, 3: 200}
@@ -286,8 +307,8 @@ class CC2StatusMapper:
         error_code = cc2_data.get("error_code", 0)
         print_info.error_number = ElegooPrintError.from_int(error_code)
 
-        # Map extrusion data from gcode_move
-        print_info.current_extrusion = gcode_move.get("e")
+        # Map extrusion data
+        print_info.current_extrusion = gcode_move.get("e") or gcode_move.get("extruder")
 
         return print_info
 
