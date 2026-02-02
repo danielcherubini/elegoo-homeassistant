@@ -1,39 +1,239 @@
 # Centauri Carbon 2 (CC2) Protocol Documentation
 
-This document is the authoritative reference for the Elegoo Centauri Carbon 2 (CC2) communication protocol, derived from analysis of the [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) open-source library.
+> **OpenCentauri Project** - Community documentation for Elegoo printer protocols
+
+This document is the authoritative reference for the Elegoo Centauri Carbon 2 (CC2) communication protocol. It is intended for developers building integrations, tools, or applications that communicate with CC2-based FDM printers.
+
+**Source**: Derived from analysis of the [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) open-source library and community reverse engineering efforts.
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Quick Start](#quick-start)
+3. [Network Architecture](#network-architecture)
+4. [Discovery Protocol](#discovery-protocol)
+5. [MQTT Connection](#mqtt-connection)
+6. [Registration Protocol](#registration-protocol)
+7. [Heartbeat Protocol](#heartbeat-protocol)
+8. [Command Protocol](#command-protocol)
+9. [Method Reference](#method-reference)
+10. [Status Codes Reference](#status-codes-reference)
+11. [Data Structures](#data-structures)
+12. [Delta Status Updates](#delta-status-updates)
+13. [HTTP API](#http-api)
+14. [File Operations](#file-operations)
+15. [Video Streaming](#video-streaming)
+16. [Canvas/AMS System](#canvasams-system)
+17. [Print Job Lifecycle](#print-job-lifecycle)
+18. [Error Handling](#error-handling)
+19. [Security Considerations](#security-considerations)
+20. [Firmware Variations](#firmware-variations)
+21. [CC1 vs CC2 Comparison](#cc1-vs-cc2-comparison)
+22. [Implementation Checklist](#implementation-checklist)
+23. [Troubleshooting](#troubleshooting)
+24. [Glossary](#glossary)
+25. [References](#references)
+
+---
 
 ## Overview
 
-The CC2 uses an **inverted MQTT architecture** compared to traditional printer integrations:
+The Centauri Carbon 2 (CC2) is Elegoo's second-generation FDM printer communication protocol. It uses an **inverted MQTT architecture** where the printer itself runs the MQTT broker, and clients (like slicers, apps, or home automation systems) connect to it.
 
-- **The printer runs the MQTT broker** (on port 1883)
-- **Clients connect TO the printer** (not vice versa)
-- **Clients must register** before sending commands
-- **Uses heartbeat/ping-pong mechanism** for connection health
-- **Sends delta status updates** to minimize bandwidth
+### Key Characteristics
+
+| Feature | Description |
+|---------|-------------|
+| Transport | MQTT 3.1.1 over TCP |
+| Broker | Runs on the printer (port 1883) |
+| Discovery | UDP broadcast (port 52700) |
+| Authentication | Username/password + optional access code |
+| Status Updates | Delta-based (incremental) |
+| Max Clients | ~4 concurrent connections |
+| Heartbeat | Required every 10 seconds |
+
+### Supported Printers
+
+The CC2 protocol is used by:
+- Elegoo Centauri Carbon 2
+- Elegoo Cura (some models)
+- Other Elegoo FDM printers with CC2 firmware
+
+### What Makes CC2 Different
+
+Unlike traditional printer protocols where a central server (like OctoPrint) manages connections:
+
+1. **The printer IS the server** - It runs an MQTT broker
+2. **Clients connect TO the printer** - Not vice versa
+3. **Registration is mandatory** - Must register before sending commands
+4. **Connection health monitoring** - Heartbeat mechanism required
+5. **Bandwidth optimization** - Uses delta status updates
+
+---
+
+## Quick Start
+
+Here's the minimum flow to connect and receive status updates:
+
+### Step 1: Discover the Printer
+
+```python
+import socket
+import json
+
+# Send UDP discovery broadcast
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+sock.settimeout(5.0)
+
+message = json.dumps({"id": 0, "method": 7000}).encode()
+sock.sendto(message, ('255.255.255.255', 52700))
+
+# Receive response
+data, addr = sock.recvfrom(1024)
+response = json.loads(data)
+printer_ip = addr[0]
+serial_number = response['result']['sn']
+```
+
+### Step 2: Connect via MQTT
+
+```python
+import paho.mqtt.client as mqtt
+import random
+
+client_id = f"1_PC_{random.randint(1000, 9999)}"
+request_id = f"{client_id}_req"
+
+client = mqtt.Client(client_id=client_id)
+client.username_pw_set("elegoo", "123456")  # or access code
+client.connect(printer_ip, 1883, keepalive=60)
+```
+
+### Step 3: Register
+
+```python
+# Subscribe to registration response
+client.subscribe(f"elegoo/{serial_number}/{request_id}/register_response")
+
+# Send registration
+client.publish(
+    f"elegoo/{serial_number}/api_register",
+    json.dumps({"client_id": client_id, "request_id": request_id})
+)
+
+# Wait for "ok" response before proceeding
+```
+
+### Step 4: Subscribe to Status Updates
+
+```python
+# Subscribe to status updates and command responses
+client.subscribe(f"elegoo/{serial_number}/api_status")
+client.subscribe(f"elegoo/{serial_number}/{client_id}/api_response")
+```
+
+### Step 5: Start Heartbeat
+
+```python
+import threading
+import time
+
+def heartbeat():
+    while connected:
+        client.publish(
+            f"elegoo/{serial_number}/{client_id}/api_request",
+            json.dumps({"type": "PING"})
+        )
+        time.sleep(10)
+
+threading.Thread(target=heartbeat, daemon=True).start()
+```
+
+---
 
 ## Network Architecture
 
 ```
-┌─────────────────┐                    ┌─────────────────┐
-│   Home          │    UDP Discovery   │    CC2 Printer  │
-│   Assistant     │◄──────────────────►│                 │
-│                 │    Port 52700      │                 │
-│                 │                    │                 │
-│                 │    MQTT Connection │   MQTT Broker   │
-│   (Client)      │◄──────────────────►│   Port 1883     │
-└─────────────────┘                    └─────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Local Network                                  │
+│                                                                          │
+│   ┌─────────────────┐              ┌──────────────────────────────────┐ │
+│   │   Client App    │              │       CC2 Printer                │ │
+│   │   (Slicer,      │              │                                  │ │
+│   │   Home Asst.)   │              │  ┌─────────────────────────────┐ │ │
+│   │                 │   UDP:52700  │  │   Discovery Service         │ │ │
+│   │  ┌───────────┐  │◄────────────►│  │   (responds to broadcasts)  │ │ │
+│   │  │ Discovery │  │              │  └─────────────────────────────┘ │ │
+│   │  └───────────┘  │              │                                  │ │
+│   │                 │              │  ┌─────────────────────────────┐ │ │
+│   │  ┌───────────┐  │  TCP:1883    │  │   MQTT Broker               │ │ │
+│   │  │ MQTT      │  │◄────────────►│  │   (handles subscriptions,   │ │ │
+│   │  │ Client    │  │              │  │    publishes status)        │ │ │
+│   │  └───────────┘  │              │  └─────────────────────────────┘ │ │
+│   │                 │              │                                  │ │
+│   │  ┌───────────┐  │  TCP:8080    │  ┌─────────────────────────────┐ │ │
+│   │  │ HTTP      │  │◄────────────►│  │   HTTP Server               │ │ │
+│   │  │ Client    │  │              │  │   (file upload, video)      │ │ │
+│   │  └───────────┘  │              │  └─────────────────────────────┘ │ │
+│   │                 │              │                                  │ │
+│   └─────────────────┘              └──────────────────────────────────┘ │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Ports Used
+
+| Port | Protocol | Direction | Purpose |
+|------|----------|-----------|---------|
+| 52700 | UDP | Client → Printer (broadcast) | Discovery |
+| 1883 | TCP | Client → Printer | MQTT commands/status |
+| 8080 | TCP | Client → Printer | HTTP (video, file transfers) |
+
+### Data Flow
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Connection Lifecycle                             │
+│                                                                         │
+│  ┌─────────┐   ┌───────────┐   ┌──────────┐   ┌─────────┐   ┌────────┐│
+│  │Discovery│──►│MQTT       │──►│Register  │──►│Subscribe│──►│Heartbeat│
+│  │(UDP)    │   │Connect    │   │          │   │Topics   │   │Loop     ││
+│  └─────────┘   └───────────┘   └──────────┘   └─────────┘   └────────┘│
+│                                                                         │
+│  After connection established:                                          │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                     Main Event Loop                              │   │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────┐ │   │
+│  │  │ Receive      │  │ Send         │  │ Periodic Heartbeat     │ │   │
+│  │  │ Status       │◄─┤ Commands     │  │ (every 10 seconds)     │ │   │
+│  │  │ Updates      │  │              │  │                        │ │   │
+│  │  └──────────────┘  └──────────────┘  └────────────────────────┘ │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Discovery Protocol
 
-### Port and Method
-- **Port**: 52700 (UDP)
-- **Method**: Broadcast JSON message
+Discovery allows clients to find CC2 printers on the local network.
+
+### Configuration
+
+| Parameter | Value |
+|-----------|-------|
+| Port | 52700 (UDP) |
+| Method | Broadcast or directed UDP |
+| Timeout | 5 seconds recommended |
 
 ### Discovery Request
+
+Send to `255.255.255.255:52700` (broadcast) or `<printer_ip>:52700` (direct):
+
 ```json
 {
   "id": 0,
@@ -42,13 +242,16 @@ The CC2 uses an **inverted MQTT architecture** compared to traditional printer i
 ```
 
 ### Discovery Response
+
+The printer responds with its configuration:
+
 ```json
 {
   "id": 0,
   "result": {
     "host_name": "Centauri Carbon 2",
     "machine_model": "Centauri Carbon 2",
-    "sn": "CC2SERIALNUMBER",
+    "sn": "CC2ABCD1234567890",
     "token_status": 0,
     "lan_status": 1
   }
@@ -56,67 +259,126 @@ The CC2 uses an **inverted MQTT architecture** compared to traditional printer i
 ```
 
 ### Response Fields
+
 | Field | Type | Description |
 |-------|------|-------------|
-| `host_name` | string | User-configured printer name |
-| `machine_model` | string | Printer model identifier |
-| `sn` | string | Serial number (used for MQTT topics) |
-| `token_status` | int | 0=No auth required, 1=Access code required |
-| `lan_status` | int | 0=Cloud mode, 1=LAN-only mode |
+| `host_name` | string | User-configured printer name (can be changed in settings) |
+| `machine_model` | string | Hardware model identifier |
+| `sn` | string | Serial number (unique, used in MQTT topics) |
+| `token_status` | int | Authentication mode (see below) |
+| `lan_status` | int | Network mode (see below) |
+
+### Token Status Values
+
+| Value | Meaning | Action Required |
+|-------|---------|-----------------|
+| 0 | No access code | Use default password `123456` |
+| 1 | Access code set | Use access code as MQTT password |
+
+### LAN Status Values
+
+| Value | Meaning |
+|-------|---------|
+| 0 | Cloud mode (printer may be cloud-connected) |
+| 1 | LAN-only mode |
+
+### Implementation Notes
+
+- The printer may take 1-2 seconds to respond
+- Multiple printers on the network will all respond
+- Serial number format: Usually starts with printer model prefix
+- Discovery works even when another client is connected
 
 ---
 
 ## MQTT Connection
 
+After discovering the printer, establish an MQTT connection.
+
 ### Connection Parameters
+
 | Parameter | Value |
 |-----------|-------|
+| Host | Printer IP address |
 | Port | 1883 |
 | Protocol | MQTT 3.1.1 |
-| Username | `elegoo` |
-| Default Password | `123456` (or access code if `token_status=1`) |
 | Keep-alive | 60 seconds |
+| Clean Session | true |
+| Username | `elegoo` |
+| Password | `123456` or access code (if `token_status=1`) |
 
 ### Client ID Format
+
+Generate a unique client ID:
+
 ```
 1_PC_<random 4 digits>
 ```
-Example: `1_PC_4521`
+
+Examples:
+- `1_PC_4521`
+- `1_PC_8734`
+- `1_PC_0001`
+
+The format appears to be: `<platform>_<device_type>_<random>`
+- Platform: `1` (appears constant)
+- Device type: `PC`, `APP`, etc.
+- Random: 4 digits for uniqueness
 
 ### Request ID Format
+
+Used for registration:
+
 ```
 <client_id>_req
 ```
+
 Example: `1_PC_4521_req`
 
----
+### Connection Error Handling
 
-## MQTT Topics
-
-### Topic Structure
-All topics follow the pattern: `elegoo/<serial_number>/...`
-
-### Subscribe Topics (Client listens)
-| Topic | Purpose |
-|-------|---------|
-| `elegoo/<sn>/<client_id>/api_response` | Command responses |
-| `elegoo/<sn>/api_status` | Status updates (events) |
-| `elegoo/<sn>/<request_id>/register_response` | Registration acknowledgment |
-
-### Publish Topics (Client sends)
-| Topic | Purpose |
-|-------|---------|
-| `elegoo/<sn>/api_register` | Registration request |
-| `elegoo/<sn>/<client_id>/api_request` | Commands |
+| Error | Cause | Solution |
+|-------|-------|----------|
+| Connection refused | Wrong IP/port | Verify discovery response |
+| Authentication failed | Wrong password | Check `token_status`, use access code |
+| Connection closed | Too many clients | Wait for slot, implement reconnection |
+| Timeout | Network issue | Retry with backoff |
 
 ---
 
 ## Registration Protocol
 
-Registration is **required** before sending any commands.
+Registration **must** be completed before sending any commands. The printer needs to know which client IDs are valid.
+
+### Registration Flow
+
+```
+┌────────┐                              ┌────────────┐
+│ Client │                              │  Printer   │
+└───┬────┘                              └─────┬──────┘
+    │                                         │
+    │ 1. Subscribe to register_response       │
+    │────────────────────────────────────────►│
+    │                                         │
+    │ 2. Publish registration request         │
+    │────────────────────────────────────────►│
+    │                                         │
+    │ 3. Receive registration response        │
+    │◄────────────────────────────────────────│
+    │                                         │
+    │ 4. If "ok", proceed with commands       │
+    │                                         │
+```
+
+### Topics
+
+| Action | Topic |
+|--------|-------|
+| Subscribe (response) | `elegoo/<sn>/<request_id>/register_response` |
+| Publish (request) | `elegoo/<sn>/api_register` |
 
 ### Registration Request
-Publish to: `elegoo/<sn>/api_register`
+
 ```json
 {
   "client_id": "1_PC_4521",
@@ -124,10 +386,8 @@ Publish to: `elegoo/<sn>/api_register`
 }
 ```
 
-### Registration Response
-Received on: `elegoo/<sn>/<request_id>/register_response`
+### Registration Response - Success
 
-**Success:**
 ```json
 {
   "client_id": "1_PC_4521",
@@ -135,7 +395,8 @@ Received on: `elegoo/<sn>/<request_id>/register_response`
 }
 ```
 
-**Failure (too many clients):**
+### Registration Response - Failure
+
 ```json
 {
   "client_id": "1_PC_4521",
@@ -143,24 +404,39 @@ Received on: `elegoo/<sn>/<request_id>/register_response`
 }
 ```
 
-### Registration Timeout
-- Timeout: 3 seconds
-- Max clients: 4 (typical)
+### Error Values
+
+| Error | Meaning | Action |
+|-------|---------|--------|
+| `ok` | Success | Proceed with subscriptions |
+| `fail` | General failure | Retry after delay |
+| `too many clients` | Max connections reached | Wait or disconnect another client |
+
+### Timing
+
+| Parameter | Value |
+|-----------|-------|
+| Timeout | 3 seconds |
+| Max Clients | ~4 (may vary by firmware) |
+| Retry Delay | 5-10 seconds recommended |
 
 ---
 
 ## Heartbeat Protocol
 
-The heartbeat mechanism ensures connection health.
+The heartbeat mechanism keeps the connection alive and allows the printer to detect disconnected clients.
 
 ### Configuration
+
 | Parameter | Value |
 |-----------|-------|
 | Interval | 10 seconds |
-| Timeout | 65 seconds |
+| Timeout | 65 seconds (printer disconnects if no heartbeat) |
 
 ### Heartbeat Request
-Publish to command topic:
+
+Publish to: `elegoo/<sn>/<client_id>/api_request`
+
 ```json
 {
   "type": "PING"
@@ -168,29 +444,70 @@ Publish to command topic:
 ```
 
 ### Heartbeat Response
+
+Received on: `elegoo/<sn>/<client_id>/api_response`
+
 ```json
 {
   "type": "PONG"
 }
 ```
 
+### Implementation Notes
+
+- **Start heartbeat immediately** after successful registration
+- **Don't wait for PONG** before sending next PING (fire-and-forget pattern)
+- **Missing PONGs** may indicate connection issues
+- If connection drops, re-establish from discovery or MQTT connect
+
+### Heartbeat State Machine
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Heartbeat Manager                         │
+│                                                              │
+│  ┌──────────┐    10s    ┌──────────┐   PONG    ┌──────────┐│
+│  │  IDLE    │──────────►│PING_SENT │──────────►│   OK     ││
+│  └──────────┘           └──────────┘           └──────────┘│
+│       ▲                      │                      │       │
+│       │                      │ 65s timeout          │       │
+│       │                      ▼                      │       │
+│       │                ┌──────────┐                 │       │
+│       │                │DISCONNECT│                 │       │
+│       │                └──────────┘                 │       │
+│       │                                             │       │
+│       └─────────────────────────────────────────────┘       │
+│                         10s                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## Command Protocol
 
+Commands are JSON messages sent to control the printer.
+
 ### Command Message Format
+
 ```json
 {
-  "id": <request_id>,
+  "id": <sequence_number>,
   "method": <method_code>,
   "params": { ... }
 }
 ```
 
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | int | Request sequence number (for matching responses) |
+| `method` | int | Command method code |
+| `params` | object | Command-specific parameters |
+
 ### Response Message Format
+
 ```json
 {
-  "id": <request_id>,
+  "id": <sequence_number>,
   "method": <method_code>,
   "result": {
     "error_code": 0,
@@ -199,212 +516,239 @@ Publish to command topic:
 }
 ```
 
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | int | Matches request `id` |
+| `method` | int | Matches request `method` |
+| `result` | object | Response data including `error_code` |
+
+### Topics
+
+| Action | Topic |
+|--------|-------|
+| Send command | `elegoo/<sn>/<client_id>/api_request` |
+| Receive response | `elegoo/<sn>/<client_id>/api_response` |
+
+### Request ID Management
+
+- Use incrementing integers starting from 1
+- Track pending requests by ID
+- Implement timeout for responses (5-10 seconds)
+- The same ID should not be reused for different requests
+
 ---
 
-## Method Codes
+## Method Reference
 
-### Command Methods (Client → Printer)
-| Code | Method | Description |
-|------|--------|-------------|
-| 1001 | GET_PRINTER_ATTRIBUTES | Get printer info |
-| 1002 | GET_PRINTER_STATUS | Get full status |
-| 1020 | START_PRINT | Start a print job |
-| 1021 | PAUSE_PRINT | Pause current print |
-| 1022 | STOP_PRINT | Stop/cancel print |
-| 1023 | RESUME_PRINT | Resume paused print |
-| 1026 | HOME_AXES | Home specified axes |
-| 1027 | MOVE_AXES | Move axes by distance |
-| 1028 | SET_TEMPERATURE | Set nozzle/bed temp |
-| 1029 | SET_LIGHT | Set light brightness |
-| 1030 | SET_FAN_SPEED | Set fan speeds |
-| 1031 | SET_PRINT_SPEED | Set speed mode |
-| 1036 | PRINT_TASK_LIST | Get print history |
-| 1037 | PRINT_TASK_DETAIL | Get task details |
-| 1038 | DELETE_PRINT_TASK | Delete from history |
-| 1042 | VIDEO_STREAM | Enable/disable camera |
-| 1043 | UPDATE_PRINTER_NAME | Change printer name |
-| 1044 | GET_FILE_LIST | List files on storage |
-| 1046 | GET_FILE_DETAIL | Get file info |
-| 1047 | DELETE_FILE | Delete a file |
-| 1048 | GET_DISK_INFO | Get storage capacity |
-| 1057 | DOWNLOAD_FILE | Download file to printer |
-| 1058 | CANCEL_DOWNLOAD | Cancel file download |
-| 2004 | SET_AUTO_REFILL | Enable/disable auto refill |
-| 2005 | GET_CANVAS_STATUS | Get AMS/Canvas status |
+### Query Methods (Read)
+
+| Code | Name | Description | Parameters |
+|------|------|-------------|------------|
+| 1001 | GET_ATTRIBUTES | Get printer info | None |
+| 1002 | GET_STATUS | Get full status | None |
+| 1036 | PRINT_TASK_LIST | Get print history | `{"page": 1, "page_size": 10}` |
+| 1037 | PRINT_TASK_DETAIL | Get task details | `{"uuid": "..."}` |
+| 1044 | GET_FILE_LIST | List files | `{"storage_media": "local", "path": "/"}` |
+| 1046 | GET_FILE_DETAIL | Get file info | `{"storage_media": "local", "filename": "..."}` |
+| 1048 | GET_DISK_INFO | Get storage info | `{"storage_media": "local"}` |
+| 2005 | GET_CANVAS_STATUS | Get AMS status | None |
+
+### Print Control Methods
+
+| Code | Name | Description | Parameters |
+|------|------|-------------|------------|
+| 1020 | START_PRINT | Start print job | See [Start Print](#start-print) |
+| 1021 | PAUSE_PRINT | Pause print | None |
+| 1022 | STOP_PRINT | Stop/cancel print | None |
+| 1023 | RESUME_PRINT | Resume print | None |
+
+### Motion Methods
+
+| Code | Name | Description | Parameters |
+|------|------|-------------|------------|
+| 1026 | HOME_AXES | Home axes | `{"homed_axes": "xyz"}` |
+| 1027 | MOVE_AXES | Move axes | `{"axes": "z", "distance": 10.0}` |
+
+### Temperature Methods
+
+| Code | Name | Description | Parameters |
+|------|------|-------------|------------|
+| 1028 | SET_TEMPERATURE | Set temps | `{"extruder": 220, "heater_bed": 60}` |
+
+### Peripheral Methods
+
+| Code | Name | Description | Parameters |
+|------|------|-------------|------------|
+| 1029 | SET_LIGHT | Set LED | `{"brightness": 255}` |
+| 1030 | SET_FAN_SPEED | Set fans | `{"fan": 255, "aux_fan": 128}` |
+| 1031 | SET_PRINT_SPEED | Set speed mode | `{"mode": 1}` |
+| 1042 | VIDEO_STREAM | Toggle camera | `{"enable": true}` |
+
+### File Methods
+
+| Code | Name | Description | Parameters |
+|------|------|-------------|------------|
+| 1047 | DELETE_FILE | Delete file | `{"storage_media": "local", "filename": "..."}` |
+| 1057 | DOWNLOAD_FILE | Start download | See [File Upload](#file-upload-via-mqtt) |
+| 1058 | CANCEL_DOWNLOAD | Cancel download | `{"filename": "..."}` |
+
+### System Methods
+
+| Code | Name | Description | Parameters |
+|------|------|-------------|------------|
+| 1038 | DELETE_PRINT_TASK | Delete history | `{"uuid": "..."}` |
+| 1043 | UPDATE_PRINTER_NAME | Rename printer | `{"name": "New Name"}` |
+| 2004 | SET_AUTO_REFILL | Toggle auto-refill | `{"enable": true}` |
 
 ### Event Methods (Printer → Client)
-| Code | Method | Description |
-|------|--------|-------------|
+
+| Code | Name | Description |
+|------|------|-------------|
 | 6000 | ON_PRINTER_STATUS | Delta status update |
 | 6008 | ON_PRINTER_ATTRIBUTES | Attributes changed |
 
 ---
 
-## Machine Status Codes
+## Status Codes Reference
 
-| Code | Status | Description |
-|------|--------|-------------|
-| 0 | INITIALIZING | Printer starting up |
-| 1 | IDLE | Ready, not printing |
-| 2 | PRINTING | Print in progress |
-| 3 | FILAMENT_OPERATING | Loading/unloading filament |
-| 4 | FILAMENT_OPERATING_2 | Filament operation variant |
-| 5 | AUTO_LEVELING | Bed leveling in progress |
-| 6 | PID_CALIBRATING | PID tuning in progress |
+### Machine Status Codes
+
+The primary status indicates what the printer is currently doing.
+
+| Code | Name | Description |
+|------|------|-------------|
+| 0 | INITIALIZING | Printer booting up |
+| 1 | IDLE | Ready, waiting for commands |
+| 2 | PRINTING | Print job in progress |
+| 3 | FILAMENT_OPERATING | Loading/unloading filament (type 1) |
+| 4 | FILAMENT_OPERATING_2 | Loading/unloading filament (type 2) |
+| 5 | AUTO_LEVELING | Automatic bed leveling |
+| 6 | PID_CALIBRATING | PID auto-tune running |
 | 7 | RESONANCE_TESTING | Input shaper calibration |
-| 8 | SELF_CHECKING | Device self-test |
-| 9 | UPDATING | Firmware update |
+| 8 | SELF_CHECKING | Hardware self-test |
+| 9 | UPDATING | Firmware update in progress |
 | 10 | HOMING | Axes homing |
-| 11 | FILE_TRANSFERRING | File upload in progress |
-| 12 | VIDEO_COMPOSING | Creating timelapse |
-| 13 | EXTRUDER_OPERATING | Extruder maintenance |
+| 11 | FILE_TRANSFERRING | File upload/download active |
+| 12 | VIDEO_COMPOSING | Creating timelapse video |
+| 13 | EXTRUDER_OPERATING | Extruder maintenance operation |
 | 14 | EMERGENCY_STOP | E-stop triggered |
-| 15 | POWER_LOSS_RECOVERY | Recovering from power loss |
+| 15 | POWER_LOSS_RECOVERY | Recovering after power loss |
 
----
+### Sub-Status Codes
 
-## Sub-Status Codes
+Sub-status provides additional detail within the main status.
 
-Sub-status provides detailed state within the main status.
+#### Printing Sub-Status (status=2)
 
-### Printing Sub-Status (status=2)
-| Code | Sub-Status | Description |
-|------|------------|-------------|
-| 0 | NONE | No sub-status |
-| 1041 | NONE | Variant |
-| 1045 | EXTRUDER_PREHEATING | Nozzle heating |
-| 1096 | EXTRUDER_PREHEATING_2 | Nozzle heating variant |
-| 1405 | BED_PREHEATING | Bed heating |
-| 1906 | BED_PREHEATING_2 | Bed heating variant |
-| 2075 | PRINTING | Actively printing |
-| 2077 | PRINTING_COMPLETED | Print finished |
+| Code | Name | Description |
+|------|------|-------------|
+| 0 | NONE | No specific sub-status |
+| 1041 | IDLE_IN_PRINT | Idle within print context |
+| 1045 | EXTRUDER_PREHEATING | Nozzle heating up |
+| 1096 | EXTRUDER_PREHEATING_2 | Nozzle heating (variant) |
+| 1405 | BED_PREHEATING | Bed heating up |
+| 1906 | BED_PREHEATING_2 | Bed heating (variant) |
+| 2075 | PRINTING | Actively laying down material |
+| 2077 | PRINTING_COMPLETED | Print finished successfully |
 | 2401 | RESUMING | Resuming from pause |
 | 2402 | RESUMING_COMPLETED | Resume complete |
 | 2501 | PAUSING | Pause in progress |
 | 2502 | PAUSED | Print paused |
-| 2505 | PAUSED_2 | Paused variant |
+| 2505 | PAUSED_2 | Paused (variant) |
 | 2503 | STOPPING | Stop in progress |
-| 2504 | STOPPED | Print stopped |
+| 2504 | STOPPED | Print stopped/cancelled |
 | 2801 | HOMING | Homing during print |
-| 2802 | HOMING_COMPLETED | Homing complete |
+| 2802 | HOMING_COMPLETED | Mid-print homing done |
 | 2901 | AUTO_LEVELING | Leveling during print |
-| 2902 | AUTO_LEVELING_COMPLETED | Leveling complete |
+| 2902 | AUTO_LEVELING_COMPLETED | Mid-print leveling done |
 
-### Filament Operating Sub-Status (status=3,4)
-| Code | Sub-Status | Description |
-|------|------------|-------------|
+#### Filament Operating Sub-Status (status=3,4)
+
+| Code | Name | Description |
+|------|------|-------------|
 | 1133 | FILAMENT_LOADING | Loading filament |
-| 1134 | FILAMENT_LOADING_2 | Loading variant |
-| 1135 | FILAMENT_LOADING_3 | Loading variant |
-| 1136 | FILAMENT_LOADING_COMPLETED | Load complete |
-| 1143 | NONE | Pre-unload state |
+| 1134 | FILAMENT_LOADING_2 | Loading (phase 2) |
+| 1135 | FILAMENT_LOADING_3 | Loading (phase 3) |
+| 1136 | FILAMENT_LOADING_COMPLETED | Loading complete |
+| 1143 | FILAMENT_PRE_UNLOAD | Preparing to unload |
 | 1144 | FILAMENT_UNLOADING | Unloading filament |
-| 1145 | FILAMENT_UNLOADING_COMPLETED | Unload complete |
+| 1145 | FILAMENT_UNLOADING_COMPLETED | Unloading complete |
 
-### Auto Leveling Sub-Status (status=5)
-| Code | Sub-Status | Description |
-|------|------------|-------------|
-| 2901 | AL_AUTO_LEVELING | Leveling in progress |
+#### Auto Leveling Sub-Status (status=5)
+
+| Code | Name | Description |
+|------|------|-------------|
+| 2901 | AL_AUTO_LEVELING | Probing in progress |
 | 2902 | AL_AUTO_LEVELING_COMPLETED | Leveling complete |
 
-### PID Calibrating Sub-Status (status=6)
-| Code | Sub-Status | Description |
-|------|------------|-------------|
-| 1503 | PID_CALIBRATING | PID tuning |
-| 1504 | PID_CALIBRATING_2 | PID tuning variant |
-| 1505 | PID_CALIBRATING_COMPLETED | PID complete |
-| 1506 | PID_CALIBRATING_FAILED | PID failed |
+#### PID Calibrating Sub-Status (status=6)
 
-### Resonance Testing Sub-Status (status=7)
-| Code | Sub-Status | Description |
-|------|------------|-------------|
-| 5934 | RESONANCE_TEST | Test in progress |
-| 5935 | RESONANCE_TEST_COMPLETED | Test complete |
+| Code | Name | Description |
+|------|------|-------------|
+| 1503 | PID_CALIBRATING | Calibration running |
+| 1504 | PID_CALIBRATING_2 | Calibration (phase 2) |
+| 1505 | PID_CALIBRATING_COMPLETED | Calibration successful |
+| 1506 | PID_CALIBRATING_FAILED | Calibration failed |
+
+#### Resonance Testing Sub-Status (status=7)
+
+| Code | Name | Description |
+|------|------|-------------|
+| 5934 | RESONANCE_TEST | Test running |
+| 5935 | RESONANCE_TEST_COMPLETED | Test successful |
 | 5936 | RESONANCE_TEST_FAILED | Test failed |
 
-### Updating Sub-Status (status=9)
-| Code | Sub-Status | Description |
-|------|------------|-------------|
-| 2061 | UPDATING | Update starting |
-| 2071 | UPDATING_2 | Updating |
-| 2072 | UPDATING_3 | Updating |
-| 2073 | UPDATING_4 | Updating |
-| 2074 | UPDATING_COMPLETED | Update complete |
+#### Updating Sub-Status (status=9)
+
+| Code | Name | Description |
+|------|------|-------------|
+| 2061 | UPDATING_INIT | Update initializing |
+| 2071 | UPDATING_1 | Update phase 1 |
+| 2072 | UPDATING_2 | Update phase 2 |
+| 2073 | UPDATING_3 | Update phase 3 |
+| 2074 | UPDATING_COMPLETED | Update successful |
 | 2075 | UPDATING_FAILED | Update failed |
 
-### Homing Sub-Status (status=10)
-| Code | Sub-Status | Description |
-|------|------------|-------------|
+#### Homing Sub-Status (status=10)
+
+| Code | Name | Description |
+|------|------|-------------|
 | 2801 | H_HOMING | Homing in progress |
-| 2802 | H_HOMING_COMPLETED | Homing complete |
+| 2802 | H_HOMING_COMPLETED | Homing successful |
 | 2803 | H_HOMING_FAILED | Homing failed |
 
-### File Transferring Sub-Status (status=11)
-| Code | Sub-Status | Description |
-|------|------------|-------------|
-| 3000 | UPLOADING_FILE | File upload in progress |
+#### File Transferring Sub-Status (status=11)
+
+| Code | Name | Description |
+|------|------|-------------|
+| 3000 | UPLOADING_FILE | Upload in progress |
 | 3001 | UPLOADING_FILE_COMPLETED | Upload complete |
 
-### Extruder Operating Sub-Status (status=13)
-| Code | Sub-Status | Description |
-|------|------------|-------------|
-| 1061 | EXTRUDER_LOADING | Extruder loading |
-| 1062 | EXTRUDER_UNLOADING | Extruder unloading |
+#### Extruder Operating Sub-Status (status=13)
+
+| Code | Name | Description |
+|------|------|-------------|
+| 1061 | EXTRUDER_LOADING | Extruder filament load |
+| 1062 | EXTRUDER_UNLOADING | Extruder filament unload |
 | 1063 | EXTRUDER_LOADING_COMPLETED | Load complete |
 | 1064 | EXTRUDER_UNLOADING_COMPLETED | Unload complete |
 
----
+### Speed Modes
 
-## Speed Modes
-
-| Code | Mode | Percentage |
-|------|------|------------|
+| Code | Name | Speed Multiplier |
+|------|------|------------------|
 | 0 | Silent | 50% |
-| 1 | Balanced | 100% |
+| 1 | Balanced | 100% (default) |
 | 2 | Sport | 150% |
 | 3 | Ludicrous | 200% |
 
 ---
 
-## Error Codes
+## Data Structures
 
-| Code | Error | Description |
-|------|-------|-------------|
-| 0 | SUCCESS | Operation successful |
-| 109 | FILAMENT_RUNOUT | Filament detected empty |
-| 1000 | TOKEN_FAILED | Authentication failed |
-| 1001 | UNKNOWN_INTERFACE | Unknown command |
-| 1002 | FOLDER_OPEN_FAILED | Cannot open folder |
-| 1003 | INVALID_PARAMETER | Bad parameter value |
-| 1004 | FILE_WRITE_FAILED | Cannot write file |
-| 1005 | TOKEN_UPDATE_FAILED | Token refresh failed |
-| 1006 | MOS_UPDATE_FAILED | MOS update failed |
-| 1007 | FILE_DELETE_FAILED | Cannot delete file |
-| 1008 | RESPONSE_EMPTY | No data in response |
-| 1009 | PRINTER_BUSY | Printer is busy |
-| 1010 | NOT_PRINTING | No active print |
-| 1011 | FILE_COPY_FAILED | Copy operation failed |
-| 1012 | TASK_NOT_FOUND | Print task not found |
-| 1013 | DATABASE_FAILED | DB operation failed |
-| 1021 | PRINT_FILE_NOT_FOUND | Print file missing |
-| 1026 | MISSING_BED_LEVELING | No leveling data |
-| 9000 | FILE_OFFSET_MISMATCH | Resume offset wrong |
-| 9001 | FILE_OPEN_FAILED | Cannot open file |
-| 9002 | FILE_WRITE_ERROR | Write error |
-| 9003 | FILE_SEEK_FAILED | Seek error |
-| 9004 | MD5_FAILED | Checksum mismatch |
-| 9005 | CANCEL_NOT_NEEDED | Nothing to cancel |
-| 9006 | CANCEL_FAILED | Cancel failed |
-| 9007 | PATH_NOT_EXISTS | Path not found |
-| 9008 | MD5_SYSTEM_ERROR | System MD5 error |
-| 9009 | MD5_READ_ERROR | File read error |
-| 9999 | UNKNOWN_ERROR | Other error |
+### Full Status Response
 
----
-
-## Status Data Structure
-
-### Full Status Response (method 1002 / event 6000)
+This is the complete status structure returned by method 1002 or event 6000 (first full update).
 
 ```json
 {
@@ -412,46 +756,70 @@ Sub-status provides detailed state within the main status.
   "method": 6000,
   "result": {
     "error_code": 0,
+
     "machine_status": {
       "status": 2,
       "sub_status": 2075,
       "exception_status": [],
       "progress": 45
     },
+
     "print_status": {
-      "filename": "model.gcode",
+      "filename": "benchy.gcode",
       "uuid": "b52af24c-764e-4092-8a50-00e5f8f02b46",
       "current_layer": 225,
       "total_layer": 500,
       "print_duration": 3600,
       "total_duration": 8000,
-      "remaining_time_sec": 4400
+      "remaining_time_sec": 4400,
+      "progress": 45
     },
+
     "extruder": {
       "temperature": 215.0,
       "target": 220,
       "filament_detect_enable": 1,
       "filament_detected": 1
     },
+
     "heater_bed": {
       "temperature": 58.5,
       "target": 60
     },
+
     "ztemperature_sensor": {
       "temperature": 33.0,
       "measured_max_temperature": 0,
       "measured_min_temperature": 0
     },
+
     "fans": {
-      "fan": {"speed": 255, "rpm": 5000},
-      "aux_fan": {"speed": 178, "rpm": 3500},
-      "box_fan": {"speed": 25, "rpm": 800},
-      "heater_fan": {"speed": 255, "rpm": 4500},
-      "controller_fan": {"speed": 255, "rpm": 4000}
+      "fan": {
+        "speed": 255,
+        "rpm": 5000
+      },
+      "aux_fan": {
+        "speed": 178,
+        "rpm": 3500
+      },
+      "box_fan": {
+        "speed": 25,
+        "rpm": 800
+      },
+      "heater_fan": {
+        "speed": 255,
+        "rpm": 4500
+      },
+      "controller_fan": {
+        "speed": 255,
+        "rpm": 4000
+      }
     },
+
     "led": {
       "status": 1
     },
+
     "gcode_move_inf": {
       "x": 88.148,
       "y": 139.946,
@@ -460,9 +828,11 @@ Sub-status provides detailed state within the main status.
       "speed": 9019,
       "speed_mode": 1
     },
+
     "toolhead": {
       "homed_axes": "xyz"
     },
+
     "external_device": {
       "camera": true,
       "u_disk": false,
@@ -472,60 +842,166 @@ Sub-status provides detailed state within the main status.
 }
 ```
 
-### Key Status Fields
+### Field Descriptions
+
+#### machine_status
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `machine_status.status` | int | Machine status code |
-| `machine_status.sub_status` | int | Sub-status code |
-| `machine_status.progress` | int | Print progress (0-100) |
-| `machine_status.exception_status` | array | Active error codes |
-| `print_status.filename` | string | Current print filename |
-| `print_status.uuid` | string | Unique task identifier |
-| `print_status.current_layer` | int | Current layer number |
-| `print_status.total_layer` | int | Total layers |
-| `print_status.print_duration` | int | Elapsed time (seconds) |
-| `print_status.remaining_time_sec` | int | Remaining time (seconds) |
-| `extruder.temperature` | float | Current nozzle temp (°C) |
-| `extruder.target` | float | Target nozzle temp (°C) |
-| `heater_bed.temperature` | float | Current bed temp (°C) |
-| `heater_bed.target` | float | Target bed temp (°C) |
-| `fans.*.speed` | int | Fan speed (0-255) |
-| `led.status` | int | Light state (0=off, 1=on) |
-| `gcode_move_inf.x/y/z` | float | Current position (mm) |
-| `gcode_move_inf.speed_mode` | int | Speed mode (0-3) |
+| `status` | int | Machine status code (see [Machine Status Codes](#machine-status-codes)) |
+| `sub_status` | int | Sub-status code (see [Sub-Status Codes](#sub-status-codes)) |
+| `exception_status` | array | List of active error codes |
+| `progress` | int | Print progress 0-100 (also in print_status) |
+
+#### print_status
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `filename` | string | Current print file name |
+| `uuid` | string | Unique print task identifier |
+| `current_layer` | int | Current layer being printed |
+| `total_layer` | int | Total layers in print |
+| `print_duration` | int | Elapsed time in seconds |
+| `total_duration` | int | Estimated total time in seconds |
+| `remaining_time_sec` | int | Estimated remaining time in seconds |
+| `progress` | int | Progress percentage 0-100 |
+
+#### extruder
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `temperature` | float | Current nozzle temperature (°C) |
+| `target` | float | Target nozzle temperature (°C) |
+| `filament_detect_enable` | int | 1=sensor enabled, 0=disabled |
+| `filament_detected` | int | 1=filament present, 0=no filament |
+
+#### heater_bed
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `temperature` | float | Current bed temperature (°C) |
+| `target` | float | Target bed temperature (°C) |
+
+#### ztemperature_sensor (Chamber/Box)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `temperature` | float | Current chamber temperature (°C) |
+| `measured_max_temperature` | float | Max recorded temp |
+| `measured_min_temperature` | float | Min recorded temp |
+
+#### fans
+
+Each fan object contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `speed` | int | PWM value 0-255 (NOT percentage) |
+| `rpm` | int | Actual measured RPM |
+
+Fan types:
+- `fan` - Part cooling fan (model fan)
+- `aux_fan` - Auxiliary/chamber circulation fan
+- `box_fan` - Enclosure exhaust fan
+- `heater_fan` - Hotend heatsink fan
+- `controller_fan` - Electronics cooling fan
+
+**Converting speed to percentage:**
+```
+percentage = round(speed / 255 * 100)
+```
+
+#### led
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | int | 0=off, 1=on (may also be brightness 0-255) |
+
+#### gcode_move_inf
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `x` | float | X axis position (mm) |
+| `y` | float | Y axis position (mm) |
+| `z` | float | Z axis position (mm) |
+| `e` | float | Extruder position (mm of filament) |
+| `speed` | int | Current move speed (mm/min) |
+| `speed_mode` | int | Speed mode 0-3 (see [Speed Modes](#speed-modes)) |
+
+#### toolhead
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `homed_axes` | string | Which axes are homed ("", "x", "xy", "xyz") |
+
+#### external_device
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `camera` | bool | Camera connected |
+| `u_disk` | bool | USB drive connected |
+| `type` | string | Device type identifier |
+
+### Attributes Response
+
+```json
+{
+  "id": 1,
+  "method": 1001,
+  "result": {
+    "error_code": 0,
+    "hostname": "My Printer",
+    "machine_model": "Centauri Carbon 2",
+    "sn": "CC2ABCD1234567890",
+    "ip": "192.168.1.100",
+    "mac": "AA:BB:CC:DD:EE:FF",
+    "protocol_version": "1.0.0",
+    "hardware_version": "1.0",
+    "software_version": {
+      "ota_version": "1.0.5.2",
+      "mcu_version": "00.00.00.00",
+      "soc_version": ""
+    },
+    "resolution": "1920x1080",
+    "xyz_size": "220x220x250",
+    "network_type": "wifi",
+    "usb_connected": false,
+    "camera_connected": true,
+    "remaining_memory": 1073741824,
+    "max_video_connections": 1,
+    "video_connections": 0
+  }
+}
+```
 
 ### Field Name Variations
 
-The CC2 firmware may use different field names depending on firmware version:
+Different firmware versions may use different field names. Implementations should handle both:
 
-| Official (elegoo-link) | Alternative | Description |
-|------------------------|-------------|-------------|
+| Official Name | Alternative | Notes |
+|---------------|-------------|-------|
 | `gcode_move_inf` | `gcode_move` | Position/speed data |
 | `gcode_move_inf.e` | `gcode_move.extruder` | Extruder position |
 | `toolhead` | `tool_head` | Toolhead info |
-
-The integration supports both variants.
+| `ztemperature_sensor` | `chamber` | Chamber temperature |
 
 ---
 
 ## Delta Status Updates
 
-The CC2 sends incremental (delta) status updates to minimize bandwidth.
+CC2 uses delta updates to minimize bandwidth. Only changed fields are sent.
 
-### Delta Update Mechanism
-1. Full status is sent on connection/request (method 1002)
-2. Subsequent updates (method 6000) contain only changed fields
-3. Client must merge delta with cached full status
-4. Updates include incrementing `id` for continuity checking
+### How Delta Updates Work
 
-### Continuity Checking
-- Track the `id` field in status events
-- IDs should increment by 1 each update
-- If 5+ non-continuous events occur, request full status refresh
-- Reset counter after receiving full status
+1. **Initial Full Status**: On connection or explicit request (method 1002), printer sends complete status
+2. **Incremental Updates**: Subsequent event 6000 messages contain only changed fields
+3. **Client Merging**: Client must merge delta into cached full status
+4. **Continuity Tracking**: Track message IDs to detect missed updates
 
-### Example Delta Update
+### Delta Update Example
+
+Full status has been received. Then printer sends:
+
 ```json
 {
   "id": 42,
@@ -546,145 +1022,347 @@ The CC2 sends incremental (delta) status updates to minimize bandwidth.
 }
 ```
 
+Only `progress`, `current_layer`, `print_duration`, and `extruder.temperature` changed.
+
+### Deep Merge Algorithm
+
+```python
+def deep_merge(base: dict, update: dict) -> dict:
+    """Recursively merge update into base."""
+    result = base.copy()
+    for key, value in update.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+# Usage
+cached_status = deep_merge(cached_status, delta_update["result"])
+```
+
+### Continuity Checking
+
+Track the `id` field to detect missed updates:
+
+```python
+class StatusManager:
+    def __init__(self):
+        self.last_id = None
+        self.non_continuous_count = 0
+        self.MAX_NON_CONTINUOUS = 5
+
+    def process_update(self, message):
+        current_id = message.get("id")
+
+        if self.last_id is not None:
+            if current_id != self.last_id + 1:
+                self.non_continuous_count += 1
+                if self.non_continuous_count >= self.MAX_NON_CONTINUOUS:
+                    self.request_full_status()
+                    self.non_continuous_count = 0
+            else:
+                self.non_continuous_count = 0
+
+        self.last_id = current_id
+```
+
+### When to Request Full Status
+
+- After 5+ non-continuous ID gaps
+- After reconnection
+- If critical fields appear missing
+- Periodically (every 5-10 minutes) as safety measure
+
 ---
 
-## Attributes Data Structure
+## HTTP API
 
-### Attributes Response (method 1001)
+The CC2 provides an HTTP API for operations not suited to MQTT.
+
+### Base URL
+
+```
+http://<printer_ip>:8080
+```
+
+### Authentication
+
+All HTTP requests require authentication via the `X-Token` header or query parameter:
+
+```
+X-Token: <access_code>
+```
+
+Or:
+
+```
+?X-Token=<access_code>
+```
+
+If no access code is set, use `123456`.
+
+### Get System Info
+
+```
+GET /system/info?X-Token=<token>
+```
+
+Response:
+```json
+{
+  "error_code": 0,
+  "system_info": {
+    "sn": "CC2ABCD1234567890"
+  }
+}
+```
+
+### List Files
+
+```
+GET /files?storage_media=local&path=/&X-Token=<token>
+```
+
+Response:
+```json
+{
+  "error_code": 0,
+  "files": [
+    {
+      "name": "benchy.gcode",
+      "size": 1234567,
+      "modified": 1706900000,
+      "type": "file"
+    },
+    {
+      "name": "models",
+      "type": "directory"
+    }
+  ]
+}
+```
+
+### Download File
+
+```
+GET /download?file_name=<path>&X-Token=<token>
+GET /download/sdcard?file_name=<path>&X-Token=<token>
+GET /download/udisk?file_name=<path>&X-Token=<token>
+```
+
+Returns raw file contents.
+
+### Upload File
+
+Chunked upload for large files:
+
+```
+PUT /upload
+Content-Type: application/octet-stream
+Content-Range: bytes 0-1048575/5242880
+X-File-Name: model.gcode
+X-File-MD5: abc123def456...
+X-Token: <token>
+
+<binary chunk data>
+```
+
+| Header | Description |
+|--------|-------------|
+| `Content-Range` | Byte range being uploaded |
+| `X-File-Name` | Target filename |
+| `X-File-MD5` | MD5 hash of complete file |
+| `X-Token` | Authentication |
+
+**Important:**
+- Maximum chunk size: 1 MB (1048576 bytes)
+- Calculate MD5 before starting upload
+- Use persistent HTTP connections for efficiency
+- Last chunk completes the upload
+
+### Upload Response
+
+```json
+{
+  "error_code": 0,
+  "received": 1048576,
+  "total": 5242880
+}
+```
+
+---
+
+## File Operations
+
+### Storage Media Types
+
+| Value | Description |
+|-------|-------------|
+| `local` | Internal storage |
+| `u-disk` | USB drive |
+| `sd-card` | SD card |
+
+### File List via MQTT
 
 ```json
 {
   "id": 1,
-  "method": 1001,
+  "method": 1044,
+  "params": {
+    "storage_media": "local",
+    "path": "/",
+    "page": 1,
+    "page_size": 50
+  }
+}
+```
+
+Response:
+```json
+{
+  "id": 1,
+  "method": 1044,
   "result": {
     "error_code": 0,
-    "hostname": "Centauri Carbon 2",
-    "machine_model": "Centauri Carbon 2",
-    "sn": "CC2SERIALNUMBER",
-    "ip": "192.168.1.100",
-    "protocol_version": "1.0.0",
-    "hardware_version": "",
-    "software_version": {
-      "ota_version": "1.0.5.2",
-      "mcu_version": "00.00.00.00",
-      "soc_version": ""
-    }
+    "total": 25,
+    "files": [
+      {
+        "name": "benchy.gcode",
+        "size": 1234567,
+        "modified": 1706900000
+      }
+    ]
+  }
+}
+```
+
+### File Upload via MQTT
+
+MQTT-based upload initiates transfer, actual data sent via HTTP:
+
+```json
+{
+  "id": 1,
+  "method": 1057,
+  "params": {
+    "storage_media": "local",
+    "filename": "model.gcode",
+    "size": 5242880,
+    "md5": "abc123def456..."
+  }
+}
+```
+
+### Delete File
+
+```json
+{
+  "id": 1,
+  "method": 1047,
+  "params": {
+    "storage_media": "local",
+    "filename": "old_model.gcode"
+  }
+}
+```
+
+### Disk Info
+
+```json
+{
+  "id": 1,
+  "method": 1048,
+  "params": {
+    "storage_media": "local"
+  }
+}
+```
+
+Response:
+```json
+{
+  "id": 1,
+  "method": 1048,
+  "result": {
+    "error_code": 0,
+    "total_bytes": 8589934592,
+    "free_bytes": 4294967296,
+    "used_bytes": 4294967296
   }
 }
 ```
 
 ---
 
-## Command Examples
+## Video Streaming
 
-### Start Print
+The CC2 camera provides MJPEG streaming.
+
+### Enable Video Stream
+
 ```json
 {
-  "id": 100,
-  "method": 1020,
+  "id": 1,
+  "method": 1042,
   "params": {
-    "storage_media": "local",
-    "filename": "model.gcode",
-    "config": {
-      "delay_video": false,
-      "printer_check": true,
-      "print_layout": "A",
-      "bedlevel_force": false,
-      "slot_map": []
-    }
+    "enable": true
   }
 }
 ```
 
-**Storage Media Values:**
-- `"local"` - Internal storage
-- `"u-disk"` - USB drive
-- `"sd-card"` - SD card
+### Stream URL
 
-### Set Temperature
-```json
-{
-  "id": 101,
-  "method": 1028,
-  "params": {
-    "extruder": 220,
-    "heater_bed": 60
-  }
-}
+```
+http://<printer_ip>:8080/?action=stream
 ```
 
-### Set Fan Speed
-Fan speeds are 0-255 (not percentage).
-```json
-{
-  "id": 102,
-  "method": 1030,
-  "params": {
-    "fan": 255,
-    "box_fan": 128,
-    "aux_fan": 178
-  }
-}
+### Stream Characteristics
+
+- Format: MJPEG (Motion JPEG)
+- Resolution: Varies by camera
+- Max connections: Usually 1 (check `max_video_connections` in attributes)
+- No authentication required for stream itself
+
+### Example: Display Stream
+
+```python
+import cv2
+
+stream_url = f"http://{printer_ip}:8080/?action=stream"
+cap = cv2.VideoCapture(stream_url)
+
+while True:
+    ret, frame = cap.read()
+    if ret:
+        cv2.imshow('Printer Camera', frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
 ```
 
-### Home Axes
-```json
-{
-  "id": 103,
-  "method": 1026,
-  "params": {
-    "homed_axes": "xyz"
-  }
-}
-```
+---
 
-### Move Axes
-```json
-{
-  "id": 104,
-  "method": 1027,
-  "params": {
-    "axes": "z",
-    "distance": 10.0
-  }
-}
-```
+## Canvas/AMS System
 
-### Set Light
-```json
-{
-  "id": 105,
-  "method": 1029,
-  "params": {
-    "brightness": 255
-  }
-}
-```
+The Canvas is Elegoo's Automatic Material System (similar to Bambu Lab AMS).
 
-### Set Print Speed Mode
-```json
-{
-  "id": 106,
-  "method": 1031,
-  "params": {
-    "mode": 1
-  }
-}
-```
+### Get Canvas Status
 
-### Get Canvas/AMS Status
 ```json
 {
-  "id": 107,
+  "id": 1,
   "method": 2005,
   "params": {}
 }
 ```
 
-**Response:**
+### Canvas Status Response
+
 ```json
 {
-  "id": 107,
+  "id": 1,
   "method": 2005,
   "result": {
     "error_code": 0,
@@ -703,6 +1381,22 @@ Fan speeds are 0-255 (not percentage).
               "filament_type": "PLA",
               "filament_name": "Generic PLA",
               "filament_color": "FFFFFF",
+              "nozzle_temp_min": 190,
+              "nozzle_temp_max": 220,
+              "bed_temp_min": 50,
+              "bed_temp_max": 60,
+              "status": 1
+            },
+            {
+              "tray_id": 2,
+              "brand": "ELEGOO",
+              "filament_type": "PETG",
+              "filament_name": "Generic PETG",
+              "filament_color": "FF0000",
+              "nozzle_temp_min": 230,
+              "nozzle_temp_max": 250,
+              "bed_temp_min": 70,
+              "bed_temp_max": 85,
               "status": 1
             }
           ]
@@ -713,111 +1407,538 @@ Fan speeds are 0-255 (not percentage).
 }
 ```
 
----
+### Canvas Fields
 
-## HTTP API (Supplementary)
+| Field | Description |
+|-------|-------------|
+| `active_canvas_id` | Currently selected Canvas unit (0=none) |
+| `active_tray_id` | Currently selected tray (0=none) |
+| `auto_refill` | Auto-switch when filament runs out |
+| `canvas_id` | Canvas unit number (1-4 typically) |
+| `connected` | 1=connected, 0=disconnected |
+| `tray_id` | Tray slot number (1-4 typically) |
+| `filament_color` | Hex color code (RRGGBB) |
+| `status` | 1=filament present, 0=empty |
 
-The CC2 also provides an HTTP API for certain operations.
+### Set Auto Refill
 
-### Get System Info
-```
-GET /system/info?X-Token=<access_code>
-Header: X-Token: <access_code>
-```
-
-Response:
 ```json
 {
-  "error_code": 0,
-  "system_info": {
-    "sn": "CC2SERIALNUMBER"
+  "id": 1,
+  "method": 2004,
+  "params": {
+    "enable": true
   }
 }
 ```
 
-### Video Stream
-```
-GET /?action=stream
-Port: 8080
-```
+### Printing with Canvas
 
-Returns MJPEG video stream.
+When starting a print with Canvas, include slot mapping:
 
-### File Upload (Chunked)
-```
-PUT /upload
-Headers:
-  Content-Type: application/octet-stream
-  Content-Range: bytes 0-1048575/5242880
-  X-File-Name: model.gcode
-  X-File-MD5: abc123...
-  X-Token: <access_code>
-Body: <binary chunk data>
-```
-
-- Maximum chunk size: 1MB (1048576 bytes)
-- Uses persistent HTTP connections for efficiency
-- MD5 hash calculated before upload for integrity
-
-### File Download
-```
-GET /download?file_name=<path>&X-Token=<access_code>
-GET /download/sdcard?file_name=<path>&X-Token=<access_code>
-GET /download/udisk?file_name=<path>&X-Token=<access_code>
+```json
+{
+  "id": 1,
+  "method": 1020,
+  "params": {
+    "storage_media": "local",
+    "filename": "multicolor.gcode",
+    "config": {
+      "slot_map": [
+        {"slot": 1, "canvas_id": 1, "tray_id": 1},
+        {"slot": 2, "canvas_id": 1, "tray_id": 2}
+      ]
+    }
+  }
+}
 ```
 
 ---
 
-## Comparison: CC1 vs CC2
+## Print Job Lifecycle
+
+### Print State Machine
+
+```
+                          ┌─────────────┐
+                          │    IDLE     │
+                          └──────┬──────┘
+                                 │ START_PRINT
+                                 ▼
+                ┌────────────────────────────────┐
+                │           PRINTING             │
+                │  ┌──────────────────────────┐  │
+                │  │  PREHEATING              │  │
+                │  │    ↓                     │  │
+                │  │  HOMING (optional)       │  │
+                │  │    ↓                     │  │
+                │  │  LEVELING (optional)     │  │
+                │  │    ↓                     │  │
+                │  │  PRINTING ◄──────────┐   │  │
+                │  │    │                 │   │  │
+                │  │    ├── PAUSING ──► PAUSED  │  │
+                │  │    │                 │   │  │
+                │  │    │        RESUMING─┘   │  │
+                │  └────┼─────────────────────┘  │
+                │       │                        │
+                └───────┼────────────────────────┘
+                        │
+          ┌─────────────┼─────────────┐
+          │             │             │
+          ▼             ▼             ▼
+    ┌──────────┐  ┌──────────┐  ┌──────────┐
+    │ COMPLETE │  │ STOPPING │  │  ERROR   │
+    └──────────┘  └────┬─────┘  └──────────┘
+                       │
+                       ▼
+                 ┌──────────┐
+                 │ STOPPED  │
+                 └──────────┘
+```
+
+### Start Print
+
+```json
+{
+  "id": 1,
+  "method": 1020,
+  "params": {
+    "storage_media": "local",
+    "filename": "benchy.gcode",
+    "config": {
+      "delay_video": false,
+      "printer_check": true,
+      "print_layout": "A",
+      "bedlevel_force": false,
+      "slot_map": []
+    }
+  }
+}
+```
+
+#### Config Options
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `delay_video` | bool | Delay start until video streaming active |
+| `printer_check` | bool | Run pre-print checks |
+| `print_layout` | string | Layout option (model-specific) |
+| `bedlevel_force` | bool | Force bed leveling before print |
+| `slot_map` | array | Canvas/AMS filament mapping |
+
+### Pause Print
+
+```json
+{
+  "id": 1,
+  "method": 1021,
+  "params": {}
+}
+```
+
+### Resume Print
+
+```json
+{
+  "id": 1,
+  "method": 1023,
+  "params": {}
+}
+```
+
+### Stop Print
+
+```json
+{
+  "id": 1,
+  "method": 1022,
+  "params": {}
+}
+```
+
+### Print Progress Monitoring
+
+Monitor these fields during printing:
+
+| Field | Location | Description |
+|-------|----------|-------------|
+| `status` | `machine_status.status` | Should be 2 (PRINTING) |
+| `sub_status` | `machine_status.sub_status` | Detailed state |
+| `progress` | `machine_status.progress` or `print_status.progress` | 0-100% |
+| `current_layer` | `print_status.current_layer` | Current layer |
+| `remaining_time_sec` | `print_status.remaining_time_sec` | ETA in seconds |
+
+---
+
+## Error Handling
+
+### Error Code Reference
+
+| Code | Name | Description | Recovery |
+|------|------|-------------|----------|
+| 0 | SUCCESS | Operation completed | N/A |
+| 109 | FILAMENT_RUNOUT | No filament detected | Load filament, resume |
+| 1000 | TOKEN_FAILED | Authentication failed | Check access code |
+| 1001 | UNKNOWN_INTERFACE | Unknown command | Check method code |
+| 1002 | FOLDER_OPEN_FAILED | Cannot access folder | Check path |
+| 1003 | INVALID_PARAMETER | Bad parameter | Check params |
+| 1004 | FILE_WRITE_FAILED | Cannot write file | Check disk space |
+| 1005 | TOKEN_UPDATE_FAILED | Token refresh failed | Re-authenticate |
+| 1006 | MOS_UPDATE_FAILED | MOS update failed | Retry |
+| 1007 | FILE_DELETE_FAILED | Cannot delete file | Check file exists |
+| 1008 | RESPONSE_EMPTY | No data returned | Retry |
+| 1009 | PRINTER_BUSY | Printer occupied | Wait, retry |
+| 1010 | NOT_PRINTING | No active print | Check state first |
+| 1011 | FILE_COPY_FAILED | Copy failed | Check disk space |
+| 1012 | TASK_NOT_FOUND | Print task missing | Refresh task list |
+| 1013 | DATABASE_FAILED | DB error | Internal error |
+| 1021 | PRINT_FILE_NOT_FOUND | File doesn't exist | Upload file |
+| 1026 | MISSING_BED_LEVELING | No mesh data | Run leveling |
+| 9000 | FILE_OFFSET_MISMATCH | Upload offset wrong | Restart upload |
+| 9001 | FILE_OPEN_FAILED | Cannot open file | Check filename |
+| 9002 | FILE_WRITE_ERROR | Write error | Check disk |
+| 9003 | FILE_SEEK_FAILED | Seek error | Retry |
+| 9004 | MD5_FAILED | Checksum mismatch | Re-upload |
+| 9005 | CANCEL_NOT_NEEDED | Nothing to cancel | Ignore |
+| 9006 | CANCEL_FAILED | Cancel failed | Force retry |
+| 9007 | PATH_NOT_EXISTS | Path not found | Check path |
+| 9008 | MD5_SYSTEM_ERROR | System MD5 error | Retry |
+| 9009 | MD5_READ_ERROR | File read error | Retry |
+| 9999 | UNKNOWN_ERROR | Unclassified error | Check logs |
+
+### Exception Status
+
+The `machine_status.exception_status` array contains active errors:
+
+```json
+{
+  "machine_status": {
+    "exception_status": [109, 1026]
+  }
+}
+```
+
+This indicates both filament runout (109) and missing bed leveling (1026).
+
+### Error Recovery Patterns
+
+#### Filament Runout
+1. Detect error 109 in exception_status
+2. Notify user
+3. User loads filament
+4. Clear exception (may require print resume)
+5. Issue RESUME_PRINT command
+
+#### Authentication Error
+1. Detect error 1000
+2. Re-prompt user for access code
+3. Reconnect with new credentials
+
+#### Printer Busy
+1. Detect error 1009
+2. Wait 5-10 seconds
+3. Retry command
+4. After 3 failures, check printer status
+
+---
+
+## Security Considerations
+
+### Access Code
+
+- When `token_status=1` in discovery, an access code is required
+- The access code replaces the default password `123456`
+- Access codes are set through the printer's touchscreen
+- Store access codes securely (not in plain text logs)
+
+### Network Security
+
+- CC2 uses **unencrypted** MQTT and HTTP
+- All traffic is visible on the local network
+- Recommend keeping printers on isolated IoT network
+- Do not expose ports 1883 or 8080 to the internet
+
+### Client Limits
+
+- Maximum ~4 concurrent MQTT clients
+- Malicious clients could DoS by filling all slots
+- Implement clean disconnection on application exit
+
+### Best Practices
+
+1. **Never hardcode access codes** - prompt user or use secure storage
+2. **Use network isolation** - separate VLAN for IoT devices
+3. **Implement connection timeouts** - don't hold connections indefinitely
+4. **Handle disconnection gracefully** - free up client slots
+
+---
+
+## Firmware Variations
+
+Different firmware versions may behave slightly differently.
+
+### Known Variations
+
+| Feature | v1.0.x | v1.1.x | Notes |
+|---------|--------|--------|-------|
+| Position field | `gcode_move_inf` | `gcode_move_inf` | Some early firmware used `gcode_move` |
+| Extruder field | `e` | `e` | Some used `extruder` |
+| Fan RPM | Present | Present | May be 0 if not supported |
+| Canvas support | Partial | Full | Varies by model |
+
+### Defensive Coding
+
+```python
+# Handle field variations
+def get_position(status):
+    pos = status.get("gcode_move_inf") or status.get("gcode_move", {})
+    return {
+        "x": pos.get("x", 0),
+        "y": pos.get("y", 0),
+        "z": pos.get("z", 0),
+        "e": pos.get("e") or pos.get("extruder", 0)
+    }
+```
+
+### Version Detection
+
+Check firmware version in attributes response:
+
+```python
+def get_firmware_version(attrs):
+    sw = attrs.get("software_version", {})
+    return sw.get("ota_version", "unknown")
+```
+
+---
+
+## CC1 vs CC2 Comparison
 
 | Feature | CC1 (Centauri Carbon) | CC2 (Centauri Carbon 2) |
 |---------|----------------------|-------------------------|
-| Discovery Port | 3000 | 52700 |
-| Discovery Message | `M99999` | `{"id":0,"method":7000}` |
-| Communication | WebSocket | MQTT |
-| Broker Location | Home Assistant | **Printer** |
+| **Discovery** |
+| Port | 3000 | 52700 |
+| Message | `M99999` | `{"id":0,"method":7000}` |
+| Protocol | TCP | UDP |
+| **Communication** |
+| Transport | WebSocket | MQTT |
+| Broker Location | External (HA) | **On Printer** |
 | Client Role | Server | **Client** |
+| **Authentication** |
 | Registration | Not required | **Required** |
-| Heartbeat | Not required | **Required** (10s) |
-| Status Updates | Full | **Delta** |
-| Max Clients | Unlimited | ~4 |
+| Password | None | `123456` or access code |
+| **Connection** |
+| Heartbeat | Not required | **Every 10s** |
+| Max Clients | Unlimited | **~4** |
+| Timeout | None | **65 seconds** |
+| **Status** |
+| Update Type | Full | **Delta** |
+| Message Format | Proprietary | JSON |
+| **Features** |
+| Canvas/AMS | No | Yes |
+| Video Stream | Varies | MJPEG on :8080 |
 
 ---
 
-## Implementation Status
+## Implementation Checklist
 
-### Completed
-- [x] Discovery protocol (port 52700, JSON)
-- [x] MQTT client connection
-- [x] Registration protocol
-- [x] Heartbeat mechanism
-- [x] Status mapping
-- [x] Command ID mapping
-- [x] Delta status support
+Use this checklist when implementing CC2 support:
 
-### In Progress
-- [ ] HTTP file upload/download
-- [ ] Canvas/AMS full support
-- [ ] All command implementations
+### Discovery
+- [ ] UDP broadcast to port 52700
+- [ ] Handle multiple printer responses
+- [ ] Parse discovery response fields
+- [ ] Store serial number for topics
+- [ ] Handle token_status for auth
+
+### Connection
+- [ ] MQTT 3.1.1 client
+- [ ] Generate unique client_id
+- [ ] Handle authentication (default + access code)
+- [ ] Connection error handling
+- [ ] Automatic reconnection
+
+### Registration
+- [ ] Subscribe to register_response topic
+- [ ] Publish registration request
+- [ ] Handle success/failure responses
+- [ ] Timeout handling (3 seconds)
+- [ ] Retry logic for "too many clients"
+
+### Heartbeat
+- [ ] 10-second interval timer
+- [ ] PING message publishing
+- [ ] PONG response handling
+- [ ] 65-second timeout detection
+- [ ] Reconnection on timeout
+
+### Status
+- [ ] Subscribe to api_status topic
+- [ ] Parse full status structure
+- [ ] Implement delta merge
+- [ ] Track message IDs for continuity
+- [ ] Request full status on gaps
+
+### Commands
+- [ ] Command request formatting
+- [ ] Response matching by ID
+- [ ] Error code handling
+- [ ] Timeout handling
+
+### File Operations
+- [ ] File listing (MQTT or HTTP)
+- [ ] File upload (chunked HTTP)
+- [ ] File download
+- [ ] MD5 verification
+
+### Peripheral Control
+- [ ] Temperature control
+- [ ] Fan speed control (0-255)
+- [ ] Light control
+- [ ] Speed mode control
+
+### Print Control
+- [ ] Start print
+- [ ] Pause/Resume
+- [ ] Stop
+- [ ] Progress monitoring
+
+### Advanced
+- [ ] Canvas/AMS status
+- [ ] Video streaming
+- [ ] Print history
+- [ ] Firmware version handling
+
+---
+
+## Troubleshooting
+
+### Connection Issues
+
+**Problem**: Discovery times out
+- Check printer is powered on and connected to network
+- Verify you're on the same network/subnet
+- Check firewall allows UDP port 52700
+- Try direct IP instead of broadcast
+
+**Problem**: MQTT connection refused
+- Verify printer IP is correct
+- Check port 1883 is not blocked
+- Verify credentials (check token_status)
+- Check another client isn't blocking
+
+**Problem**: Registration fails with "too many clients"
+- Disconnect other clients (slicer, app)
+- Wait 65 seconds for timeout to expire
+- Restart printer to clear all connections
+
+**Problem**: Heartbeat timeout
+- Check network stability
+- Verify PING messages being sent
+- Check for PONG responses
+- Reduce heartbeat interval if needed
+
+### Data Issues
+
+**Problem**: Missing status fields
+- Request full status (method 1002)
+- Check firmware version
+- Handle field variations defensively
+
+**Problem**: Delta updates not applying
+- Verify deep merge implementation
+- Check for ID continuity
+- Request full status periodically
+
+**Problem**: Wrong temperature/progress values
+- Verify you're merging deltas correctly
+- Check field paths in nested structure
+
+### Print Issues
+
+**Problem**: Start print fails with "file not found"
+- Verify filename is correct
+- Check storage_media value
+- Upload file first
+
+**Problem**: Print doesn't resume after pause
+- Check printer isn't in error state
+- Verify sub_status is PAUSED
+- Clear any exception_status errors first
+
+---
+
+## Glossary
+
+| Term | Definition |
+|------|------------|
+| **AMS** | Automatic Material System (multi-filament) |
+| **Canvas** | Elegoo's AMS product name |
+| **CC1** | Centauri Carbon (first generation protocol) |
+| **CC2** | Centauri Carbon 2 (this protocol) |
+| **Delta Update** | Status message containing only changed fields |
+| **elegoo-link** | Elegoo's official network communication library |
+| **FDM** | Fused Deposition Modeling (3D printing technology) |
+| **Heartbeat** | Periodic message to maintain connection |
+| **MQTT** | Message Queuing Telemetry Transport protocol |
+| **OTA** | Over-The-Air (firmware update) |
+| **PID** | Proportional-Integral-Derivative (temperature control) |
+| **PWM** | Pulse Width Modulation (fan speed control) |
+| **SDCP** | Elegoo's resin printer protocol |
+| **Serial Number (SN)** | Unique printer identifier used in topics |
+| **Sub-status** | Detailed state within main status |
+| **Token** | Access code for authentication |
 
 ---
 
 ## References
 
-- [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) - Official Elegoo network library (source of this documentation)
-- [ElegooSlicer](https://github.com/ELEGOO-3D/ElegooSlicer) - Official Elegoo slicer
+### Official Sources
+- [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) - Official Elegoo network library (primary source)
+- [ElegooSlicer](https://github.com/ELEGOO-3D/ElegooSlicer) - Official slicer application
 - [elegoo-fdm-web](https://github.com/ELEGOO-3D/elegoo-fdm-web) - Web interface releases
-- [GitHub Issue #315](https://github.com/danielcherubini/elegoo-homeassistant/issues/315) - CC2 support discussion
+
+### Community Projects
+- [elegoo-homeassistant](https://github.com/danielcherubini/elegoo-homeassistant) - Home Assistant integration
+- [OpenCentauri](https://opencentauri.org) - Community documentation project
+
+### Related Documentation
+- [MQTT 3.1.1 Specification](https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/mqtt-v3.1.1.html)
+- [Paho MQTT Python](https://eclipse.dev/paho/files/paho.mqtt.python/html/index.html)
+
+---
+
+## Contributing
+
+Found an error or have additional information? Contributions welcome!
+
+- **GitHub Issues**: Report errors or missing information
+- **Pull Requests**: Submit documentation improvements
+- **Discord/Forums**: Discuss findings with the community
+
+When contributing:
+1. Cite your source (firmware version, elegoo-link version, etc.)
+2. Include example data where possible
+3. Note any firmware-specific behavior
 
 ---
 
 ## Changelog
 
-- **2026-02-02**: Complete rewrite based on elegoo-link v1.0.0 source code analysis
-  - Added all method codes from COMMAND_MAPPING_TABLE
-  - Added all status and sub-status codes from elegoo_fdm_cc2_message_adapter.cpp
-  - Added all error codes
-  - Documented delta status update mechanism
-  - Added command examples
-  - Added Canvas/AMS documentation
-  - Added field name variations
+### 2026-02-02 - Initial Release
+- Complete protocol documentation based on elegoo-link v1.0.0
+- All method codes from COMMAND_MAPPING_TABLE
+- All status and sub-status codes from elegoo_fdm_cc2_message_adapter.cpp
+- All error codes
+- Delta status update mechanism
+- Command examples with parameters
+- Canvas/AMS documentation
+- HTTP API documentation
+- Print lifecycle documentation
+- Field name variation handling
+- Implementation checklist
+- Troubleshooting guide
+
+---
+
+*This document is maintained by the OpenCentauri community. Last updated: 2026-02-02*
