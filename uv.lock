@@ -716,7 +716,7 @@ wheels = [
 
 [[package]]
 name = "elegoo-printer"
-version = "2.6.0b1"
+version = "2.6.0b2"
 source = { virtual = "." }
 dependencies = [
     { name = "aiomqtt" },
@@ -730,6 +730,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "amqtt" },
+    { name = "paho-mqtt" },
     { name = "pytest" },
     { name = "ruff" },
     { name = "ty" },
@@ -748,6 +749,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "amqtt", specifier = ">=0.11.3" },
+    { name = "paho-mqtt", specifier = ">=2.1.0" },
     { name = "pytest", specifier = ">=8.4.1" },
     { name = "ruff", specifier = ">=0.9.10" },
     { name = "ty", specifier = ">=0.0.1a21" },

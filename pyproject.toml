@@ -15,6 +15,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "amqtt>=0.11.3",
+    "paho-mqtt>=2.1.0",
     "pytest>=8.4.1",
     "ruff>=0.9.10",
     "ty>=0.0.1a21",
