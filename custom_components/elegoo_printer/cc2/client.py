@@ -39,6 +39,7 @@ from .const import (
     CC2_CMD_RESUME_PRINT,
     CC2_CMD_SET_FAN_SPEED,
     CC2_CMD_SET_LIGHT,
+    CC2_CMD_SET_PRINT_SPEED,
     CC2_CMD_SET_TEMPERATURE,
     CC2_CMD_SET_VIDEO_STREAM,
     CC2_CMD_STOP_PRINT,
@@ -646,6 +647,7 @@ class ElegooCC2Client:
 
     async def set_printer_video_stream(self, *, enable: bool) -> None:
         """Enable or disable the printer's video stream."""
+        # CC2 expects integer 1/0 not boolean true/false
         await self._send_command(CC2_CMD_SET_VIDEO_STREAM, {"enable": int(enable)})
 
     async def get_printer_video(self, *, enable: bool = False) -> ElegooVideo:
@@ -714,7 +716,10 @@ class ElegooCC2Client:
 
     async def set_light_status(self, light_status: LightStatus) -> None:
         """Set the printer's light status."""
-        await self._send_command(CC2_CMD_SET_LIGHT, light_status.to_dict())
+        # CC2 expects {"brightness": 0-255}, convert from LightStatus
+        # second_light is 0 (off) or 1 (on), map to 0 or 255
+        brightness = 255 if light_status.second_light else 0
+        await self._send_command(CC2_CMD_SET_LIGHT, {"brightness": brightness})
 
     async def print_pause(self) -> None:
         """Pause the current print."""
@@ -730,7 +735,9 @@ class ElegooCC2Client:
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """Set the speed of a fan."""
+        # CC2 expects 0-255, convert from percentage
         pct = max(0, min(100, int(percentage)))
+        speed_value = round(pct / 100 * 255)
         # Map fan names to CC2 format
         fan_map = {
             "ModelFan": "fan",
@@ -738,12 +745,25 @@ class ElegooCC2Client:
             "BoxFan": "box_fan",
         }
         fan_key = fan_map.get(fan.value, "fan")
-        await self._send_command(CC2_CMD_SET_FAN_SPEED, {fan_key: pct})
+        await self._send_command(CC2_CMD_SET_FAN_SPEED, {fan_key: speed_value})
 
-    async def set_print_speed(self, percentage: int) -> None:  # noqa: ARG002
-        """Set the print speed."""
-        # CC2 may not support this directly, log for now
-        self.logger.debug("set_print_speed not implemented for CC2")
+    async def set_print_speed(self, percentage: int) -> None:
+        """Set the print speed (CC2 uses modes: 0=50%, 1=100%, 2=150%, 3=200%)."""
+        # Map percentage to closest speed mode
+        # Mode thresholds: 0-75% -> Silent, 76-125% -> Balanced,
+        # 126-175% -> Sport, 176%+ -> Ludicrous
+        speed_mode_silent = 75
+        speed_mode_balanced = 125
+        speed_mode_sport = 175
+        if percentage <= speed_mode_silent:
+            mode = 0  # Silent (50%)
+        elif percentage <= speed_mode_balanced:
+            mode = 1  # Balanced (100%)
+        elif percentage <= speed_mode_sport:
+            mode = 2  # Sport (150%)
+        else:
+            mode = 3  # Ludicrous (200%)
+        await self._send_command(CC2_CMD_SET_PRINT_SPEED, {"mode": mode})
 
     async def set_target_nozzle_temp(self, temperature: int) -> None:
         """Set the target nozzle temperature."""
