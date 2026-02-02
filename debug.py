@@ -9,6 +9,8 @@ from typing import Any
 import aiohttp
 from loguru import logger
 
+from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
+from custom_components.elegoo_printer.cc2.discovery import CC2Discovery
 from custom_components.elegoo_printer.mqtt.client import ElegooMqttClient
 from custom_components.elegoo_printer.mqtt.server import ElegooMQTTBroker
 from custom_components.elegoo_printer.sdcp.const import DEBUG
@@ -56,7 +58,16 @@ async def monitor_printer(
 ):
     """Monitor a single printer."""
     # Create appropriate client based on transport type
-    if printer.transport_type == TransportType.MQTT:
+    if printer.transport_type == TransportType.CC2_MQTT:
+        logger.info(f"🔌 Using CC2 MQTT transport for {printer.name}")
+        elegoo_printer = ElegooCC2Client(
+            printer_ip=printer.ip_address,
+            serial_number=printer.id,
+            access_code=printer.cc2_access_code,
+            logger=logger,
+            printer=printer,
+        )
+    elif printer.transport_type == TransportType.MQTT:
         logger.info(f"🔌 Using MQTT transport for {printer.name}")
         elegoo_printer = ElegooMqttClient(
             mqtt_host=MQTT_HOST,
@@ -71,8 +82,8 @@ async def monitor_printer(
         )
 
     logger.info(f"Connecting to printer: {printer.name} at {printer.ip_address}")
-    # MQTT client doesn't accept proxy_enabled parameter
-    if printer.transport_type == TransportType.MQTT:
+    # MQTT/CC2 clients don't accept proxy_enabled parameter
+    if printer.transport_type in (TransportType.MQTT, TransportType.CC2_MQTT):
         connected = await elegoo_printer.connect_printer(printer)
     else:
         connected = await elegoo_printer.connect_printer(
@@ -101,8 +112,9 @@ async def monitor_printer(
                 else:
                     logger.info(f"[{printer.name}] Status received (no print_info yet)")
 
-                # Try to get video for WebSocket printers
-                if printer.transport_type != TransportType.MQTT:
+                # Try to get video for WebSocket printers (not MQTT/CC2)
+                mqtt_types = (TransportType.MQTT, TransportType.CC2_MQTT)
+                if printer.transport_type not in mqtt_types:
                     try:
                         video = await elegoo_printer.get_printer_video(enable=True)
                         if video:
@@ -149,6 +161,18 @@ async def main() -> None:
             # Also discover all printers on network (broadcast discovery)
             logger.info("🔍 Discovering all printers on network...")
             discovered_printers = elegoo_printer.discover_printer()
+
+            # Also discover CC2 printers
+            logger.info("🔍 Discovering CC2 printers...")
+            cc2_printers = CC2Discovery.discover_as_printers()
+            if cc2_printers:
+                logger.info(f"✓ Found {len(cc2_printers)} CC2 printer(s)")
+                # Merge, avoiding duplicates by ID
+                existing_ids = {p.id for p in discovered_printers if p.id}
+                for cc2_printer in cc2_printers:
+                    if cc2_printer.id and cc2_printer.id not in existing_ids:
+                        discovered_printers.append(cc2_printer)
+                        existing_ids.add(cc2_printer.id)
 
             if discovered_printers:
                 logger.info(f"🎯 Found {len(discovered_printers)} printer(s) total:")

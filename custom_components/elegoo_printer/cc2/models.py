@@ -106,7 +106,7 @@ class CC2StatusMapper:
         Map CC2 status data to PrinterStatus.
 
         Arguments:
-            cc2_data: The raw CC2 status data.
+            cc2_data: The raw CC2 status data (real CC2 nested format).
             printer_type: The type of printer (for FDM-specific handling).
 
         Returns:
@@ -116,36 +116,46 @@ class CC2StatusMapper:
         # Create status object with mapped data
         status = PrinterStatus()
 
-        # Map machine status
-        cc2_status = cc2_data.get("status", CC2_STATUS_IDLE)
+        # Map machine status from nested structure
+        machine_status = cc2_data.get("machine_status", {})
+        cc2_status = machine_status.get("status", CC2_STATUS_IDLE)
         status.current_status = cls.MACHINE_STATUS_MAP.get(
             cc2_status, ElegooMachineStatus.IDLE
         )
 
-        # Map temperatures
-        status.temp_of_nozzle = round(cc2_data.get("temp_extruder", 0), 2)
-        status.temp_target_nozzle = round(cc2_data.get("temp_extruder_target", 0), 2)
-        status.temp_of_hotbed = round(cc2_data.get("temp_heater_bed", 0), 2)
-        status.temp_target_hotbed = round(cc2_data.get("temp_heater_bed_target", 0), 2)
-        status.temp_of_box = round(cc2_data.get("temp_box", 0), 2)
-        status.temp_target_box = round(cc2_data.get("temp_box_target", 0), 2)
+        # Map temperatures from nested structure
+        extruder = cc2_data.get("extruder", {})
+        heater_bed = cc2_data.get("heater_bed", {})
+        status.temp_of_nozzle = round(extruder.get("temperature", 0), 2)
+        status.temp_target_nozzle = round(extruder.get("target", 0), 2)
+        status.temp_of_hotbed = round(heater_bed.get("temperature", 0), 2)
+        status.temp_target_hotbed = round(heater_bed.get("target", 0), 2)
+        # Box temperature may be in ztemperature_sensor or separate field
+        ztemp = cc2_data.get("ztemperature_sensor", {})
+        status.temp_of_box = round(ztemp.get("temperature", 0), 2)
+        status.temp_target_box = 0.0  # CC2 may not have box target
 
-        # Map fan speeds
-        fan_data = cc2_data.get("fan_speeds", {})
+        # Map fan speeds from nested structure
+        fans = cc2_data.get("fans", {})
+        fan_speed = fans.get("fan", {}).get("speed", 0)
+        aux_fan_speed = fans.get("aux_fan", {}).get("speed", 0)
+        box_fan_speed = fans.get("box_fan", {}).get("speed", 0)
         status.current_fan_speed = CurrentFanSpeed(
             {
-                "ModelFan": fan_data.get("fan", 0),
-                "AuxiliaryFan": fan_data.get("aux_fan", 0),
-                "BoxFan": fan_data.get("box_fan", 0),
+                "ModelFan": fan_speed,
+                "AuxiliaryFan": aux_fan_speed,
+                "BoxFan": box_fan_speed,
             }
         )
 
-        # Map light status
-        light_data = cc2_data.get("light_status", {})
+        # Map light status from nested structure
+        led = cc2_data.get("led", {})
+        led_status = led.get("status", 0)
+        # Convert LED brightness (0-255) to on/off state
         status.light_status = LightStatus(
             {
-                "SecondLight": light_data.get("enabled", 0),
-                "RgbLight": light_data.get("rgb", [0, 0, 0]),
+                "SecondLight": 1 if led_status > 0 else 0,
+                "RgbLight": [led_status, led_status, led_status],
             }
         )
 
@@ -153,8 +163,8 @@ class CC2StatusMapper:
         print_info = cls._map_print_info(cc2_data, printer_type)
         status.print_info = print_info
 
-        # Map position
-        pos = cc2_data.get("position", {})
+        # Map position from gcode_move_inf
+        pos = cc2_data.get("gcode_move_inf", {})
         x = pos.get("x", 0)
         y = pos.get("y", 0)
         z = pos.get("z", 0)
@@ -173,7 +183,7 @@ class CC2StatusMapper:
         Map CC2 print info to PrintInfo.
 
         Arguments:
-            cc2_data: The raw CC2 status data.
+            cc2_data: The raw CC2 status data (real CC2 nested format).
             printer_type: The type of printer.
 
         Returns:
@@ -182,27 +192,31 @@ class CC2StatusMapper:
         """
         print_info = PrintInfo()
 
-        # Map sub-status to print status
-        sub_status = cc2_data.get("sub_status", 0)
+        # Map sub-status to print status from nested structure
+        machine_status = cc2_data.get("machine_status", {})
+        sub_status = machine_status.get("sub_status", 0)
         print_info.status = cls.PRINT_STATUS_MAP.get(sub_status, ElegooPrintStatus.IDLE)
 
-        # Map print job data
-        job_data = cc2_data.get("print_job", {})
+        # Map print data from print_status (real CC2 structure)
+        print_status = cc2_data.get("print_status", {})
 
-        print_info.filename = job_data.get("file_name")
-        print_info.task_id = job_data.get("task_id")
+        print_info.filename = print_status.get("filename")
+        # CC2 doesn't have task_id in print_status, generate from filename
+        if print_info.filename:
+            print_info.task_id = f"cc2_{hash(print_info.filename) & 0xFFFFFFFF:08x}"
 
         # Map layer info
-        print_info.current_layer = job_data.get("current_layer")
-        print_info.total_layers = job_data.get("total_layers")
+        print_info.current_layer = print_status.get("current_layer")
+        print_info.total_layers = print_status.get("total_layer")
         if print_info.current_layer is not None and print_info.total_layers is not None:
             print_info.remaining_layers = max(
                 0, print_info.total_layers - print_info.current_layer
             )
 
         # Map time info (CC2 uses seconds, convert to ms)
-        current_time = job_data.get("print_time")
-        total_time = job_data.get("total_time")
+        current_time = print_status.get("print_duration")
+        total_time = print_status.get("total_duration")
+        remaining_time = print_status.get("remaining_time_sec")
 
         # FDM printers report time in seconds, convert to ms
         print_info.current_ticks = (
@@ -211,13 +225,20 @@ class CC2StatusMapper:
         print_info.total_ticks = (
             int(total_time * 1000) if total_time is not None else None
         )
-        if print_info.current_ticks is not None and print_info.total_ticks is not None:
+        # Use remaining_time_sec directly if available
+        if remaining_time is not None:
+            print_info.remaining_ticks = int(remaining_time * 1000)
+        elif (
+            print_info.current_ticks is not None and print_info.total_ticks is not None
+        ):
             print_info.remaining_ticks = max(
                 0, print_info.total_ticks - print_info.current_ticks
             )
 
-        # Map progress
-        progress = job_data.get("progress")
+        # Map progress - check both print_status and machine_status
+        progress = print_status.get("progress")
+        if progress is None:
+            progress = machine_status.get("progress")
         print_info.progress = int(progress) if progress is not None else None
 
         # Calculate percent complete
@@ -246,16 +267,19 @@ class CC2StatusMapper:
         else:
             print_info.percent_complete = None
 
-        # Map print speed
-        print_info.print_speed_pct = cc2_data.get("print_speed", 100)
+        # Map print speed from gcode_move_inf speed_mode
+        gcode_move = cc2_data.get("gcode_move_inf", {})
+        speed_mode = gcode_move.get("speed_mode", 1)
+        # 0=Silent(50%), 1=Balanced(100%), 2=Sport(150%), 3=Ludicrous(200%)
+        speed_map = {0: 50, 1: 100, 2: 150, 3: 200}
+        print_info.print_speed_pct = speed_map.get(speed_mode, 100)
 
         # Map error
-        error_code = job_data.get("error_code", 0)
+        error_code = cc2_data.get("error_code", 0)
         print_info.error_number = ElegooPrintError.from_int(error_code)
 
-        # Map extrusion data
-        print_info.total_extrusion = job_data.get("total_extrusion")
-        print_info.current_extrusion = job_data.get("current_extrusion")
+        # Map extrusion data from gcode_move_inf
+        print_info.current_extrusion = gcode_move.get("e")
 
         return print_info
 
@@ -265,20 +289,24 @@ class CC2StatusMapper:
         Map CC2 attributes data to PrinterAttributes.
 
         Arguments:
-            cc2_data: The raw CC2 attributes data.
+            cc2_data: The raw CC2 attributes data (real CC2 nested format).
 
         Returns:
             A PrinterAttributes object.
 
         """
+        # Extract firmware version from nested structure
+        software_version = cc2_data.get("software_version", {})
+        firmware = software_version.get("ota_version", "")
+
         # Create a dictionary in the expected format
         attrs_dict = {
             "Attributes": {
-                "Name": cc2_data.get("host_name", ""),
+                "Name": cc2_data.get("hostname", ""),
                 "MachineName": cc2_data.get("machine_model", ""),
                 "BrandName": "ELEGOO",
                 "ProtocolVersion": "CC2",
-                "FirmwareVersion": cc2_data.get("firmware_version", ""),
+                "FirmwareVersion": firmware,
                 "Resolution": cc2_data.get("resolution", ""),
                 "XYZsize": cc2_data.get("xyz_size", ""),
                 "MainboardIP": cc2_data.get("ip", ""),

@@ -7,7 +7,10 @@ The CC2 uses an inverted architecture where:
 - Home Assistant connects TO the printer
 - Clients must register before sending commands
 - Uses heartbeat/ping-pong mechanism
-- Sends delta status updates
+- Sends delta status updates (method 6000)
+
+This simulator accurately replicates the real CC2 protocol based on
+analysis of the elegoo-link library.
 """
 
 import asyncio
@@ -18,96 +21,177 @@ import socket
 import time
 import uuid
 from contextlib import suppress
+from copy import deepcopy
 
 import aiomqtt
 from amqtt.broker import Broker
 
-# Printer configuration
+# =============================================================================
+# PRINTER CONFIGURATION
+# =============================================================================
+
 SERIAL_NUMBER = "CC2TEST1234567890"
 PRINTER_IP = "127.0.0.1"
 PRINTER_NAME = "Centauri Carbon 2 Test"
 PRINTER_MODEL = "Centauri Carbon 2"
+FIRMWARE_VERSION = "1.0.5.2"
 
-# Discovery settings
+# Network settings
 UDP_DISCOVERY_PORT = 52700
-# Use 0.0.0.0 for discovery and MQTT broker to accept from any interface
 DISCOVERY_HOST = "0.0.0.0"
 BROKER_HOST = "0.0.0.0"
-
-# MQTT broker settings (printer runs the broker)
 MQTT_PORT = 1883
 MQTT_USERNAME = "elegoo"
 MQTT_PASSWORD = "123456"  # noqa: S105
 
-# CC2 command IDs
+# =============================================================================
+# CC2 PROTOCOL CONSTANTS
+# =============================================================================
+
+# Command IDs (requests from client)
 CC2_CMD_GET_ATTRIBUTES = 1001
 CC2_CMD_GET_STATUS = 1002
 CC2_CMD_START_PRINT = 1020
 CC2_CMD_PAUSE_PRINT = 1021
 CC2_CMD_STOP_PRINT = 1022
-CC2_CMD_RESUME_PRINT = 1023
+CC2_CMD_RESUME_PRINT = 1023  # Not in elegoo-link but logical
+CC2_CMD_HOME_AXES = 1026
+CC2_CMD_MOVE_AXES = 1027
 CC2_CMD_SET_TEMPERATURE = 1028
 CC2_CMD_SET_FAN_SPEED = 1030
-CC2_CMD_SET_LIGHT = 1031
+CC2_CMD_SET_PRINT_SPEED = 1031
+CC2_CMD_UPDATE_PRINTER_NAME = 1043
 CC2_CMD_SET_VIDEO_STREAM = 1050
+CC2_CMD_FILE_DOWNLOAD = 1057
+CC2_CMD_CANCEL_FILE_DOWNLOAD = 1058
+CC2_CMD_GET_CANVAS_STATUS = 2005
+CC2_CMD_SET_AUTO_REFILL = 2004
 
-# CC2 event IDs
+# Event IDs (push notifications from printer)
 CC2_EVENT_STATUS = 6000
+CC2_EVENT_ATTRIBUTES = 6008
+
+# Machine status codes
+STATUS_INITIALIZING = 0
+STATUS_IDLE = 1
+STATUS_PRINTING = 2
+STATUS_FILAMENT_OPERATING = 3
+STATUS_AUTO_LEVELING = 5
+STATUS_PID_CALIBRATING = 6
+STATUS_RESONANCE_TESTING = 7
+STATUS_SELF_CHECKING = 8
+STATUS_UPDATING = 9
+STATUS_HOMING = 10
+STATUS_FILE_TRANSFERRING = 11
+STATUS_VIDEO_COMPOSING = 12
+STATUS_EXTRUDER_OPERATING = 13
+STATUS_EMERGENCY_STOP = 14
+STATUS_POWER_LOSS_RECOVERY = 15
+
+# Print sub-status codes
+SUB_STATUS_NONE = 0
+SUB_STATUS_EXTRUDER_PREHEATING = 1045
+SUB_STATUS_BED_PREHEATING = 1405
+SUB_STATUS_PRINTING = 2075
+SUB_STATUS_PRINTING_COMPLETED = 2077
+SUB_STATUS_PAUSING = 2501
+SUB_STATUS_PAUSED = 2502
+SUB_STATUS_RESUMING = 2401
+SUB_STATUS_STOPPING = 2503
+SUB_STATUS_STOPPED = 2504
+SUB_STATUS_HOMING = 2801
+SUB_STATUS_AUTO_LEVELING = 2901
+
+# Speed modes
+SPEED_MODE_SILENT = 0
+SPEED_MODE_BALANCED = 1
+SPEED_MODE_SPORT = 2
+SPEED_MODE_LUDICROUS = 3
+
+# =============================================================================
+# PRINTER STATE
+# =============================================================================
 
 # Registered clients
 registered_clients: dict[str, str] = {}
 
-# Printer state
+# Delta status sequence counter
+status_sequence_id = 0
+
+# Full printer status (matches real CC2 structure)
+# Start in printing state like the MQTT test printer
 printer_status = {
-    "status": 1,  # Idle
-    "sub_status": 0,
-    "temp_extruder": 25.5,
-    "temp_extruder_target": 0,
-    "temp_heater_bed": 24.0,
-    "temp_heater_bed_target": 0,
-    "temp_box": 22.0,
-    "temp_box_target": 0,
-    "fan_speeds": {
-        "fan": 0,
-        "aux_fan": 0,
-        "box_fan": 0,
+    "error_code": 0,
+    "machine_status": {
+        "status": STATUS_PRINTING,
+        "sub_status": SUB_STATUS_PRINTING,
+        "progress": 20,
+        "exception_status": [],
     },
-    "light_status": {
-        "enabled": 1,
-        "rgb": [255, 255, 255],
+    "print_status": {
+        "filename": "test_benchy.gcode",
+        "total_duration": 7200,  # 2 hours total
+        "print_duration": 1440,  # 24 minutes elapsed
+        "remaining_time_sec": 5760,  # 1h36m remaining
+        "total_layer": 500,
+        "current_layer": 100,
+        "progress": 20.0,
     },
-    "position": {"x": 0, "y": 0, "z": 0},
-    "z_offset": 0.0,
-    "print_speed": 100,
-    "print_job": {
-        "file_name": None,
-        "task_id": None,
-        "current_layer": 0,
-        "total_layers": 0,
-        "print_time": 0,
-        "total_time": 0,
-        "progress": 0,
-        "error_code": 0,
+    "extruder": {
+        "temperature": 215.0,
+        "target": 220.0,
     },
-    "sequence": 0,
+    "heater_bed": {
+        "temperature": 58.0,
+        "target": 60.0,
+    },
+    "ztemperature_sensor": {
+        "temperature": 25.0,
+        "measured_max_temperature": 30.0,
+        "measured_min_temperature": 20.0,
+    },
+    "fans": {
+        "fan": {"speed": 0, "rpm": 0},
+        "heater_fan": {"speed": 0, "rpm": 0},
+        "controller_fan": {"speed": 50, "rpm": 2000},
+        "box_fan": {"speed": 0, "rpm": 0},
+        "aux_fan": {"speed": 0, "rpm": 0},
+    },
+    "led": {
+        "status": 255,  # Full brightness
+    },
+    "gcode_move_inf": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "e": 0.0,
+        "speed_mode": SPEED_MODE_BALANCED,
+    },
+    "toolhead": {
+        "homed_axes": "",
+    },
+    "external_device": {
+        "u_disk": False,
+        "camera": True,
+        "type": 0,
+    },
 }
 
+# Printer attributes
 printer_attributes = {
-    "host_name": PRINTER_NAME,
+    "error_code": 0,
     "machine_model": PRINTER_MODEL,
+    "hostname": PRINTER_NAME,
     "sn": SERIAL_NUMBER,
-    "firmware_version": "V1.0.0",
-    "resolution": "1920x1080",
-    "xyz_size": "220x220x250",
-    "ip": PRINTER_IP,
-    "mac": "00:11:22:33:44:55",
-    "network_type": "wifi",
-    "usb_connected": False,
-    "camera_connected": True,
-    "remaining_memory": 1073741824,
-    "video_connections": 0,
-    "max_video_connections": 2,
+    "software_version": {
+        "ota_version": FIRMWARE_VERSION,
+    },
 }
+
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
 
 
 def get_timestamp():
@@ -139,35 +223,36 @@ def create_response(request_id: int, method: int, result: dict):
 
 
 def create_status_event():
-    """Create a status event (delta update)."""
-    printer_status["sequence"] += 1
+    """Create a delta status event (method 6000)."""
+    global status_sequence_id
+    status_sequence_id += 1
     return {
-        "id": 0,
+        "id": status_sequence_id,
         "method": CC2_EVENT_STATUS,
-        "result": printer_status.copy(),
+        "result": deepcopy(printer_status),
     }
+
+
+# =============================================================================
+# MQTT MESSAGE HANDLERS
+# =============================================================================
 
 
 async def handle_registration(mqtt_client, client_id: str, request_id: str):
     """Handle client registration."""
     print(f"📋 Registration request from client: {client_id}")
 
+    # Check if we have too many clients
     if len(registered_clients) >= 4:
-        # Too many clients
-        response = {
-            "client_id": client_id,
-            "error": "too many clients",
-        }
+        response = {"client_id": client_id, "error": "too many clients"}
+        print(f"❌ Registration rejected: too many clients")
     else:
         registered_clients[client_id] = request_id
-        response = {
-            "client_id": client_id,
-            "error": "ok",
-        }
+        response = {"client_id": client_id, "error": "ok"}
+        print(f"✅ Registration accepted: {client_id}")
 
     topic = f"elegoo/{SERIAL_NUMBER}/{request_id}/register_response"
     await mqtt_client.publish(topic, json.dumps(response))
-    print(f"✅ Sent registration response to {client_id}: {response['error']}")
 
 
 async def handle_command(mqtt_client, client_id: str, payload: dict):
@@ -176,203 +261,277 @@ async def handle_command(mqtt_client, client_id: str, payload: dict):
     method = payload.get("method", 0)
     params = payload.get("params", {})
 
-    print(f"📨 Command from {client_id}: method={method}, id={request_id}")
-
     response_topic = f"elegoo/{SERIAL_NUMBER}/{client_id}/api_response"
 
     # Reject commands from unregistered clients
     if client_id not in registered_clients:
-        print(f"⚠️  Ignoring command from unregistered client: {client_id}")
+        print(f"⚠️  Rejecting command from unregistered client: {client_id}")
         response = create_response(
-            request_id, method, {"error_code": 1002, "error": "not registered"}
+            request_id, method, {"error_code": 1000, "error": "not registered"}
         )
         await mqtt_client.publish(response_topic, json.dumps(response))
         return
 
+    print(f"📨 Command from {client_id}: method={method}, id={request_id}")
+
     result = {"error_code": 0}
 
     if method == CC2_CMD_GET_ATTRIBUTES:
-        result = {**printer_attributes, "error_code": 0}
+        result = deepcopy(printer_attributes)
+        print(f"📤 Sending attributes: {PRINTER_MODEL}")
 
     elif method == CC2_CMD_GET_STATUS:
-        result = {**printer_status, "error_code": 0}
+        result = deepcopy(printer_status)
+        print(f"📤 Sending full status (status={printer_status['machine_status']['status']})")
 
     elif method == CC2_CMD_START_PRINT:
-        filename = params.get("filename", "unknown.gcode")
-        print(f"🚀 Starting print: {filename}")
-        printer_status["status"] = 2  # Printing
-        printer_status["sub_status"] = 2075  # Printing
-        printer_status["print_job"]["file_name"] = filename
-        printer_status["print_job"]["task_id"] = str(uuid.uuid4())
-        printer_status["print_job"]["current_layer"] = 0
-        printer_status["print_job"]["total_layers"] = random.randint(100, 500)
-        printer_status["print_job"]["print_time"] = 0
-        total_layers = printer_status["print_job"]["total_layers"]
-        printer_status["print_job"]["total_time"] = total_layers * random.randint(5, 15)
-        printer_status["print_job"]["progress"] = 0
+        filename = params.get("filename", "test_print.gcode")
+        storage = params.get("storage_media", "local")
+        print(f"🚀 Starting print: {filename} from {storage}")
+
+        # Update printer state
+        printer_status["machine_status"]["status"] = STATUS_PRINTING
+        printer_status["machine_status"]["sub_status"] = SUB_STATUS_EXTRUDER_PREHEATING
+        printer_status["print_status"]["filename"] = filename
+        printer_status["print_status"]["total_layer"] = random.randint(100, 500)
+        printer_status["print_status"]["current_layer"] = 0
+        printer_status["print_status"]["total_duration"] = random.randint(3600, 14400)
+        printer_status["print_status"]["print_duration"] = 0
+        printer_status["print_status"]["remaining_time_sec"] = printer_status["print_status"]["total_duration"]
+        printer_status["print_status"]["progress"] = 0.0
+
+        # Set target temperatures
+        printer_status["extruder"]["target"] = 220.0
+        printer_status["heater_bed"]["target"] = 60.0
 
     elif method == CC2_CMD_PAUSE_PRINT:
         print("⏸️  Pausing print")
-        printer_status["sub_status"] = 2502  # Paused
+        printer_status["machine_status"]["sub_status"] = SUB_STATUS_PAUSED
 
     elif method == CC2_CMD_STOP_PRINT:
         print("⏹️  Stopping print")
-        printer_status["status"] = 1  # Idle
-        printer_status["sub_status"] = 2504  # Stopped
+        printer_status["machine_status"]["status"] = STATUS_IDLE
+        printer_status["machine_status"]["sub_status"] = SUB_STATUS_STOPPED
+        printer_status["print_status"]["filename"] = ""
+        printer_status["print_status"]["progress"] = 0.0
+        printer_status["extruder"]["target"] = 0.0
+        printer_status["heater_bed"]["target"] = 0.0
 
     elif method == CC2_CMD_RESUME_PRINT:
         print("▶️  Resuming print")
-        printer_status["sub_status"] = 2075  # Printing
+        printer_status["machine_status"]["sub_status"] = SUB_STATUS_PRINTING
 
     elif method == CC2_CMD_SET_TEMPERATURE:
         if "extruder" in params:
-            printer_status["temp_extruder_target"] = params["extruder"]
-            print(f"🌡️  Target nozzle temp: {params['extruder']}°C")
+            temp = params["extruder"]
+            printer_status["extruder"]["target"] = float(temp)
+            print(f"🌡️  Target extruder temp: {temp}°C")
         if "heater_bed" in params:
-            printer_status["temp_heater_bed_target"] = params["heater_bed"]
-            print(f"🌡️  Target bed temp: {params['heater_bed']}°C")
+            temp = params["heater_bed"]
+            printer_status["heater_bed"]["target"] = float(temp)
+            print(f"🌡️  Target bed temp: {temp}°C")
 
     elif method == CC2_CMD_SET_FAN_SPEED:
-        for fan_key in ["fan", "aux_fan", "box_fan"]:
-            if fan_key in params:
-                printer_status["fan_speeds"][fan_key] = params[fan_key]
-                print(f"💨 Set {fan_key}: {params[fan_key]}%")
+        if "fan" in params:
+            speed = params["fan"]
+            printer_status["fans"]["fan"]["speed"] = speed
+            printer_status["fans"]["fan"]["rpm"] = speed * 50
+            print(f"🌀 Model fan: {speed}%")
+        if "box_fan" in params:
+            speed = params["box_fan"]
+            printer_status["fans"]["box_fan"]["speed"] = speed
+            printer_status["fans"]["box_fan"]["rpm"] = speed * 40
+            print(f"🌀 Box fan: {speed}%")
+        if "aux_fan" in params:
+            speed = params["aux_fan"]
+            printer_status["fans"]["aux_fan"]["speed"] = speed
+            printer_status["fans"]["aux_fan"]["rpm"] = speed * 45
+            print(f"🌀 Aux fan: {speed}%")
 
-    elif method == CC2_CMD_SET_LIGHT:
-        if "enabled" in params:
-            printer_status["light_status"]["enabled"] = params["enabled"]
-        if "rgb" in params:
-            printer_status["light_status"]["rgb"] = params["rgb"]
-        print(f"💡 Light: {printer_status['light_status']}")
+    elif method == CC2_CMD_SET_PRINT_SPEED:
+        mode = params.get("mode", SPEED_MODE_BALANCED)
+        printer_status["gcode_move_inf"]["speed_mode"] = mode
+        mode_names = {0: "Silent", 1: "Balanced", 2: "Sport", 3: "Ludicrous"}
+        print(f"⚡ Speed mode: {mode_names.get(mode, 'Unknown')}")
 
     elif method == CC2_CMD_SET_VIDEO_STREAM:
         enable = params.get("enable", 0)
         print(f"📹 Video stream: {'enabled' if enable else 'disabled'}")
         result = {
             "error_code": 0,
-            "url": f"http://{PRINTER_IP}:8000/video" if enable else "",
+            "video_url": f"rtsp://{PRINTER_IP}:8554/live" if enable else "",
         }
 
+    elif method == CC2_CMD_UPDATE_PRINTER_NAME:
+        new_name = params.get("hostname", PRINTER_NAME)
+        printer_attributes["hostname"] = new_name
+        print(f"✏️  Printer name updated: {new_name}")
+
+    elif method == CC2_CMD_HOME_AXES:
+        axes = params.get("homed_axes", "xyz")
+        printer_status["toolhead"]["homed_axes"] = axes
+        print(f"🏠 Homing axes: {axes}")
+
+    elif method == CC2_CMD_GET_CANVAS_STATUS:
+        # Return empty canvas (no AMS connected)
+        result = {
+            "error_code": 0,
+            "canvas_info": {
+                "active_canvas_id": 0,
+                "active_tray_id": 0,
+                "auto_refill": False,
+                "canvas_list": [],
+            },
+        }
+        print("📦 Sending canvas status (no AMS)")
+
     else:
-        print(f"⚠️  Unknown command: {method}")
-        result = {"error_code": 1001}  # Unknown interface
+        print(f"❓ Unknown command: {method}")
+        result = {"error_code": 1001, "error": "unknown interface"}
 
     response = create_response(request_id, method, result)
     await mqtt_client.publish(response_topic, json.dumps(response))
 
 
 async def handle_heartbeat(mqtt_client, client_id: str, payload: dict):
-    """Handle heartbeat ping/pong."""
+    """Handle heartbeat PING/PONG."""
     if payload.get("type") == "PING":
         response_topic = f"elegoo/{SERIAL_NUMBER}/{client_id}/api_response"
         await mqtt_client.publish(response_topic, json.dumps({"type": "PONG"}))
+        print(f"💓 PONG -> {client_id}")
+
+
+# =============================================================================
+# MQTT MESSAGE ROUTER
+# =============================================================================
 
 
 async def mqtt_message_handler(mqtt_client, stop_event):
     """Handle incoming MQTT messages."""
-    # Subscribe to all relevant topics
-    topics = [
-        f"elegoo/{SERIAL_NUMBER}/api_register",
-        f"elegoo/{SERIAL_NUMBER}/+/api_request",
-    ]
-    for topic in topics:
-        await mqtt_client.subscribe(topic)
-        print(f"📡 Subscribed to: {topic}")
-
-    try:
-        async for message in mqtt_client.messages:
-            if stop_event.is_set():
-                break
-
-            try:
-                payload = json.loads(message.payload.decode())
-                topic = str(message.topic)
-
-                # Handle registration
-                if "api_register" in topic:
-                    client_id = payload.get("client_id", "")
-                    request_id = payload.get("request_id", "")
-                    await handle_registration(mqtt_client, client_id, request_id)
-
-                # Handle commands
-                elif "api_request" in topic:
-                    # Extract client_id from topic
-                    # Format: elegoo/<sn>/<client_id>/api_request
-                    parts = topic.split("/")
-                    if len(parts) >= 4:
-                        client_id = parts[2]
-
-                        # Check for heartbeat
-                        if "type" in payload:
-                            await handle_heartbeat(mqtt_client, client_id, payload)
-                        else:
-                            await handle_command(mqtt_client, client_id, payload)
-
-            except json.JSONDecodeError:
-                print(f"⚠️  Invalid JSON: {message.payload}")
-            except (OSError, TimeoutError, KeyError, ValueError) as e:
-                print(f"⚠️  Error handling message: {e}")
-
-    except asyncio.CancelledError:
-        print("📡 Message handler cancelled")
-
-
-async def status_publisher(mqtt_client, stop_event):
-    """Periodically publish status updates (delta format)."""
-    while not stop_event.is_set():
-        try:
-            await asyncio.sleep(5)
-            if not stop_event.is_set() and registered_clients:
-                status_event = create_status_event()
-                topic = f"elegoo/{SERIAL_NUMBER}/api_status"
-                await mqtt_client.publish(topic, json.dumps(status_event))
-        except asyncio.CancelledError:
+    async for message in mqtt_client.messages:
+        if stop_event.is_set():
             break
-        except (OSError, TimeoutError):
-            print("⚠️  Error publishing status")
+
+        topic = str(message.topic)
+        try:
+            payload = json.loads(message.payload.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+
+        # Registration request
+        if topic == f"elegoo/{SERIAL_NUMBER}/api_register":
+            client_id = payload.get("client_id", "")
+            request_id = payload.get("request_id", "")
+            await handle_registration(mqtt_client, client_id, request_id)
+
+        # Command request (extract client_id from topic)
+        elif "/api_request" in topic:
+            parts = topic.split("/")
+            if len(parts) >= 3:
+                client_id = parts[2]
+                # Check for heartbeat
+                if "type" in payload:
+                    await handle_heartbeat(mqtt_client, client_id, payload)
+                else:
+                    await handle_command(mqtt_client, client_id, payload)
 
 
-async def simulate_printing(stop_event):
-    """Simulate printing progress."""
-    while not stop_event.is_set():
-        await asyncio.sleep(2)
-
-        if printer_status["status"] == 2:  # Printing
-            job = printer_status["print_job"]
-            if job["current_layer"] < job["total_layers"]:
-                job["current_layer"] += 1
-                job["print_time"] += random.randint(5, 15)
-                job["progress"] = int(job["current_layer"] / job["total_layers"] * 100)
-                print(
-                    f"📊 Layer {job['current_layer']}/{job['total_layers']} "
-                    f"({job['progress']}%)"
-                )
-            else:
-                print("✅ Print completed!")
-                printer_status["status"] = 1
-                printer_status["sub_status"] = 2077  # Completed
+# =============================================================================
+# SIMULATION TASKS
+# =============================================================================
 
 
 async def simulate_temperatures(stop_event):
-    """Simulate temperature changes."""
+    """Simulate temperature changes over time."""
     while not stop_event.is_set():
-        await asyncio.sleep(1)
+        await asyncio.sleep(2)
 
-        # Simulate nozzle heating
-        target = printer_status["temp_extruder_target"]
-        current = printer_status["temp_extruder"]
-        if target > current:
-            printer_status["temp_extruder"] = min(target, current + 2.0)
-        elif target < current and current > 25:
-            printer_status["temp_extruder"] = max(25, current - 1.0)
+        # Simulate extruder temperature approaching target
+        target = printer_status["extruder"]["target"]
+        current = printer_status["extruder"]["temperature"]
+        if target > 0:
+            if current < target:
+                printer_status["extruder"]["temperature"] = min(target, current + random.uniform(3, 8))
+            elif current > target + 5:
+                printer_status["extruder"]["temperature"] = max(target, current - random.uniform(1, 3))
+        else:
+            if current > 30:
+                printer_status["extruder"]["temperature"] = max(25, current - random.uniform(2, 5))
 
-        # Simulate bed heating
-        target = printer_status["temp_heater_bed_target"]
-        current = printer_status["temp_of_bed"] = printer_status["temp_heater_bed"]
-        if target > current:
-            printer_status["temp_heater_bed"] = min(target, current + 1.0)
-        elif target < current and current > 24:
-            printer_status["temp_heater_bed"] = max(24, current - 0.5)
+        # Simulate bed temperature approaching target
+        target = printer_status["heater_bed"]["target"]
+        current = printer_status["heater_bed"]["temperature"]
+        if target > 0:
+            if current < target:
+                printer_status["heater_bed"]["temperature"] = min(target, current + random.uniform(1, 4))
+            elif current > target + 3:
+                printer_status["heater_bed"]["temperature"] = max(target, current - random.uniform(0.5, 1.5))
+        else:
+            if current > 28:
+                printer_status["heater_bed"]["temperature"] = max(25, current - random.uniform(1, 3))
+
+
+async def simulate_printing(stop_event):
+    """Simulate print progress."""
+    while not stop_event.is_set():
+        await asyncio.sleep(3)
+
+        if printer_status["machine_status"]["status"] != STATUS_PRINTING:
+            continue
+
+        sub_status = printer_status["machine_status"]["sub_status"]
+
+        # Handle preheating -> printing transition
+        if sub_status in (SUB_STATUS_EXTRUDER_PREHEATING, SUB_STATUS_BED_PREHEATING):
+            ext_temp = printer_status["extruder"]["temperature"]
+            ext_target = printer_status["extruder"]["target"]
+            bed_temp = printer_status["heater_bed"]["temperature"]
+            bed_target = printer_status["heater_bed"]["target"]
+
+            if ext_temp >= ext_target - 5 and bed_temp >= bed_target - 3:
+                printer_status["machine_status"]["sub_status"] = SUB_STATUS_PRINTING
+                print("🔥 Preheating complete, starting print")
+
+        # Progress the print
+        elif sub_status == SUB_STATUS_PRINTING:
+            ps = printer_status["print_status"]
+            if ps["current_layer"] < ps["total_layer"]:
+                ps["current_layer"] += 1
+                ps["progress"] = (ps["current_layer"] / ps["total_layer"]) * 100
+                ps["print_duration"] += 3
+                ps["remaining_time_sec"] = max(0, ps["total_duration"] - ps["print_duration"])
+
+                printer_status["machine_status"]["progress"] = int(ps["progress"])
+
+                if ps["current_layer"] % 10 == 0:
+                    print(f"🖨️  Layer {ps['current_layer']}/{ps['total_layer']} ({ps['progress']:.1f}%)")
+            else:
+                # Print complete
+                printer_status["machine_status"]["status"] = STATUS_IDLE
+                printer_status["machine_status"]["sub_status"] = SUB_STATUS_PRINTING_COMPLETED
+                printer_status["extruder"]["target"] = 0.0
+                printer_status["heater_bed"]["target"] = 0.0
+                print("✅ Print complete!")
+
+
+async def status_publisher(mqtt_client, stop_event):
+    """Publish delta status updates periodically."""
+    status_topic = f"elegoo/{SERIAL_NUMBER}/api_status"
+
+    while not stop_event.is_set():
+        await asyncio.sleep(5)  # Publish status every 5 seconds
+
+        if registered_clients:
+            status_event = create_status_event()
+            await mqtt_client.publish(status_topic, json.dumps(status_event))
+            # Only log occasionally
+            if status_sequence_id % 12 == 0:
+                print(f"📊 Status update #{status_sequence_id}")
+
+
+# =============================================================================
+# UDP DISCOVERY SERVER
+# =============================================================================
 
 
 async def udp_discovery_server(stop_event):
@@ -406,7 +565,10 @@ async def udp_discovery_server(stop_event):
                 if not stop_event.is_set():
                     print(f"⚠️  UDP error: {e}")
 
-    print("✅ UDP discovery server shut down")
+
+# =============================================================================
+# MQTT BROKER AND CLIENT
+# =============================================================================
 
 
 async def run_mqtt_broker(stop_event):
@@ -448,6 +610,12 @@ async def run_mqtt_client(stop_event):
         ) as mqtt_client:
             print("✅ Internal MQTT client connected")
 
+            # Subscribe to topics
+            await mqtt_client.subscribe(f"elegoo/{SERIAL_NUMBER}/api_register")
+            await mqtt_client.subscribe(f"elegoo/{SERIAL_NUMBER}/+/api_request")
+            print(f"📡 Subscribed to: elegoo/{SERIAL_NUMBER}/api_register")
+            print(f"📡 Subscribed to: elegoo/{SERIAL_NUMBER}/+/api_request")
+
             # Start background tasks
             handler_task = asyncio.create_task(
                 mqtt_message_handler(mqtt_client, stop_event)
@@ -458,10 +626,12 @@ async def run_mqtt_client(stop_event):
             print_task = asyncio.create_task(simulate_printing(stop_event))
             temp_task = asyncio.create_task(simulate_temperatures(stop_event))
 
-            print(f"\n📡 CC2 Printer ready!")
+            print(f"\n{'='*70}")
+            print(f"📡 CC2 Printer ready!")
             print(f"   Serial: {SERIAL_NUMBER}")
             print(f"   MQTT Broker: {PRINTER_IP}:{MQTT_PORT}")
             print(f"   Discovery: UDP {UDP_DISCOVERY_PORT}")
+            print(f"{'='*70}\n")
 
             # Wait for stop
             await stop_event.wait()
@@ -474,6 +644,11 @@ async def run_mqtt_client(stop_event):
 
     except (OSError, TimeoutError) as e:
         print(f"⚠️  MQTT client error: {e}")
+
+
+# =============================================================================
+# MAIN ENTRY POINT
+# =============================================================================
 
 
 async def main():
@@ -491,6 +666,7 @@ async def main():
     print(f"Printer Name:  {PRINTER_NAME}")
     print(f"Model:         {PRINTER_MODEL}")
     print(f"Serial:        {SERIAL_NUMBER}")
+    print(f"Firmware:      {FIRMWARE_VERSION}")
     print(f"IP Address:    {PRINTER_IP}")
     print(f"MQTT Port:     {MQTT_PORT}")
     print(f"Discovery:     UDP {UDP_DISCOVERY_PORT}")
@@ -503,23 +679,21 @@ async def main():
     client_task = asyncio.create_task(run_mqtt_client(stop_event))
 
     try:
-        await stop_event.wait()
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Received interrupt signal")
-        stop_event.set()
+        await asyncio.gather(udp_task, broker_task, client_task)
+    except asyncio.CancelledError:
+        pass
     finally:
         print("\n🛑 Shutting down CC2 simulator...")
+        stop_event.set()
 
         for task in [udp_task, broker_task, client_task]:
-            task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
+            if not task.done():
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
 
-        print("✅ CC2 simulator shut down\n")
+        print("✅ CC2 simulator stopped")
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+    asyncio.run(main())
