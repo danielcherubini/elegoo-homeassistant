@@ -281,4 +281,9 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
     ) -> web.StreamResponse:
         """Generate an HTTP MJPEG stream from the camera."""
         await self._update_stream_url()
+        if not self._mjpeg_url:
+            return web.Response(
+                status=HTTPStatus.SERVICE_UNAVAILABLE,
+                reason="Stream URL not available",
+            )
         return await super().handle_async_mjpeg_stream(request)
