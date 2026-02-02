@@ -554,7 +554,21 @@ class ElegooCC2Client:
 
     def _handle_video_response(self, video_data: dict[str, Any]) -> None:
         """Handle video stream response."""
-        self.printer_data.video = ElegooVideo(video_data)
+        # CC2 returns {"error_code": 0, "token": "..."} - construct URL
+        error_code = video_data.get("error_code", 0)
+        token = video_data.get("token", "")
+
+        # Construct video URL for CC2 (MJPEG stream on port 8080)
+        video_url = ""
+        if error_code == 0 and token:
+            video_url = f"http://{self.printer_ip}:8080/?action=stream"
+
+        # Convert to format ElegooVideo expects
+        converted_data = {
+            "Ack": 0 if error_code == 0 else error_code,
+            "VideoUrl": video_url,
+        }
+        self.printer_data.video = ElegooVideo(converted_data)
 
     async def _send_command(
         self,

@@ -1,0 +1,778 @@
+{
+  "timestamp": "2026-02-02T19:31:13.603387",
+  "printer_ip": "localhost",
+  "serial_number": "CC2TEST1234567890",
+  "client_id": "debug_d83845ca",
+  "total_messages": 21,
+  "messages": [
+    {
+      "timestamp": "2026-02-02T19:30:34.495993",
+      "direction": "send",
+      "topic": "elegoo/CC2TEST1234567890/api_register",
+      "payload": {
+        "client_id": "debug_d83845ca",
+        "request_id": "debug_d83845ca_req"
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:34.499151",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/debug_d83845ca_req/register_response",
+      "payload": {
+        "client_id": "debug_d83845ca",
+        "error": "ok"
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:35.596680",
+      "direction": "send",
+      "topic": "elegoo/CC2TEST1234567890/debug_d83845ca/api_request",
+      "payload": {
+        "id": 1,
+        "method": 1001,
+        "params": {}
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:35.599661",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/debug_d83845ca/api_response",
+      "payload": {
+        "id": 1,
+        "method": 1001,
+        "result": {
+          "error_code": 0,
+          "machine_model": "Centauri Carbon 2",
+          "hostname": "Centauri Carbon 2 Test",
+          "sn": "CC2TEST1234567890",
+          "software_version": {
+            "ota_version": "1.0.5.2"
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:37.597354",
+      "direction": "send",
+      "topic": "elegoo/CC2TEST1234567890/debug_d83845ca/api_request",
+      "payload": {
+        "id": 2,
+        "method": 1002,
+        "params": {}
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:37.600572",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/debug_d83845ca/api_response",
+      "payload": {
+        "id": 2,
+        "method": 1002,
+        "result": {
+          "error_code": 0,
+          "machine_status": {
+            "status": 2,
+            "sub_status": 2075,
+            "progress": 22,
+            "exception_status": []
+          },
+          "print_status": {
+            "filename": "test_benchy.gcode",
+            "total_duration": 7200,
+            "print_duration": 1482,
+            "remaining_time_sec": 5718,
+            "total_layer": 500,
+            "current_layer": 114,
+            "progress": 22.8
+          },
+          "extruder": {
+            "temperature": 220.0,
+            "target": 220.0
+          },
+          "heater_bed": {
+            "temperature": 60.0,
+            "target": 60.0
+          },
+          "ztemperature_sensor": {
+            "temperature": 25.0,
+            "measured_max_temperature": 30.0,
+            "measured_min_temperature": 20.0
+          },
+          "fans": {
+            "fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "heater_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "controller_fan": {
+              "speed": 50,
+              "rpm": 2000
+            },
+            "box_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "aux_fan": {
+              "speed": 0,
+              "rpm": 0
+            }
+          },
+          "led": {
+            "status": 255
+          },
+          "gcode_move_inf": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "e": 0.0,
+            "speed_mode": 1
+          },
+          "toolhead": {
+            "homed_axes": ""
+          },
+          "external_device": {
+            "u_disk": false,
+            "camera": true,
+            "type": 0
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:39.356757",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/api_status",
+      "payload": {
+        "id": 1,
+        "method": 6000,
+        "result": {
+          "error_code": 0,
+          "machine_status": {
+            "status": 2,
+            "sub_status": 2075,
+            "progress": 22,
+            "exception_status": []
+          },
+          "print_status": {
+            "filename": "test_benchy.gcode",
+            "total_duration": 7200,
+            "print_duration": 1482,
+            "remaining_time_sec": 5718,
+            "total_layer": 500,
+            "current_layer": 114,
+            "progress": 22.8
+          },
+          "extruder": {
+            "temperature": 220.0,
+            "target": 220.0
+          },
+          "heater_bed": {
+            "temperature": 60.0,
+            "target": 60.0
+          },
+          "ztemperature_sensor": {
+            "temperature": 25.0,
+            "measured_max_temperature": 30.0,
+            "measured_min_temperature": 20.0
+          },
+          "fans": {
+            "fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "heater_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "controller_fan": {
+              "speed": 50,
+              "rpm": 2000
+            },
+            "box_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "aux_fan": {
+              "speed": 0,
+              "rpm": 0
+            }
+          },
+          "led": {
+            "status": 255
+          },
+          "gcode_move_inf": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "e": 0.0,
+            "speed_mode": 1
+          },
+          "toolhead": {
+            "homed_axes": ""
+          },
+          "external_device": {
+            "u_disk": false,
+            "camera": true,
+            "type": 0
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:39.597858",
+      "direction": "send",
+      "topic": "elegoo/CC2TEST1234567890/debug_d83845ca/api_request",
+      "payload": {
+        "id": 3,
+        "method": 1050,
+        "params": {
+          "enable": 1
+        }
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:39.600168",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/debug_d83845ca/api_response",
+      "payload": {
+        "id": 3,
+        "method": 1050,
+        "result": {
+          "error_code": 0,
+          "video_url": "rtsp://127.0.0.1:8554/live"
+        }
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:41.598274",
+      "direction": "send",
+      "topic": "elegoo/CC2TEST1234567890/debug_d83845ca/api_request",
+      "payload": {
+        "type": "PING"
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:41.600892",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/debug_d83845ca/api_response",
+      "payload": {
+        "type": "PONG"
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:44.358996",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/api_status",
+      "payload": {
+        "id": 2,
+        "method": 6000,
+        "result": {
+          "error_code": 0,
+          "machine_status": {
+            "status": 2,
+            "sub_status": 2075,
+            "progress": 23,
+            "exception_status": []
+          },
+          "print_status": {
+            "filename": "test_benchy.gcode",
+            "total_duration": 7200,
+            "print_duration": 1488,
+            "remaining_time_sec": 5712,
+            "total_layer": 500,
+            "current_layer": 116,
+            "progress": 23.200000000000003
+          },
+          "extruder": {
+            "temperature": 220.0,
+            "target": 220.0
+          },
+          "heater_bed": {
+            "temperature": 60.0,
+            "target": 60.0
+          },
+          "ztemperature_sensor": {
+            "temperature": 25.0,
+            "measured_max_temperature": 30.0,
+            "measured_min_temperature": 20.0
+          },
+          "fans": {
+            "fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "heater_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "controller_fan": {
+              "speed": 50,
+              "rpm": 2000
+            },
+            "box_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "aux_fan": {
+              "speed": 0,
+              "rpm": 0
+            }
+          },
+          "led": {
+            "status": 255
+          },
+          "gcode_move_inf": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "e": 0.0,
+            "speed_mode": 1
+          },
+          "toolhead": {
+            "homed_axes": ""
+          },
+          "external_device": {
+            "u_disk": false,
+            "camera": true,
+            "type": 0
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:49.361252",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/api_status",
+      "payload": {
+        "id": 3,
+        "method": 6000,
+        "result": {
+          "error_code": 0,
+          "machine_status": {
+            "status": 2,
+            "sub_status": 2075,
+            "progress": 23,
+            "exception_status": []
+          },
+          "print_status": {
+            "filename": "test_benchy.gcode",
+            "total_duration": 7200,
+            "print_duration": 1494,
+            "remaining_time_sec": 5706,
+            "total_layer": 500,
+            "current_layer": 118,
+            "progress": 23.599999999999998
+          },
+          "extruder": {
+            "temperature": 220.0,
+            "target": 220.0
+          },
+          "heater_bed": {
+            "temperature": 60.0,
+            "target": 60.0
+          },
+          "ztemperature_sensor": {
+            "temperature": 25.0,
+            "measured_max_temperature": 30.0,
+            "measured_min_temperature": 20.0
+          },
+          "fans": {
+            "fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "heater_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "controller_fan": {
+              "speed": 50,
+              "rpm": 2000
+            },
+            "box_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "aux_fan": {
+              "speed": 0,
+              "rpm": 0
+            }
+          },
+          "led": {
+            "status": 255
+          },
+          "gcode_move_inf": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "e": 0.0,
+            "speed_mode": 1
+          },
+          "toolhead": {
+            "homed_axes": ""
+          },
+          "external_device": {
+            "u_disk": false,
+            "camera": true,
+            "type": 0
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:54.364034",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/api_status",
+      "payload": {
+        "id": 4,
+        "method": 6000,
+        "result": {
+          "error_code": 0,
+          "machine_status": {
+            "status": 2,
+            "sub_status": 2075,
+            "progress": 23,
+            "exception_status": []
+          },
+          "print_status": {
+            "filename": "test_benchy.gcode",
+            "total_duration": 7200,
+            "print_duration": 1497,
+            "remaining_time_sec": 5703,
+            "total_layer": 500,
+            "current_layer": 119,
+            "progress": 23.799999999999997
+          },
+          "extruder": {
+            "temperature": 220.0,
+            "target": 220.0
+          },
+          "heater_bed": {
+            "temperature": 60.0,
+            "target": 60.0
+          },
+          "ztemperature_sensor": {
+            "temperature": 25.0,
+            "measured_max_temperature": 30.0,
+            "measured_min_temperature": 20.0
+          },
+          "fans": {
+            "fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "heater_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "controller_fan": {
+              "speed": 50,
+              "rpm": 2000
+            },
+            "box_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "aux_fan": {
+              "speed": 0,
+              "rpm": 0
+            }
+          },
+          "led": {
+            "status": 255
+          },
+          "gcode_move_inf": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "e": 0.0,
+            "speed_mode": 1
+          },
+          "toolhead": {
+            "homed_axes": ""
+          },
+          "external_device": {
+            "u_disk": false,
+            "camera": true,
+            "type": 0
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:54.600300",
+      "direction": "send",
+      "topic": "elegoo/CC2TEST1234567890/debug_d83845ca/api_request",
+      "payload": {
+        "type": "PING"
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:54.603060",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/debug_d83845ca/api_response",
+      "payload": {
+        "type": "PONG"
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:30:59.365235",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/api_status",
+      "payload": {
+        "id": 5,
+        "method": 6000,
+        "result": {
+          "error_code": 0,
+          "machine_status": {
+            "status": 2,
+            "sub_status": 2075,
+            "progress": 24,
+            "exception_status": []
+          },
+          "print_status": {
+            "filename": "test_benchy.gcode",
+            "total_duration": 7200,
+            "print_duration": 1503,
+            "remaining_time_sec": 5697,
+            "total_layer": 500,
+            "current_layer": 121,
+            "progress": 24.2
+          },
+          "extruder": {
+            "temperature": 220.0,
+            "target": 220.0
+          },
+          "heater_bed": {
+            "temperature": 60.0,
+            "target": 60.0
+          },
+          "ztemperature_sensor": {
+            "temperature": 25.0,
+            "measured_max_temperature": 30.0,
+            "measured_min_temperature": 20.0
+          },
+          "fans": {
+            "fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "heater_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "controller_fan": {
+              "speed": 50,
+              "rpm": 2000
+            },
+            "box_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "aux_fan": {
+              "speed": 0,
+              "rpm": 0
+            }
+          },
+          "led": {
+            "status": 255
+          },
+          "gcode_move_inf": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "e": 0.0,
+            "speed_mode": 1
+          },
+          "toolhead": {
+            "homed_axes": ""
+          },
+          "external_device": {
+            "u_disk": false,
+            "camera": true,
+            "type": 0
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:31:04.367824",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/api_status",
+      "payload": {
+        "id": 6,
+        "method": 6000,
+        "result": {
+          "error_code": 0,
+          "machine_status": {
+            "status": 2,
+            "sub_status": 2075,
+            "progress": 24,
+            "exception_status": []
+          },
+          "print_status": {
+            "filename": "test_benchy.gcode",
+            "total_duration": 7200,
+            "print_duration": 1509,
+            "remaining_time_sec": 5691,
+            "total_layer": 500,
+            "current_layer": 123,
+            "progress": 24.6
+          },
+          "extruder": {
+            "temperature": 220.0,
+            "target": 220.0
+          },
+          "heater_bed": {
+            "temperature": 60.0,
+            "target": 60.0
+          },
+          "ztemperature_sensor": {
+            "temperature": 25.0,
+            "measured_max_temperature": 30.0,
+            "measured_min_temperature": 20.0
+          },
+          "fans": {
+            "fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "heater_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "controller_fan": {
+              "speed": 50,
+              "rpm": 2000
+            },
+            "box_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "aux_fan": {
+              "speed": 0,
+              "rpm": 0
+            }
+          },
+          "led": {
+            "status": 255
+          },
+          "gcode_move_inf": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "e": 0.0,
+            "speed_mode": 1
+          },
+          "toolhead": {
+            "homed_axes": ""
+          },
+          "external_device": {
+            "u_disk": false,
+            "camera": true,
+            "type": 0
+          }
+        }
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:31:04.601885",
+      "direction": "send",
+      "topic": "elegoo/CC2TEST1234567890/debug_d83845ca/api_request",
+      "payload": {
+        "type": "PING"
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:31:04.604879",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/debug_d83845ca/api_response",
+      "payload": {
+        "type": "PONG"
+      }
+    },
+    {
+      "timestamp": "2026-02-02T19:31:09.370593",
+      "direction": "recv",
+      "topic": "elegoo/CC2TEST1234567890/api_status",
+      "payload": {
+        "id": 7,
+        "method": 6000,
+        "result": {
+          "error_code": 0,
+          "machine_status": {
+            "status": 2,
+            "sub_status": 2075,
+            "progress": 24,
+            "exception_status": []
+          },
+          "print_status": {
+            "filename": "test_benchy.gcode",
+            "total_duration": 7200,
+            "print_duration": 1512,
+            "remaining_time_sec": 5688,
+            "total_layer": 500,
+            "current_layer": 124,
+            "progress": 24.8
+          },
+          "extruder": {
+            "temperature": 220.0,
+            "target": 220.0
+          },
+          "heater_bed": {
+            "temperature": 60.0,
+            "target": 60.0
+          },
+          "ztemperature_sensor": {
+            "temperature": 25.0,
+            "measured_max_temperature": 30.0,
+            "measured_min_temperature": 20.0
+          },
+          "fans": {
+            "fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "heater_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "controller_fan": {
+              "speed": 50,
+              "rpm": 2000
+            },
+            "box_fan": {
+              "speed": 0,
+              "rpm": 0
+            },
+            "aux_fan": {
+              "speed": 0,
+              "rpm": 0
+            }
+          },
+          "led": {
+            "status": 255
+          },
+          "gcode_move_inf": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "e": 0.0,
+            "speed_mode": 1
+          },
+          "toolhead": {
+            "homed_axes": ""
+          },
+          "external_device": {
+            "u_disk": false,
+            "camera": true,
+            "type": 0
+          }
+        }
+      }
+    }
+  ]
+}

@@ -118,73 +118,86 @@ registered_clients: dict[str, str] = {}
 # Delta status sequence counter
 status_sequence_id = 0
 
-# Full printer status (matches real CC2 structure)
+# Full printer status (matches real CC2 structure from debug output)
 # Start in printing state like the MQTT test printer
 printer_status = {
     "error_code": 0,
-    "machine_status": {
-        "status": STATUS_PRINTING,
-        "sub_status": SUB_STATUS_PRINTING,
-        "progress": 20,
-        "exception_status": [],
-    },
-    "print_status": {
-        "filename": "test_benchy.gcode",
-        "total_duration": 7200,  # 2 hours total
-        "print_duration": 1440,  # 24 minutes elapsed
-        "remaining_time_sec": 5760,  # 1h36m remaining
-        "total_layer": 500,
-        "current_layer": 100,
-        "progress": 20.0,
+    "external_device": {
+        "camera": True,
+        "type": "0303",
+        "u_disk": False,
     },
     "extruder": {
+        "filament_detect_enable": 1,
+        "filament_detected": 1,
+        "target": 220,
         "temperature": 215.0,
-        "target": 220.0,
-    },
-    "heater_bed": {
-        "temperature": 58.0,
-        "target": 60.0,
-    },
-    "ztemperature_sensor": {
-        "temperature": 25.0,
-        "measured_max_temperature": 30.0,
-        "measured_min_temperature": 20.0,
     },
     "fans": {
-        "fan": {"speed": 0, "rpm": 0},
-        "heater_fan": {"speed": 0, "rpm": 0},
-        "controller_fan": {"speed": 50, "rpm": 2000},
-        "box_fan": {"speed": 0, "rpm": 0},
-        "aux_fan": {"speed": 0, "rpm": 0},
+        "aux_fan": {"speed": 178.0},  # ~70%
+        "box_fan": {"speed": 25.5},   # ~10%
+        "controller_fan": {"speed": 255.0},  # 100%
+        "fan": {"speed": 255.0},      # 100%
+        "heater_fan": {"speed": 255.0},  # 100%
+    },
+    "gcode_move": {
+        "extruder": 138.87,
+        "speed": 9019,
+        "speed_mode": SPEED_MODE_BALANCED,
+        "x": 88.148,
+        "y": 139.946,
+        "z": 1.6,
+    },
+    "heater_bed": {
+        "target": 60,
+        "temperature": 58.0,
     },
     "led": {
-        "status": 255,  # Full brightness
+        "status": 1,  # 1 = on, 0 = off
     },
-    "gcode_move_inf": {
-        "x": 0.0,
-        "y": 0.0,
-        "z": 0.0,
-        "e": 0.0,
-        "speed_mode": SPEED_MODE_BALANCED,
+    "machine_status": {
+        "exception_status": [],
+        "progress": 20,
+        "status": STATUS_PRINTING,
+        "sub_status": SUB_STATUS_PRINTING,
+        "sub_status_reason_code": 0,
     },
-    "toolhead": {
-        "homed_axes": "",
+    "print_status": {
+        "bed_mesh_detect": True,
+        "current_layer": 100,
+        "enable": True,
+        "filament_detect": False,
+        "filename": "test_benchy.gcode",
+        "print_duration": 1440,  # seconds elapsed
+        "remaining_time_sec": 5760,  # seconds remaining
+        "state": "printing",
+        "total_duration": 7200,  # total seconds
+        "total_layer": 500,
+        "uuid": "b52af24c-764e-4092-8a50-00e5f8f02b46",
     },
-    "external_device": {
-        "u_disk": False,
-        "camera": True,
-        "type": 0,
+    "tool_head": {
+        "homed_axes": "xyz",
+    },
+    "ztemperature_sensor": {
+        "measured_max_temperature": 0,
+        "measured_min_temperature": 0,
+        "temperature": 33.0,
     },
 }
 
-# Printer attributes
+# Printer attributes (matches real CC2 structure from debug output)
 printer_attributes = {
     "error_code": 0,
-    "machine_model": PRINTER_MODEL,
+    "hardware_version": "",
     "hostname": PRINTER_NAME,
+    "ip": PRINTER_IP,
+    "machine_model": PRINTER_MODEL,
+    "protocol_version": "1.0.0",
     "sn": SERIAL_NUMBER,
     "software_version": {
+        "mcu_version": "00.00.00.00",
         "ota_version": FIRMWARE_VERSION,
+        "soc_version": "",
     },
 }
 
@@ -350,7 +363,7 @@ async def handle_command(mqtt_client, client_id: str, payload: dict):
 
     elif method == CC2_CMD_SET_PRINT_SPEED:
         mode = params.get("mode", SPEED_MODE_BALANCED)
-        printer_status["gcode_move_inf"]["speed_mode"] = mode
+        printer_status["gcode_move"]["speed_mode"] = mode
         mode_names = {0: "Silent", 1: "Balanced", 2: "Sport", 3: "Ludicrous"}
         print(f"⚡ Speed mode: {mode_names.get(mode, 'Unknown')}")
 

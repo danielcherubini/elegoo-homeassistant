@@ -135,16 +135,21 @@ class CC2StatusMapper:
         status.temp_of_box = round(ztemp.get("temperature", 0), 2)
         status.temp_target_box = 0.0  # CC2 may not have box target
 
-        # Map fan speeds from nested structure
+        # Map fan speeds from nested structure (CC2 uses 0-255, convert to %)
         fans = cc2_data.get("fans", {})
         fan_speed = fans.get("fan", {}).get("speed", 0)
         aux_fan_speed = fans.get("aux_fan", {}).get("speed", 0)
         box_fan_speed = fans.get("box_fan", {}).get("speed", 0)
+
+        # Convert 0-255 to percentage (0-100)
+        def to_pct(val: float) -> int:
+            return round(val / 255 * 100) if val else 0
+
         status.current_fan_speed = CurrentFanSpeed(
             {
-                "ModelFan": fan_speed,
-                "AuxiliaryFan": aux_fan_speed,
-                "BoxFan": box_fan_speed,
+                "ModelFan": to_pct(fan_speed),
+                "AuxiliaryFan": to_pct(aux_fan_speed),
+                "BoxFan": to_pct(box_fan_speed),
             }
         )
 
@@ -163,8 +168,8 @@ class CC2StatusMapper:
         print_info = cls._map_print_info(cc2_data, printer_type)
         status.print_info = print_info
 
-        # Map position from gcode_move_inf
-        pos = cc2_data.get("gcode_move_inf", {})
+        # Map position from gcode_move
+        pos = cc2_data.get("gcode_move", {})
         x = pos.get("x", 0)
         y = pos.get("y", 0)
         z = pos.get("z", 0)
@@ -201,8 +206,11 @@ class CC2StatusMapper:
         print_status = cc2_data.get("print_status", {})
 
         print_info.filename = print_status.get("filename")
-        # CC2 doesn't have task_id in print_status, generate from filename
-        if print_info.filename:
+        # Use uuid if available, otherwise generate from filename
+        task_uuid = print_status.get("uuid")
+        if task_uuid:
+            print_info.task_id = task_uuid
+        elif print_info.filename:
             print_info.task_id = f"cc2_{hash(print_info.filename) & 0xFFFFFFFF:08x}"
 
         # Map layer info
@@ -267,8 +275,8 @@ class CC2StatusMapper:
         else:
             print_info.percent_complete = None
 
-        # Map print speed from gcode_move_inf speed_mode
-        gcode_move = cc2_data.get("gcode_move_inf", {})
+        # Map print speed from gcode_move speed_mode
+        gcode_move = cc2_data.get("gcode_move", {})
         speed_mode = gcode_move.get("speed_mode", 1)
         # 0=Silent(50%), 1=Balanced(100%), 2=Sport(150%), 3=Ludicrous(200%)
         speed_map = {0: 50, 1: 100, 2: 150, 3: 200}
@@ -278,7 +286,7 @@ class CC2StatusMapper:
         error_code = cc2_data.get("error_code", 0)
         print_info.error_number = ElegooPrintError.from_int(error_code)
 
-        # Map extrusion data from gcode_move_inf
+        # Map extrusion data from gcode_move
         print_info.current_extrusion = gcode_move.get("e")
 
         return print_info
