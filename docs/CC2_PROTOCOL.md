@@ -1923,6 +1923,96 @@ When contributing:
 
 ---
 
+## Addendum: Implementation Findings
+
+This section documents discrepancies and additional findings discovered during real-world implementation that differ from or extend the main documentation.
+
+### Light Control (Method 1029)
+
+**Documentation states**: `{"brightness": 255}` parameter
+
+**Actual behavior**: The web interface uses `power` parameter:
+```json
+{
+  "id": 1,
+  "method": 1029,
+  "params": {
+    "power": 1
+  }
+}
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `power` | int | 0 = off, 1 = on |
+
+The `brightness` parameter may work on some firmware versions, but `power` is what the official web interface uses.
+
+### Total Layers Not in Delta Updates
+
+**Issue**: The `total_layer` field in `print_status` is often missing from delta status updates (method 6000).
+
+**Explanation**: Since `total_layer` doesn't change during printing, the CC2 protocol omits it from delta updates to save bandwidth. The field is only reliably present in:
+1. Full status response (method 1002) at print start
+2. File details response (method 1046)
+
+**Workaround**: When `total_layer` is missing from `print_status`, fetch file details:
+
+```json
+{
+  "id": 1,
+  "method": 1046,
+  "params": {
+    "storage_media": "local",
+    "filename": "benchy.gcode"
+  }
+}
+```
+
+Response includes:
+```json
+{
+  "id": 1,
+  "method": 1046,
+  "result": {
+    "TotalLayers": 500,
+    "layer": 500,
+    ...
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `TotalLayers` | int | Total layers in the gcode file |
+| `layer` | int | Same as TotalLayers (alternate field name) |
+
+### Field Name Variations in File Details
+
+The file details response (method 1046) may use different field names across firmware versions:
+
+| Standard Name | Variations |
+|--------------|------------|
+| `TotalLayers` | `layer`, `total_layer` |
+
+Always check for multiple field names when parsing file details.
+
+### Begin Time / End Time
+
+**Issue**: `begin_time` and `end_time` are not provided in live print status.
+
+**Available fields in print_status**:
+- `print_duration` - Elapsed time in seconds
+- `remaining_time_sec` - Estimated remaining time in seconds
+- `total_duration` - Estimated total print time in seconds
+
+**Calculating begin_time**: `current_time - print_duration`
+**Calculating end_time**: `current_time + remaining_time_sec`
+
+Note: `begin_time` and `end_time` ARE provided in historical task data (method 1036/1037) but not in live status.
+
+---
+
 ## Changelog
 
 ### 2026-02-02 - Initial Release
