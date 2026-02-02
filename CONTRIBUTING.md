@@ -48,13 +48,21 @@ Use [ruff](https://github.com/astral-sh/ruff) to make sure the code follows the 
 
 ## Test your code modification
 
-This custom component is based on [elegoo_printer template](https://github.com/ludeeus/elegoo_printer).
+See the **[Development Guide](DEVELOPMENT.md)** for detailed setup instructions.
 
-It comes with development environment in a container, easy to launch
-if you use Visual Studio Code. With this container you will have a stand alone
-Home Assistant instance running and already configured with the included
-[`configuration.yaml`](./config/configuration.yaml)
-file.
+### Quick Start
+
+```bash
+make setup   # Install dependencies
+make test    # Run tests
+make start   # Start Home Assistant dev server
+```
+
+The dev server uses the included [`configuration.yaml`](./config/configuration.yaml) and will be available at http://localhost:8123.
+
+### Dev Container (VS Code)
+
+If you use VS Code with Docker, open the project and select "Reopen in Container" for a fully configured development environment.
 
 ## License
 

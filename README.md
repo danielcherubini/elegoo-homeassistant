@@ -106,4 +106,14 @@ Compatible with [Spoolman Home Assistant](https://github.com/Disane87/spoolman-h
 ---
 
 ## ❤️ Contributing
+
 If you've tested a new model not mentioned here, or if you've found a way to improve MQTT support, please [open an issue](https://github.com/danielcherubini/elegoo-homeassistant/issues) or a PR!
+
+### Development Setup
+
+Want to contribute code or help debug printer protocols? See the **[Development Guide](DEVELOPMENT.md)** for detailed setup instructions covering:
+
+- Linux/macOS setup
+- Windows setup (with troubleshooting for common issues)
+- Dev Container setup (VS Code + Docker)
+- Running the debug script to capture printer data
