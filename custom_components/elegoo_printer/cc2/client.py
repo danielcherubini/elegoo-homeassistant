@@ -555,13 +555,13 @@ class ElegooCC2Client:
 
     def _handle_video_response(self, video_data: dict[str, Any]) -> None:
         """Handle video stream response."""
-        # CC2 returns {"error_code": 0, "token": "..."} - construct URL
         error_code = video_data.get("error_code", 0)
-        token = video_data.get("token", "")
 
-        # Construct video URL for CC2 (MJPEG stream on port 8080)
-        video_url = ""
-        if error_code == 0 and token:
+        # CC2 may return video_url directly or just success
+        # Construct URL for MJPEG stream on port 8080 if successful
+        video_url = video_data.get("video_url", "")
+        if error_code == 0 and not video_url:
+            # No URL provided but success - construct default stream URL
             video_url = f"http://{self.printer_ip}:8080/?action=stream"
 
         # Convert to format ElegooVideo expects
@@ -716,10 +716,10 @@ class ElegooCC2Client:
 
     async def set_light_status(self, light_status: LightStatus) -> None:
         """Set the printer's light status."""
-        # CC2 expects {"brightness": 0-255}, convert from LightStatus
-        # second_light is 0 (off) or 1 (on), map to 0 or 255
-        brightness = 255 if light_status.second_light else 0
-        await self._send_command(CC2_CMD_SET_LIGHT, {"brightness": brightness})
+        # CC2 uses "status" field for LED (0=off, 1=on based on led.status in responses)
+        # Try both common formats - some firmware versions may differ
+        status = 1 if light_status.second_light else 0
+        await self._send_command(CC2_CMD_SET_LIGHT, {"status": status})
 
     async def print_pause(self) -> None:
         """Pause the current print."""
