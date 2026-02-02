@@ -26,6 +26,9 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterNotConnectedError,
     ElegooPrinterTimeoutError,
 )
+from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
+    PrintHistoryDetail,
+)
 from custom_components.elegoo_printer.sdcp.models.printer import (
     Printer,
     PrinterData,
@@ -61,9 +64,6 @@ from .models import CC2StatusMapper
 
 if TYPE_CHECKING:
     from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
-    from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
-        PrintHistoryDetail,
-    )
     from custom_components.elegoo_printer.sdcp.models.status import LightStatus
 
 
@@ -523,8 +523,48 @@ class ElegooCC2Client:
                 "Updated printer status: %s",
                 self.printer_data.status.current_status,
             )
+            # Update current job for begin_time/end_time sensors
+            self._update_current_job()
         except Exception:
             self.logger.exception("Failed to map CC2 status to PrinterStatus")
+
+    def _update_current_job(self) -> None:
+        """Update current job from print status data."""
+        print_status = self._cached_status.get("print_status", {})
+        task_id = print_status.get("uuid")
+        filename = print_status.get("filename")
+
+        if not task_id or not filename:
+            # No active print task
+            return
+
+        # Get or create PrintHistoryDetail for current task
+        current_job = self.printer_data.print_history.get(task_id)
+        if current_job is None:
+            # Create new PrintHistoryDetail for this task
+            # Calculate begin_time from print_duration
+            print_duration = print_status.get("print_duration", 0)
+            begin_time_ts = (
+                int(time.time() - print_duration) if print_duration else None
+            )
+            total_duration = print_status.get("total_duration")
+
+            task_data = {
+                "TaskId": task_id,
+                "TaskName": filename,
+                "BeginTime": begin_time_ts,
+                "SliceInformation": {
+                    "total_layer_numbers": print_status.get("total_layer"),
+                    "print_time": total_duration,
+                },
+            }
+            current_job = PrintHistoryDetail(task_data)
+            self.printer_data.print_history[task_id] = current_job
+            self.logger.debug(
+                "Created current job: task_id=%s, begin_time=%s",
+                task_id,
+                current_job.begin_time,
+            )
 
     def _request_full_status_background(self) -> None:
         """Request full status in the background."""
@@ -716,10 +756,10 @@ class ElegooCC2Client:
 
     async def set_light_status(self, light_status: LightStatus) -> None:
         """Set the printer's light status."""
-        # CC2 uses "status" field for LED (0=off, 1=on based on led.status in responses)
-        # Try both common formats - some firmware versions may differ
-        status = 1 if light_status.second_light else 0
-        await self._send_command(CC2_CMD_SET_LIGHT, {"status": status})
+        # CC2 uses "power" field for LED control (0=off, 1=on)
+        # Based on web interface: LightSwitch,params:{power:Se?1:0}
+        power = 1 if light_status.second_light else 0
+        await self._send_command(CC2_CMD_SET_LIGHT, {"power": power})
 
     async def print_pause(self) -> None:
         """Pause the current print."""

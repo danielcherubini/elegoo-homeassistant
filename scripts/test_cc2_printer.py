@@ -402,10 +402,14 @@ async def handle_command(mqtt_client, client_id: str, payload: dict):
         print(f"⚡ Speed mode: {mode_names.get(mode, 'Unknown')}")
 
     elif method == CC2_CMD_SET_LIGHT:
-        # Accept both "brightness" (0-255) and "status" (0/1) formats
+        # Accept "power" (0/1), "brightness" (0-255), or "status" (0/1) formats
+        power = params.get("power")
         brightness = params.get("brightness")
         status = params.get("status")
-        if brightness is not None:
+        if power is not None:
+            printer_status["led"]["status"] = power
+            print(f"💡 Light: {'on' if power else 'off'} (power={power})")
+        elif brightness is not None:
             printer_status["led"]["status"] = 1 if brightness > 0 else 0
             print(f"💡 Light: {'on' if brightness > 0 else 'off'} (brightness={brightness})")
         elif status is not None:
