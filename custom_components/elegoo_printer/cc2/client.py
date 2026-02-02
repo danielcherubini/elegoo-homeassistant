@@ -37,6 +37,7 @@ from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
 from .const import (
     CC2_CMD_GET_ATTRIBUTES,
+    CC2_CMD_GET_FILE_DETAIL,
     CC2_CMD_GET_STATUS,
     CC2_CMD_PAUSE_PRINT,
     CC2_CMD_RESUME_PRINT,
@@ -538,6 +539,18 @@ class ElegooCC2Client:
             # No active print task
             return
 
+        # Get total_layer from print_status or cached file details
+        total_layer = print_status.get("total_layer")
+        if total_layer is None:
+            # Try to get from cached file details
+            file_details = self._cached_status.get("_file_details", {})
+            if filename in file_details:
+                total_layer = file_details[filename].get("TotalLayers")
+            elif not hasattr(self, "_pending_file_detail_request"):
+                # Request file details in background (only once per filename)
+                self._pending_file_detail_request = filename
+                self._request_file_detail_background(filename)
+
         # Get or create PrintHistoryDetail for current task
         current_job = self.printer_data.print_history.get(task_id)
         if current_job is None:
@@ -554,17 +567,66 @@ class ElegooCC2Client:
                 "TaskName": filename,
                 "BeginTime": begin_time_ts,
                 "SliceInformation": {
-                    "total_layer_numbers": print_status.get("total_layer"),
+                    "total_layer_numbers": total_layer,
                     "print_time": total_duration,
                 },
             }
             current_job = PrintHistoryDetail(task_data)
             self.printer_data.print_history[task_id] = current_job
             self.logger.debug(
-                "Created current job: task_id=%s, begin_time=%s",
+                "Created current job: task_id=%s, begin_time=%s, total_layers=%s",
                 task_id,
                 current_job.begin_time,
+                total_layer,
             )
+        elif total_layer and current_job.slice_information.total_layer_numbers is None:
+            # Update existing job with total_layer if we got it
+            current_job.slice_information.total_layer_numbers = total_layer
+            self.logger.debug("Updated current job total_layers=%s", total_layer)
+
+    def _request_file_detail_background(self, filename: str) -> None:
+        """Request file details in the background."""
+        task = asyncio.create_task(self._request_file_detail(filename))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _request_file_detail(self, filename: str) -> None:
+        """Request file details from printer."""
+        try:
+            # Determine storage_media (usually "local" for internal storage)
+            result = await self._send_command(
+                CC2_CMD_GET_FILE_DETAIL,
+                {"storage_media": "local", "filename": filename},
+            )
+            if result:
+                self._handle_file_detail_response(filename, result)
+        except (
+            ElegooPrinterTimeoutError,
+            ElegooPrinterConnectionError,
+            ElegooPrinterNotConnectedError,
+        ):
+            self.logger.debug("Failed to get file details for %s", filename)
+        finally:
+            if hasattr(self, "_pending_file_detail_request"):
+                del self._pending_file_detail_request
+
+    def _handle_file_detail_response(
+        self, filename: str, result: dict[str, Any]
+    ) -> None:
+        """Handle file detail response and cache TotalLayers."""
+        if "_file_details" not in self._cached_status:
+            self._cached_status["_file_details"] = {}
+
+        total_layers = result.get("TotalLayers") or result.get("layer")
+        if total_layers:
+            self._cached_status["_file_details"][filename] = {
+                "TotalLayers": total_layers,
+            }
+            self.logger.debug(
+                "Cached file details for %s: TotalLayers=%s", filename, total_layers
+            )
+            # Update printer status with new info
+            self._update_printer_status()
 
     def _request_full_status_background(self) -> None:
         """Request full status in the background."""

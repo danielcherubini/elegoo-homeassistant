@@ -234,7 +234,10 @@ class CC2StatusMapper:
 
         # Map layer info
         print_info.current_layer = print_status.get("current_layer")
-        print_info.total_layers = print_status.get("total_layer")
+        # Get total_layer from print_status or cached file details
+        print_info.total_layers = cls._get_total_layers(
+            print_status, cc2_data, print_info.filename
+        )
         if print_info.current_layer is not None and print_info.total_layers is not None:
             print_info.remaining_layers = max(
                 0, print_info.total_layers - print_info.current_layer
@@ -311,6 +314,20 @@ class CC2StatusMapper:
         print_info.current_extrusion = gcode_move.get("e") or gcode_move.get("extruder")
 
         return print_info
+
+    @staticmethod
+    def _get_total_layers(
+        print_status: dict[str, Any],
+        cc2_data: dict[str, Any],
+        filename: str | None,
+    ) -> int | None:
+        """Get total layers from print_status or cached file details."""
+        total_layers = print_status.get("total_layer")
+        if total_layers is None and filename:
+            file_details = cc2_data.get("_file_details", {})
+            file_info = file_details.get(filename, {})
+            total_layers = file_info.get("TotalLayers")
+        return total_layers
 
     @classmethod
     def map_attributes(cls, cc2_data: dict[str, Any]) -> PrinterAttributes:
