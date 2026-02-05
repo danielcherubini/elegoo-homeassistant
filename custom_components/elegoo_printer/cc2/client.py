@@ -599,7 +599,9 @@ class ElegooCC2Client:
                 {"storage_media": "local", "filename": filename},
             )
             if result:
-                self._handle_file_detail_response(filename, result)
+                # _send_command returns the full message; extract inner result
+                inner = result.get("result", result)
+                self._handle_file_detail_response(filename, inner)
         except (
             ElegooPrinterTimeoutError,
             ElegooPrinterConnectionError,
@@ -617,7 +619,11 @@ class ElegooCC2Client:
         if "_file_details" not in self._cached_status:
             self._cached_status["_file_details"] = {}
 
-        total_layers = result.get("TotalLayers") or result.get("layer")
+        total_layers = (
+            result.get("TotalLayers")
+            or result.get("layer")
+            or result.get("total_layer")
+        )
         if total_layers:
             self._cached_status["_file_details"][filename] = {
                 "TotalLayers": total_layers,
@@ -627,6 +633,12 @@ class ElegooCC2Client:
             )
             # Update printer status with new info
             self._update_printer_status()
+        else:
+            self.logger.debug(
+                "File detail response for %s had no TotalLayers. Keys: %s",
+                filename,
+                list(result.keys()),
+            )
 
     def _request_full_status_background(self) -> None:
         """Request full status in the background."""
