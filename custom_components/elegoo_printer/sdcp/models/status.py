@@ -75,8 +75,8 @@ class PrintInfo:
         remaining_ticks (int | None): Remaining print time in ms, or None if unknown.
         progress (int | None): Device-reported print progress (0-100), or None
             if unknown.
-        percent_complete (int | None): Percentage complete, clamped to [0, 100], or None
-            if unknown.
+        percent_complete (float | None): Percentage complete, clamped to
+            [0, 100], or None if unknown.
         print_speed_pct (int): The current print speed as a percentage.
         filename (str): Print File Name.
         error_number (ElegooPrintError): Error Number (refer to documentation).
@@ -125,7 +125,7 @@ class PrintInfo:
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
         self.end_time = None
         # percent_complete is optional when printer is idle/unknown
-        self.percent_complete: int | None = None
+        self.percent_complete: float | None = None
 
         percent_complete = None
         # Report progress only during an active job to avoid leaking stale values.
@@ -142,14 +142,14 @@ class PrintInfo:
         }
         if self.status in active_statuses:
             if self.progress is not None:
-                percent_complete = int(self.progress)
+                percent_complete = round(float(self.progress), 2)
             elif (
                 self.current_layer is not None
                 and self.total_layers is not None
                 and self.total_layers > 0
             ):
-                # Optional: round to reduce downward bias from truncation
-                percent_complete = round((self.current_layer / self.total_layers) * 100)
+                ratio = self.current_layer / self.total_layers
+                percent_complete = round(ratio * 100, 2)
         else:
             percent_complete = None
 

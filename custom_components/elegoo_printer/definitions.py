@@ -403,6 +403,7 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:percent",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
         value_fn=lambda printer_data: printer_data.status.print_info.percent_complete,
     ),
     ElegooPrinterSensorEntityDescription(
