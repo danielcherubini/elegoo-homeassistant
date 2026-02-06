@@ -549,7 +549,7 @@ Commands are JSON messages sent to control the printer.
 | 1036 | PRINT_TASK_LIST | Get print history | `{"page": 1, "page_size": 10}` |
 | 1037 | PRINT_TASK_DETAIL | Get task details | `{"uuid": "..."}` |
 | 1044 | GET_FILE_LIST | List files | `{"storage_media": "local", "path": "/"}` |
-| 1045 | GET_FILE_THUMBNAIL | Get file thumbnail | `{"storage_media": "local", "file_name": "..."}` |
+| 1045 | GET_FILE_THUMBNAIL | Get file thumbnail | `{"storage_media": "local", "filename": "..."}` |
 | 1046 | GET_FILE_DETAIL | Get file info | `{"storage_media": "local", "filename": "..."}` |
 | 1048 | GET_DISK_INFO | Get storage info | `{"storage_media": "local"}` |
 | 2005 | GET_CANVAS_STATUS | Get AMS status | None |
@@ -2009,7 +2009,7 @@ Method 1045 (`GET_FILE_THUMBNAIL`) retrieves a thumbnail image for a print file.
   "method": 1045,
   "params": {
     "storage_media": "local",
-    "file_name": "benchy.gcode"
+    "filename": "benchy.gcode"
   }
 }
 ```
@@ -2029,7 +2029,7 @@ Method 1045 (`GET_FILE_THUMBNAIL`) retrieves a thumbnail image for a print file.
 | Field | Type | Description |
 |-------|------|-------------|
 | `storage_media` | string | Storage location (`local`, `u-disk`, `sd-card`) |
-| `file_name` | string | Name of the gcode file |
+| `filename` | string | Name of the gcode file |
 | `thumbnail` | string | Base64-encoded image data (typically PNG) |
 
 **Notes:**
