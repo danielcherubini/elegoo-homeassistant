@@ -549,6 +549,7 @@ Commands are JSON messages sent to control the printer.
 | 1036 | PRINT_TASK_LIST | Get print history | `{"page": 1, "page_size": 10}` |
 | 1037 | PRINT_TASK_DETAIL | Get task details | `{"uuid": "..."}` |
 | 1044 | GET_FILE_LIST | List files | `{"storage_media": "local", "path": "/"}` |
+| 1045 | GET_FILE_THUMBNAIL | Get file thumbnail | `{"storage_media": "local", "file_name": "..."}` |
 | 1046 | GET_FILE_DETAIL | Get file info | `{"storage_media": "local", "filename": "..."}` |
 | 1048 | GET_DISK_INFO | Get storage info | `{"storage_media": "local"}` |
 | 2005 | GET_CANVAS_STATUS | Get AMS status | None |
@@ -1996,6 +1997,46 @@ The file details response (method 1046) may use different field names across fir
 | `TotalLayers` | `layer`, `total_layer` |
 
 Always check for multiple field names when parsing file details.
+
+### File Thumbnail (Method 1045)
+
+Method 1045 (`GET_FILE_THUMBNAIL`) retrieves a thumbnail image for a print file. This is used to display a preview of the current print job.
+
+**Request:**
+```json
+{
+  "id": 1,
+  "method": 1045,
+  "params": {
+    "storage_media": "local",
+    "file_name": "benchy.gcode"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "method": 1045,
+  "result": {
+    "error_code": 0,
+    "thumbnail": "<base64-encoded PNG image data>"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `storage_media` | string | Storage location (`local`, `u-disk`, `sd-card`) |
+| `file_name` | string | Name of the gcode file |
+| `thumbnail` | string | Base64-encoded image data (typically PNG) |
+
+**Notes:**
+- The `thumbnail` field contains raw base64 data (not a data URI)
+- If the file has no embedded thumbnail, the response may omit the `thumbnail` field or return an error
+- Thumbnails are typically embedded in gcode files by the slicer
+- Source: `elegoo-fdm-web` LAN web interface (`25-app-components.js`)
 
 ### Begin Time / End Time
 

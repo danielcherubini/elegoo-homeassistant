@@ -38,6 +38,7 @@ from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 from .const import (
     CC2_CMD_GET_ATTRIBUTES,
     CC2_CMD_GET_FILE_DETAIL,
+    CC2_CMD_GET_FILE_THUMBNAIL,
     CC2_CMD_GET_STATUS,
     CC2_CMD_PAUSE_PRINT,
     CC2_CMD_RESUME_PRINT,
@@ -565,6 +566,14 @@ class ElegooCC2Client:
                 self._pending_file_detail_request = filename
                 self._request_file_detail_background(filename)
 
+        # Get cached thumbnail for this file
+        file_thumbnails = self._cached_status.get("_file_thumbnails", {})
+        thumbnail = file_thumbnails.get(filename)
+        if not thumbnail and not hasattr(self, "_pending_thumbnail_request"):
+            # Request thumbnail in background (only once per filename)
+            self._pending_thumbnail_request = filename
+            self._request_file_thumbnail_background(filename)
+
         # Get or create PrintHistoryDetail for current task
         current_job = self.printer_data.print_history.get(task_id)
         if current_job is None:
@@ -582,6 +591,7 @@ class ElegooCC2Client:
                 "TaskId": task_id,
                 "TaskName": filename,
                 "BeginTime": begin_time_ts,
+                "Thumbnail": thumbnail,
                 "SliceInformation": {
                     "total_layer_numbers": total_layer,
                     "print_time": total_duration,
@@ -595,10 +605,16 @@ class ElegooCC2Client:
                 current_job.begin_time,
                 total_layer,
             )
-        elif total_layer and current_job.slice_information.total_layer_numbers is None:
-            # Update existing job with total_layer if we got it
-            current_job.slice_information.total_layer_numbers = total_layer
-            self.logger.debug("Updated current job total_layers=%s", total_layer)
+        else:
+            slice_info = current_job.slice_information
+            if total_layer and slice_info.total_layer_numbers is None:
+                # Update existing job with total_layer if we got it
+                slice_info.total_layer_numbers = total_layer
+                self.logger.debug("Updated current job total_layers=%s", total_layer)
+            if thumbnail and current_job.thumbnail != thumbnail:
+                # Update existing job with thumbnail if we got it
+                current_job.thumbnail = thumbnail
+                self.logger.debug("Updated current job thumbnail")
 
     def _request_file_detail_background(self, filename: str) -> None:
         """Request file details in the background."""
@@ -652,6 +668,55 @@ class ElegooCC2Client:
         else:
             self.logger.debug(
                 "File detail response for %s had no TotalLayers. Keys: %s",
+                filename,
+                list(result.keys()),
+            )
+
+    def _request_file_thumbnail_background(self, filename: str) -> None:
+        """Request file thumbnail in the background."""
+        task = asyncio.create_task(self._request_file_thumbnail(filename))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _request_file_thumbnail(self, filename: str) -> None:
+        """Request file thumbnail from printer."""
+        try:
+            result = await self._send_command(
+                CC2_CMD_GET_FILE_THUMBNAIL,
+                {"storage_media": "local", "file_name": filename},
+            )
+            if result:
+                inner = result.get("result", result)
+                self._handle_file_thumbnail_response(filename, inner)
+        except (
+            ElegooPrinterTimeoutError,
+            ElegooPrinterConnectionError,
+            ElegooPrinterNotConnectedError,
+        ):
+            self.logger.debug("Failed to get file thumbnail for %s", filename)
+        finally:
+            if hasattr(self, "_pending_thumbnail_request"):
+                del self._pending_thumbnail_request
+
+    def _handle_file_thumbnail_response(
+        self, filename: str, result: dict[str, Any]
+    ) -> None:
+        """Handle file thumbnail response and cache thumbnail data."""
+        if "_file_thumbnails" not in self._cached_status:
+            self._cached_status["_file_thumbnails"] = {}
+
+        thumbnail = result.get("thumbnail")
+        if thumbnail:
+            # Store as data URI for use by the image entity
+            if not thumbnail.startswith("data:"):
+                thumbnail = f"data:image/png;base64,{thumbnail}"
+            self._cached_status["_file_thumbnails"][filename] = thumbnail
+            self.logger.debug("Cached file thumbnail for %s", filename)
+            # Update printer status so the thumbnail propagates to the job
+            self._update_printer_status()
+        else:
+            self.logger.debug(
+                "File thumbnail response for %s had no thumbnail. Keys: %s",
                 filename,
                 list(result.keys()),
             )
