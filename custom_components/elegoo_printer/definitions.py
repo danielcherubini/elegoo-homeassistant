@@ -148,6 +148,38 @@ class ElegooPrinterNumberEntityDescription(NumberEntityDescription):
 
 PRINT_SPEED_PRESETS = {"Silent": 50, "Balanced": 100, "Sport": 150, "Ludicrous": 200}
 
+
+def _get_closest_print_speed_preset(speed_pct: int | None) -> str | None:
+    """
+    Find the closest matching print speed preset name for a given percentage.
+
+    This function handles cases where the printer reports a speed that doesn't
+    exactly match a preset (e.g., 160% when Ludicrous mode is selected but
+    clamped by the printer firmware).
+
+    Arguments:
+        speed_pct: The current print speed percentage from the printer.
+
+    Returns:
+        The name of the closest matching preset, or None if speed_pct is None.
+
+    """
+    if speed_pct is None:
+        return None
+
+    # Find the preset with the minimum difference
+    closest_name = None
+    min_diff = float("inf")
+
+    for name, value in PRINT_SPEED_PRESETS.items():
+        diff = abs(value - speed_pct)
+        if diff < min_diff:
+            min_diff = diff
+            closest_name = name
+
+    return closest_name
+
+
 # Attributes common to both V1 (MQTT) and V3 (WebSocket/SDCP) printers
 PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
@@ -731,17 +763,9 @@ PRINTER_SELECT_TYPES: tuple[ElegooPrinterSelectEntityDescription, ...] = (
         icon="mdi:speedometer",
         options=list(PRINT_SPEED_PRESETS.keys()),
         options_map=PRINT_SPEED_PRESETS,
-        current_option_fn=lambda printer_data: (
-            next(
-                (
-                    name
-                    for name, value in PRINT_SPEED_PRESETS.items()
-                    if printer_data.status.print_info
-                    and value == printer_data.status.print_info.print_speed_pct
-                ),
-                None,
-            )
-            if printer_data.status and printer_data.status.print_info
+        current_option_fn=lambda printer_data: _get_closest_print_speed_preset(
+            printer_data.status.print_info.print_speed_pct
+            if printer_data and printer_data.status and printer_data.status.print_info
             else None
         ),
         select_option_fn=lambda api, value: api.async_set_print_speed(value),
