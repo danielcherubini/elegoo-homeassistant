@@ -19,7 +19,7 @@ VENV ?= .venv
 # --- PHONY TARGETS ---
 # .PHONY ensures that make will run the command even if a file with the same
 # name as the target exists.
-.PHONY: all setup start debug devcontainer test test-server test-mqtt-printer test-mqtt-broker extract format lint fix clean help
+.PHONY: all setup start debug devcontainer test test-server test-mqtt-printer test-cc2-printer test-mqtt-broker extract format lint fix clean help
 
 # --- DEFAULT TARGET ---
 # The default target that runs when you just type 'make'
@@ -67,6 +67,11 @@ test-server:
 test-mqtt-printer:
 	@echo "--> Starting the MQTT test printer..."
 	@VIRTUAL_ENV=$(VENV) uv run --active $(PYTHON) scripts/test_mqtt_printer.py
+
+# Runs the CC2 test printer (simulates Centauri Carbon 2 with embedded MQTT broker).
+test-cc2-printer:
+	@echo "--> Starting the CC2 test printer..."
+	@VIRTUAL_ENV=$(VENV) uv run --active $(PYTHON) scripts/test_cc2_printer.py
 
 # Runs the embedded MQTT broker test.
 test-mqtt-broker:
@@ -130,6 +135,7 @@ help:
 	@echo "  devcontainer         Run the application within a devcontainer."
 	@echo "  test-server          Run the WebSocket test server for development."
 	@echo "  test-mqtt-printer    Run the MQTT test printer."
+	@echo "  test-cc2-printer     Run the CC2 test printer simulator."
 	@echo "  test-mqtt-broker     Run the embedded MQTT broker test."
 	@echo "  extract              Extract data from a Centauri Carbon 2 printer."
 	@echo "                       Use 'make extract PRINTER_IP=x.x.x.x' for a specific printer."

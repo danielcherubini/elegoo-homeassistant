@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 from custom_components.elegoo_printer.const import (
     CONF_CAMERA_ENABLED,
+    CONF_CC2_ACCESS_CODE,
+    CONF_CC2_TOKEN_STATUS,
     CONF_EXTERNAL_IP,
     CONF_MQTT_BROKER_ENABLED,
     CONF_PROXY_ENABLED,
@@ -103,6 +105,8 @@ class Printer:
     external_ip: str | None
     open_centauri: bool
     has_vat_heater: bool
+    cc2_access_code: str | None
+    cc2_token_status: int
 
     def __init__(  # noqa: PLR0915
         self,
@@ -124,6 +128,7 @@ class Printer:
             self.printer_type = None
             self.is_proxy = False
             self.open_centauri = False
+            self.has_vat_heater = False
         else:
             try:
                 j: dict[str, Any] = json.loads(json_string)  # Decode the JSON string
@@ -177,6 +182,9 @@ class Printer:
         self.external_ip = config.get(CONF_EXTERNAL_IP)
         self.proxy_websocket_port = None
         self.proxy_video_port = None
+        # CC2-specific settings
+        self.cc2_access_code = config.get(CONF_CC2_ACCESS_CODE)
+        self.cc2_token_status = config.get(CONF_CC2_TOKEN_STATUS, 0)
 
     @staticmethod
     def _is_open_centauri(model: str | None, firmware: str | None) -> bool:
@@ -255,6 +263,8 @@ class Printer:
             "external_ip": self.external_ip,
             "open_centauri": self.open_centauri,
             "has_vat_heater": self.has_vat_heater,
+            "cc2_access_code": self.cc2_access_code,
+            "cc2_token_status": self.cc2_token_status,
         }
 
     def to_dict_safe(self) -> dict[str, Any]:
@@ -265,8 +275,10 @@ class Printer:
             dict: Dictionary representation with sensitive fields redacted.
 
         """
-        # No sensitive fields to redact anymore since we removed MQTT auth
-        return self.to_dict()
+        data = self.to_dict()
+        # Redact CC2 access code to prevent logging secrets
+        data.pop("cc2_access_code", None)
+        return data
 
     @classmethod
     def from_dict(
@@ -328,6 +340,14 @@ class Printer:
 
         # Check if this printer has vat heating capability
         printer.has_vat_heater = Printer._has_vat_heater(printer.model)
+
+        # CC2-specific settings
+        printer.cc2_access_code = attrs.get(
+            CONF_CC2_ACCESS_CODE, attrs.get("cc2_access_code")
+        )
+        printer.cc2_token_status = attrs.get(
+            CONF_CC2_TOKEN_STATUS, attrs.get("cc2_token_status", 0)
+        )
 
         return printer
 

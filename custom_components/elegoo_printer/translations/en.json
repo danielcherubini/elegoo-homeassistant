@@ -12,6 +12,33 @@
         "data_description": {
           "external_ip": "Override auto-detected address with an IP address or hostname. Leave blank for automatic detection. Use for Kubernetes/Docker setups or when behind a reverse proxy. Ports 3030 and 3031 will be appended automatically."
         }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 Options",
+        "description": "Configure your Centauri Carbon 2 printer settings.",
+        "data": {
+          "ip_address": "Printer IP Address",
+          "cc2_access_code": "Access Code (optional)"
+        }
+      },
+      "mqtt_options": {
+        "title": "MQTT Printer Options",
+        "description": "Configure your MQTT printer settings.",
+        "data": {
+          "ip_address": "Printer IP Address"
+        }
+      },
+      "websocket_options": {
+        "title": "Printer Options",
+        "description": "For help with configuration, please see the project's GitHub page.",
+        "data": {
+          "ip_address": "Printer IP Address",
+          "proxy_enabled": "Enable the proxy server",
+          "external_ip": "External Address (optional, for advanced network setups)"
+        },
+        "data_description": {
+          "external_ip": "Override auto-detected address with an IP address or hostname. Leave blank for automatic detection. Use for Kubernetes/Docker setups or when behind a reverse proxy. Ports 3030 and 3031 will be appended automatically."
+        }
       }
     }
   },
@@ -49,6 +76,13 @@
         "data": {
           "camera_enabled": "Enable the camera"
         }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 Options",
+        "description": "Configure your Centauri Carbon 2 printer. If your printer has access code authentication enabled, enter your access code below. Leave blank if no access code is required.",
+        "data": {
+          "cc2_access_code": "Access Code (optional)"
+        }
       }
     },
     "error": {
@@ -59,7 +93,9 @@
       "validation_no_printer_found": "Validation failed: No printer was found.",
       "no_printer_selected_or_ip_provided": "Please select a discovered printer or provide an IP address.",
       "manual_options_no_printer_found": "The selected printer could not be found to apply options.",
-      "init_no_printer_found": "Failed to initialize: The printer could not be found."
+      "init_no_printer_found": "Failed to initialize: The printer could not be found.",
+      "cc2_options_no_printer_found": "The CC2 printer could not be found.",
+      "cc2_access_code_required": "This printer requires an access code for authentication."
     },
     "abort": {
       "already_configured": "This entry is already configured."

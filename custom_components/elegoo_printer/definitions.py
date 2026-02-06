@@ -146,7 +146,7 @@ class ElegooPrinterNumberEntityDescription(NumberEntityDescription):
     set_value_fn: Callable[..., Coroutine[Any, Any, None]]
 
 
-PRINT_SPEED_PRESETS = {"Silent": 50, "Balanced": 100, "Sport": 130, "Ludicrous": 160}
+PRINT_SPEED_PRESETS = {"Silent": 50, "Balanced": 100, "Sport": 150, "Ludicrous": 200}
 
 # Attributes common to both V1 (MQTT) and V3 (WebSocket/SDCP) printers
 PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
