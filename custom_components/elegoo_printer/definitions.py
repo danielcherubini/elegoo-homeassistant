@@ -179,6 +179,7 @@ def _get_closest_print_speed_preset(speed_pct: int | None) -> str | None:
 
     return closest_name
 
+
 # Attributes common to both V1 (MQTT) and V3 (WebSocket/SDCP) printers
 PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
@@ -764,9 +765,7 @@ PRINTER_SELECT_TYPES: tuple[ElegooPrinterSelectEntityDescription, ...] = (
         options_map=PRINT_SPEED_PRESETS,
         current_option_fn=lambda printer_data: _get_closest_print_speed_preset(
             printer_data.status.print_info.print_speed_pct
-            if printer_data
-            and printer_data.status
-            and printer_data.status.print_info
+            if printer_data and printer_data.status and printer_data.status.print_info
             else None
         ),
         select_option_fn=lambda api, value: api.async_set_print_speed(value),
