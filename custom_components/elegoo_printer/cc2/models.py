@@ -311,7 +311,10 @@ class CC2StatusMapper:
         print_info.error_number = ElegooPrintError.from_int(error_code)
 
         # Map extrusion data
-        print_info.current_extrusion = gcode_move.get("e") or gcode_move.get("extruder")
+        e_value = gcode_move.get("e")
+        print_info.current_extrusion = (
+            e_value if e_value is not None else gcode_move.get("extruder")
+        )
 
         return print_info
 

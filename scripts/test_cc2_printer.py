@@ -431,7 +431,7 @@ async def handle_command(mqtt_client, client_id: str, payload: dict):
 
     elif method == CC2_CMD_HOME_AXES:
         axes = params.get("homed_axes", "xyz")
-        printer_status["toolhead"]["homed_axes"] = axes
+        printer_status["tool_head"]["homed_axes"] = axes
         print(f"🏠 Homing axes: {axes}")
 
     elif method == CC2_CMD_GET_CANVAS_STATUS:

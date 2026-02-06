@@ -22,7 +22,6 @@ The script will:
 Output is saved to: cc2_debug_<timestamp>.json
 """
 
-import asyncio
 import json
 import secrets
 import socket
@@ -51,13 +50,13 @@ CC2_DISCOVERY_TIMEOUT = 10
 
 # MQTT
 CC2_MQTT_PORT = 1883
-CC2_MQTT_USERNAME = "bblp"
+CC2_MQTT_USERNAME = "elegoo"
 CC2_MQTT_PASSWORD = ""  # Empty by default, or access code
 
 # Command IDs
 CC2_CMD_GET_ATTRIBUTES = 1001
 CC2_CMD_GET_STATUS = 1002
-CC2_CMD_SET_VIDEO_STREAM = 1050
+CC2_CMD_SET_VIDEO_STREAM = 1042
 CC2_CMD_SET_FAN_SPEED = 1030
 CC2_CMD_SET_LIGHT = 1029
 
@@ -141,7 +140,6 @@ class CC2MQTTDebugger:
         self.messages: list[dict] = []
         self.request_counter = 0
         self.registered = False
-        self.registration_event = asyncio.Event()
 
         # Set up callbacks
         self.client.on_connect = self._on_connect
@@ -391,7 +389,7 @@ def main():
     debugger.send_command(CC2_CMD_GET_STATUS)
     time.sleep(2)
 
-    print("\n  Requesting video stream info (method 1050)...")
+    print("\n  Requesting video stream info (method 1042)...")
     debugger.send_command(CC2_CMD_SET_VIDEO_STREAM, {"enable": 1})
     time.sleep(2)
 
@@ -423,7 +421,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # Windows compatibility
-    if sys.platform == "win32":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     main()

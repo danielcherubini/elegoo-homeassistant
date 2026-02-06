@@ -47,6 +47,7 @@ from .const import (
     CC2_CMD_SET_TEMPERATURE,
     CC2_CMD_SET_VIDEO_STREAM,
     CC2_CMD_STOP_PRINT,
+    CC2_COMMAND_TIMEOUT,
     CC2_EVENT_ATTRIBUTES,
     CC2_EVENT_STATUS,
     CC2_HEARTBEAT_INTERVAL,
@@ -125,6 +126,10 @@ class ElegooCC2Client:
         self._cached_status: dict[str, Any] = {}
         self._status_sequence = 0
         self._non_continuous_count = 0
+
+        # Registration tracking
+        self._registration_event: asyncio.Event | None = None
+        self._registration_result: dict[str, Any] | None = None
 
         # Heartbeat tracking
         self._last_pong_time: float = 0
@@ -347,6 +352,11 @@ class ElegooCC2Client:
                         int(time_since_pong),
                     )
                     self._is_connected = False
+                    self._is_registered = False
+                    # Schedule proper cleanup in background
+                    task = asyncio.create_task(self.disconnect())
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
                     break
 
                 # Send PING
@@ -360,6 +370,10 @@ class ElegooCC2Client:
             except (OSError, aiomqtt.MqttError) as e:
                 self.logger.warning("Heartbeat error: %s", e)
                 self._is_connected = False
+                self._is_registered = False
+                task = asyncio.create_task(self.disconnect())
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
                 break
 
     async def _request_initial_data(self) -> None:
@@ -414,7 +428,7 @@ class ElegooCC2Client:
         # Handle registration response
         if "register_response" in topic:
             self._registration_result = data
-            if hasattr(self, "_registration_event") and self._registration_event:
+            if self._registration_event:
                 self._registration_event.set()
             return
 
@@ -435,11 +449,11 @@ class ElegooCC2Client:
 
         self.logger.debug("Received response: method=%s, id=%s", method, request_id)
 
-        # Store response data
+        # Store response data only if a waiter exists
         if request_id is not None:
             async with self._response_lock:
-                self._response_data[request_id] = data
                 if event := self._response_events.get(request_id):
+                    self._response_data[request_id] = data
                     event.set()
 
         # Process specific response types
@@ -556,9 +570,11 @@ class ElegooCC2Client:
         if current_job is None:
             # Create new PrintHistoryDetail for this task
             # Calculate begin_time from print_duration
-            print_duration = print_status.get("print_duration", 0)
+            print_duration = print_status.get("print_duration")
             begin_time_ts = (
-                int(time.time() - print_duration) if print_duration else None
+                int(time.time() - print_duration)
+                if print_duration is not None
+                else None
             )
             total_duration = print_status.get("total_duration")
 
@@ -730,9 +746,11 @@ class ElegooCC2Client:
 
                 if wait_for_response:
                     try:
-                        await asyncio.wait_for(event.wait(), timeout=10)
+                        await asyncio.wait_for(
+                            event.wait(), timeout=CC2_COMMAND_TIMEOUT
+                        )
                         async with self._response_lock:
-                            return self._response_data.pop(request_id, None)
+                            return self._response_data.get(request_id)
                     except asyncio.TimeoutError as e:
                         self.logger.debug("Timeout for method %d", method)
                         raise ElegooPrinterTimeoutError from e

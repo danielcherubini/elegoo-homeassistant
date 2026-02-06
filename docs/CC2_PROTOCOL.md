@@ -1716,25 +1716,25 @@ def get_firmware_version(attrs):
 
 | Feature | CC1 (Centauri Carbon) | CC2 (Centauri Carbon 2) |
 |---------|----------------------|-------------------------|
-| **Discovery** |
+| **Discovery** | | |
 | Port | 3000 | 52700 |
 | Message | `M99999` | `{"id":0,"method":7000}` |
 | Protocol | TCP | UDP |
-| **Communication** |
+| **Communication** | | |
 | Transport | WebSocket | MQTT |
 | Broker Location | External (HA) | **On Printer** |
 | Client Role | Server | **Client** |
-| **Authentication** |
+| **Authentication** | | |
 | Registration | Not required | **Required** |
 | Password | None | `123456` or access code |
-| **Connection** |
+| **Connection** | | |
 | Heartbeat | Not required | **Every 10s** |
 | Max Clients | Unlimited | **~4** |
 | Timeout | None | **65 seconds** |
-| **Status** |
+| **Status** | | |
 | Update Type | Full | **Delta** |
 | Message Format | Proprietary | JSON |
-| **Features** |
+| **Features** | | |
 | Canvas/AMS | No | Yes |
 | Video Stream | Varies | MJPEG on :8080 |
 

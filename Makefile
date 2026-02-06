@@ -135,6 +135,7 @@ help:
 	@echo "  devcontainer         Run the application within a devcontainer."
 	@echo "  test-server          Run the WebSocket test server for development."
 	@echo "  test-mqtt-printer    Run the MQTT test printer."
+	@echo "  test-cc2-printer     Run the CC2 test printer simulator."
 	@echo "  test-mqtt-broker     Run the embedded MQTT broker test."
 	@echo "  extract              Extract data from a Centauri Carbon 2 printer."
 	@echo "                       Use 'make extract PRINTER_IP=x.x.x.x' for a specific printer."

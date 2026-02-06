@@ -4,6 +4,7 @@
   "codeowners": ["@danielcherubini"],
   "config_flow": true,
   "dependencies": ["ffmpeg"],
+  "requirements": ["aiomqtt>=2.4.0"],
   "documentation": "https://github.com/danielcherubini/elegoo-homeassistant",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/danielcherubini/elegoo-homeassistant/issues",

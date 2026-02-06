@@ -2,7 +2,7 @@
 
 from logging import Logger, getLogger
 
-LOGGER: Logger = getLogger(__name__)
+LOGGER: Logger = getLogger(__package__)
 
 # Discovery settings
 CC2_DISCOVERY_PORT = 52700
@@ -21,6 +21,9 @@ CC2_HEARTBEAT_TIMEOUT = 65  # seconds
 
 # Registration settings
 CC2_REGISTRATION_TIMEOUT = 3  # seconds
+
+# Command timeout
+CC2_COMMAND_TIMEOUT = 10  # seconds
 
 # Delta status settings
 CC2_MAX_NON_CONTINUOUS_EVENTS = 5  # Re-request full status after this many gaps
