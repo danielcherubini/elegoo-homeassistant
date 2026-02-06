@@ -41,10 +41,13 @@ async def async_setup_entry(
         coordinator.config_entry.runtime_data.api.printer.protocol_version
     )
 
-    # Image platform only works with V3 (WebSocket/SDCP) printers
+    # Image platform only works with V3 (WebSocket/SDCP) and CC2 printers
     # V1 (MQTT) printers don't have async_get_task or async_get_thumbnail_image
-    if protocol_version != ProtocolVersion.V3:
-        LOGGER.debug("Skipping image entities for V1 (MQTT) printer")
+    if protocol_version not in (ProtocolVersion.V3, ProtocolVersion.CC2):
+        LOGGER.debug(
+            "Skipping image entities for non-V3/CC2 printer (protocol: %s)",
+            protocol_version,
+        )
         return
 
     LOGGER.debug(f"Adding {len(PRINTER_IMAGES)} image entities")

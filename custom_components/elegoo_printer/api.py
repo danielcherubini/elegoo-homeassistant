@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import re
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
@@ -589,88 +590,109 @@ class ElegooPrinterApiClient:
         if task.thumbnail and task.begin_time is not None:
             LOGGER.debug("get_thumbnail getting thumbnail from url")
 
-            # Rewrite thumbnail URL to use proxy if proxy is enabled
-            thumbnail_url = task.thumbnail
-            if self.printer.proxy_enabled:
-                # Replace printer host with centralized proxy and set id=query
+            # Handle data URI thumbnails (base64-encoded, from CC2 printers)
+            if task.thumbnail.startswith("data:"):
                 try:
-                    external_ip = getattr(self.printer, "external_ip", None)
-                    proxy_ip = PrinterData.get_local_ip(
-                        self.printer.ip_address, external_ip
-                    )
-                    parts = urlsplit(thumbnail_url)
-                    scheme = parts.scheme or "http"
-                    netloc = parts.netloc or self.printer.ip_address
-
-                    # Only rewrite if the URL points to our printer
-                    if self.printer.ip_address in netloc:
-                        # Force proxy host:port
-                        new_netloc = f"{proxy_ip}:3030"
-                        # Merge/replace query id
-                        q = dict(parse_qsl(parts.query, keep_blank_values=True))
-                        q["id"] = self.printer.id
-                        thumbnail_url = urlunsplit(
-                            (
-                                scheme,
-                                new_netloc,
-                                parts.path,
-                                urlencode(q, doseq=True),
-                                parts.fragment,
-                            )
-                        )
-                        LOGGER.debug(
-                            "Rewritten thumbnail URL from %s to %s",
-                            task.thumbnail,
-                            thumbnail_url,
-                        )
-                except (OSError, ValueError) as e:
-                    LOGGER.debug("Failed to rewrite thumbnail URL: %s", e)
-                    thumbnail_url = task.thumbnail
-
-            try:
-                response = await self._fetch_thumbnail_with_retry(thumbnail_url)
-                LOGGER.debug("get_thumbnail response status: %s", response.status_code)
-                raw_ct = response.headers.get("content-type", "")
-                content_type = raw_ct.split(";", 1)[0].strip().lower() or "image/png"
-                LOGGER.debug("get_thumbnail content-type: %s", content_type)
-
-                if content_type == "image/png":
-                    # Normalize common header forms like "image/png; charset=binary"
-                    content_type = content_type.split(";", 1)[0].strip().lower()
-                    LOGGER.debug("get_thumbnail (FDM) content-type: %s", content_type)
+                    # Parse data URI: data:<mediatype>;base64,<data>
+                    header, b64_data = task.thumbnail.split(",", 1)
+                    content_type = header.split(":")[1].split(";")[0]
+                    image_bytes = base64.b64decode(b64_data)
                     return ElegooImage(
                         image_url=task.thumbnail,
-                        image_bytes=response.content,
+                        image_bytes=image_bytes,
                         last_updated_timestamp=task.begin_time.timestamp(),
                         content_type=content_type or "image/png",
                     )
-
-                with (
-                    PILImage.open(BytesIO(response.content)) as img,
-                    BytesIO() as output,
-                ):
-                    rgb_img = img.convert("RGB")
-                    rgb_img.save(output, format="PNG")
-                    png_bytes = output.getvalue()
-                    LOGGER.debug("get_thumbnail converted image to png")
-                    return ElegooImage(
-                        image_url=task.thumbnail,
-                        image_bytes=png_bytes,
-                        last_updated_timestamp=task.begin_time.timestamp(),
-                        content_type="image/png",
-                    )
-            except (
-                ConnectionError,
-                TimeoutError,
-                UnidentifiedImageError,
-                HTTPStatusError,
-                RequestError,
-            ) as e:
-                LOGGER.error("Error fetching thumbnail: %s", e)
-                return None
+                except (ValueError, IndexError):
+                    LOGGER.exception("Error decoding data URI thumbnail")
+            else:
+                return await self._fetch_thumbnail_from_url(task)
 
         LOGGER.debug("No task found")
         return None
+
+    async def _fetch_thumbnail_from_url(
+        self, task: PrintHistoryDetail
+    ) -> ElegooImage | None:
+        """Fetch thumbnail image from an HTTP URL."""
+        thumbnail_url = task.thumbnail
+        if self.printer.proxy_enabled:
+            # Replace printer host with centralized proxy and set id=query
+            try:
+                external_ip = getattr(self.printer, "external_ip", None)
+                proxy_ip = PrinterData.get_local_ip(
+                    self.printer.ip_address, external_ip
+                )
+                parts = urlsplit(thumbnail_url)
+                scheme = parts.scheme or "http"
+                netloc = parts.netloc or self.printer.ip_address
+
+                # Only rewrite if the URL points to our printer
+                if self.printer.ip_address in netloc:
+                    # Force proxy host:port
+                    new_netloc = f"{proxy_ip}:3030"
+                    # Merge/replace query id
+                    q = dict(parse_qsl(parts.query, keep_blank_values=True))
+                    q["id"] = self.printer.id
+                    thumbnail_url = urlunsplit(
+                        (
+                            scheme,
+                            new_netloc,
+                            parts.path,
+                            urlencode(q, doseq=True),
+                            parts.fragment,
+                        )
+                    )
+                    LOGGER.debug(
+                        "Rewritten thumbnail URL from %s to %s",
+                        task.thumbnail,
+                        thumbnail_url,
+                    )
+            except (OSError, ValueError) as e:
+                LOGGER.debug("Failed to rewrite thumbnail URL: %s", e)
+                thumbnail_url = task.thumbnail
+
+        try:
+            response = await self._fetch_thumbnail_with_retry(thumbnail_url)
+            LOGGER.debug("get_thumbnail response status: %s", response.status_code)
+            raw_ct = response.headers.get("content-type", "")
+            content_type = raw_ct.split(";", 1)[0].strip().lower() or "image/png"
+            LOGGER.debug("get_thumbnail content-type: %s", content_type)
+
+            if content_type == "image/png":
+                # Normalize common header forms like "image/png; charset=binary"
+                content_type = content_type.split(";", 1)[0].strip().lower()
+                LOGGER.debug("get_thumbnail (FDM) content-type: %s", content_type)
+                return ElegooImage(
+                    image_url=task.thumbnail,
+                    image_bytes=response.content,
+                    last_updated_timestamp=task.begin_time.timestamp(),
+                    content_type=content_type or "image/png",
+                )
+
+            with (
+                PILImage.open(BytesIO(response.content)) as img,
+                BytesIO() as output,
+            ):
+                rgb_img = img.convert("RGB")
+                rgb_img.save(output, format="PNG")
+                png_bytes = output.getvalue()
+                LOGGER.debug("get_thumbnail converted image to png")
+                return ElegooImage(
+                    image_url=task.thumbnail,
+                    image_bytes=png_bytes,
+                    last_updated_timestamp=task.begin_time.timestamp(),
+                    content_type="image/png",
+                )
+        except (
+            ConnectionError,
+            TimeoutError,
+            UnidentifiedImageError,
+            HTTPStatusError,
+            RequestError,
+        ) as e:
+            LOGGER.error("Error fetching thumbnail: %s", e)
+            return None
 
     async def async_get_thumbnail_bytes(self) -> bytes | None:
         """
