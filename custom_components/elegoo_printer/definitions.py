@@ -150,8 +150,7 @@ PRINT_SPEED_PRESETS = {"Silent": 50, "Balanced": 100, "Sport": 150, "Ludicrous":
 
 
 def _get_closest_print_speed_preset(speed_pct: int | None) -> str | None:
-    """
-    Find the closest matching print speed preset name for a given percentage.
+    """Find the closest matching print speed preset name for a given percentage.
 
     This function handles cases where the printer reports a speed that doesn't
     exactly match a preset (e.g., 160% when Ludicrous mode is selected but
@@ -162,7 +161,6 @@ def _get_closest_print_speed_preset(speed_pct: int | None) -> str | None:
 
     Returns:
         The name of the closest matching preset, or None if speed_pct is None.
-
     """
     if speed_pct is None:
         return None
