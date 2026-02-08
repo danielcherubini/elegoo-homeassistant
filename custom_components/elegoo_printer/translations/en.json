@@ -83,6 +83,20 @@
         "data": {
           "cc2_access_code": "Access Code (optional)"
         }
+      },
+      "cc2_auth_check": {
+        "title": "Centauri Carbon 2 Authentication",
+        "description": "Does your printer require an access code? Check: Settings → Network → Access Code. If 'Off' or blank, select No.",
+        "data": {
+          "requires_access_code": "Access Code Required?"
+        }
+      },
+      "cc2_access_code_input": {
+        "title": "Enter Access Code",
+        "description": "Find your printer's access code at: Settings → Network → Access Code",
+        "data": {
+          "cc2_access_code": "Access Code"
+        }
       }
     },
     "error": {
@@ -95,7 +109,8 @@
       "manual_options_no_printer_found": "The selected printer could not be found to apply options.",
       "init_no_printer_found": "Failed to initialize: The printer could not be found.",
       "cc2_options_no_printer_found": "The CC2 printer could not be found.",
-      "cc2_access_code_required": "This printer requires an access code for authentication."
+      "cc2_access_code_required": "This printer requires an access code for authentication.",
+      "cc2_authentication_failed": "Failed to authenticate. Verify access code in printer settings: Settings → Network → Access Code."
     },
     "abort": {
       "already_configured": "This entry is already configured."

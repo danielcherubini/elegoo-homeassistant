@@ -88,15 +88,47 @@ async def _async_test_connection(
             "Using CC2 MQTT transport for printer %s during config flow",
             printer_object.name,
         )
-        # Skip live connection test - CC2 connects to printer's broker during setup
-        # No embedded broker needed for CC2
-        printer_object.mqtt_broker_enabled = False
-        printer_object.proxy_enabled = False
-        LOGGER.debug(
-            "Prepared CC2 printer %s (no connect test in flow)",
-            printer_object.name,
+        # Import CC2 client for connection testing
+        from .cc2.client import ElegooCC2Client  # noqa: PLC0415
+
+        # Get access code from user input
+        access_code = user_input.get(CONF_CC2_ACCESS_CODE)
+
+        # Create CC2 client and test connection
+        cc2_client = ElegooCC2Client(
+            printer_ip=printer_object.ip_address or "",
+            serial_number=printer_object.id or "",
+            access_code=access_code,
+            logger=LOGGER,
+            printer=printer_object,
         )
-        return printer_object
+
+        try:
+            # Attempt connection with provided credentials
+            connected = await cc2_client.connect_printer(printer_object)
+            if not connected:
+                msg = f"Failed to authenticate with CC2 printer {printer_object.name}"
+                raise ElegooConfigFlowConnectionError(msg)
+
+            # Store the working password back to user_input for persistence
+            # This captures the actual working password (even if it's an empty string)
+            user_input[CONF_CC2_ACCESS_CODE] = cc2_client.access_code
+
+            # Success - clean up test connection
+            await cc2_client.disconnect()
+
+            # Configure printer settings
+            printer_object.mqtt_broker_enabled = False
+            printer_object.proxy_enabled = False
+            LOGGER.debug(
+                "Successfully tested CC2 printer %s connection",
+                printer_object.name,
+            )
+            return printer_object
+        finally:
+            # Ensure cleanup even on exception
+            if cc2_client.is_connected:
+                await cc2_client.disconnect()
 
     if printer_object.transport_type == TransportType.MQTT:
         LOGGER.info(
@@ -242,6 +274,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the configuration flow handler."""
         self.discovered_printers: list[Printer] = []
         self.selected_printer: Printer | None = None
+        self._requires_access_code: bool = False
 
     async def async_step_user(
         self,
@@ -550,79 +583,188 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_cc2_options(
         self,
+        user_input: dict[str, Any] | None = None,  # noqa: ARG002
+    ) -> config_entries.ConfigFlowResult:
+        """Handle the configuration of CC2 printer options (redirect to new flow)."""
+        # Redirect to new two-step authentication flow
+        return await self.async_step_cc2_auth_check()
+
+    async def async_step_cc2_auth_check(
+        self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """Handle the configuration of CC2 printer options."""
+        """Ask user if their CC2 printer requires an access code."""
+        if user_input is not None:
+            # Store user's choice
+            self._requires_access_code = user_input["requires_access_code"] == "yes"
+
+            if self._requires_access_code:
+                # Show password input step
+                return await self.async_step_cc2_access_code_input()
+            # No access code needed - attempt connection with fallback
+            return await self._attempt_cc2_connection(access_code=None)
+
+        # Show form asking if access code is required
+        return self.async_show_form(
+            step_id="cc2_auth_check",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("requires_access_code"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                {"value": "no", "label": "No"},
+                                {"value": "yes", "label": "Yes"},
+                            ],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+        )
+
+    async def async_step_cc2_access_code_input(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """Handle access code input for CC2 printers."""
         _errors = {}
 
-        # Check if this printer requires access code (token_status=1 from discovery)
-        requires_access_code = (
-            self.selected_printer is not None
-            and self.selected_printer.cc2_token_status == 1
-        )
-
-        if user_input is not None and self.selected_printer:
-            printer = Printer.from_dict(self.selected_printer.to_dict())
-            # CC2 printers don't use embedded broker or proxy
-            printer.mqtt_broker_enabled = False
-            printer.proxy_enabled = False
-
-            # Store access code if provided
+        if user_input is not None:
             access_code = user_input.get(CONF_CC2_ACCESS_CODE)
 
-            # Validate access code is provided when required
-            if requires_access_code and not access_code:
+            # Validate access code is provided
+            if not access_code:
                 _errors["base"] = "cc2_access_code_required"
             else:
-                try:
-                    validated_printer = await _async_test_connection(
-                        self.hass, printer, user_input
-                    )
-                    await self.async_set_unique_id(unique_id=validated_printer.id)
-                    self._abort_if_unique_id_configured()
+                # Attempt connection with provided access code
+                return await self._attempt_cc2_connection(access_code=access_code)
 
-                    # Add access code to printer data
-                    printer_data = validated_printer.to_dict()
-                    if access_code:
-                        printer_data[CONF_CC2_ACCESS_CODE] = access_code
-
-                    return self.async_create_entry(
-                        title=validated_printer.name or "Elegoo Printer",
-                        data=printer_data,
-                    )
-                except ElegooConfigFlowConnectionError as exception:
-                    LOGGER.error("Connection error: %s", exception)
-                    _errors["base"] = "connection"
-                except ElegooConfigFlowGeneralError as exception:
-                    LOGGER.error("No printer found: %s", exception)
-                    _errors["base"] = "cc2_options_no_printer_found"
-                except PlatformNotReady as exception:
-                    LOGGER.error(exception)
-                    _errors["base"] = "connection"
-                except OSError as exception:
-                    LOGGER.exception(exception)
-                    _errors["base"] = "unknown"
-
-        # Show form for CC2 options - make access code required if token_status=1
-        code_field = vol.Required if requires_access_code else vol.Optional
-        data_schema = {
-            code_field(CONF_CC2_ACCESS_CODE): selector.TextSelector(
-                selector.TextSelectorConfig(
-                    type=selector.TextSelectorType.PASSWORD,
-                ),
-            ),
-        }
-
+        # Show password input form
         return self.async_show_form(
-            step_id="cc2_options",
-            data_schema=vol.Schema(data_schema),
+            step_id="cc2_access_code_input",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_CC2_ACCESS_CODE): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.PASSWORD,
+                        ),
+                    ),
+                }
+            ),
             errors=_errors,
-            description_placeholders={
-                "printer_name": (
-                    self.selected_printer.name if self.selected_printer else "CC2"
-                ),
-            },
         )
+
+    async def _attempt_cc2_connection(
+        self,
+        access_code: str | None,
+    ) -> config_entries.ConfigFlowResult:
+        """
+        Attempt to connect to CC2 printer with given access code.
+
+        Arguments:
+            access_code: The access code to use (or None for fallback logic).
+
+        Returns:
+            ConfigFlowResult with success or error.
+
+        """
+        if not self.selected_printer:
+            return self.async_abort(reason="no_printer_selected_or_ip_provided")
+
+        printer = Printer.from_dict(self.selected_printer.to_dict())
+        printer.mqtt_broker_enabled = False
+        printer.proxy_enabled = False
+
+        # Prepare user_input with access code
+        # Use explicit None check to allow empty strings
+        user_input = {}
+        if access_code is not None:
+            user_input[CONF_CC2_ACCESS_CODE] = access_code
+
+        try:
+            validated_printer = await _async_test_connection(
+                self.hass, printer, user_input
+            )
+            await self.async_set_unique_id(unique_id=validated_printer.id)
+            self._abort_if_unique_id_configured()
+
+            # Add access code to printer data
+            # Get working password from user_input (updated by _async_test_connection)
+            printer_data = validated_printer.to_dict()
+            working_password = user_input.get(CONF_CC2_ACCESS_CODE)
+            if working_password is not None:
+                printer_data[CONF_CC2_ACCESS_CODE] = working_password
+
+            return self.async_create_entry(
+                title=validated_printer.name or "Elegoo Printer",
+                data=printer_data,
+            )
+        except ElegooConfigFlowConnectionError as exception:
+            LOGGER.error("Connection error: %s", exception)
+            # Show helpful error message
+            return self.async_show_form(
+                step_id=(
+                    "cc2_access_code_input"
+                    if self._requires_access_code
+                    else "cc2_auth_check"
+                ),
+                data_schema=vol.Schema(
+                    {
+                        vol.Required(CONF_CC2_ACCESS_CODE): selector.TextSelector(
+                            selector.TextSelectorConfig(
+                                type=selector.TextSelectorType.PASSWORD,
+                            ),
+                        ),
+                    }
+                    if self._requires_access_code
+                    else {
+                        vol.Required("requires_access_code"): selector.SelectSelector(
+                            selector.SelectSelectorConfig(
+                                options=[
+                                    {"value": "no", "label": "No"},
+                                    {"value": "yes", "label": "Yes"},
+                                ],
+                                mode=selector.SelectSelectorMode.DROPDOWN,
+                            )
+                        )
+                    }
+                ),
+                errors={"base": "cc2_authentication_failed"},
+            )
+        except ElegooConfigFlowGeneralError as exception:
+            LOGGER.error("No printer found: %s", exception)
+            return self.async_abort(reason="cc2_options_no_printer_found")
+        except (PlatformNotReady, OSError) as exception:
+            LOGGER.error(exception)
+            return self.async_show_form(
+                step_id=(
+                    "cc2_access_code_input"
+                    if self._requires_access_code
+                    else "cc2_auth_check"
+                ),
+                data_schema=vol.Schema(
+                    {
+                        vol.Required(CONF_CC2_ACCESS_CODE): selector.TextSelector(
+                            selector.TextSelectorConfig(
+                                type=selector.TextSelectorType.PASSWORD,
+                            ),
+                        ),
+                    }
+                    if self._requires_access_code
+                    else {
+                        vol.Required("requires_access_code"): selector.SelectSelector(
+                            selector.SelectSelectorConfig(
+                                options=[
+                                    {"value": "no", "label": "No"},
+                                    {"value": "yes", "label": "Yes"},
+                                ],
+                                mode=selector.SelectSelectorMode.DROPDOWN,
+                            )
+                        )
+                    }
+                ),
+                errors={"base": "connection"},
+            )
 
     @staticmethod
     @callback

@@ -98,7 +98,7 @@ class ElegooCC2Client:
         """
         self.printer_ip = printer_ip
         self.serial_number = serial_number
-        self.access_code = access_code or CC2_MQTT_DEFAULT_PASSWORD
+        self.access_code = access_code  # Can be None - will try fallbacks
         self.logger = logger
         self.printer: Printer = printer or Printer()
         self.printer_data = PrinterData(printer=self.printer)
@@ -146,6 +146,11 @@ class ElegooCC2Client:
         """
         Connect to the CC2 printer's MQTT broker.
 
+        Tries multiple password strategies if no access code provided:
+        1. User-provided access code (if any)
+        2. Empty password
+        3. Default "123456" password
+
         Arguments:
             printer: The Printer object to connect to.
 
@@ -170,6 +175,80 @@ class ElegooCC2Client:
             CC2_MQTT_PORT,
         )
 
+        # Build list of passwords to try
+        passwords_to_try: list[str] = []
+
+        if self.access_code is not None:
+            # User provided an access code - only try that
+            passwords_to_try = [self.access_code]
+            self.logger.debug("Using user-provided access code")
+        else:
+            # No access code provided - try common passwords
+            passwords_to_try = ["", CC2_MQTT_DEFAULT_PASSWORD]
+            self.logger.debug(
+                "No access code provided, will try fallback passwords: "
+                "[empty string, %s]",
+                CC2_MQTT_DEFAULT_PASSWORD,
+            )
+
+        # Try each password in sequence
+        for attempt_num, password in enumerate(passwords_to_try, 1):
+            # Create safe description for logging (never log actual credentials)
+            if self.access_code is not None:
+                auth_desc = "user-provided access code"
+            elif password == "":
+                auth_desc = "empty access code"
+            else:
+                auth_desc = "default access code"
+
+            self.logger.info(
+                "Connection attempt %d/%d using %s",
+                attempt_num,
+                len(passwords_to_try),
+                auth_desc,
+            )
+
+            success = await self._try_connect_with_password(password)
+            if success:
+                # Store the working password
+                self.access_code = password
+                self.logger.info(
+                    "Successfully connected to CC2 printer %s using %s",
+                    self.printer.name,
+                    auth_desc,
+                )
+                return True
+
+            # Failed - disconnect and try next password
+            self.logger.debug(
+                "Connection attempt %d/%d failed using %s",
+                attempt_num,
+                len(passwords_to_try),
+                auth_desc,
+            )
+            await self.disconnect()
+
+        # All attempts failed
+        self.logger.error(
+            "Failed to connect to CC2 printer %s after trying %d password(s). "
+            "Please verify the access code in printer settings: "
+            "Settings → Network → Access Code",
+            self.printer.name,
+            len(passwords_to_try),
+        )
+        return False
+
+    async def _try_connect_with_password(self, password: str) -> bool:
+        """
+        Try to connect with a specific password.
+
+        Arguments:
+            password: The password to try.
+
+        Returns:
+            True if connection and registration succeeded, False otherwise.
+
+        """
         try:
             # Build MQTT client configuration
             client_kwargs = {
@@ -177,7 +256,7 @@ class ElegooCC2Client:
                 "port": CC2_MQTT_PORT,
                 "keepalive": CC2_MQTT_KEEPALIVE,
                 "username": CC2_MQTT_USERNAME,
-                "password": self.access_code,
+                "password": password,
                 "identifier": self._client_id,
             }
 
@@ -195,8 +274,9 @@ class ElegooCC2Client:
             # Register with the printer
             registered = await self._register()
             if not registered:
-                self.logger.error("Failed to register with CC2 printer")
-                await self.disconnect()
+                self.logger.debug(
+                    "Registration failed. This usually indicates incorrect access code."
+                )
                 return False
 
             self._is_registered = True
@@ -207,20 +287,15 @@ class ElegooCC2Client:
             # Request initial status and attributes
             await self._request_initial_data()
 
-            self.logger.info(
-                "Successfully connected to CC2 printer: %s",
-                self.printer.name,
-            )
         except (asyncio.TimeoutError, OSError, aiomqtt.MqttError) as e:
-            self.logger.warning(
-                "Failed to connect to CC2 printer %s: %s",
-                self.printer.name,
+            self.logger.debug(
+                "Connection attempt failed: %s",
                 e,
             )
-            await self.disconnect()
-            return False
         else:
             return True
+
+        return False
 
     async def disconnect(self) -> None:
         """Disconnect from the CC2 printer."""
@@ -311,7 +386,11 @@ class ElegooCC2Client:
                     reg_event.wait(), timeout=CC2_REGISTRATION_TIMEOUT
                 )
             except asyncio.TimeoutError:
-                self.logger.warning("Registration timeout")
+                self.logger.warning(
+                    "Registration timeout - this usually indicates incorrect "
+                    "access code. Check printer settings: Settings → Network → "
+                    "Access Code"
+                )
                 return False
 
             # Check registration result
