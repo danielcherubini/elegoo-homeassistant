@@ -110,6 +110,10 @@ async def _async_test_connection(
                 msg = f"Failed to authenticate with CC2 printer {printer_object.name}"
                 raise ElegooConfigFlowConnectionError(msg)
 
+            # Store the working password back to user_input for persistence
+            # This captures the actual working password (even if it's an empty string)
+            user_input[CONF_CC2_ACCESS_CODE] = cc2_client.access_code
+
             # Success - clean up test connection
             await cc2_client.disconnect()
 
@@ -672,8 +676,9 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         printer.proxy_enabled = False
 
         # Prepare user_input with access code
+        # Use explicit None check to allow empty strings
         user_input = {}
-        if access_code:
+        if access_code is not None:
             user_input[CONF_CC2_ACCESS_CODE] = access_code
 
         try:
@@ -684,9 +689,11 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
 
             # Add access code to printer data
+            # Get working password from user_input (updated by _async_test_connection)
             printer_data = validated_printer.to_dict()
-            if access_code:
-                printer_data[CONF_CC2_ACCESS_CODE] = access_code
+            working_password = user_input.get(CONF_CC2_ACCESS_CODE)
+            if working_password is not None:
+                printer_data[CONF_CC2_ACCESS_CODE] = working_password
 
             return self.async_create_entry(
                 title=validated_printer.name or "Elegoo Printer",

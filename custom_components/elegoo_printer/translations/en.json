@@ -110,7 +110,7 @@
       "init_no_printer_found": "Failed to initialize: The printer could not be found.",
       "cc2_options_no_printer_found": "The CC2 printer could not be found.",
       "cc2_access_code_required": "This printer requires an access code for authentication.",
-      "cc2_authentication_failed": "Failed to authenticate. Verify access code in printer settings: Settings → Network → Access Code"
+      "cc2_authentication_failed": "Failed to authenticate. Verify access code in printer settings: Settings → Network → Access Code."
     },
     "abort": {
       "already_configured": "This entry is already configured."
