@@ -275,8 +275,7 @@ class ElegooCC2Client:
             registered = await self._register()
             if not registered:
                 self.logger.debug(
-                    "Registration failed. "
-                    "This usually indicates incorrect access code."
+                    "Registration failed. This usually indicates incorrect access code."
                 )
                 return False
 
