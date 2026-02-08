@@ -40,7 +40,7 @@ setup:
 	@uv venv $(VENV) --python $(PYTHON)
 	@echo "--> Syncing dependencies into [$(VENV)]..."
 	@VIRTUAL_ENV=$(VENV) uv sync --active --all-extras --dev
-	@echo "--> Installing pre-commit..."
+	@echo "--> Installing pre-commit hooks..."
 	@VIRTUAL_ENV=$(VENV) uv run pre-commit install --allow-missing-config
 	@echo "--> Setup complete. Environment is ready."
 
