@@ -70,6 +70,17 @@ Older networked models typically use MQTT. These are supported in **Beta**, mean
 * `Begin Time`, `End Time`, and `Cover Image` sensors will show "Unknown."
 * Standard sensors (status, layers, temps, progress) function normally.
 
+### 🆕 CC2 FDM Printers (MQTT - LAN Only Mode Required)
+CC2 (Centauri Carbon 2) printers use an inverted MQTT architecture where the printer runs its own broker. Fully supported with direct local connection.
+
+* **Centauri Carbon 2**
+* **Elegoo Cura** (some models)
+
+**⚠️ Important: LAN-Only Mode Required**
+- On your printer: **Settings → Network → LAN Only Mode → Enable**
+- Cloud mode is not currently supported (requires Elegoo cloud authentication)
+- See [CC2 Protocol Documentation](docs/CC2_PROTOCOL.md) for technical details
+
 ---
 
 ## ⚙️ Installation

@@ -71,6 +71,22 @@ Unlike traditional printer protocols where a central server (like OctoPrint) man
 4. **Connection health monitoring** - Heartbeat mechanism required
 5. **Bandwidth optimization** - Uses delta status updates
 
+### ⚠️ Important: LAN-Only Mode Required
+
+**This integration currently supports LAN-only mode connections only.**
+
+CC2 printers have two network modes:
+- **LAN-Only Mode** (`lan_status: 1`) - ✅ **Supported** - Direct local MQTT connection
+- **Cloud Mode** (`lan_status: 0`) - ❌ **Not Supported** - Requires Elegoo cloud authentication
+
+**To use CC2 printers with this integration:**
+1. On your printer: **Settings → Network → LAN Only Mode**
+2. Enable **LAN Only Mode**
+3. Save and restart printer if needed
+
+**Why Cloud Mode isn't supported:**
+Cloud mode uses a completely different architecture with RTM (Real-Time Messaging) relay through Elegoo's cloud servers, requiring OAuth2 authentication, cloud API integration, and token management. This is planned for a future release but requires significant development.
+
 ---
 
 ## Quick Start
