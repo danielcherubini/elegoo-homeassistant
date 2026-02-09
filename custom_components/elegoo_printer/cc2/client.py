@@ -119,14 +119,29 @@ class ElegooCC2Client:
         self._response_lock = asyncio.Lock()
         self._request_counter = 0
 
-        # Client identification
-        # Format: 1_PC_<4 digits> per CC2 protocol spec
-        # Use random 4-digit number (1000-9999)
-        random_digits = 1000 + secrets.randbelow(9000)
-        self._client_id = f"1_PC_{random_digits}"
-        self._request_id = f"{self._client_id}_req"
+        # Client identification - match web interface format
+        # Format: "0cli" + timestamp_hex + random_hex, truncated to exactly 10 chars
+        # Web interface: w7e() function from elegoo-fdm-web/src/14-app-helpers.js
+        # JavaScript equivalent: concatenate prefix/timestamp/random then slice to 10
+        timestamp_hex = format(int(time.time() * 1000), "x")[-5:]  # Last 5 hex chars
+        random_hex = format(secrets.randbelow(4096), "x")  # Random hex (0-fff)
+        self._client_id = f"0cli{timestamp_hex}{random_hex}"[:10]  # Truncate to 10
+
+        # Registration request ID - match web interface format
+        # Format: UUID-like string + timestamp in hex
+        # Web interface: JX() function from elegoo-fdm-web/src/14-app-helpers.js
+        uuid_part = "".join(
+            format(
+                secrets.randbelow(16) if c == "x" else (secrets.randbelow(4) + 8), "x"
+            )
+            for c in "xxxxxxxxxxxxxxxx"
+        )
+        timestamp_hex_long = format(int(time.time() * 1000), "x")
+        self._request_id = f"{uuid_part}{timestamp_hex_long}"
+
         self.logger.debug(
-            "Generated CC2 client identifiers: client_id=%s, request_id=%s",
+            "Generated CC2 client identifiers (web interface format): "
+            "client_id=%s, request_id=%s",
             self._client_id,
             self._request_id,
         )
