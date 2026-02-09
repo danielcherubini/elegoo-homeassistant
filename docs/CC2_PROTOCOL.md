@@ -257,7 +257,7 @@ Discovery allows clients to find CC2 printers on the local network.
 |-----------|-------|
 | Port | 52700 (UDP) |
 | Method | Broadcast or directed UDP |
-| Timeout | 5 seconds recommended |
+| Timeout | 10 seconds recommended (broadcast), 3 seconds (directed) |
 
 ### Discovery Request
 
@@ -342,7 +342,7 @@ After discovering the printer, establish an MQTT connection.
 
 Generate a unique client ID:
 
-```
+```text
 "0cli" + timestamp_hex[-5:] + random_hex
 ```
 
@@ -373,14 +373,14 @@ client_id = f"0cli{timestamp_hex}{random_hex}"[:10]  # Truncate to exactly 10
 
 Used for registration (UUID + timestamp format):
 
-```
+```text
 <uuid_part> + timestamp_hex
 ```
 
 - **UUID part**: 16 hex characters (UUID4-like)
 - **Timestamp**: Current timestamp in hex
 
-**Example**: `a3f8b2c4d5e6f7g819c422c1361`
+**Example**: `a3f8b2c4d5e6f7a819c422c1361`
 
 **Python Implementation**:
 ```python
@@ -445,7 +445,7 @@ Registration **must** be completed before sending any commands. The printer need
 ```json
 {
   "client_id": "0clib9137a",
-  "request_id": "a3f8b2c4d5e6f7g819c422c1361"
+  "request_id": "a3f8b2c4d5e6f7a819c422c1361"
 }
 ```
 
