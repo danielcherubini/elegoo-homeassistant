@@ -70,16 +70,30 @@ Older networked models typically use MQTT. These are supported in **Beta**, mean
 * `Begin Time`, `End Time`, and `Cover Image` sensors will show "Unknown."
 * Standard sensors (status, layers, temps, progress) function normally.
 
-### 🆕 CC2 FDM Printers (MQTT - LAN Only Mode Required)
-CC2 (Centauri Carbon 2) printers use an inverted MQTT architecture where the printer runs its own broker. Fully supported with direct local connection.
+### 🆕 CC2 FDM Printers (LAN-Only Connection)
+CC2 (Centauri Carbon 2) printers use an inverted MQTT architecture where the printer runs its own broker. **This integration supports LOCAL network connections only.**
 
-* **Centauri Carbon 2**
-* **Elegoo Cura** (some models)
+**Supported Models:**
+* Centauri Carbon 2
+* Elegoo Cura (some models)
 
-**⚠️ Important: LAN-Only Mode Required**
-- On your printer: **Settings → Network → LAN Only Mode → Enable**
-- Cloud mode is not currently supported (requires Elegoo cloud authentication)
-- See [CC2 Protocol Documentation](docs/CC2_PROTOCOL.md) for technical details
+**⚠️ CRITICAL: LAN-Only Mode Required**
+
+CC2 printers **MUST** be configured for LAN-Only mode:
+
+1. On your printer: **Settings → Network → LAN Only Mode**
+2. **Enable** LAN Only Mode
+3. Save and restart if prompted
+4. Ensure printer and Home Assistant are on the **same network/subnet**
+
+**Cloud mode is NOT supported.** Cloud connectivity requires Elegoo's OAuth2 authentication and cloud relay services, which are not currently implemented. This integration connects directly to your printer over your local network only.
+
+**Network Requirements:**
+- Printer and Home Assistant must be on the same network/VLAN/subnet
+- For containerized Home Assistant (Docker/Kubernetes): Use host networking or proper network bridging
+- Port 1883 (MQTT) must be accessible between HA and printer
+
+See [CC2 Protocol Documentation](docs/CC2_PROTOCOL.md) for technical details.
 
 ---
 

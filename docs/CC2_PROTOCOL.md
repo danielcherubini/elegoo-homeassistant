@@ -85,7 +85,7 @@ CC2 printers have two network modes:
 3. Save and restart printer if needed
 
 **Why Cloud Mode isn't supported:**
-Cloud mode uses a completely different architecture with RTM (Real-Time Messaging) relay through Elegoo's cloud servers, requiring OAuth2 authentication, cloud API integration, and token management. This is planned for a future release but requires significant development.
+Cloud mode uses a completely different architecture with RTM (Real-Time Messaging) relay through Elegoo's cloud servers, requiring OAuth2 authentication, cloud API integration, and token management. This would require significant development and is not currently planned.
 
 ---
 
