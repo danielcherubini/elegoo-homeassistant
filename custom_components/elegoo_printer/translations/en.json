@@ -53,10 +53,9 @@
       },
       "manual_ip": {
         "title": "Manual Setup",
-        "description": "For help with configuration, please see the project's GitHub page.",
+        "description": "Enter the IP address of your Elegoo printer. The integration will automatically detect the printer type and guide you through the appropriate setup steps.",
         "data": {
           "ip_address": "Printer IP Address",
-          "proxy_enabled": "Enable the proxy server",
           "external_ip": "External Address (optional, for advanced network setups)"
         },
         "data_description": {

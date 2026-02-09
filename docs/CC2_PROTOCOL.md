@@ -71,6 +71,22 @@ Unlike traditional printer protocols where a central server (like OctoPrint) man
 4. **Connection health monitoring** - Heartbeat mechanism required
 5. **Bandwidth optimization** - Uses delta status updates
 
+### ⚠️ Important: LAN-Only Mode Required
+
+**This integration currently supports LAN-only mode connections only.**
+
+CC2 printers have two network modes:
+- **LAN-Only Mode** (`lan_status: 1`) - ✅ **Supported** - Direct local MQTT connection
+- **Cloud Mode** (`lan_status: 0`) - ❌ **Not Supported** - Requires Elegoo cloud authentication
+
+**To use CC2 printers with this integration:**
+1. On your printer: **Settings → Network → LAN Only Mode**
+2. Enable **LAN Only Mode**
+3. Save and restart printer if needed
+
+**Why Cloud Mode isn't supported:**
+Cloud mode uses a completely different architecture with RTM (Real-Time Messaging) relay through Elegoo's cloud servers, requiring OAuth2 authentication, cloud API integration, and token management. This would require significant development and is not currently planned.
+
 ---
 
 ## Quick Start
@@ -102,10 +118,23 @@ serial_number = response['result']['sn']
 
 ```python
 import paho.mqtt.client as mqtt
+import time
 import random
 
-client_id = f"1_PC_{random.randint(1000, 9999)}"
-request_id = f"{client_id}_req"
+# Generate client_id matching web interface format
+# Format: "0cli" + 5_hex_timestamp + random_hex, truncated to 10 chars
+timestamp_hex = format(int(time.time() * 1000), "x")[-5:]
+random_hex = format(random.randint(0, 4095), "x")
+client_id = f"0cli{timestamp_hex}{random_hex}"[:10]
+
+# Generate request_id matching web interface format
+# Format: UUID-like string + timestamp
+uuid_part = "".join(
+    format(random.randint(0, 15) if c == "x" else (random.randint(0, 3) + 8), "x")
+    for c in "xxxxxxxxxxxxxxxx"
+)
+timestamp_hex_long = format(int(time.time() * 1000), "x")
+request_id = f"{uuid_part}{timestamp_hex_long}"
 
 client = mqtt.Client(client_id=client_id)
 client.username_pw_set("elegoo", "123456")  # or access code
@@ -228,7 +257,7 @@ Discovery allows clients to find CC2 printers on the local network.
 |-----------|-------|
 | Port | 52700 (UDP) |
 | Method | Broadcast or directed UDP |
-| Timeout | 5 seconds recommended |
+| Timeout | 10 seconds recommended (broadcast), 3 seconds (directed) |
 
 ### Discovery Request
 
@@ -309,31 +338,65 @@ After discovering the printer, establish an MQTT connection.
 
 ### Client ID Format
 
+**IMPORTANT**: Client ID must match the official web interface format.
+
 Generate a unique client ID:
 
-```
-1_PC_<random 4 digits>
+```text
+"0cli" + timestamp_hex[-5:] + random_hex
 ```
 
-Examples:
-- `1_PC_4521`
-- `1_PC_8734`
-- `1_PC_0001`
+- **Prefix**: `"0cli"` (constant, 4 characters)
+- **Timestamp**: Last 5 hex characters of current timestamp in milliseconds
+- **Random**: Random hex digits (0-fff)
+- **Length**: Exactly 10 characters (truncated if longer)
 
-The format appears to be: `<platform>_<device_type>_<random>`
-- Platform: `1` (appears constant)
-- Device type: `PC`, `APP`, etc.
-- Random: 4 digits for uniqueness
+**Examples**:
+- `0clib9137a`
+- `0clic1361f`
+- `0cli8f3a2b`
+
+**Python Implementation**:
+```python
+import time
+import random
+
+timestamp_hex = format(int(time.time() * 1000), "x")[-5:]  # Last 5 hex chars
+random_hex = format(random.randint(0, 4095), "x")  # Random 0-fff
+client_id = f"0cli{timestamp_hex}{random_hex}"[:10]  # Truncate to exactly 10
+```
+
+**Legacy Format** (deprecated, do not use):
+- `1_PC_4521` - This format does NOT work with CC2 printers
 
 ### Request ID Format
 
-Used for registration:
+Used for registration (UUID + timestamp format):
 
-```
-<client_id>_req
+```text
+<uuid_part> + timestamp_hex
 ```
 
-Example: `1_PC_4521_req`
+- **UUID part**: 16 hex characters (UUID4-like)
+- **Timestamp**: Current timestamp in hex
+
+**Example**: `a3f8b2c4d5e6f7a819c422c1361`
+
+**Python Implementation**:
+```python
+import time
+import random
+
+uuid_part = "".join(
+    format(random.randint(0, 15) if c == "x" else (random.randint(0, 3) + 8), "x")
+    for c in "xxxxxxxxxxxxxxxx"
+)
+timestamp_hex = format(int(time.time() * 1000), "x")
+request_id = f"{uuid_part}{timestamp_hex}"
+```
+
+**Legacy Format** (deprecated, do not use):
+- `1_PC_4521_req` - This format does NOT work with CC2 printers
 
 ### Connection Error Handling
 
@@ -381,8 +444,8 @@ Registration **must** be completed before sending any commands. The printer need
 
 ```json
 {
-  "client_id": "1_PC_4521",
-  "request_id": "1_PC_4521_req"
+  "client_id": "0clib9137a",
+  "request_id": "a3f8b2c4d5e6f7a819c422c1361"
 }
 ```
 
@@ -390,7 +453,7 @@ Registration **must** be completed before sending any commands. The printer need
 
 ```json
 {
-  "client_id": "1_PC_4521",
+  "client_id": "0clib9137a",
   "error": "ok"
 }
 ```
@@ -399,7 +462,7 @@ Registration **must** be completed before sending any commands. The printer need
 
 ```json
 {
-  "client_id": "1_PC_4521",
+  "client_id": "0clib9137a",
   "error": "too many clients"
 }
 ```
