@@ -7,7 +7,8 @@ LOGGER: Logger = getLogger(__package__)
 # Discovery settings
 CC2_DISCOVERY_PORT = 52700
 CC2_DISCOVERY_MESSAGE = {"id": 0, "method": 7000}
-CC2_DISCOVERY_TIMEOUT = 5
+CC2_DISCOVERY_TIMEOUT = 10  # Increased for slower networks/printers
+CC2_DISCOVERY_RETRIES = 2  # Number of broadcast attempts
 
 # MQTT settings (printer runs broker)
 CC2_MQTT_PORT = 1883

@@ -34,6 +34,25 @@ from .websocket.server import ElegooPrinterServer
 if TYPE_CHECKING:
     from homeassistant.helpers.selector import SelectOptionDict
 
+MANUAL_IP_SCHEMA = vol.Schema(
+    {
+        vol.Required(
+            CONF_IP_ADDRESS,
+        ): selector.TextSelector(
+            selector.TextSelectorConfig(
+                type=selector.TextSelectorType.TEXT,
+            ),
+        ),
+        vol.Optional(
+            CONF_EXTERNAL_IP,
+        ): selector.TextSelector(
+            selector.TextSelectorConfig(
+                type=selector.TextSelectorType.TEXT,
+            ),
+        ),
+    },
+)
+
 OPTIONS_SCHEMA = vol.Schema(
     {
         vol.Required(
@@ -449,10 +468,8 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         Handle the configuration flow step for manually entering a printer's IP address.
 
-        If user input is provided, validates the IP and attempts to connect to the
-        printer. On successful validation, creates a new configuration entry for the
-        printer. If validation fails or no input is provided, displays the manual IP
-        entry form with any relevant errors.
+        Discovers the printer at the provided IP and routes to the appropriate
+        configuration step based on the printer type (CC2, MQTT, FDM, or Resin).
 
         Arguments:
             user_input: The user input data.
@@ -463,22 +480,87 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         _errors = {}
         if user_input is not None:
-            validation_result = await _async_validate_input(self.hass, user_input)
-            _errors = validation_result["errors"]
-            printer_object: Printer = validation_result["printer"]
+            ip_address = user_input[CONF_IP_ADDRESS]
+            LOGGER.info(
+                "Manual IP entry: attempting to discover printer at %s", ip_address
+            )
 
-            if not _errors:
-                printer_object.external_ip = user_input.get(CONF_EXTERNAL_IP)
+            # Try WebSocket/SDCP discovery first
+            elegoo_printer = ElegooPrinterClient(
+                ip_address,
+                config=MappingProxyType(user_input),
+                logger=LOGGER,
+                session=async_get_clientsession(self.hass),
+            )
+            printers = await self.hass.async_add_executor_job(
+                elegoo_printer.discover_printer, ip_address
+            )
+
+            printer_object: Printer | None = None
+            if printers:
+                printer_object = printers[0]
+                LOGGER.info(
+                    "Found %s printer via WebSocket/SDCP discovery: %s",
+                    printer_object.printer_type,
+                    printer_object.name,
+                )
+            else:
+                # Try CC2 discovery as fallback
+                LOGGER.debug("WebSocket/SDCP discovery failed, trying CC2 discovery")
+                cc2_printers = await self.hass.async_add_executor_job(
+                    CC2Discovery.discover_as_printers, ip_address
+                )
+                if cc2_printers:
+                    printer_object = cc2_printers[0]
+                    LOGGER.info(
+                        (
+                            "Found CC2 printer via directed discovery: %s"
+                            " (token_status=%s)"
+                        ),
+                        printer_object.name,
+                        printer_object.cc2_token_status,
+                    )
+
+            if not printer_object:
+                LOGGER.warning("No printer found at IP address: %s", ip_address)
+                _errors["base"] = "no_printer_found"
+            else:
+                # Store discovered printer and external_ip for later steps
+                self.selected_printer = printer_object
+                self.selected_printer.external_ip = user_input.get(CONF_EXTERNAL_IP)
+
+                # Check if already configured
                 await self.async_set_unique_id(unique_id=printer_object.id)
                 self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=printer_object.name or "Elegoo Printer",
-                    data=printer_object.to_dict(),
-                )
+
+                # Route based on transport type
+                if printer_object.transport_type == TransportType.CC2_MQTT:
+                    LOGGER.info("Routing to CC2 auth flow for manual IP entry")
+                    return await self.async_step_cc2_auth_check()
+
+                if printer_object.transport_type == TransportType.MQTT:
+                    # MQTT printers auto-configure with embedded broker
+                    LOGGER.info("Auto-configuring MQTT printer from manual IP entry")
+                    printer_object.mqtt_broker_enabled = True
+                    printer_object.proxy_enabled = False
+                    return self.async_create_entry(
+                        title=printer_object.name or "Elegoo Printer",
+                        data=printer_object.to_dict(),
+                    )
+
+                # WebSocket/SDCP printers - route based on printer type
+                if printer_object.printer_type == PrinterType.RESIN:
+                    LOGGER.info("Routing to resin options for manual IP entry")
+                    return await self.async_step_resin_options()
+
+                LOGGER.info("Routing to FDM options for manual IP entry")
+                return await self.async_step_fdm_options()
 
         return self.async_show_form(
             step_id="manual_ip",
-            data_schema=self.add_suggested_values_to_schema(OPTIONS_SCHEMA, user_input),
+            data_schema=self.add_suggested_values_to_schema(
+                MANUAL_IP_SCHEMA, user_input
+            ),
             errors=_errors,
         )
 
@@ -491,6 +573,9 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None and self.selected_printer:
             printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
             printer_to_validate.camera_enabled = user_input[CONF_CAMERA_ENABLED]
+            # Preserve external_ip from manual IP entry if set
+            if self.selected_printer.external_ip:
+                printer_to_validate.external_ip = self.selected_printer.external_ip
             try:
                 # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled  # noqa: E501
                 validated_printer = await _async_test_connection(
@@ -537,6 +622,9 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None and self.selected_printer:
             printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
             printer_to_validate.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+            # Preserve external_ip from manual IP entry if set
+            if self.selected_printer.external_ip:
+                printer_to_validate.external_ip = self.selected_printer.external_ip
 
             # Assign ports if proxy is enabled
             if user_input[CONF_PROXY_ENABLED]:
@@ -699,6 +787,9 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         printer = Printer.from_dict(self.selected_printer.to_dict())
         printer.mqtt_broker_enabled = False
         printer.proxy_enabled = False
+        # Preserve external_ip from manual IP entry if set
+        if self.selected_printer.external_ip:
+            printer.external_ip = self.selected_printer.external_ip
 
         # Prepare user_input with access code
         # Use explicit None check to allow empty strings

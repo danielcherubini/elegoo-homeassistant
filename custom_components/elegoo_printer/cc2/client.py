@@ -119,9 +119,32 @@ class ElegooCC2Client:
         self._response_lock = asyncio.Lock()
         self._request_counter = 0
 
-        # Client identification
-        self._client_id = f"1_HA_{secrets.token_hex(4)}"
-        self._request_id = f"{self._client_id}_req"
+        # Client identification - match web interface format
+        # Format: "0cli" + timestamp_hex + random_hex, truncated to exactly 10 chars
+        # Web interface: w7e() function from elegoo-fdm-web/src/14-app-helpers.js
+        # JavaScript equivalent: concatenate prefix/timestamp/random then slice to 10
+        timestamp_hex = format(int(time.time() * 1000), "x")[-5:]  # Last 5 hex chars
+        random_hex = format(secrets.randbelow(4096), "x")  # Random hex (0-fff)
+        self._client_id = f"0cli{timestamp_hex}{random_hex}"[:10]  # Truncate to 10
+
+        # Registration request ID - match web interface format
+        # Format: UUID-like string + timestamp in hex
+        # Web interface: JX() function from elegoo-fdm-web/src/14-app-helpers.js
+        uuid_part = "".join(
+            format(
+                secrets.randbelow(16) if c == "x" else (secrets.randbelow(4) + 8), "x"
+            )
+            for c in "xxxxxxxxxxxxxxxx"
+        )
+        timestamp_hex_long = format(int(time.time() * 1000), "x")
+        self._request_id = f"{uuid_part}{timestamp_hex_long}"
+
+        self.logger.debug(
+            "Generated CC2 client identifiers (web interface format): "
+            "client_id=%s, request_id=%s",
+            self._client_id,
+            self._request_id,
+        )
 
         # Status caching for delta updates
         self._cached_status: dict[str, Any] = {}
@@ -260,8 +283,19 @@ class ElegooCC2Client:
                 "identifier": self._client_id,
             }
 
+            self.logger.debug(
+                "Creating MQTT client: hostname=%s, port=%d, username=%s, "
+                "client_id=%s, password_length=%d",
+                self.printer_ip,
+                CC2_MQTT_PORT,
+                CC2_MQTT_USERNAME,
+                self._client_id,
+                len(password) if password else 0,
+            )
+
             self.mqtt_client = aiomqtt.Client(**client_kwargs)
             await self.mqtt_client.__aenter__()
+            self.logger.debug("MQTT connection established successfully")
 
             # Subscribe to topics before registration
             await self._subscribe_to_topics()
@@ -336,6 +370,9 @@ class ElegooCC2Client:
     async def _subscribe_to_topics(self) -> None:
         """Subscribe to all required MQTT topics."""
         if not self.mqtt_client:
+            self.logger.warning(
+                "Cannot subscribe to topics: MQTT client not initialized"
+            )
             return
 
         sn = self.serial_number
@@ -347,6 +384,12 @@ class ElegooCC2Client:
             f"elegoo/{sn}/api_status",  # Status updates
             f"elegoo/{sn}/{request_id}/register_response",  # Registration response
         ]
+
+        self.logger.debug(
+            "Subscribing to %d CC2 MQTT topics for client_id=%s",
+            len(topics),
+            client_id,
+        )
 
         for topic in topics:
             await self.mqtt_client.subscribe(topic)
@@ -361,6 +404,7 @@ class ElegooCC2Client:
 
         """
         if not self.mqtt_client:
+            self.logger.error("Cannot register: MQTT client not initialized")
             return False
 
         sn = self.serial_number
@@ -370,7 +414,13 @@ class ElegooCC2Client:
             "request_id": self._request_id,
         }
 
-        self.logger.debug("Registering with CC2 printer: %s", self._client_id)
+        self.logger.info(
+            "Starting CC2 registration: client_id=%s, request_id=%s, topic=%s",
+            self._client_id,
+            self._request_id,
+            topic,
+        )
+        self.logger.debug("Registration payload: %s", json.dumps(payload))
 
         # Create event for registration response
         reg_event = asyncio.Event()
@@ -379,17 +429,30 @@ class ElegooCC2Client:
 
         try:
             await self.mqtt_client.publish(topic, json.dumps(payload))
+            self.logger.debug(
+                "Published registration request to topic %s, waiting for response...",
+                topic,
+            )
 
             # Wait for registration response
             try:
                 await asyncio.wait_for(
                     reg_event.wait(), timeout=CC2_REGISTRATION_TIMEOUT
                 )
+                self.logger.debug("Registration response received within timeout")
             except asyncio.TimeoutError:
                 self.logger.warning(
-                    "Registration timeout - this usually indicates incorrect "
-                    "access code. Check printer settings: Settings → Network → "
-                    "Access Code"
+                    (
+                        "Registration timeout after %ds - no response from printer. "
+                        "Expected response on topic: elegoo/%s/%s/register_response. "
+                        "This may indicate: (1) Incorrect access code, "
+                        "(2) Printer firmware issue, (3) Client ID format rejected, "
+                        "(4) Network blocking MQTT messages. "
+                        "Check printer settings: Settings → Network → Access Code"
+                    ),
+                    CC2_REGISTRATION_TIMEOUT,
+                    sn,
+                    self._request_id,
                 )
                 return False
 
@@ -507,9 +570,17 @@ class ElegooCC2Client:
 
         # Handle registration response
         if "register_response" in topic:
+            self.logger.info(
+                "Received registration response on topic %s: %s", topic, data
+            )
             self._registration_result = data
             if self._registration_event:
                 self._registration_event.set()
+                self.logger.debug("Registration event signaled")
+            else:
+                self.logger.warning(
+                    "Received registration response but no event listener waiting"
+                )
             return
 
         # Handle command responses
