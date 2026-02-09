@@ -86,9 +86,9 @@
       },
       "cc2_auth_check": {
         "title": "Centauri Carbon 2 Authentication",
-        "description": "Does your printer require an access code? Check: Settings → Network → Access Code. If 'Off' or blank, select No.",
+        "description": "**IMPORTANT:** Check your printer's access code setting before continuing.\n\nOn your printer, go to: **Settings → Network → Access Code**\n\n• If the setting shows 'Off' or is blank/empty, select **No**\n• If you have set a custom access code, select **Yes**\n\nMost printers ship with no access code by default.",
         "data": {
-          "requires_access_code": "Access Code Required?"
+          "requires_access_code": "Does your printer require an access code?"
         }
       },
       "cc2_access_code_input": {

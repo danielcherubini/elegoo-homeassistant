@@ -359,6 +359,11 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             if self.selected_printer:
                 # Check if printer uses CC2 MQTT transport
                 if self.selected_printer.transport_type == TransportType.CC2_MQTT:
+                    LOGGER.info(
+                        "CC2 printer selected from discovery: %s (token_status=%s)",
+                        self.selected_printer.name,
+                        self.selected_printer.cc2_token_status,
+                    )
                     # CC2 printers may need access code - check token_status
                     # Store in context for later use
                     return await self.async_step_cc2_options()
@@ -594,17 +599,31 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
         """Ask user if their CC2 printer requires an access code."""
+        LOGGER.debug("CC2 auth check step - user_input: %s", user_input)
+
         if user_input is not None:
             # Store user's choice
             self._requires_access_code = user_input["requires_access_code"] == "yes"
+            LOGGER.info(
+                "CC2 auth check: user selected requires_access_code=%s",
+                "yes" if self._requires_access_code else "no",
+            )
 
             if self._requires_access_code:
                 # Show password input step
+                LOGGER.debug("Redirecting to access code input step")
                 return await self.async_step_cc2_access_code_input()
             # No access code needed - attempt connection with fallback
+            LOGGER.debug(
+                "No access code required - attempting connection with fallback"
+            )
             return await self._attempt_cc2_connection(access_code=None)
 
         # Show form asking if access code is required
+        LOGGER.info(
+            "Showing CC2 auth check form for printer: %s",
+            self.selected_printer.name if self.selected_printer else "Unknown",
+        )
         return self.async_show_form(
             step_id="cc2_auth_check",
             data_schema=vol.Schema(
@@ -612,10 +631,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required("requires_access_code"): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=[
-                                {"value": "no", "label": "No"},
                                 {"value": "yes", "label": "Yes"},
+                                {"value": "no", "label": "No"},
                             ],
-                            mode=selector.SelectSelectorMode.DROPDOWN,
+                            mode=selector.SelectSelectorMode.LIST,
                         )
                     )
                 }
@@ -668,6 +687,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             ConfigFlowResult with success or error.
 
         """
+        LOGGER.debug(
+            "CC2 connection attempt - access_code provided: %s (type: %s)",
+            "Yes" if access_code is not None else "No (will use fallback)",
+            type(access_code).__name__ if access_code is not None else "NoneType",
+        )
+
         if not self.selected_printer:
             return self.async_abort(reason="no_printer_selected_or_ip_provided")
 
@@ -680,11 +705,20 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         user_input = {}
         if access_code is not None:
             user_input[CONF_CC2_ACCESS_CODE] = access_code
+            LOGGER.debug(
+                "Access code added to user_input (length: %d)", len(access_code)
+            )
+        else:
+            LOGGER.debug(
+                "No access code in user_input - client will try fallback passwords"
+            )
 
         try:
+            LOGGER.info("Starting CC2 connection test for printer: %s", printer.name)
             validated_printer = await _async_test_connection(
                 self.hass, printer, user_input
             )
+            LOGGER.info("CC2 connection test succeeded for printer: %s", printer.name)
             await self.async_set_unique_id(unique_id=validated_printer.id)
             self._abort_if_unique_id_configured()
 
@@ -721,10 +755,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         vol.Required("requires_access_code"): selector.SelectSelector(
                             selector.SelectSelectorConfig(
                                 options=[
-                                    {"value": "no", "label": "No"},
                                     {"value": "yes", "label": "Yes"},
+                                    {"value": "no", "label": "No"},
                                 ],
-                                mode=selector.SelectSelectorMode.DROPDOWN,
+                                mode=selector.SelectSelectorMode.LIST,
                             )
                         )
                     }
@@ -755,10 +789,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         vol.Required("requires_access_code"): selector.SelectSelector(
                             selector.SelectSelectorConfig(
                                 options=[
-                                    {"value": "no", "label": "No"},
                                     {"value": "yes", "label": "Yes"},
+                                    {"value": "no", "label": "No"},
                                 ],
-                                mode=selector.SelectSelectorMode.DROPDOWN,
+                                mode=selector.SelectSelectorMode.LIST,
                             )
                         )
                     }
