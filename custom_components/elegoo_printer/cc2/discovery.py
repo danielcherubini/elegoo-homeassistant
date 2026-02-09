@@ -18,6 +18,7 @@ from custom_components.elegoo_printer.const import DEFAULT_BROADCAST_ADDRESS
 from .const import (
     CC2_DISCOVERY_MESSAGE,
     CC2_DISCOVERY_PORT,
+    CC2_DISCOVERY_RETRIES,
     CC2_DISCOVERY_TIMEOUT,
     LOGGER,
 )
@@ -108,14 +109,59 @@ class CC2Discovery:
     """Discovery service for CC2 printers."""
 
     @staticmethod
+    def _process_response(
+        data: bytes,
+        ip_address: str,
+        seen_serial_numbers: set[str],
+        discovered_printers: list[CC2DiscoveredPrinter],
+    ) -> None:
+        """Process a discovery response and add to discovered printers if valid."""
+        try:
+            response = json.loads(data.decode("utf-8"))
+            LOGGER.debug("CC2 discovery response: %s", response)
+
+            # Validate response has expected structure
+            if "result" not in response:
+                LOGGER.debug(
+                    "Response from %s is not a CC2 discovery response", ip_address
+                )
+                return
+
+            result = response.get("result", {})
+            serial_number = result.get("sn", "")
+
+            # Skip duplicates from multiple attempts
+            if serial_number and serial_number in seen_serial_numbers:
+                LOGGER.debug(
+                    "Skipping duplicate response from %s (SN: %s)",
+                    ip_address,
+                    serial_number,
+                )
+                return
+
+            printer = CC2DiscoveredPrinter(response, ip_address)
+            discovered_printers.append(printer)
+            if serial_number:
+                seen_serial_numbers.add(serial_number)
+
+            LOGGER.debug(
+                "Discovered CC2 printer: %s (%s) at %s",
+                printer.host_name,
+                printer.machine_model,
+                ip_address,
+            )
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            LOGGER.debug("Failed to parse CC2 discovery response from %s", ip_address)
+
+    @staticmethod
     def discover(
         broadcast_address: str = DEFAULT_BROADCAST_ADDRESS,
     ) -> list[CC2DiscoveredPrinter]:
         """
         Broadcast a UDP discovery message to locate CC2 printers.
 
-        Sends a discovery request and collects responses within a timeout period,
-        returning a list of discovered printers.
+        Sends discovery requests with retry logic and collects responses within
+        a timeout period, returning a list of discovered printers.
 
         Arguments:
             broadcast_address: The network address to send the discovery message to.
@@ -126,64 +172,121 @@ class CC2Discovery:
 
         """
         discovered_printers: list[CC2DiscoveredPrinter] = []
-        LOGGER.info("CC2 discovery on port %s...", CC2_DISCOVERY_PORT)
+        seen_serial_numbers: set[str] = set()
+        is_broadcast = broadcast_address == DEFAULT_BROADCAST_ADDRESS
+
+        LOGGER.info(
+            "CC2 discovery on port %s (address: %s, timeout: %ss, retries: %d)...",
+            CC2_DISCOVERY_PORT,
+            broadcast_address,
+            CC2_DISCOVERY_TIMEOUT,
+            CC2_DISCOVERY_RETRIES if is_broadcast else 0,
+        )
 
         msg = json.dumps(CC2_DISCOVERY_MESSAGE).encode("utf-8")
+        retries = CC2_DISCOVERY_RETRIES if is_broadcast else 0
 
         with socket.socket(
             socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
         ) as sock:
+            # Allow reuse of address/port for multiple discovery attempts
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             sock.settimeout(CC2_DISCOVERY_TIMEOUT)
 
+            # Bind to the discovery port to receive responses on the same port
+            # This can be more reliable than using ephemeral ports in some networks
             try:
-                sock.sendto(msg, (broadcast_address, CC2_DISCOVERY_PORT))
+                sock.bind(("", CC2_DISCOVERY_PORT))
                 LOGGER.debug(
-                    "Sent CC2 discovery message to %s:%s",
-                    broadcast_address,
+                    "Bound to port %s for discovery responses", CC2_DISCOVERY_PORT
+                )
+            except OSError as e:
+                # If we can't bind (port in use), continue with ephemeral port
+                LOGGER.debug(
+                    "Could not bind to port %s (will use ephemeral port): %s",
                     CC2_DISCOVERY_PORT,
+                    e,
                 )
 
-                while True:
-                    try:
-                        data, addr = sock.recvfrom(8192)
-                        ip_address = addr[0]
-                        LOGGER.info("CC2 response from %s", ip_address)
+            for attempt in range(retries + 1):
+                if attempt > 0:
+                    LOGGER.debug(
+                        "CC2 discovery retry attempt %d/%d", attempt + 1, retries + 1
+                    )
 
+                try:
+                    sock.sendto(msg, (broadcast_address, CC2_DISCOVERY_PORT))
+                    LOGGER.debug(
+                        "Sent CC2 discovery message to %s:%s (attempt %d)",
+                        broadcast_address,
+                        CC2_DISCOVERY_PORT,
+                        attempt + 1,
+                    )
+
+                    # Collect responses until timeout
+                    responses_this_attempt = 0
+                    while True:
                         try:
-                            response = json.loads(data.decode("utf-8"))
-                            LOGGER.debug("CC2 discovery response: %s", response)
-
-                            # Validate response has expected structure
-                            if "result" in response:
-                                printer = CC2DiscoveredPrinter(response, ip_address)
-                                discovered_printers.append(printer)
-                                LOGGER.debug(
-                                    "Discovered CC2 printer: %s (%s)",
-                                    printer.host_name,
-                                    printer.machine_model,
-                                )
-                            else:
-                                LOGGER.debug(
-                                    "Response from %s is not a CC2 discovery response",
-                                    ip_address,
-                                )
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            LOGGER.debug(
-                                "Failed to parse CC2 discovery response from %s",
+                            data, addr = sock.recvfrom(8192)
+                            ip_address = addr[0]
+                            responses_this_attempt += 1
+                            LOGGER.info(
+                                "CC2 response from %s (attempt %d)",
                                 ip_address,
+                                attempt + 1,
                             )
-                    except socket.timeout:
-                        break  # Timeout, no more responses
 
-            except OSError as e:
-                LOGGER.debug("Socket error during CC2 discovery: %s", e)
-                return []
+                            # Process the response using helper method
+                            CC2Discovery._process_response(
+                                data,
+                                ip_address,
+                                seen_serial_numbers,
+                                discovered_printers,
+                            )
+                        except socket.timeout:
+                            LOGGER.debug(
+                                (
+                                    "CC2 discovery timeout after %ss"
+                                    " (attempt %d, received %d responses)"
+                                ),
+                                CC2_DISCOVERY_TIMEOUT,
+                                attempt + 1,
+                                responses_this_attempt,
+                            )
+                            break  # Timeout, try next attempt
+
+                    # If we found printers, no need to retry
+                    if discovered_printers:
+                        LOGGER.debug(
+                            "Found %d printer(s), skipping remaining retries",
+                            len(discovered_printers),
+                        )
+                        break
+
+                except OSError as e:
+                    LOGGER.debug(
+                        "Socket error during CC2 discovery (attempt %d): %s",
+                        attempt + 1,
+                        e,
+                    )
+                    # Continue to next retry unless it's the last attempt
+                    if attempt == retries:
+                        return []
 
         if not discovered_printers:
-            LOGGER.debug("No CC2 printers found during discovery.")
+            LOGGER.debug(
+                "No CC2 printers found after %d attempt(s). "
+                "This may indicate: (1) No CC2 printers on network, "
+                "(2) Firewall blocking UDP port %d, "
+                "(3) Printer on different subnet/VLAN, "
+                "(4) Network not allowing broadcast traffic. "
+                "Try manual IP entry if your printer is on the network.",
+                retries + 1,
+                CC2_DISCOVERY_PORT,
+            )
         else:
-            LOGGER.debug("Discovered %d CC2 printer(s).", len(discovered_printers))
+            LOGGER.info("Discovered %d CC2 printer(s).", len(discovered_printers))
 
         return discovered_printers
 
