@@ -755,10 +755,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         vol.Required("requires_access_code"): selector.SelectSelector(
                             selector.SelectSelectorConfig(
                                 options=[
-                                    {"value": "no", "label": "No"},
                                     {"value": "yes", "label": "Yes"},
+                                    {"value": "no", "label": "No"},
                                 ],
-                                mode=selector.SelectSelectorMode.DROPDOWN,
+                                mode=selector.SelectSelectorMode.LIST,
                             )
                         )
                     }
@@ -789,10 +789,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         vol.Required("requires_access_code"): selector.SelectSelector(
                             selector.SelectSelectorConfig(
                                 options=[
-                                    {"value": "no", "label": "No"},
                                     {"value": "yes", "label": "Yes"},
+                                    {"value": "no", "label": "No"},
                                 ],
-                                mode=selector.SelectSelectorMode.DROPDOWN,
+                                mode=selector.SelectSelectorMode.LIST,
                             )
                         )
                     }
