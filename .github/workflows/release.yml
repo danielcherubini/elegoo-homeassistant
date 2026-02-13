@@ -40,6 +40,15 @@ jobs:
           echo "pyproject=$PYPROJECT_VERSION" >> $GITHUB_OUTPUT
           echo "tag=v$MANIFEST_VERSION" >> $GITHUB_OUTPUT
 
+          # Detect if this is a pre-release (contains -alpha, -beta, -rc, etc.)
+          if [[ "$MANIFEST_VERSION" =~ -[a-zA-Z] ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "📦 Pre-release version detected: $MANIFEST_VERSION"
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "📦 Stable version detected: $MANIFEST_VERSION"
+          fi
+
       - name: Validate version consistency
         run: |
           if [ "${{ steps.versions.outputs.manifest }}" != "${{ steps.versions.outputs.pyproject }}" ]; then
@@ -75,8 +84,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Get the previous tag
-          PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || echo "")
+          # Get the previous tag (include pre-releases)
+          PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || echo "")
 
           if [ -z "$PREVIOUS_TAG" ]; then
             echo "No previous release found"
@@ -103,10 +112,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          PRERELEASE_FLAG=""
+          if [ "${{ steps.versions.outputs.is_prerelease }}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+            echo "🚧 Creating as pre-release"
+          else
+            echo "✅ Creating as stable release"
+          fi
+
           gh release create "${{ steps.versions.outputs.tag }}" \
             --title "v${{ steps.versions.outputs.manifest }}" \
             --notes-file "${{ steps.release_notes.outputs.notes_file }}" \
-            --verify-tag
+            --verify-tag \
+            $PRERELEASE_FLAG
 
       - name: Skip release (tag exists)
         if: steps.check_tag.outputs.exists == 'true'
