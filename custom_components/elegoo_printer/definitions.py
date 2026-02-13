@@ -105,8 +105,7 @@ def _get_active_filament_attributes(printer_data: PrinterData) -> dict:
                         "status": active.get("Status"),
                         "temperature_range": (
                             f"{tray.min_nozzle_temp}-{tray.max_nozzle_temp}°C"
-                            if tray.min_nozzle_temp is not None
-                            and tray.max_nozzle_temp is not None
+                            if tray.min_nozzle_temp > 0 and tray.max_nozzle_temp > 0
                             else None
                         ),
                     }
@@ -144,14 +143,12 @@ def _get_tray_attributes(printer_data: PrinterData, ams_id: str, tray_id: str) -
                         "diameter": tray.filament_diameter,
                         "nozzle_temp_range": (
                             f"{tray.min_nozzle_temp}-{tray.max_nozzle_temp}°C"
-                            if tray.min_nozzle_temp is not None
-                            and tray.max_nozzle_temp is not None
+                            if tray.min_nozzle_temp > 0 and tray.max_nozzle_temp > 0
                             else None
                         ),
                         "bed_temp_range": (
                             f"{tray.min_bed_temp}-{tray.max_bed_temp}°C"
-                            if tray.min_bed_temp is not None
-                            and tray.max_bed_temp is not None
+                            if tray.min_bed_temp > 0 and tray.max_bed_temp > 0
                             else None
                         ),
                         "enabled": tray.enabled,
@@ -842,11 +839,8 @@ PRINTER_STATUS_FDM_OPEN_CENTAURI: tuple[ElegooPrinterSensorEntityDescription, ..
 )
 
 
-# Canvas/AMS sensors (CC2 with Canvas support)
-PRINTER_STATUS_CANVAS: tuple[
-    ElegooPrinterBinarySensorEntityDescription | ElegooPrinterSensorEntityDescription,
-    ...,
-] = (
+# Canvas/AMS binary sensors (CC2 with Canvas support)
+PRINTER_BINARY_STATUS_CANVAS: tuple[ElegooPrinterBinarySensorEntityDescription, ...] = (
     # AMS Connection Status
     ElegooPrinterBinarySensorEntityDescription(
         key="ams_connected",
@@ -859,6 +853,11 @@ PRINTER_STATUS_CANVAS: tuple[
             else False
         ),
     ),
+)
+
+
+# Canvas/AMS sensors (CC2 with Canvas support)
+PRINTER_STATUS_CANVAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     # Active Filament Color (main sensor)
     ElegooPrinterSensorEntityDescription(
         key="active_filament_color",

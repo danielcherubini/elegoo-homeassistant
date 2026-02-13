@@ -66,7 +66,7 @@ async def async_setup_entry(
         sensors.extend(PRINTER_STATUS_FDM)
 
         # Canvas/AMS sensors (CC2 with Canvas support)
-        if protocol_version == ProtocolVersion.V1:  # V1 = MQTT = CC2
+        if protocol_version == ProtocolVersion.CC2:
             sensors.extend(PRINTER_STATUS_CANVAS)
 
         # Open Centauri specific sensors (patched Centauri Carbon firmware)

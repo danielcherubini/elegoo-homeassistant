@@ -80,11 +80,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                     self._last_firmware_check = now
 
             # Check Canvas status periodically (CC2 only)
-            api = self.config_entry.runtime_data.api
-            if api.printer.transport_type in (
-                TransportType.MQTT,
-                TransportType.CC2_MQTT,
-            ) and (
+            if api.printer.transport_type == TransportType.CC2_MQTT and (
                 self._last_canvas_check is None
                 or now - self._last_canvas_check >= self._canvas_check_interval
             ):
