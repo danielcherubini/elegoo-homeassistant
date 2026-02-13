@@ -26,6 +26,7 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterNotConnectedError,
     ElegooPrinterTimeoutError,
 )
+from custom_components.elegoo_printer.sdcp.models.ams import AMSStatus
 from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
@@ -37,6 +38,7 @@ from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
 from .const import (
     CC2_CMD_GET_ATTRIBUTES,
+    CC2_CMD_GET_CANVAS_STATUS,
     CC2_CMD_GET_FILE_DETAIL,
     CC2_CMD_GET_FILE_THUMBNAIL,
     CC2_CMD_GET_STATUS,
@@ -616,6 +618,8 @@ class ElegooCC2Client:
             self._handle_attributes(result)
         elif method == CC2_CMD_SET_VIDEO_STREAM:
             self._handle_video_response(result)
+        elif method == CC2_CMD_GET_CANVAS_STATUS:
+            self._handle_canvas_status(result)
 
     async def _handle_status_event(self, data: dict[str, Any]) -> None:
         """Handle a status event (push notification)."""
@@ -916,6 +920,19 @@ class ElegooCC2Client:
         }
         self.printer_data.video = ElegooVideo(converted_data)
 
+    def _handle_canvas_status(self, result: dict[str, Any]) -> None:
+        """
+        Process Canvas status response and update printer_data.
+
+        Parses the AMS data structure and creates AMSStatus object.
+        """
+        try:
+            ams_status = AMSStatus(result)
+            self.printer_data.ams_status = ams_status
+            self.logger.debug("Canvas status updated: %s", ams_status)
+        except (KeyError, ValueError, TypeError):
+            self.logger.exception("Failed to parse Canvas status")
+
     async def _send_command(
         self,
         method: int,
@@ -1121,6 +1138,14 @@ class ElegooCC2Client:
         """Set the target bed temperature."""
         clamped_temp = max(0, min(110, int(temperature)))
         await self._send_command(CC2_CMD_SET_TEMPERATURE, {"heater_bed": clamped_temp})
+
+    async def get_canvas_status(self) -> dict[str, Any] | None:
+        """
+        Get Canvas/AMS status including filament colors and active tray.
+
+        Returns response with AMS connection status, box info, tray colors.
+        """
+        return await self._send_command(CC2_CMD_GET_CANVAS_STATUS)
 
     # Discovery method (for compatibility with existing code)
     def discover_printer(

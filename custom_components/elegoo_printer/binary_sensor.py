@@ -12,6 +12,7 @@ from .const import LOGGER
 from .definitions import (
     PRINTER_ATTRIBUTES_BINARY_COMMON,
     PRINTER_ATTRIBUTES_BINARY_V3_ONLY,
+    PRINTER_BINARY_STATUS_CANVAS,
     PRINTER_BINARY_STATUS_RESIN_VAT_HEATER,
     ElegooPrinterBinarySensorEntityDescription,
 )
@@ -45,6 +46,10 @@ async def async_setup_entry(
     # V3-only binary sensors (WebSocket/SDCP printers)
     if protocol_version == ProtocolVersion.V3:
         sensors.extend(PRINTER_ATTRIBUTES_BINARY_V3_ONLY)
+
+    # Canvas/AMS binary sensors (CC2 FDM with Canvas support)
+    if printer_type == PrinterType.FDM and protocol_version == ProtocolVersion.CC2:
+        sensors.extend(PRINTER_BINARY_STATUS_CANVAS)
 
     # Vat heater specific binary sensors
     if printer_type == PrinterType.RESIN and printer.has_vat_heater:
