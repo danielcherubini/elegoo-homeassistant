@@ -64,6 +64,67 @@ The `Makefile` contains all the necessary commands for common development tasks.
 - Follow the existing code style and conventions.
 - **Always create a feature branch for new work. Do not commit directly to `main`**
 
+## Releases and Versioning
+
+This project uses automated releases via GitHub Actions.
+
+### Version Management
+
+Version numbers must be updated in **both** files:
+- `custom_components/elegoo_printer/manifest.json` - The `version` field
+- `pyproject.toml` - The `version` field in the `[project]` section
+
+**Important:** Both versions must match exactly, or the release workflow will fail validation.
+
+### Creating a Release
+
+1. Update version in both `manifest.json` and `pyproject.toml`
+2. Commit and push to `main` branch
+3. GitHub Actions automatically:
+   - Validates version consistency
+   - Runs linting (`make lint`)
+   - Runs tests (`make test`)
+   - Creates git tag (e.g., `v2.7.0`)
+   - Generates release notes from commits/PRs
+   - Publishes GitHub release
+
+### Version Format
+
+Follow semantic versioning: `MAJOR.MINOR.PATCH[-PRERELEASE]`
+
+**Stable releases:**
+- `2.7.0` - New features
+- `2.7.1` - Bug fixes
+- `3.0.0` - Breaking changes
+
+**Pre-releases:**
+- `2.8.0-alpha.1` - Alpha version (early testing)
+- `2.8.0-beta.1` - Beta version (feature complete, needs testing)
+- `2.8.0-rc.1` - Release candidate (ready for release, final testing)
+
+Pre-release versions are automatically detected (by the `-` suffix) and marked as "Pre-release" on GitHub.
+
+### Release Workflow Details
+
+The automated release workflow (`.github/workflows/release.yml`):
+- **Triggers:** When `manifest.json` is modified on `main` branch
+- **Validates:** Version consistency between manifest.json and pyproject.toml
+- **Tests:** Runs full linting and test suite
+- **Prevents:** Duplicate releases if tag already exists
+- **Generates:** Release notes automatically using GitHub's API
+
+### Manual Release Override
+
+If you need to manually create a release:
+```bash
+gh release create v2.7.0 --title "v2.7.0" --generate-notes
+```
+
+For pre-releases:
+```bash
+gh release create v2.8.0-beta.1 --title "v2.8.0-beta.1" --generate-notes --prerelease
+```
+
 ## Logging
 
 The Home Assistant logs are located at `config/home-assistant.log`.
