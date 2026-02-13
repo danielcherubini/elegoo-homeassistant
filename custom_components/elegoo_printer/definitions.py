@@ -59,6 +59,119 @@ def _get_current_coord_value(printer_data: PrinterData, index: int) -> float | N
         return None
 
 
+def _get_active_filament_color(printer_data: PrinterData) -> str | None:
+    """Get the hex color of the currently active filament."""
+    if not printer_data or not printer_data.ams_status:
+        return None
+
+    active = printer_data.ams_status.ams_current_enabled
+    if not active:
+        return None
+
+    ams_id = active.get("AmsId")
+    tray_id = active.get("TrayId")
+
+    for box in printer_data.ams_status.ams_boxes:
+        if box.id == ams_id:
+            for tray in box.tray_list:
+                if tray.id == tray_id:
+                    return tray.filament_color
+    return None
+
+
+def _get_active_filament_attributes(printer_data: PrinterData) -> dict:
+    """Get attributes for the active filament."""
+    if not printer_data or not printer_data.ams_status:
+        return {}
+
+    active = printer_data.ams_status.ams_current_enabled
+    if not active:
+        return {}
+
+    ams_id = active.get("AmsId")
+    tray_id = active.get("TrayId")
+
+    for box in printer_data.ams_status.ams_boxes:
+        if box.id == ams_id:
+            for tray in box.tray_list:
+                if tray.id == tray_id:
+                    return {
+                        "color": tray.filament_color,
+                        "type": tray.filament_type,
+                        "name": tray.filament_name,
+                        "brand": tray.brand,
+                        "ams_id": ams_id,
+                        "tray_id": tray_id,
+                        "status": active.get("Status"),
+                        "temperature_range": (
+                            f"{tray.min_nozzle_temp}-{tray.max_nozzle_temp}°C"
+                            if tray.min_nozzle_temp is not None
+                            and tray.max_nozzle_temp is not None
+                            else None
+                        ),
+                    }
+    return {}
+
+
+def _get_tray_color(printer_data: PrinterData, ams_id: str, tray_id: str) -> str | None:
+    """Get color for a specific tray."""
+    if not printer_data or not printer_data.ams_status:
+        return None
+
+    for box in printer_data.ams_status.ams_boxes:
+        if box.id == ams_id:
+            for tray in box.tray_list:
+                if tray.id == tray_id:
+                    return tray.filament_color
+    return None
+
+
+def _get_tray_attributes(printer_data: PrinterData, ams_id: str, tray_id: str) -> dict:
+    """Get attributes for a specific tray."""
+    if not printer_data or not printer_data.ams_status:
+        return {}
+
+    for box in printer_data.ams_status.ams_boxes:
+        if box.id == ams_id:
+            for tray in box.tray_list:
+                if tray.id == tray_id:
+                    return {
+                        "color": tray.filament_color,
+                        "type": tray.filament_type,
+                        "name": tray.filament_name,
+                        "brand": tray.brand,
+                        "source": tray.from_source,
+                        "diameter": tray.filament_diameter,
+                        "nozzle_temp_range": (
+                            f"{tray.min_nozzle_temp}-{tray.max_nozzle_temp}°C"
+                            if tray.min_nozzle_temp is not None
+                            and tray.max_nozzle_temp is not None
+                            else None
+                        ),
+                        "bed_temp_range": (
+                            f"{tray.min_bed_temp}-{tray.max_bed_temp}°C"
+                            if tray.min_bed_temp is not None
+                            and tray.max_bed_temp is not None
+                            else None
+                        ),
+                        "enabled": tray.enabled,
+                    }
+    return {}
+
+
+def _has_ams_tray(printer_data: PrinterData, ams_id: str, tray_id: str) -> bool:
+    """Check if a specific tray exists."""
+    if not printer_data or not printer_data.ams_status:
+        return False
+
+    for box in printer_data.ams_status.ams_boxes:
+        if box.id == ams_id:
+            for tray in box.tray_list:
+                if tray.id == tray_id:
+                    return True
+    return False
+
+
 async def _async_noop(*_: Any, **__: Any) -> None:
     """Async no-op function."""
 
@@ -725,6 +838,77 @@ PRINTER_STATUS_FDM_OPEN_CENTAURI: tuple[ElegooPrinterSensorEntityDescription, ..
         value_fn=lambda printer_data: printer_data.status.print_info.current_extrusion
         if printer_data and printer_data.status and printer_data.status.print_info
         else None,
+    ),
+)
+
+
+# Canvas/AMS sensors (CC2 with Canvas support)
+PRINTER_STATUS_CANVAS: tuple[
+    ElegooPrinterBinarySensorEntityDescription | ElegooPrinterSensorEntityDescription,
+    ...,
+] = (
+    # AMS Connection Status
+    ElegooPrinterBinarySensorEntityDescription(
+        key="ams_connected",
+        name="Canvas Connected",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        icon="mdi:printer-3d-nozzle",
+        value_fn=lambda printer_data: (
+            printer_data.ams_status.ams_connect_status
+            if printer_data and printer_data.ams_status
+            else False
+        ),
+    ),
+    # Active Filament Color (main sensor)
+    ElegooPrinterSensorEntityDescription(
+        key="active_filament_color",
+        name="Active Filament Color",
+        icon="mdi:palette",
+        value_fn=lambda printer_data: _get_active_filament_color(printer_data),
+        extra_attributes=lambda entity: _get_active_filament_attributes(
+            entity.coordinator.data
+        ),
+    ),
+    # Individual tray sensors (tray 0-3)
+    ElegooPrinterSensorEntityDescription(
+        key="ams_tray_0_color",
+        name="Tray 0 Filament",
+        icon="mdi:palette",
+        value_fn=lambda printer_data: _get_tray_color(printer_data, "0", "00"),
+        extra_attributes=lambda entity: _get_tray_attributes(
+            entity.coordinator.data, "0", "00"
+        ),
+        exists_fn=lambda printer_data: _has_ams_tray(printer_data, "0", "00"),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="ams_tray_1_color",
+        name="Tray 1 Filament",
+        icon="mdi:palette",
+        value_fn=lambda printer_data: _get_tray_color(printer_data, "0", "01"),
+        extra_attributes=lambda entity: _get_tray_attributes(
+            entity.coordinator.data, "0", "01"
+        ),
+        exists_fn=lambda printer_data: _has_ams_tray(printer_data, "0", "01"),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="ams_tray_2_color",
+        name="Tray 2 Filament",
+        icon="mdi:palette",
+        value_fn=lambda printer_data: _get_tray_color(printer_data, "0", "02"),
+        extra_attributes=lambda entity: _get_tray_attributes(
+            entity.coordinator.data, "0", "02"
+        ),
+        exists_fn=lambda printer_data: _has_ams_tray(printer_data, "0", "02"),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="ams_tray_3_color",
+        name="Tray 3 Filament",
+        icon="mdi:palette",
+        value_fn=lambda printer_data: _get_tray_color(printer_data, "0", "03"),
+        extra_attributes=lambda entity: _get_tray_attributes(
+            entity.coordinator.data, "0", "03"
+        ),
+        exists_fn=lambda printer_data: _has_ams_tray(printer_data, "0", "03"),
     ),
 )
 

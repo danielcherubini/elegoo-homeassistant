@@ -14,6 +14,7 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterNotConnectedError,
     ElegooPrinterTimeoutError,
 )
+from custom_components.elegoo_printer.sdcp.models.enums import TransportType
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -33,6 +34,8 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         self.config_entry = entry
         self._last_firmware_check: datetime | None = None
         self._firmware_check_interval = timedelta(hours=12)  # Check every 12 hours
+        self._last_canvas_check: datetime | None = None
+        self._canvas_check_interval = timedelta(seconds=30)  # Check every 30 seconds
         super().__init__(
             hass,
             LOGGER,
@@ -75,6 +78,28 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                 finally:
                     # Rate-limit even on failure to avoid hammering the endpoint
                     self._last_firmware_check = now
+
+            # Check Canvas status periodically (CC2 only)
+            api = self.config_entry.runtime_data.api
+            if api.printer.transport_type in (
+                TransportType.MQTT,
+                TransportType.CC2_MQTT,
+            ) and (
+                self._last_canvas_check is None
+                or now - self._last_canvas_check >= self._canvas_check_interval
+            ):
+                LOGGER.debug("Checking Canvas/AMS status")
+                try:
+                    await api.async_get_canvas_status()
+                except (
+                    ElegooPrinterConnectionError,
+                    ElegooPrinterTimeoutError,
+                ):
+                    LOGGER.debug("Canvas status check failed")
+                finally:
+                    # Rate-limit even on failure to avoid hammering the endpoint
+                    self._last_canvas_check = now
+
             self.online = True
             if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)

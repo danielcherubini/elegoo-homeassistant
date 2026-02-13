@@ -11,6 +11,7 @@ from .definitions import (
     PRINTER_ATTRIBUTES_COMMON,
     PRINTER_ATTRIBUTES_RESIN,
     PRINTER_ATTRIBUTES_V3_ONLY,
+    PRINTER_STATUS_CANVAS,
     PRINTER_STATUS_COMMON,
     PRINTER_STATUS_FDM,
     PRINTER_STATUS_FDM_OPEN_CENTAURI,
@@ -63,6 +64,10 @@ async def async_setup_entry(
     # Type-specific sensors (both V1 and V3)
     if printer_type == PrinterType.FDM:
         sensors.extend(PRINTER_STATUS_FDM)
+
+        # Canvas/AMS sensors (CC2 with Canvas support)
+        if protocol_version == ProtocolVersion.V1:  # V1 = MQTT = CC2
+            sensors.extend(PRINTER_STATUS_CANVAS)
 
         # Open Centauri specific sensors (patched Centauri Carbon firmware)
         if printer.open_centauri:
