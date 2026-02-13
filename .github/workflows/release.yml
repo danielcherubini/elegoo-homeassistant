@@ -1,76 +1,117 @@
-name: Release Elegoo Printer Integration
+name: Release
 
 on:
   push:
     branches:
       - main
+    paths:
+      - 'custom_components/elegoo_printer/manifest.json'
 
 jobs:
-  release:
+  validate-and-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
-    if: github.event_name == 'push' && contains(github.event.head_commit.modified, 'custom_components/elegoo_printer/manifest.json') # Condition to check for manifest.json changes
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Get version from manifest.json
-        id: get_version
-        uses: actions/github-script@v8
+        uses: actions/checkout@v4
         with:
-          script: |
-            const fs = require('fs');
-            const manifest = JSON.parse(fs.readFileSync('./custom_components/elegoo_printer/manifest.json', 'utf8'));
-            const version = manifest.version;
-            core.setOutput('version', version);
+          fetch-depth: 0
 
-      - name: Create Git tag
-        uses: actions/github-script@v8
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const version = core.getInput('version');
-            const tag = `v${version}`;
-            try {
-              await github.rest.git.createTag({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag: tag,
-                message: `Release ${tag}`,
-                object: context.sha,
-                type: 'commit'
-              });
-              console.log(`Created tag ${tag}`);
-            } catch (error) {
-              if (error.message.includes('already exists')) {
-                console.log(`Tag ${tag} already exists. Skipping tag creation.`);
-              } else {
-                throw error;
-              }
-            }
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Get versions
+        id: versions
+        run: |
+          MANIFEST_VERSION=$(jq -r '.version' custom_components/elegoo_printer/manifest.json)
+          PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+          echo "manifest=$MANIFEST_VERSION" >> $GITHUB_OUTPUT
+          echo "pyproject=$PYPROJECT_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$MANIFEST_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Validate version consistency
+        run: |
+          if [ "${{ steps.versions.outputs.manifest }}" != "${{ steps.versions.outputs.pyproject }}" ]; then
+            echo "❌ Version mismatch!"
+            echo "manifest.json: ${{ steps.versions.outputs.manifest }}"
+            echo "pyproject.toml: ${{ steps.versions.outputs.pyproject }}"
+            exit 1
+          fi
+          echo "✅ Versions match: ${{ steps.versions.outputs.manifest }}"
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "${{ steps.versions.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "⚠️  Tag ${{ steps.versions.outputs.tag }} already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "✅ Tag ${{ steps.versions.outputs.tag }} is new"
+          fi
+
+      - name: Run linting
+        if: steps.check_tag.outputs.exists == 'false'
+        run: uv run ruff check .
+
+      - name: Run tests
+        if: steps.check_tag.outputs.exists == 'false'
+        run: uv run pytest
 
       - name: Generate release notes
-        id: generate_release_notes
-        uses: actions/github-script@v8
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const version = core.getInput('version');
-            const tag = `v${version}`;
-            let releaseNotes = `## Release ${tag}\n\n`;
-            releaseNotes += `Changes in this release:\n`;
-            releaseNotes += `- Updated to version ${version}\n`;
-            core.setOutput('release_notes', releaseNotes);
-
-      - name: Create GitHub release
-        uses: actions/create-release@v1
+        if: steps.check_tag.outputs.exists == 'false'
+        id: release_notes
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ steps.get_version.outputs.version }}
-          release_name: Release v${{ steps.get_version.outputs.version }}
-          body: ${{ steps.generate_release_notes.outputs.release_notes }}
-          draft: false
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Get the previous tag
+          PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || echo "")
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No previous release found"
+            NOTES="## What's New\n\nFirst release of the Elegoo Printer integration!"
+          else
+            echo "Generating notes from $PREVIOUS_TAG to HEAD"
+            # Generate notes using GitHub CLI
+            NOTES=$(gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              /repos/${{ github.repository }}/releases/generate-notes \
+              -f tag_name='${{ steps.versions.outputs.tag }}' \
+              -f target_commitish='main' \
+              -f previous_tag_name="$PREVIOUS_TAG" \
+              --jq '.body')
+          fi
+
+          # Save to file to preserve formatting
+          echo "$NOTES" > release_notes.md
+          echo "notes_file=release_notes.md" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        if: steps.check_tag.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.versions.outputs.tag }}" \
+            --title "v${{ steps.versions.outputs.manifest }}" \
+            --notes-file "${{ steps.release_notes.outputs.notes_file }}" \
+            --verify-tag
+
+      - name: Skip release (tag exists)
+        if: steps.check_tag.outputs.exists == 'true'
+        run: |
+          echo "ℹ️  Skipping release creation - tag already exists"
+          echo "If you need to update the release, delete the tag and re-push:"
+          echo "  git tag -d ${{ steps.versions.outputs.tag }}"
+          echo "  git push origin :refs/tags/${{ steps.versions.outputs.tag }}"
