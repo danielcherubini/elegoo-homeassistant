@@ -61,14 +61,16 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                 await self.config_entry.runtime_data.api.async_get_printer_data()
             )
 
-            # Check if we need to update firmware info
+            # Get API reference for periodic checks
+            api = self.config_entry.runtime_data.api
             now = datetime.now(UTC)
+
+            # Check if we need to update firmware info
             if (
                 self._last_firmware_check is None
                 or now - self._last_firmware_check >= self._firmware_check_interval
             ):
                 LOGGER.debug("Checking for firmware updates")
-                api = self.config_entry.runtime_data.api
                 try:
                     firmware_info = await api.async_get_firmware_update_info()
                     if firmware_info:
