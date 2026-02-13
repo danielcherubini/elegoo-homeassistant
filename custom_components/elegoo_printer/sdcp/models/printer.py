@@ -27,6 +27,7 @@ from .status import PrinterStatus
 from .video import ElegooVideo
 
 if TYPE_CHECKING:
+    from .ams import AMSStatus
     from .print_history_detail import PrintHistoryDetail
 from typing import TypedDict
 
@@ -366,6 +367,8 @@ class PrinterData:
         video (ElegooVideo): The video object of the printer.
         firmware_update_info (dict): Firmware update state and metadata
             (update_available, current_version, latest_version, package_url, changelog).
+        ams_status (AMSStatus | None): Canvas/AMS status including filament colors and
+            active tray information (CC2 only).
 
     """
 
@@ -373,6 +376,7 @@ class PrinterData:
     current_job: PrintHistoryDetail | None
     video: ElegooVideo
     firmware_update_info: FirmwareUpdateInfo
+    ams_status: AMSStatus | None
 
     def __init__(
         self,
@@ -395,6 +399,7 @@ class PrinterData:
             "package_url": None,
             "changelog": None,
         }
+        self.ams_status: AMSStatus | None = None
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
         """Round datetime object to minutes."""

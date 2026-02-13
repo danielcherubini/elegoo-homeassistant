@@ -805,6 +805,12 @@ class ElegooPrinterApiClient:
         )
         return self.printer_data
 
+    async def async_get_canvas_status(self) -> dict[str, Any] | None:
+        """Get Canvas/AMS status (CC2 only)."""
+        if self.client and hasattr(self.client, "get_canvas_status"):
+            return await self.client.get_canvas_status()
+        return None
+
     async def _setup_proxy_if_enabled(self, printer: Printer) -> Printer | None:
         """
         Set up proxy server if enabled and printer is reachable.
