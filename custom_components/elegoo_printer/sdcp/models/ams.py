@@ -13,18 +13,18 @@ class AMSTray:
         Arguments:
             data (dict[str, Any] | None): Dictionary containing tray data
                 from Canvas API. Expected keys: tray_id, brand, filament_type,
-                filament_name, filament_color, nozzle_temp_min, nozzle_temp_max,
-                bed_temp_min, bed_temp_max, status.
+                filament_name, filament_color, min_nozzle_temp, max_nozzle_temp,
+                status.
 
         """
         if data is None:
             data = {}
 
         # Map Canvas API field names to internal attributes
-        # Canvas uses 1-based tray IDs (1, 2, 3, 4)
-        # Convert to 0-based and pad (00, 01, 02, 03)
-        tray_id = data.get("tray_id", 0)
-        self.id: str = str(tray_id - 1).zfill(2) if tray_id > 0 else ""
+        # Canvas uses 0-based tray IDs (0, 1, 2, 3)
+        # Pad to 2 digits for sensor compatibility (00, 01, 02, 03)
+        tray_id = data.get("tray_id", -1)
+        self.id: str = str(tray_id).zfill(2) if tray_id >= 0 else ""
         self.brand: str = data.get("brand", "")
         self.filament_type: str = data.get("filament_type", "")
         self.filament_name: str = data.get("filament_name", "")
@@ -36,10 +36,13 @@ class AMSTray:
         else:
             self.filament_color: str = color
 
-        self.min_nozzle_temp: int = data.get("nozzle_temp_min", 0)
-        self.max_nozzle_temp: int = data.get("nozzle_temp_max", 0)
-        self.min_bed_temp: int = data.get("bed_temp_min", 0)
-        self.max_bed_temp: int = data.get("bed_temp_max", 0)
+        # Note: API uses min_nozzle_temp/max_nozzle_temp (not nozzle_temp_min/max)
+        self.min_nozzle_temp: int = data.get("min_nozzle_temp", 0)
+        self.max_nozzle_temp: int = data.get("max_nozzle_temp", 0)
+
+        # Canvas API doesn't provide bed temps
+        self.min_bed_temp: int = 0
+        self.max_bed_temp: int = 0
 
         # Status: 1 = filament present, 0 = empty
         self.status: int = data.get("status", 0)
@@ -74,9 +77,9 @@ class AMSBox:
             data = {}
 
         # Map Canvas API field names
-        # Canvas uses 1-based canvas IDs (1, 2, etc), convert to 0-based (0, 1, etc)
-        canvas_id = data.get("canvas_id", 0)
-        self.id: str = str(canvas_id - 1) if canvas_id > 0 else ""
+        # Canvas uses 0-based canvas IDs (0, 1, etc)
+        canvas_id = data.get("canvas_id", -1)
+        self.id: str = str(canvas_id) if canvas_id >= 0 else ""
         self.connected: bool = bool(data.get("connected", 0))
 
         # Canvas doesn't report temperature/humidity, set defaults
@@ -124,15 +127,17 @@ class AMSStatus:
         self.ams_connect_num: int = sum(1 for box in self.ams_boxes if box.connected)
 
         # Parse active tray info
-        active_canvas_id = data.get("active_canvas_id", 0)
-        active_tray_id = data.get("active_tray_id", 0)
+        # Canvas uses 0-based IDs, so active_canvas_id=0 is valid (not None/missing)
+        active_canvas_id = data.get("active_canvas_id")
+        active_tray_id = data.get("active_tray_id")
 
-        if active_canvas_id and active_tray_id:
-            # Convert Canvas 1-based IDs to 0-based for sensor compatibility
-            # Canvas: canvas_id=1, tray_id=1 → Sensors: AmsId="0", TrayId="00"
+        # Check if active IDs are present (0 is valid, so check for None explicitly)
+        if active_canvas_id is not None and active_tray_id is not None:
+            # Canvas already uses 0-based IDs, just format for sensors
+            # Canvas: canvas_id=0, tray_id=3 → Sensors: AmsId="0", TrayId="03"
             self.ams_current_enabled: dict[str, Any] | None = {
-                "AmsId": str(active_canvas_id - 1),
-                "TrayId": str(active_tray_id - 1).zfill(2),  # e.g., 1 → "00", 2 → "01"
+                "AmsId": str(active_canvas_id),
+                "TrayId": str(active_tray_id).zfill(2),  # Pad: 0→"00", 3→"03"
                 "Status": "active",
             }
         else:
@@ -141,7 +146,8 @@ class AMSStatus:
         # Additional Canvas-specific fields
         self.auto_refill: bool = data.get("auto_refill", False)
         self.ams_type: str = "canvas"
-        self.nozzle_filament_status: bool = active_tray_id > 0
+        # Tray 0 is valid, so check for None (not > 0 which excludes tray 0)
+        self.nozzle_filament_status: bool = active_tray_id is not None
 
     def __repr__(self) -> str:
         """Return a string representation of the AMSStatus instance."""

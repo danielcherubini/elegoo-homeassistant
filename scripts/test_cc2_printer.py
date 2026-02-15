@@ -436,10 +436,11 @@ async def handle_command(mqtt_client, client_id: str, payload: dict):
 
     elif method == CC2_CMD_GET_CANVAS_STATUS:
         # Determine active tray based on print status
-        active_canvas = 1 if printer_status["machine_status"]["status"] == STATUS_PRINTING else 0
-        active_tray = 1 if printer_status["machine_status"]["status"] == STATUS_PRINTING else 0
+        # Canvas uses 0-based IDs (0, 1, 2, 3)
+        active_canvas = 0  # First/only Canvas unit
+        active_tray = 3 if printer_status["machine_status"]["status"] == STATUS_PRINTING else 0
 
-        # Return Canvas with 4 loaded trays (realistic test data)
+        # Return Canvas with 4 loaded trays (matches real API format)
         result = {
             "error_code": 0,
             "canvas_info": {
@@ -448,63 +449,55 @@ async def handle_command(mqtt_client, client_id: str, payload: dict):
                 "auto_refill": False,
                 "canvas_list": [
                     {
-                        "canvas_id": 1,
+                        "canvas_id": 0,  # 0-based Canvas ID
                         "connected": 1,
                         "tray_list": [
+                            {
+                                "tray_id": 0,  # 0-based tray ID
+                                "brand": "ELEGOO",
+                                "filament_type": "PLA",
+                                "filament_name": "PLA",
+                                "filament_color": "#2850DF",  # Blue (with # prefix)
+                                "min_nozzle_temp": 190,  # Correct field name
+                                "max_nozzle_temp": 230,  # Correct field name
+                                "status": 1,  # Filament present
+                            },
                             {
                                 "tray_id": 1,
                                 "brand": "ELEGOO",
                                 "filament_type": "PLA",
-                                "filament_name": "Premium PLA",
-                                "filament_color": "FF0000",  # Red
-                                "nozzle_temp_min": 190,
-                                "nozzle_temp_max": 220,
-                                "bed_temp_min": 50,
-                                "bed_temp_max": 60,
-                                "status": 1,  # Filament present
+                                "filament_name": "PLA Basic",
+                                "filament_color": "#FFFFFF",  # White
+                                "min_nozzle_temp": 190,
+                                "max_nozzle_temp": 230,
+                                "status": 1,
                             },
                             {
                                 "tray_id": 2,
                                 "brand": "ELEGOO",
-                                "filament_type": "PETG",
-                                "filament_name": "Clear PETG",
-                                "filament_color": "00FF00",  # Green
-                                "nozzle_temp_min": 230,
-                                "nozzle_temp_max": 250,
-                                "bed_temp_min": 70,
-                                "bed_temp_max": 85,
+                                "filament_type": "PLA",
+                                "filament_name": "PLA Silk",
+                                "filament_color": "#F32FF8",  # Magenta
+                                "min_nozzle_temp": 190,
+                                "max_nozzle_temp": 230,
                                 "status": 1,
                             },
                             {
                                 "tray_id": 3,
-                                "brand": "Polymaker",
-                                "filament_type": "PLA",
-                                "filament_name": "PolyLite PLA",
-                                "filament_color": "0000FF",  # Blue
-                                "nozzle_temp_min": 190,
-                                "nozzle_temp_max": 220,
-                                "bed_temp_min": 50,
-                                "bed_temp_max": 60,
-                                "status": 1,
-                            },
-                            {
-                                "tray_id": 4,
                                 "brand": "ELEGOO",
-                                "filament_type": "ABS",
-                                "filament_name": "ABS White",
-                                "filament_color": "FFFFFF",  # White
-                                "nozzle_temp_min": 240,
-                                "nozzle_temp_max": 260,
-                                "bed_temp_min": 90,
-                                "bed_temp_max": 110,
-                                "status": 1,
+                                "filament_type": "PLA",
+                                "filament_name": "PLA",
+                                "filament_color": "#000000",  # Black
+                                "min_nozzle_temp": 190,
+                                "max_nozzle_temp": 230,
+                                "status": 2,  # Status 2 = currently active
                             },
                         ],
                     }
                 ],
             },
         }
-        active_str = f"Canvas {active_canvas}, Tray {active_tray}" if active_tray else "None"
+        active_str = f"Canvas {active_canvas}, Tray {active_tray}"
         print(f"📦 Sending canvas status (connected, active: {active_str})")
 
     else:
