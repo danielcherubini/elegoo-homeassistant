@@ -1424,6 +1424,8 @@ The Canvas is Elegoo's Automatic Material System (similar to Bambu Lab AMS).
 
 ### Canvas Status Response
 
+**Real-world example from CC2 printer with Canvas:**
+
 ```json
 {
   "id": 1,
@@ -1432,36 +1434,52 @@ The Canvas is Elegoo's Automatic Material System (similar to Bambu Lab AMS).
     "error_code": 0,
     "canvas_info": {
       "active_canvas_id": 0,
-      "active_tray_id": 0,
+      "active_tray_id": 3,
       "auto_refill": false,
       "canvas_list": [
         {
-          "canvas_id": 1,
+          "canvas_id": 0,
           "connected": 1,
           "tray_list": [
+            {
+              "tray_id": 0,
+              "brand": "ELEGOO",
+              "filament_type": "PLA",
+              "filament_name": "PLA",
+              "filament_color": "#2850DF",
+              "min_nozzle_temp": 190,
+              "max_nozzle_temp": 230,
+              "status": 1
+            },
             {
               "tray_id": 1,
               "brand": "ELEGOO",
               "filament_type": "PLA",
-              "filament_name": "Generic PLA",
-              "filament_color": "FFFFFF",
-              "nozzle_temp_min": 190,
-              "nozzle_temp_max": 220,
-              "bed_temp_min": 50,
-              "bed_temp_max": 60,
+              "filament_name": "PLA Basic",
+              "filament_color": "#FFFFFF",
+              "min_nozzle_temp": 190,
+              "max_nozzle_temp": 230,
               "status": 1
             },
             {
               "tray_id": 2,
               "brand": "ELEGOO",
-              "filament_type": "PETG",
-              "filament_name": "Generic PETG",
-              "filament_color": "FF0000",
-              "nozzle_temp_min": 230,
-              "nozzle_temp_max": 250,
-              "bed_temp_min": 70,
-              "bed_temp_max": 85,
+              "filament_type": "PLA",
+              "filament_name": "PLA Silk",
+              "filament_color": "#F32FF8",
+              "min_nozzle_temp": 190,
+              "max_nozzle_temp": 230,
               "status": 1
+            },
+            {
+              "tray_id": 3,
+              "brand": "ELEGOO",
+              "filament_type": "PLA",
+              "filament_name": "PLA",
+              "filament_color": "#000000",
+              "min_nozzle_temp": 190,
+              "max_nozzle_temp": 230,
+              "status": 2
             }
           ]
         }
@@ -1473,16 +1491,28 @@ The Canvas is Elegoo's Automatic Material System (similar to Bambu Lab AMS).
 
 ### Canvas Fields
 
-| Field | Description |
-|-------|-------------|
-| `active_canvas_id` | Currently selected Canvas unit (0=none) |
-| `active_tray_id` | Currently selected tray (0=none) |
-| `auto_refill` | Auto-switch when filament runs out |
-| `canvas_id` | Canvas unit number (1-4 typically) |
-| `connected` | 1=connected, 0=disconnected |
-| `tray_id` | Tray slot number (1-4 typically) |
-| `filament_color` | Hex color code (RRGGBB) |
-| `status` | 1=filament present, 0=empty |
+| Field | Type | Description |
+|-------|------|-------------|
+| `active_canvas_id` | int | Currently selected Canvas unit (0-based, 0 = first unit) |
+| `active_tray_id` | int | Currently selected tray (0-based, 0 = first tray) |
+| `auto_refill` | bool | Auto-switch when filament runs out |
+| `canvas_id` | int | Canvas unit ID (0-based: 0, 1, 2...) |
+| `connected` | int | 1=connected, 0=disconnected |
+| `tray_id` | int | Tray slot ID (0-based: 0, 1, 2, 3 for 4-tray system) |
+| `brand` | string | Filament manufacturer |
+| `filament_type` | string | Material type (PLA, PETG, ABS, etc.) |
+| `filament_name` | string | Specific filament name |
+| `filament_color` | string | Hex color code **with # prefix** (e.g., "#FF0000") |
+| `min_nozzle_temp` | int | Minimum nozzle temperature (°C) |
+| `max_nozzle_temp` | int | Maximum nozzle temperature (°C) |
+| `status` | int | 1=filament present, 2=currently active, 0=empty |
+
+**Important Notes:**
+- All IDs are **0-based** (canvas_id: 0 = first Canvas, tray_id: 0 = first tray)
+- Color codes include `#` prefix (e.g., `#FF0000` not `FF0000`)
+- Bed temperature fields (`bed_temp_min`, `bed_temp_max`) are **not present** in Canvas API
+- Temperature fields use correct names: `min_nozzle_temp` / `max_nozzle_temp` (not `nozzle_temp_min`)
+- `status` values: 0=empty, 1=loaded, 2=currently active during print
 
 ### Set Auto Refill
 
