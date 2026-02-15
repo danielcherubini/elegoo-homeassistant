@@ -123,7 +123,6 @@ jobs:
           gh release create "${{ steps.versions.outputs.tag }}" \
             --title "v${{ steps.versions.outputs.manifest }}" \
             --notes-file "${{ steps.release_notes.outputs.notes_file }}" \
-            --verify-tag \
             $PRERELEASE_FLAG
 
       - name: Skip release (tag exists)
