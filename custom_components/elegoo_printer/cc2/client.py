@@ -926,8 +926,13 @@ class ElegooCC2Client:
 
         Parses the AMS data structure and creates AMSStatus object.
         """
+        # Log raw response for debugging
+        self.logger.debug("Raw Canvas response: %s", result)
+
         try:
-            ams_status = AMSStatus(result)
+            # Extract canvas_info from the result
+            canvas_info = result.get("canvas_info", {})
+            ams_status = AMSStatus(canvas_info)
             self.printer_data.ams_status = ams_status
             self.logger.debug("Canvas status updated: %s", ams_status)
         except (KeyError, ValueError, TypeError):
