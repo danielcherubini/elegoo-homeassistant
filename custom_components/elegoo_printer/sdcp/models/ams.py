@@ -13,8 +13,8 @@ class AMSTray:
         Arguments:
             data (dict[str, Any] | None): Dictionary containing tray data
                 from Canvas API. Expected keys: tray_id, brand, filament_type,
-                filament_name, filament_color, nozzle_temp_min, nozzle_temp_max,
-                bed_temp_min, bed_temp_max, status.
+                filament_name, filament_color, min_nozzle_temp, max_nozzle_temp,
+                status.
 
         """
         if data is None:
@@ -146,7 +146,8 @@ class AMSStatus:
         # Additional Canvas-specific fields
         self.auto_refill: bool = data.get("auto_refill", False)
         self.ams_type: str = "canvas"
-        self.nozzle_filament_status: bool = active_tray_id > 0
+        # Tray 0 is valid, so check for None (not > 0 which excludes tray 0)
+        self.nozzle_filament_status: bool = active_tray_id is not None
 
     def __repr__(self) -> str:
         """Return a string representation of the AMSStatus instance."""
