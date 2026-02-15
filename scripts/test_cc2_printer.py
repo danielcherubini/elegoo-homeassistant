@@ -435,17 +435,77 @@ async def handle_command(mqtt_client, client_id: str, payload: dict):
         print(f"🏠 Homing axes: {axes}")
 
     elif method == CC2_CMD_GET_CANVAS_STATUS:
-        # Return empty canvas (no AMS connected)
+        # Determine active tray based on print status
+        active_canvas = 1 if printer_status["machine_status"]["status"] == STATUS_PRINTING else 0
+        active_tray = 1 if printer_status["machine_status"]["status"] == STATUS_PRINTING else 0
+
+        # Return Canvas with 4 loaded trays (realistic test data)
         result = {
             "error_code": 0,
             "canvas_info": {
-                "active_canvas_id": 0,
-                "active_tray_id": 0,
+                "active_canvas_id": active_canvas,
+                "active_tray_id": active_tray,
                 "auto_refill": False,
-                "canvas_list": [],
+                "canvas_list": [
+                    {
+                        "canvas_id": 1,
+                        "connected": 1,
+                        "tray_list": [
+                            {
+                                "tray_id": 1,
+                                "brand": "ELEGOO",
+                                "filament_type": "PLA",
+                                "filament_name": "Premium PLA",
+                                "filament_color": "FF0000",  # Red
+                                "nozzle_temp_min": 190,
+                                "nozzle_temp_max": 220,
+                                "bed_temp_min": 50,
+                                "bed_temp_max": 60,
+                                "status": 1,  # Filament present
+                            },
+                            {
+                                "tray_id": 2,
+                                "brand": "ELEGOO",
+                                "filament_type": "PETG",
+                                "filament_name": "Clear PETG",
+                                "filament_color": "00FF00",  # Green
+                                "nozzle_temp_min": 230,
+                                "nozzle_temp_max": 250,
+                                "bed_temp_min": 70,
+                                "bed_temp_max": 85,
+                                "status": 1,
+                            },
+                            {
+                                "tray_id": 3,
+                                "brand": "Polymaker",
+                                "filament_type": "PLA",
+                                "filament_name": "PolyLite PLA",
+                                "filament_color": "0000FF",  # Blue
+                                "nozzle_temp_min": 190,
+                                "nozzle_temp_max": 220,
+                                "bed_temp_min": 50,
+                                "bed_temp_max": 60,
+                                "status": 1,
+                            },
+                            {
+                                "tray_id": 4,
+                                "brand": "ELEGOO",
+                                "filament_type": "ABS",
+                                "filament_name": "ABS White",
+                                "filament_color": "FFFFFF",  # White
+                                "nozzle_temp_min": 240,
+                                "nozzle_temp_max": 260,
+                                "bed_temp_min": 90,
+                                "bed_temp_max": 110,
+                                "status": 1,
+                            },
+                        ],
+                    }
+                ],
             },
         }
-        print("📦 Sending canvas status (no AMS)")
+        active_str = f"Canvas {active_canvas}, Tray {active_tray}" if active_tray else "None"
+        print(f"📦 Sending canvas status (connected, active: {active_str})")
 
     else:
         print(f"❓ Unknown command: {method}")
