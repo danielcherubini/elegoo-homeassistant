@@ -78,6 +78,9 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
         self.coordinator = coordinator
         self._image_filename = None
         self.image_url = None
+        self._cached_task_id: str | None = (
+            None  # Track which task the cached image is for
+        )
         self._cached_image: Image | None = None
         self.entity_description = description
         unique_id = coordinator.generate_unique_id(self.entity_description.key)
@@ -88,13 +91,26 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
     async def async_image(self) -> bytes | None:
         """Return bytes of an image."""
         task = await self.api.async_get_task(include_last_task=False)
-        if task and task.thumbnail != self.image_url:
+
+        # Check if we need to fetch a new thumbnail
+        # V3 printers reuse same URL (/thumb.jpg) but file changes per print
+        # Compare task_id to detect new prints even with identical URLs
+        if task and (
+            task.task_id != self._cached_task_id or task.thumbnail != self.image_url
+        ):
             if thumbnail_image := await self.api.async_get_thumbnail_image(task=task):
                 self._attr_image_last_updated = thumbnail_image.get_last_update_time()
                 self._cached_image = thumbnail_image.get_image()
                 self.image_url = task.thumbnail
+                self._cached_task_id = (
+                    task.task_id
+                )  # Cache task ID to detect new prints
                 self._attr_content_type = thumbnail_image.get_content_type()
                 return thumbnail_image.get_bytes()
+            # Fetch failed but we have a cached image - return it instead of None
+            # Better to show stale image briefly than nothing during transient errors
+            if self._cached_image:
+                return self._cached_image.content
 
         elif self._cached_image:
             return self._cached_image.content
