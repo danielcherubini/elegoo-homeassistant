@@ -107,6 +107,10 @@ class CoverImage(ElegooPrinterEntity, ImageEntity):
                 )  # Cache task ID to detect new prints
                 self._attr_content_type = thumbnail_image.get_content_type()
                 return thumbnail_image.get_bytes()
+            # Fetch failed but we have a cached image - return it instead of None
+            # Better to show stale image briefly than nothing during transient errors
+            if self._cached_image:
+                return self._cached_image.content
 
         elif self._cached_image:
             return self._cached_image.content
