@@ -126,7 +126,7 @@ jobs:
       - name: 'Checkout PR branch'
         if: |-
           ${{  steps.get_context.outputs.is_pr == 'true' }}
-        uses: 'actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5' # ratchet:actions/checkout@v4
+        uses: 'actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98' # ratchet:actions/checkout@v4
         with:
           token: '${{ steps.generate_token.outputs.token || secrets.GITHUB_TOKEN }}'
           repository: '${{ github.repository }}'
@@ -136,7 +136,7 @@ jobs:
       - name: 'Checkout main branch'
         if: |-
           ${{  steps.get_context.outputs.is_pr == 'false' }}
-        uses: 'actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5' # ratchet:actions/checkout@v4
+        uses: 'actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98' # ratchet:actions/checkout@v4
         with:
           token: '${{ steps.generate_token.outputs.token || secrets.GITHUB_TOKEN }}'
           repository: '${{ github.repository }}'
