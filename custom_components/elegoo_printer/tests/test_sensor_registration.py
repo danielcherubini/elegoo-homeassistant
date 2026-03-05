@@ -91,6 +91,8 @@ class TestCurrentExtrusionGating:
             (PrinterType.RESIN, ProtocolVersion.V3, False, False),
             (PrinterType.RESIN, ProtocolVersion.CC2, False, False),
             (None, ProtocolVersion.V3, False, False),
+            (None, ProtocolVersion.CC2, False, False),
+            (None, ProtocolVersion.V1, False, False),
         ],
     )
     def test_current_extrusion_gating(
@@ -127,6 +129,8 @@ class TestTotalExtrusionGating:
             (PrinterType.RESIN, ProtocolVersion.CC2, False, False),
             # Unknown printer type — never
             (None, ProtocolVersion.V3, False, False),
+            (None, ProtocolVersion.CC2, False, False),
+            (None, ProtocolVersion.V1, False, False),
         ],
     )
     def test_total_extrusion_gating(
