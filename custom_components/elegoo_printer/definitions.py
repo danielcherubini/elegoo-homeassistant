@@ -809,9 +809,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
 )
 
 # FDM total extrusion sensor
-PRINTER_STATUS_FDM_TOTAL_EXTRUSION: tuple[
-    ElegooPrinterSensorEntityDescription, ...
-] = (
+PRINTER_STATUS_FDM_TOTAL_EXTRUSION: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="total_extrusion",
         name="Total Extrusion",
