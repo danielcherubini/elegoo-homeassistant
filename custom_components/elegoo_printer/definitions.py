@@ -808,7 +808,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
 )
 
-# FDM sensors only available on Open Centauri firmware (patched Centauri Carbon)
+# FDM extrusion sensors (Open Centauri firmware or CC2 protocol)
 PRINTER_STATUS_FDM_OPEN_CENTAURI: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     # --- Total Extrusion Sensor ---
     ElegooPrinterSensorEntityDescription(

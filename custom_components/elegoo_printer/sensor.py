@@ -69,8 +69,9 @@ async def async_setup_entry(
         if protocol_version == ProtocolVersion.CC2:
             sensors.extend(PRINTER_STATUS_CANVAS)
 
-        # Open Centauri specific sensors (patched Centauri Carbon firmware)
-        if printer.open_centauri:
+        # Extrusion sensors (Open Centauri firmware or CC2 protocol)
+        # CC2 printers always report extrusion via gcode_move_inf.e
+        if printer.open_centauri or protocol_version == ProtocolVersion.CC2:
             sensors.extend(PRINTER_STATUS_FDM_OPEN_CENTAURI)
     elif printer_type == PrinterType.RESIN:
         sensors.extend(PRINTER_STATUS_RESIN)
