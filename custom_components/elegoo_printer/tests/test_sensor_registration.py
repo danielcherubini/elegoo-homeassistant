@@ -1,5 +1,10 @@
 """Tests for sensor registration logic."""
 
+from __future__ import annotations
+
+import asyncio
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from custom_components.elegoo_printer.definitions import (
@@ -10,31 +15,49 @@ from custom_components.elegoo_printer.sdcp.models.enums import (
     PrinterType,
     ProtocolVersion,
 )
+from custom_components.elegoo_printer.sensor import async_setup_entry
 
 CURRENT_EXTRUSION_KEYS = {desc.key for desc in PRINTER_STATUS_FDM_CURRENT_EXTRUSION}
 TOTAL_EXTRUSION_KEYS = {desc.key for desc in PRINTER_STATUS_FDM_TOTAL_EXTRUSION}
 
 
-def _should_include_current_extrusion(
+class _FakeSensor:
+    """Stand-in for ElegooPrinterSensor that skips HA entity initialisation."""
+
+    def __init__(self, coordinator: object, entity_description: object) -> None:  # noqa: ARG002
+        self.entity_description = entity_description
+
+
+def _registered_keys(
     printer_type: PrinterType | None,
     protocol_version: ProtocolVersion,
     *,
     open_centauri: bool,
-) -> bool:
-    """Reproduce the current-extrusion gating logic from sensor.py."""
-    return printer_type == PrinterType.FDM and (
-        open_centauri or protocol_version == ProtocolVersion.CC2
-    )
+) -> set[str]:
+    """Call the real async_setup_entry and return the set of registered sensor keys."""
+    printer = MagicMock()
+    printer.printer_type = printer_type
+    printer.protocol_version = protocol_version
+    printer.open_centauri = open_centauri
+    printer.has_vat_heater = False
 
+    coordinator = MagicMock()
+    coordinator.config_entry.runtime_data.api.printer = printer
 
-def _should_include_total_extrusion(
-    printer_type: PrinterType | None,
-    protocol_version: ProtocolVersion,  # noqa: ARG001
-    *,
-    open_centauri: bool,
-) -> bool:
-    """Reproduce the total-extrusion gating logic from sensor.py."""
-    return printer_type == PrinterType.FDM and open_centauri
+    entry = MagicMock()
+    entry.runtime_data.coordinator = coordinator
+
+    async_add_entities = MagicMock()
+
+    with patch(
+        "custom_components.elegoo_printer.sensor.ElegooPrinterSensor",
+        _FakeSensor,
+    ):
+        asyncio.run(async_setup_entry(MagicMock(), entry, async_add_entities))
+
+    async_add_entities.assert_called_once()
+    entities = async_add_entities.call_args[0][0]
+    return {e.entity_description.key for e in entities}
 
 
 class TestExtrusionSensorDefinitions:
@@ -54,7 +77,7 @@ class TestExtrusionSensorDefinitions:
 
 
 class TestCurrentExtrusionGating:
-    """Test current_extrusion sensor inclusion (Open Centauri or CC2)."""
+    """Test current_extrusion sensor inclusion via async_setup_entry."""
 
     @pytest.mark.parametrize(
         ("printer_type", "protocol_version", "open_centauri", "expected"),
@@ -77,14 +100,14 @@ class TestCurrentExtrusionGating:
         expected: bool,  # noqa: FBT001
     ) -> None:
         """Test current_extrusion inclusion for various printer configurations."""
-        result = _should_include_current_extrusion(
+        keys = _registered_keys(
             printer_type, protocol_version, open_centauri=open_centauri
         )
-        assert result == expected
+        assert CURRENT_EXTRUSION_KEYS.issubset(keys) == expected
 
 
 class TestTotalExtrusionGating:
-    """Test total_extrusion sensor inclusion (Open Centauri only)."""
+    """Test total_extrusion sensor inclusion via async_setup_entry."""
 
     @pytest.mark.parametrize(
         ("printer_type", "protocol_version", "open_centauri", "expected"),
@@ -111,7 +134,7 @@ class TestTotalExtrusionGating:
         expected: bool,  # noqa: FBT001
     ) -> None:
         """Test total_extrusion inclusion for various printer configurations."""
-        result = _should_include_total_extrusion(
+        keys = _registered_keys(
             printer_type, protocol_version, open_centauri=open_centauri
         )
-        assert result == expected
+        assert TOTAL_EXTRUSION_KEYS.issubset(keys) == expected
