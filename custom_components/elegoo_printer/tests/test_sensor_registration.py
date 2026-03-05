@@ -3,70 +3,115 @@
 import pytest
 
 from custom_components.elegoo_printer.definitions import (
-    PRINTER_STATUS_FDM_OPEN_CENTAURI,
+    PRINTER_STATUS_FDM_CURRENT_EXTRUSION,
+    PRINTER_STATUS_FDM_TOTAL_EXTRUSION,
 )
 from custom_components.elegoo_printer.sdcp.models.enums import (
     PrinterType,
     ProtocolVersion,
 )
 
-EXTRUSION_SENSOR_KEYS = {desc.key for desc in PRINTER_STATUS_FDM_OPEN_CENTAURI}
+CURRENT_EXTRUSION_KEYS = {desc.key for desc in PRINTER_STATUS_FDM_CURRENT_EXTRUSION}
+TOTAL_EXTRUSION_KEYS = {desc.key for desc in PRINTER_STATUS_FDM_TOTAL_EXTRUSION}
 
 
-def _should_include_extrusion_sensors(
+def _should_include_current_extrusion(
     printer_type: PrinterType | None,
     protocol_version: ProtocolVersion,
     *,
     open_centauri: bool,
 ) -> bool:
-    """Reproduce the sensor gating logic from sensor.py async_setup_entry."""
+    """Reproduce the current-extrusion gating logic from sensor.py."""
     return printer_type == PrinterType.FDM and (
         open_centauri or protocol_version == ProtocolVersion.CC2
     )
 
 
-class TestExtrusionSensorRegistration:
-    """Test that extrusion sensors are registered for the correct printer configs."""
+def _should_include_total_extrusion(
+    printer_type: PrinterType | None,
+    protocol_version: ProtocolVersion,  # noqa: ARG001
+    *,
+    open_centauri: bool,
+) -> bool:
+    """Reproduce the total-extrusion gating logic from sensor.py."""
+    return printer_type == PrinterType.FDM and open_centauri
 
-    def test_extrusion_sensors_contain_expected_keys(self) -> None:
-        """Verify the extrusion sensor tuple has the expected sensor keys."""
-        assert "total_extrusion" in EXTRUSION_SENSOR_KEYS
-        assert "current_extrusion" in EXTRUSION_SENSOR_KEYS
+
+class TestExtrusionSensorDefinitions:
+    """Verify the sensor tuples contain the expected keys."""
+
+    def test_current_extrusion_key(self) -> None:
+        """Verify current_extrusion is in the current-extrusion tuple."""
+        assert "current_extrusion" in CURRENT_EXTRUSION_KEYS
+
+    def test_total_extrusion_key(self) -> None:
+        """Verify total_extrusion is in the total-extrusion tuple."""
+        assert "total_extrusion" in TOTAL_EXTRUSION_KEYS
+
+    def test_no_overlap(self) -> None:
+        """Verify the two tuples have no overlapping sensor keys."""
+        assert CURRENT_EXTRUSION_KEYS.isdisjoint(TOTAL_EXTRUSION_KEYS)
+
+
+class TestCurrentExtrusionGating:
+    """Test current_extrusion sensor inclusion (Open Centauri or CC2)."""
 
     @pytest.mark.parametrize(
         ("printer_type", "protocol_version", "open_centauri", "expected"),
         [
-            # CC2 FDM printer without Open Centauri — should get extrusion sensors
             (PrinterType.FDM, ProtocolVersion.CC2, False, True),
-            # CC2 FDM printer with Open Centauri — should get extrusion sensors
             (PrinterType.FDM, ProtocolVersion.CC2, True, True),
-            # V3 FDM printer with Open Centauri — should get extrusion sensors
             (PrinterType.FDM, ProtocolVersion.V3, True, True),
-            # V1 FDM printer with Open Centauri — should get extrusion sensors
             (PrinterType.FDM, ProtocolVersion.V1, True, True),
-            # V3 FDM printer without Open Centauri — should NOT get extrusion sensors
             (PrinterType.FDM, ProtocolVersion.V3, False, False),
-            # V1 FDM printer without Open Centauri — should NOT get extrusion sensors
             (PrinterType.FDM, ProtocolVersion.V1, False, False),
-            # Resin printer — should NOT get extrusion sensors regardless
             (PrinterType.RESIN, ProtocolVersion.V3, False, False),
-            (PrinterType.RESIN, ProtocolVersion.V3, True, False),
             (PrinterType.RESIN, ProtocolVersion.CC2, False, False),
         ],
     )
-    def test_extrusion_sensor_gating(
+    def test_current_extrusion_gating(
         self,
         printer_type: PrinterType | None,
         protocol_version: ProtocolVersion,
         open_centauri: bool,  # noqa: FBT001
         expected: bool,  # noqa: FBT001
     ) -> None:
-        """Test extrusion sensor inclusion for various printer configurations."""
-        result = _should_include_extrusion_sensors(
+        """Test current_extrusion inclusion for various printer configurations."""
+        result = _should_include_current_extrusion(
             printer_type, protocol_version, open_centauri=open_centauri
         )
-        assert result == expected, (
-            f"Expected extrusion sensors={'included' if expected else 'excluded'} "
-            f"for type={printer_type}, protocol={protocol_version}, "
-            f"open_centauri={open_centauri}"
+        assert result == expected
+
+
+class TestTotalExtrusionGating:
+    """Test total_extrusion sensor inclusion (Open Centauri only)."""
+
+    @pytest.mark.parametrize(
+        ("printer_type", "protocol_version", "open_centauri", "expected"),
+        [
+            # Open Centauri FDM — only case that gets total_extrusion
+            (PrinterType.FDM, ProtocolVersion.V3, True, True),
+            (PrinterType.FDM, ProtocolVersion.V1, True, True),
+            (PrinterType.FDM, ProtocolVersion.CC2, True, True),
+            # CC2 without Open Centauri — should NOT get total_extrusion
+            (PrinterType.FDM, ProtocolVersion.CC2, False, False),
+            # Non-Open-Centauri, non-CC2
+            (PrinterType.FDM, ProtocolVersion.V3, False, False),
+            (PrinterType.FDM, ProtocolVersion.V1, False, False),
+            # Resin — never
+            (PrinterType.RESIN, ProtocolVersion.V3, True, False),
+            (PrinterType.RESIN, ProtocolVersion.CC2, False, False),
+        ],
+    )
+    def test_total_extrusion_gating(
+        self,
+        printer_type: PrinterType | None,
+        protocol_version: ProtocolVersion,
+        open_centauri: bool,  # noqa: FBT001
+        expected: bool,  # noqa: FBT001
+    ) -> None:
+        """Test total_extrusion inclusion for various printer configurations."""
+        result = _should_include_total_extrusion(
+            printer_type, protocol_version, open_centauri=open_centauri
         )
+        assert result == expected

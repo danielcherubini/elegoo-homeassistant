@@ -808,9 +808,10 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
 )
 
-# FDM extrusion sensors (Open Centauri firmware or CC2 protocol)
-PRINTER_STATUS_FDM_OPEN_CENTAURI: tuple[ElegooPrinterSensorEntityDescription, ...] = (
-    # --- Total Extrusion Sensor ---
+# FDM total extrusion sensor
+PRINTER_STATUS_FDM_TOTAL_EXTRUSION: tuple[
+    ElegooPrinterSensorEntityDescription, ...
+] = (
     ElegooPrinterSensorEntityDescription(
         key="total_extrusion",
         name="Total Extrusion",
@@ -823,7 +824,12 @@ PRINTER_STATUS_FDM_OPEN_CENTAURI: tuple[ElegooPrinterSensorEntityDescription, ..
         if printer_data and printer_data.status and printer_data.status.print_info
         else None,
     ),
-    # --- Current Extrusion Sensor ---
+)
+
+# FDM current extrusion sensor
+PRINTER_STATUS_FDM_CURRENT_EXTRUSION: tuple[
+    ElegooPrinterSensorEntityDescription, ...
+] = (
     ElegooPrinterSensorEntityDescription(
         key="current_extrusion",
         name="Current Extrusion",
