@@ -14,7 +14,8 @@ from .definitions import (
     PRINTER_STATUS_CANVAS,
     PRINTER_STATUS_COMMON,
     PRINTER_STATUS_FDM,
-    PRINTER_STATUS_FDM_OPEN_CENTAURI,
+    PRINTER_STATUS_FDM_CURRENT_EXTRUSION,
+    PRINTER_STATUS_FDM_TOTAL_EXTRUSION,
     PRINTER_STATUS_RESIN,
     PRINTER_STATUS_RESIN_VAT_HEATER,
     ElegooPrinterSensorEntityDescription,
@@ -69,9 +70,13 @@ async def async_setup_entry(
         if protocol_version == ProtocolVersion.CC2:
             sensors.extend(PRINTER_STATUS_CANVAS)
 
-        # Open Centauri specific sensors (patched Centauri Carbon firmware)
+        # Current extrusion
+        if printer.open_centauri or protocol_version == ProtocolVersion.CC2:
+            sensors.extend(PRINTER_STATUS_FDM_CURRENT_EXTRUSION)
+
+        # Total extrusion
         if printer.open_centauri:
-            sensors.extend(PRINTER_STATUS_FDM_OPEN_CENTAURI)
+            sensors.extend(PRINTER_STATUS_FDM_TOTAL_EXTRUSION)
     elif printer_type == PrinterType.RESIN:
         sensors.extend(PRINTER_STATUS_RESIN)
         sensors.extend(PRINTER_ATTRIBUTES_RESIN)
