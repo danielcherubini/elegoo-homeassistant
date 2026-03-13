@@ -56,7 +56,7 @@ def _sanitize_ip_address(ip: str) -> str | None:
 
     # Remove common URL prefixes
     cleaned = ip.strip()
-    for prefix in ("http://", "https://", "://"):
+    for prefix in ("http://", "https://", "://", "//"):
         if cleaned.startswith(prefix):
             cleaned = cleaned[len(prefix) :].strip()
 
@@ -260,7 +260,10 @@ async def _async_validate_input(  # noqa: PLR0912
     elif CONF_IP_ADDRESS in user_input:
         # Manual IP entry - try WebSocket discovery first, then CC2
         raw_ip = user_input[CONF_IP_ADDRESS]
-        ip_address = _sanitize_ip_address(raw_ip) or ""
+        ip_address = _sanitize_ip_address(raw_ip)
+        if not ip_address:
+            LOGGER.warning("Manual IP entry: no valid IP address provided: %s", raw_ip)
+            return {"printer": None, "errors": {"base": "manual_ip_no_valid_ip"}}
         elegoo_printer = ElegooPrinterClient(
             ip_address,
             config=MappingProxyType(user_input),
@@ -322,7 +325,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 4
     MINOR_VERSION = 0
 
-    def _cleanup_user_input(self, raw_ip: str) -> str:
+    def _cleanup_user_input(self, raw_ip: str) -> str | None:
         """
         Sanitize user-provided IP address input.
 
@@ -333,10 +336,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             raw_ip: Raw string value from config form
 
         Returns:
-            Cleaned IP address
+            Cleaned IP address or None if empty/invalid.
 
         """
-        return _sanitize_ip_address(raw_ip) or ""
+        return _sanitize_ip_address(raw_ip)
 
     async def async_step_user(
         self,
@@ -531,6 +534,13 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 ip_address,
                 raw_ip,
             )
+
+            # Check if sanitized input is empty after stripping
+            if not ip_address:
+                LOGGER.warning(
+                    "Manual IP entry: no valid IP address provided: %s", raw_ip
+                )
+                _errors["base"] = "manual_ip_no_valid_ip"
 
             # Try WebSocket/SDCP discovery first
             elegoo_printer = ElegooPrinterClient(
