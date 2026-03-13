@@ -1,4 +1,9 @@
-"""Adds config flow for Elegoo."""
+"""
+Adds config flow for Elegoo.
+
+Copyright (c) Daniel Cherubini
+MIT License
+"""
 
 from __future__ import annotations
 
@@ -33,6 +38,33 @@ from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
     from homeassistant.helpers.selector import SelectOptionDict
+
+
+def _sanitize_ip_address(ip: str) -> str | None:
+    """
+    Strip URL prefixes, trailing slashes and whitespace from user-provided IP addresses.
+
+    Arguments:
+        ip: The raw user input string (may include http://, /, etc.)
+
+    Returns:
+        Clean IP address or None if empty/invalid after sanitization.
+
+    """
+    if not ip:
+        return None
+
+    # Remove common URL prefixes
+    cleaned = ip.strip()
+    for prefix in ("http://", "https://", "://"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix) :].strip()
+
+    # Remove trailing slash
+    cleaned = cleaned.rstrip("/")
+
+    return cleaned or None
+
 
 MANUAL_IP_SCHEMA = vol.Schema(
     {
@@ -227,7 +259,8 @@ async def _async_validate_input(  # noqa: PLR0912
             _errors["base"] = "invalid_printer_selection"
     elif CONF_IP_ADDRESS in user_input:
         # Manual IP entry - try WebSocket discovery first, then CC2
-        ip_address = user_input[CONF_IP_ADDRESS]
+        raw_ip = user_input[CONF_IP_ADDRESS]
+        ip_address = _sanitize_ip_address(raw_ip) or ""
         elegoo_printer = ElegooPrinterClient(
             ip_address,
             config=MappingProxyType(user_input),
@@ -289,11 +322,21 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 4
     MINOR_VERSION = 0
 
-    def __init__(self) -> None:
-        """Initialize the configuration flow handler."""
-        self.discovered_printers: list[Printer] = []
-        self.selected_printer: Printer | None = None
-        self._requires_access_code: bool = False
+    def _cleanup_user_input(self, raw_ip: str) -> str:
+        """
+        Sanitize user-provided IP address input.
+
+        Strips URL prefixes (http://, https://, //), trailing slashes,
+        and whitespace from the raw user input.
+
+        Arguments:
+            raw_ip: Raw string value from config form
+
+        Returns:
+            Cleaned IP address
+
+        """
+        return _sanitize_ip_address(raw_ip) or ""
 
     async def async_step_user(
         self,
@@ -480,9 +523,13 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         _errors = {}
         if user_input is not None:
-            ip_address = user_input[CONF_IP_ADDRESS]
+            raw_ip = user_input[CONF_IP_ADDRESS]
+            ip_address = self._cleanup_user_input(raw_ip)
+
             LOGGER.info(
-                "Manual IP entry: attempting to discover printer at %s", ip_address
+                "Manual IP entry: attempting to discover printer at %s (original: %s)",
+                ip_address,
+                raw_ip,
             )
 
             # Try WebSocket/SDCP discovery first
@@ -606,7 +653,11 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required(
                         CONF_CAMERA_ENABLED,
-                        default=self.selected_printer.camera_enabled,
+                        default=(
+                            self.selected_printer.camera_enabled
+                            if self.selected_printer
+                            else False
+                        ),
                     ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
                 }
             ),
@@ -665,7 +716,11 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required(
                         CONF_PROXY_ENABLED,
-                        default=self.selected_printer.proxy_enabled,
+                        default=(
+                            self.selected_printer.proxy_enabled
+                            if self.selected_printer
+                            else False
+                        ),
                     ): selector.BooleanSelector(
                         selector.BooleanSelectorConfig(),
                     ),
