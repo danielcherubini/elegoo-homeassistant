@@ -110,14 +110,14 @@ variables:
         else (device_entities(printer_device) | select('match', '^camera\.') | first))
        | default('', true) }}
 
-trigger:
-  - platform: state
+triggers:
+  - trigger: state
     entity_id: !input percent_complete_entity
-  - platform: state
+  - trigger: state
     entity_id: !input print_status_entity
-  - platform: state
+  - trigger: state
     entity_id: !input current_status_entity
-  - platform: state
+  - trigger: state
     entity_id: !input error_status_reason_entity
 
 condition: []
