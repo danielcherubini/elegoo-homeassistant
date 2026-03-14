@@ -1,14 +1,31 @@
 """Platform for selecting Elegoo printer options."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from homeassistant.components.select import SelectEntity
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .coordinator import ElegooDataUpdateCoordinator
-from .definitions import PRINTER_SELECT_TYPES, ElegooPrinterSelectEntityDescription
+from custom_components.elegoo_printer.sdcp.models.enums import (
+    PrinterType,
+    ProtocolVersion,
+)
+
+if TYPE_CHECKING:
+    from .api import ApiType
+    from .coordinator import ElegooDataUpdateCoordinator
+
+from .const import LOGGER
+from .definitions import (
+    PRINTER_SELECT_TYPES_CC2,
+    PRINTER_SELECT_TYPES_V1V3,
+    ElegooPrinterSelectEntityDescription,
+)
 from .entity import ElegooPrinterEntity
 
 
@@ -17,16 +34,36 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Asynchronously sets up Elegoo printer select entities in Home Assistant."""
-    coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
-    printer_type = coordinator.config_entry.runtime_data.api.printer.printer_type
+    """
+    Asynchronously sets up Elegoo printer select entities in Home Assistant.
 
-    if printer_type == PrinterType.FDM:
-        for description in PRINTER_SELECT_TYPES:
-            async_add_entities(
-                [ElegooPrintSpeedSelect(coordinator, description)],
-                update_before_add=True,
-            )
+    Supports FDM printers only. Different protocol versions use different speed presets:
+    - SDCP (WebSocket/MQTT): max 160%, presets at 50/100/130/160
+    - CC2: discrete modes, presets at 50/100/150/200
+    """
+    coordinator: ElegooDataUpdateCoordinator = config_entry.runtime_data.coordinator
+    api: ApiType = coordinator.config_entry.runtime_data.api
+    protocol_version = api.printer.protocol_version
+
+    if api.printer.printer_type.value != PrinterType.FDM.value:
+        LOGGER.debug(
+            "Print speed select only available for FDM printers, skipping setup"
+        )
+        return
+
+    descriptions: tuple[
+        ElegooPrinterSelectEntityDescription,
+        ...,
+    ] = (
+        PRINTER_SELECT_TYPES_CC2
+        if protocol_version == ProtocolVersion.CC2
+        else PRINTER_SELECT_TYPES_V1V3
+    )
+    for description in descriptions:
+        async_add_entities(
+            [ElegooPrintSpeedSelect(coordinator, description)],
+            update_before_add=True,
+        )
 
 
 class ElegooPrintSpeedSelect(ElegooPrinterEntity, SelectEntity):
@@ -52,8 +89,8 @@ class ElegooPrintSpeedSelect(ElegooPrinterEntity, SelectEntity):
         self._api = self.coordinator.config_entry.runtime_data.api
 
     @property
-    def current_option(self) -> None:
-        """Returns the current selected option."""
+    def current_option(self) -> str | None:
+        """Return the current select option."""
         if self.coordinator.data:
             return self.entity_description.current_option_fn(self.coordinator.data)
         return None
