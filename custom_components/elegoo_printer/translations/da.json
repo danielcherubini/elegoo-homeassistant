@@ -1,0 +1,200 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "description": "For hjælp til konfiguration, se venligst projektets GitHub-side.",
+        "data": {
+          "ip_address": "Printer IP-adresse",
+          "centauri_carbon": "Er dette en FDM-printer?",
+          "proxy_enabled": "Aktiver proxyserveren",
+          "external_ip": "Ekstern adresse (valgfrit, til avancerede netværksopsætninger)"
+        },
+        "data_description": {
+          "external_ip": "Overskriv automatisk opdaget adresse med en IP-adresse eller hostname. Lad stå tomt for automatisk detektering. Brug til Kubernetes/Docker opsætning eller når du er bag en omvendt proxy. Portene 3030 og 3031 vil blive tilføjet automatisk."
+        }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 Indstillinger",
+        "description": "Konfigurer dine Centauri Carbon 2 printerindstillinger.",
+        "data": {
+          "ip_address": "Printer IP-adresse",
+          "cc2_access_code": "Adgangskode (valgfrit)"
+        }
+      },
+      "mqtt_options": {
+        "title": "MQTT Printer Indstillinger",
+        "description": "Konfigurer dine MQTT printerindstillinger.",
+        "data": {
+          "ip_address": "Printer IP-adresse"
+        }
+      },
+      "websocket_options": {
+        "title": "Printer Indstillinger",
+        "description": "For hjælp til konfiguration, se venligst projektets GitHub-side.",
+        "data": {
+          "ip_address": "Printer IP-adresse",
+          "proxy_enabled": "Aktiver proxyserveren",
+          "external_ip": "Ekstern adresse (valgfrit, til avancerede netværksopsætninger)"
+        },
+        "data_description": {
+          "external_ip": "Overskriv automatisk opdaget adresse med en IP-adresse eller hostname. Lad stå tomt for automatisk detektering. Brug til Kubernetes/Docker opsætning eller når du er bag en omvendt proxy. Portene 3030 og 3031 vil blive tilføjet automatisk."
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "discover_printers": {
+        "title": "Vælg Printer",
+        "description": "Vælg en opdaget printer fra listen eller vælg at indtaste IP-adressen manuelt.",
+        "data": {
+          "selection": "Tilgængelige Printere"
+        }
+      },
+      "manual_ip": {
+        "title": "Manuel Opsætning",
+        "description": "Indtast IP-adressen til din Elegoo printer. Integrationen vil automatisk detektere printertypen og guide dig gennem de passende opsætnings trin.",
+        "data": {
+          "ip_address": "Printer IP-adresse",
+          "external_ip": "Ekstern adresse (valgfrit, til avancerede netværksopsætninger)"
+        },
+        "data_description": {
+          "external_ip": "Overskriv automatisk opdaget adresse med en IP-adresse eller hostname. Lad stå tomt for automatisk detektering. Brug til Kubernetes/Docker opsætning eller når du er bag en omvendt proxy. Portene 3030 og 3031 vil blive tilføjet automatisk."
+        }
+      },
+      "fdm_options": {
+        "title": "FDM Printer Indstillinger",
+        "description": "Konfigurer yderligere indstillinger for din valgte printer. Se projektets GitHub-side for mere information om proxyserveren.",
+        "data": {
+          "proxy_enabled": "Aktiver proxyserveren"
+        }
+      },
+      "resin_options": {
+        "title": "Resin Printer Indstillinger",
+        "description": "At aktivere kameraet kan skabe ustabilitet i printer. Brug på eget ansvar. Se projektets GitHub-side for detaljer og bedste praksis.",
+        "data": {
+          "camera_enabled": "Aktiver kamera"
+        }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 Indstillinger",
+        "description": "Konfigurer din Centauri Carbon 2 printer. Hvis din printer har adgangskodeautentificering aktiveret, indtast herunder din adgangskode. Lad stå tomt hvis ingen adgangskode er krævet.",
+        "data": {
+          "cc2_access_code": "Adgangskode (valgfrit)"
+        }
+      },
+      "cc2_auth_check": {
+        "title": "Centauri Carbon 2 Autentificering",
+        "description": "**VIGTIGT:** Tjek din printers adgangskode-indstilling før du fortsætter.\n\nPå din printer, gå til: **Indstillinger → Netværk → Adgangskode**\n\n• Hvis indstillingen viser 'Fra' eller er tom/tom, vælg **Nej**\n• Hvis du har sat en brugerdefineret adgangskode, vælg **Ja**\n\nDe fleste printere leveres uden adgangskode standard.",
+        "data": {
+          "requires_access_code": "Kræver din printer en adgangskode?"
+        }
+      },
+      "cc2_access_code_input": {
+        "title": "Indtast Adgangskode",
+        "description": "Find din printers adgangskode på: Indstillinger → Netværk → Adgangskode",
+        "data": {
+          "cc2_access_code": "Adgangskode"
+        }
+      }
+    },
+    "error": {
+      "connection": "Kunne ikke oprette forbindelse til printer.",
+      "unknown": "Ukendt fejl opstod.",
+      "invalid_printer_selection": "Ugyldig printer selection.",
+      "no_printer_found": "Ingen printer blev fundet på den angivne IP-adresse.",
+      "validation_no_printer_found": "Validering mislykkedes: Ingen printer blev fundet.",
+      "no_printer_selected_or_ip_provided": "Vælg en opdaget printer eller angiv en IP-adresse.",
+      "manual_options_no_printer_found": "Den valgte printer kunne ikke findes for at anvende indstillinger.",
+      "init_no_printer_found": "Initialisering mislykkedes: Printer kunne ikke findes.",
+      "cc2_options_no_printer_found": "CC2 printer kunne ikke findes.",
+      "cc2_access_code_required": "Denne printer kræver en adgangskode til autentificering.",
+      "cc2_authentication_failed": "Autentificering mislykkedes. Verificer adgangskode i printerindstillinger: Indstillinger → Netværk → Adgangskode."
+    },
+    "abort": {
+      "already_configured": "Dette indlæg er allerede konfigureret."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "print_status": {
+        "name": "Printstatus",
+        "state": {
+          "idle": "Inaktiv",
+          "homing": "Homing",
+          "dropping": "Droppende",
+          "printing": "Printer",
+          "lifting": "Hevende",
+          "pausing": "Pause",
+          "paused": "På Pause",
+          "stopping": "Stopper",
+          "stopped": "Stoppet",
+          "complete": "Færdig",
+          "file_checking": "Tjekker Fil",
+          "recovery": "Genvinding",
+          "loading": "Indlæser",
+          "preheating": "Forvarmer",
+          "leveling": "Nivellerer"
+        }
+      },
+      "current_status": {
+        "name": "Aktuel Status",
+        "state": {
+          "idle": "Inaktiv",
+          "printing": "Printer",
+          "file_transferring": "Overfører Fil",
+          "exposure_testing": "Udsættelsestest",
+          "devices_testing": "Enhedtest",
+          "leveling": "Nivellerer",
+          "input_shaping": "Input Shaping",
+          "stopping": "Stopper",
+          "stopped": "Stoppet",
+          "homing": "Homing",
+          "loading_unloading": "Indlæser / Udlader",
+          "pid_tuning": "PID Justering",
+          "recovery": "Genvinding"
+        }
+      },
+      "print_error": {
+        "name": "Print Fejl",
+        "state": {
+          "none": "Ingen",
+          "check": "Tjek",
+          "fileio": "Fil I/O",
+          "invalid_resolution": "Ugyldig opløsning",
+          "unknown_format": "Ukendt format",
+          "unknown_model": "Ukendt model"
+        }
+      },
+      "error_status_reason": {
+        "name": "Fejlstatus Årsag",
+        "state": {
+          "ok": "Normal",
+          "temp_error": "Overophedningsfejl (sprøjtehoved/bænk)",
+          "filament_runout": "Filamenttomhed detekteret",
+          "filament_jam": "Filamentklemme eller tilstopning detekteret",
+          "level_failed": "Auto-bænkjustering mislykkedes",
+          "udisk_remove": "USB-stik fjernet under print",
+          "home_failed_x": "X-akse homing fejl",
+          "home_failed_z": "Z-akse homing fejl",
+          "home_failed": "Generel homing fejl",
+          "bed_adhesion_failed": "Print afstødning fra bænk",
+          "error": "Generel print fejl",
+          "move_abnormal": "Motorbevægelse abnormalitet",
+          "home_failed_y": "Y-akse homing fejl",
+          "file_error": "G-code filfejl",
+          "camera_error": "Kameraforbindelsesfejl",
+          "network_error": "Netværksforbindelsesfejl",
+          "server_connect_failed": "Serverforbindelse mislykkedes",
+          "disconnect_app": "App afbrudt under print",
+          "nozzle_temp_sensor_offline": "Sprøjtehoved temperatur sensor offline",
+          "bed_temp_sensor_offline": "Bænk temperatur sensor offline",
+          "filament_about_to_runout": "Filamenttomhed umiddelbar"
+        }
+      },
+      "end_time": {
+        "name": "Sluttidspunkt"
+      }
+    }
+  }
+}
