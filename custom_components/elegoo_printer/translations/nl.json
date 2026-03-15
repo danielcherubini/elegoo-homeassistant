@@ -1,0 +1,200 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "description": "Voor hulp bij configuratie, zie de GitHub-pagina van het project.",
+        "data": {
+          "ip_address": "Printer IP-adres",
+          "centauri_carbon": "Is dit een FDM-printer?",
+          "proxy_enabled": "Proxyserver activeren",
+          "external_ip": "Extern adres (optioneel, voor geavanceerde netwerkopstellingen)"
+        },
+        "data_description": {
+          "external_ip": "Overschrijf automatisch gedetecteerd adres met een IP-adres of hostnaam. Laat leeg voor automatische detectie. Gebruik voor Kubernetes/Docker-opstellingen of achter een omgekeerde proxy. Poorten 3030 en 3031 worden automatisch toegevoegd."
+        }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 Opties",
+        "description": "Configureer je Centauri Carbon 2 printer-instellingen.",
+        "data": {
+          "ip_address": "Printer IP-adres",
+          "cc2_access_code": "Toegangscode (optioneel)"
+        }
+      },
+      "mqtt_options": {
+        "title": "MQTT Printer Opties",
+        "description": "Configureer je MQTT printer-instellingen.",
+        "data": {
+          "ip_address": "Printer IP-adres"
+        }
+      },
+      "websocket_options": {
+        "title": "Printer Opties",
+        "description": "Voor hulp bij configuratie, zie de GitHub-pagina van het project.",
+        "data": {
+          "ip_address": "Printer IP-adres",
+          "proxy_enabled": "Proxyserver activeren",
+          "external_ip": "Extern adres (optioneel, voor geavanceerde netwerkopstellingen)"
+        },
+        "data_description": {
+          "external_ip": "Overschrijf automatisch gedetecteerd adres met een IP-adres of hostnaam. Laat leeg voor automatische detectie. Gebruik voor Kubernetes/Docker-opstellingen of achter een omgekeerde proxy. Poorten 3030 en 3031 worden automatisch toegevoegd."
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "discover_printers": {
+        "title": "Printer selecteren",
+        "description": "Kies een ontdekte printer uit de lijst of kies om het IP-adres handmatig in te voeren.",
+        "data": {
+          "selection": "Beschikbare Printers"
+        }
+      },
+      "manual_ip": {
+        "title": "Handmatige Opstelling",
+        "description": "Voer het IP-adres van je Elegoo printer in. De integratie detecteert automatisch het printertype en leidt je door de geschikte opstellingsstappen.",
+        "data": {
+          "ip_address": "Printer IP-adres",
+          "external_ip": "Extern adres (optioneel, voor geavanceerde netwerkopstellingen)"
+        },
+        "data_description": {
+          "external_ip": "Overschrijf automatisch gedetecteerd adres met een IP-adres of hostnaam. Laat leeg voor automatische detectie. Gebruik voor Kubernetes/Docker-opstellingen of achter een omgekeerde proxy. Poorten 3030 en 3031 worden automatisch toegevoegd."
+        }
+      },
+      "fdm_options": {
+        "title": "FDM Printer Opties",
+        "description": "Configureer extra opties voor je geselecteerde printer. Zie de GitHub-pagina van het project voor meer informatie over de proxyserver.",
+        "data": {
+          "proxy_enabled": "Proxyserver activeren"
+        }
+      },
+      "resin_options": {
+        "title": "Hars Printer Opties",
+        "description": "Het inschakelen van de camera kan instabiliteit in de printer veroorzaken. Gebruik op eigen risico. Zie de GitHub-pagina van het project voor details en beste praktijken.",
+        "data": {
+          "camera_enabled": "Camera activeren"
+        }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 Opties",
+        "description": "Configureer je Centauri Carbon 2 printer-instellingen. Als uw printer toegangscoder authenticatie is ingeschakeld, voer hieronder uw toegangscode in. Laat leeg als geen toegangscode vereist wordt.",
+        "data": {
+          "cc2_access_code": "Toegangscode (optioneel)"
+        }
+      },
+      "cc2_auth_check": {
+        "title": "Centauri Carbon 2 Authenticatie",
+        "description": "**BELANGRIJK:** Controleer de toegangscoder instelling van je printer voordat je doorgaat.\n\nGa op je printer naar: **Instellingen → Netwerk → Toegangscode**\n\n• Als de instelling 'Uit' toont of leeg/leeg is, selecteer **Nee**\n• Als je een aangepaste toegangscade hebt ingesteld, selecteer **Ja**\n\nDe meeste printers worden standaard zonder toegangscode geleverd.",
+        "data": {
+          "requires_access_code": "Vereist je printer een toegangscade?"
+        }
+      },
+      "cc2_access_code_input": {
+        "title": "Voer Toegangscode In",
+        "description": "Vind de toegangscade van je printer op: Instellingen → Netwerk → Toegangscode",
+        "data": {
+          "cc2_access_code": "Toegangscode"
+        }
+      }
+    },
+    "error": {
+      "connection": "Verbinding met de printer kon niet worden tot stand gebracht.",
+      "unknown": "Onbekende fout opgetreden.",
+      "invalid_printer_selection": "Ongeldige printerselectie.",
+      "no_printer_found": "Geen printer gevonden op het opgegeven IP-adres.",
+      "validation_no_printer_found": "Validatie mislukt: geen printer gevonden.",
+      "no_printer_selected_or_ip_provided": "Selecteer een ontdekte printer of geef een IP-adres op.",
+      "manual_options_no_printer_found": "De geselecteerde printer kon niet worden gevonden om opties toe te passen.",
+      "init_no_printer_found": "Initialisatie mislukt: de printer kon niet worden gevonden.",
+      "cc2_options_no_printer_found": "CC2 printer kon niet worden gevonden.",
+      "cc2_access_code_required": "Deze printer vereist een toegangscade voor authenticatie.",
+      "cc2_authentication_failed": "Authenticatie mislukt. Controleer de toegangscode in de printersetting: Instellingen → Netwerk → Toegangscode."
+    },
+    "abort": {
+      "already_configured": "Dit item is al geconfigureerd."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "print_status": {
+        "name": "Drukstatus",
+        "state": {
+          "idle": "Rusttoestand",
+          "homing": "Homing",
+          "dropping": "Afzetten",
+          "printing": "Afdrukken",
+          "lifting": "Liftend",
+          "pausing": "Pauseren",
+          "paused": "Gepauzeerd",
+          "stopping": "Stoppen",
+          "stopped": "Gestopt",
+          "complete": "Voltooid",
+          "file_checking": "Bestand Controleren",
+          "recovery": "Herstel",
+          "loading": "Laden",
+          "preheating": "Voorverwarmen",
+          "leveling": "Nivelleren"
+        }
+      },
+      "current_status": {
+        "name": "Huidige Status",
+        "state": {
+          "idle": "Rusttoestand",
+          "printing": "Afdrukken",
+          "file_transferring": "Bestand Overdragen",
+          "exposure_testing": "Expositie Testen",
+          "devices_testing": "Apparaat Testen",
+          "leveling": "Nivelleren",
+          "input_shaping": "Input Shaping",
+          "stopping": "Stoppen",
+          "stopped": "Gestopt",
+          "homing": "Homing",
+          "loading_unloading": "Laden / Uitladen",
+          "pid_tuning": "PID Afstemmen",
+          "recovery": "Herstel"
+        }
+      },
+      "print_error": {
+        "name": "Drukfout",
+        "state": {
+          "none": "Geen",
+          "check": "Controleren",
+          "fileio": "Invoer/Uitvoer",
+          "invalid_resolution": "Ongeldige resolutie",
+          "unknown_format": "Onbekend formaat",
+          "unknown_model": "Onbekend model"
+        }
+      },
+      "error_status_reason": {
+        "name": "Foutstatusreden",
+        "state": {
+          "ok": "Normaal",
+          "temp_error": "Oververhittingsfout (mondstuk/bed)",
+          "filament_runout": "Filament uitloop gedetecteerd",
+          "filament_jam": "Filament verstopping of verstopping gedetecteerd",
+          "level_failed": "Automaat bednivelleren mislukt",
+          "udisk_remove": "USB-schijf verwijderd tijdens afdrukken",
+          "home_failed_x": "X-as homing mislukking",
+          "home_failed_z": "Z-as homing mislukking",
+          "home_failed": "Algemene homing mislukking",
+          "bed_adhesion_failed": "Afdruk loslaten van bed",
+          "error": "Algemene afdrukfout",
+          "move_abnormal": "Motorbewegingsafwijking",
+          "home_failed_y": "Y-as homing mislukking",
+          "file_error": "G-code bestandsfout",
+          "camera_error": "Camera connectiefout",
+          "network_error": "Netwerkconnectiefout",
+          "server_connect_failed": "Serververbinding mislukt",
+          "disconnect_app": "App gedurende afdrukken afgekoppeld",
+          "nozzle_temp_sensor_offline": "Mondstuk temperatuur sensor offline",
+          "bed_temp_sensor_offline": "Bed temperatuur sensor offline",
+          "filament_about_to_runout": "Filament uitloop nabij"
+        }
+      },
+      "end_time": {
+        "name": "Einde Tijd"
+      }
+    }
+  }
+}

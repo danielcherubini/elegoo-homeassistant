@@ -1,0 +1,200 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "description": "如需配置帮助，请查看项目 GitHub 页面。",
+        "data": {
+          "ip_address": "打印机 IP 地址",
+          "centauri_carbon": "这是 FDM 打印机吗？",
+          "proxy_enabled": "启用代理服务器",
+          "external_ip": "外部地址（可选，用于高级网络设置）"
+        },
+        "data_description": {
+          "external_ip": "用 IP 地址或主机名覆盖自动检测到的地址。留空以进行自动检测。用于 Kubernetes/Docker 设置或在反向代理后面。端口 3030 和 3031 将自动添加。"
+        }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 选项",
+        "description": "配置您的 Centauri Carbon 2 打印机设置。",
+        "data": {
+          "ip_address": "打印机 IP 地址",
+          "cc2_access_code": "访问码（可选）"
+        }
+      },
+      "mqtt_options": {
+        "title": "MQTT 打印机选项",
+        "description": "配置您的 MQTT 打印机设置。",
+        "data": {
+          "ip_address": "打印机 IP 地址"
+        }
+      },
+      "websocket_options": {
+        "title": "打印机选项",
+        "description": "如需配置帮助，请查看项目 GitHub 页面。",
+        "data": {
+          "ip_address": "打印机 IP 地址",
+          "proxy_enabled": "启用代理服务器",
+          "external_ip": "外部地址（可选，用于高级网络设置）"
+        },
+        "data_description": {
+          "external_ip": "用 IP 地址或主机名覆盖自动检测到的地址。留空以进行自动检测。用于 Kubernetes/Docker 设置或在反向代理后面。端口 3030 和 3031 将自动添加。"
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "discover_printers": {
+        "title": "选择打印机",
+        "description": "从列表中选择发现的打印机，或选择手动输入 IP 地址。",
+        "data": {
+          "selection": "可用打印机"
+        }
+      },
+      "manual_ip": {
+        "title": "手动设置",
+        "description": "输入您的 Elegoo 打印机的 IP 地址。集成将自动检测打印机类型并引导您通过适当的设置步骤。",
+        "data": {
+          "ip_address": "打印机 IP 地址",
+          "external_ip": "外部地址（可选，用于高级网络设置）"
+        },
+        "data_description": {
+          "external_ip": "用 IP 地址或主机名覆盖自动检测到的地址。留空以进行自动检测。用于 Kubernetes/Docker 设置或在反向代理后面。端口 3030 和 3031 将自动添加。"
+        }
+      },
+      "fdm_options": {
+        "title": "FDM 打印机选项",
+        "description": "为选定的打印机配置额外的选项。查看项目 GitHub 页面以获取有关代理服务器的更多信息。",
+        "data": {
+          "proxy_enabled": "启用代理服务器"
+        }
+      },
+      "resin_options": {
+        "title": "树脂打印机选项",
+        "description": "启用摄像头可能会在打印机中造成不稳定性。在您自己的风险下使用。查看项目 GitHub 页面以获取详细信息和最佳实践。",
+        "data": {
+          "camera_enabled": "启用摄像头"
+        }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 选项",
+        "description": "配置您的 Centauri Carbon 2 打印机。如果您的打印机启用了访问码认证，在下面输入您的访问码。如果不需任何访问码则留空。",
+        "data": {
+          "cc2_access_code": "访问码（可选）"
+        }
+      },
+      "cc2_auth_check": {
+        "title": "Centauri Carbon 2 认证",
+        "description": "**重要：** 在继续之前检查您的打印机访问码设置。\n\n在您的打印机上，前往：**设置 → 网络 → 访问码**\n\n• 如果设置显示'关闭'或为空/空，选择**否**\n• 如果您设置了自定义访问码，选择**是**\n\n大多数打印机默认不附带访问码。",
+        "data": {
+          "requires_access_code": "您的打印机需要访问码吗？"
+        }
+      },
+      "cc2_access_code_input": {
+        "title": "输入访问码",
+        "description": "在以下位置查找打印机的访问码：设置 → 网络 → 访问码",
+        "data": {
+          "cc2_access_code": "访问码"
+        }
+      }
+    },
+    "error": {
+      "connection": "无法连接到打印机。",
+      "unknown": "发生未知错误。",
+      "invalid_printer_selection": "无效的打印机选择。",
+      "no_printer_found": "在指定的 IP 地址处未找到打印机。",
+      "validation_no_printer_found": "验证失败：未找到打印机。",
+      "no_printer_selected_or_ip_provided": "请选择发现的打印机或提供 IP 地址。",
+      "manual_options_no_printer_found": "无法找到所选打印机以应用选项。",
+      "init_no_printer_found": "初始化失败：找不到打印机。",
+      "cc2_options_no_printer_found": "CC2 打印机未找到。",
+      "cc2_access_code_required": "此打印机需要访问码进行认证。",
+      "cc2_authentication_failed": "认证失败。在打印机设置中检查访问码：设置 → 网络 → 访问码。"
+    },
+    "abort": {
+      "already_configured": "此条目已配置。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "print_status": {
+        "name": "打印状态",
+        "state": {
+          "idle": "空闲",
+          "homing": "归位",
+          "dropping": "下落",
+          "printing": "打印中",
+          "lifting": "提升",
+          "pausing": "暂停",
+          "paused": "已暂停",
+          "stopping": "停止中",
+          "stopped": "已停止",
+          "complete": "完成",
+          "file_checking": "检查文件",
+          "recovery": "恢复",
+          "loading": "加载中",
+          "preheating": "预热中",
+          "leveling": "调平"
+        }
+      },
+      "current_status": {
+        "name": "当前状态",
+        "state": {
+          "idle": "空闲",
+          "printing": "打印中",
+          "file_transferring": "文件传输中",
+          "exposure_testing": "曝光测试",
+          "devices_testing": "设备测试",
+          "leveling": "调平",
+          "input_shaping": "输入整形",
+          "stopping": "停止中",
+          "stopped": "已停止",
+          "homing": "归位",
+          "loading_unloading": "加载/卸载",
+          "pid_tuning": "PID 调谐",
+          "recovery": "恢复"
+        }
+      },
+      "print_error": {
+        "name": "打印错误",
+        "state": {
+          "none": "无",
+          "check": "检查中",
+          "fileio": "文件 I/O",
+          "invalid_resolution": "无效的分辨率",
+          "unknown_format": "未知格式",
+          "unknown_model": "未知型号"
+        }
+      },
+      "error_status_reason": {
+        "name": "错误状态原因",
+        "state": {
+          "ok": "正常",
+          "temp_error": "过热错误（喷嘴/床）",
+          "filament_runout": "检测到耗材用尽",
+          "filament_jam": "检测到耗材堵塞或卡住",
+          "level_failed": "自动调平失败",
+          "udisk_remove": "打印期间移除 USB 驱动器",
+          "home_failed_x": "X 轴归位失败",
+          "home_failed_z": "Z 轴归位失败",
+          "home_failed": "通用归位失败",
+          "bed_adhesion_failed": "打印从床剥离",
+          "error": "通用打印错误",
+          "move_abnormal": "电机运动异常",
+          "home_failed_y": "Y 轴归位失败",
+          "file_error": "G-code 文件错误",
+          "camera_error": "摄像头连接错误",
+          "network_error": "网络连接错误",
+          "server_connect_failed": "服务器连接失败",
+          "disconnect_app": "打印期间应用断开",
+          "nozzle_temp_sensor_offline": "喷嘴温度传感器离线",
+          "bed_temp_sensor_offline": "床温度传感器离线",
+          "filament_about_to_runout": "耗材即将用尽"
+        }
+      },
+      "end_time": {
+        "name": "结束时间"
+      }
+    }
+  }
+}
