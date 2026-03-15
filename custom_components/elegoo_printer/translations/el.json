@@ -162,7 +162,7 @@
           "check": "Έλεγχος",
           "fileio": "Εισαγωγή/Εξαγωγή",
           "invalid_resolution": "Άκυρη ανάλυση",
-          "unknown_format": "Άγνωστο μορφή",
+          "unknown_format": "Άγνωστη μορφή",
           "unknown_model": "Άγνωστο μοντέλο"
         }
       },

@@ -134,7 +134,7 @@
           "recovery": "Récupération",
           "loading": "Chargement",
           "preheating": "Préchauffage",
-          "leveling": "Nivellation"
+          "leveling": "Nivellement"
         }
       },
       "current_status": {
@@ -145,7 +145,7 @@
           "file_transferring": "Transfert de fichier",
           "exposure_testing": "Test d'exposition",
           "devices_testing": "Test des appareils",
-          "leveling": "Nivellation",
+          "leveling": "Nivellement",
           "input_shaping": "Formage d'entrée",
           "stopping": "Arrêt",
           "stopped": "Arrêté",
