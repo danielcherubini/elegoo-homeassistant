@@ -1,0 +1,200 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "description": "Per aiuto sulla configurazione, si prega di consultare la pagina GitHub del progetto.",
+        "data": {
+          "ip_address": "Indirizzo IP della Stampante",
+          "centauri_carbon": "È una stampante FDM?",
+          "proxy_enabled": "Abilita server proxy",
+          "external_ip": "Indirizzo esterno (opzionale, per configurazioni di rete avanzate)"
+        },
+        "data_description": {
+          "external_ip": "Sovrascrivere l'indirizzo rilevato automaticamente con un indirizzo IP o nome host. Lasciare vuoto per la rilevazione automatica. Usare per configurazioni Kubernetes/Docker o quando dietro a un proxy inverso. Le porte 3030 e 3031 verranno aggiunte automaticamente."
+        }
+      },
+      "cc2_options": {
+        "title": "Opzioni Centauri Carbon 2",
+        "description": "Configura le impostazioni della tua stampante Centauri Carbon 2.",
+        "data": {
+          "ip_address": "Indirizzo IP della Stampante",
+          "cc2_access_code": "Codice di accesso (opzionale)"
+        }
+      },
+      "mqtt_options": {
+        "title": "Opzioni Stampante MQTT",
+        "description": "Configura le impostazioni della tua stampante MQTT.",
+        "data": {
+          "ip_address": "Indirizzo IP della Stampante"
+        }
+      },
+      "websocket_options": {
+        "title": "Opzioni Stampante",
+        "description": "Per aiuto sulla configurazione, si prega di consultare la pagina GitHub del progetto.",
+        "data": {
+          "ip_address": "Indirizzo IP della Stampante",
+          "proxy_enabled": "Abilita server proxy",
+          "external_ip": "Indirizzo esterno (opzionale, per configurazioni di rete avanzate)"
+        },
+        "data_description": {
+          "external_ip": "Sovrascrivere l'indirizzo rilevato automaticamente con un indirizzo IP o nome host. Lasciare vuoto per la rilevazione automatica. Usare per configurazioni Kubernetes/Docker o quando dietro a un proxy inverso. Le porte 3030 e 3031 verranno aggiunte automaticamente."
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "discover_printers": {
+        "title": "Seleziona Stampante",
+        "description": "Scegliere una stampante scoperta dall'elenco o optare per inserire manualmente l'indirizzo IP.",
+        "data": {
+          "selection": "Stampanti Disponibili"
+        }
+      },
+      "manual_ip": {
+        "title": "Configurazione Manuale",
+        "description": "Inserisci l'indirizzo IP della tua stampante Elegoo. L'integrazione rileverà automaticamente il tipo di stampante e ti guiderà attraverso le fasi di configurazione appropriate.",
+        "data": {
+          "ip_address": "Indirizzo IP della Stampante",
+          "external_ip": "Indirizzo esterno (opzionale, per configurazioni di rete avanzate)"
+        },
+        "data_description": {
+          "external_ip": "Sovrascrivere l'indirizzo rilevato automaticamente con un indirizzo IP o nome host. Lasciare vuoto per la rilevazione automatica. Usare per configurazioni Kubernetes/Docker o quando dietro a un proxy inverso. Le porte 3030 e 3031 verranno aggiunte automaticamente."
+        }
+      },
+      "fdm_options": {
+        "title": "Opzioni Stampante FDM",
+        "description": "Configura opzioni supplementari per la stampante selezionata. Consulta la pagina GitHub del progetto per ulteriori informazioni sul server proxy.",
+        "data": {
+          "proxy_enabled": "Abilita server proxy"
+        }
+      },
+      "resin_options": {
+        "title": "Opzioni Stampante Resina",
+        "description": "L'attivazione della telecamera può creare instabilità nella stampante. Usare a proprio rischio. Consulta la pagina GitHub del progetto per dettagli e migliori pratiche.",
+        "data": {
+          "camera_enabled": "Abilita telecamera"
+        }
+      },
+      "cc2_options": {
+        "title": "Opzioni Centauri Carbon 2",
+        "description": "Configura la tua stampante Centauri Carbon 2. Se la tua stampante ha l'autenticazione con codice di accesso abilitata, inserisci qui sotto il tuo codice di accesso. Lasciare vuoto se non è richiesto alcun codice di accesso.",
+        "data": {
+          "cc2_access_code": "Codice di accesso (opzionale)"
+        }
+      },
+      "cc2_auth_check": {
+        "title": "Autenticazione Centauri Carbon 2",
+        "description": "**IMPORTANTE:** Verifica l'impostazione del codice di accesso della tua stampante prima di procedere.\n\nSulla tua stampante, vai a: **Impostazioni → Rete → Codice di accesso**\n\n• Se l'impostazione mostra 'Off' o è vuota/vuota, seleziona **No**\n• Se hai impostato un codice di accesso personalizzato, seleziona **Sì**\n\nLa maggior parte delle stampanti viene fornita senza codice di accesso predefinito.",
+        "data": {
+          "requires_access_code": "La tua stampante richiede un codice di accesso?"
+        }
+      },
+      "cc2_access_code_input": {
+        "title": "Inserisci Codice di Accesso",
+        "description": "Trova il codice di accesso della tua stampante a: Impostazioni → Rete → Codice di accesso",
+        "data": {
+          "cc2_access_code": "Codice di accesso"
+        }
+      }
+    },
+    "error": {
+      "connection": "Impossibile connettersi alla stampante.",
+      "unknown": "Si è verificato un errore sconosciuto.",
+      "invalid_printer_selection": "Selezione della stampante non valida.",
+      "no_printer_found": "Nessuna stampante trovata all'indirizzo IP specificato.",
+      "validation_no_printer_found": "Validazione fallita: nessuna stampante trovata.",
+      "no_printer_selected_or_ip_provided": "Seleziona una stampante scoperta o fornisci un indirizzo IP.",
+      "manual_options_no_printer_found": "La stampante selezionata non è stata trovata per applicare le opzioni.",
+      "init_no_printer_found": "Inizializzazione fallita: la stampante non è stata trovata.",
+      "cc2_options_no_printer_found": "La stampante CC2 non è stata trovata.",
+      "cc2_access_code_required": "Questa stampante richiede un codice di accesso per l'autenticazione.",
+      "cc2_authentication_failed": "Autenticazione fallita. Verifica il codice di accesso nelle impostazioni della stampante: Impostazioni → Rete → Codice di accesso."
+    },
+    "abort": {
+      "already_configured": "Questa voce è già configurata."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "print_status": {
+        "name": "Stato Stampa",
+        "state": {
+          "idle": "Inattivo",
+          "homing": "Posizionamento",
+          "dropping": "Rilascio",
+          "printing": "Stampa",
+          "lifting": "Sollevamento",
+          "pausing": "Pausa",
+          "paused": "Messa in pausa",
+          "stopping": "Arresto",
+          "stopped": "Fermato",
+          "complete": "Completato",
+          "file_checking": "Verifica File",
+          "recovery": "Recupero",
+          "loading": "Caricamento",
+          "preheating": "Riscaldamento preliminare",
+          "leveling": "Livellamento"
+        }
+      },
+      "current_status": {
+        "name": "Stato Corrente",
+        "state": {
+          "idle": "Inattivo",
+          "printing": "Stampa",
+          "file_transferring": "Trasferimento File",
+          "exposure_testing": "Test Esposizione",
+          "devices_testing": "Test Dispositivi",
+          "leveling": "Livellamento",
+          "input_shaping": "Formazione Input",
+          "stopping": "Arresto",
+          "stopped": "Fermato",
+          "homing": "Posizionamento",
+          "loading_unloading": "Caricamento / Scarico",
+          "pid_tuning": "Regolazione PID",
+          "recovery": "Recupero"
+        }
+      },
+      "print_error": {
+        "name": "Errore Stampa",
+        "state": {
+          "none": "Nessuno",
+          "check": "Verifica",
+          "fileio": "Input/Output",
+          "invalid_resolution": "Risoluzione non valida",
+          "unknown_format": "Formato sconosciuto",
+          "unknown_model": "Modello sconosciuto"
+        }
+      },
+      "error_status_reason": {
+        "name": "Motivo Stato Errore",
+        "state": {
+          "ok": "Normale",
+          "temp_error": "Errore surriscaldamento (ugello/lettino)",
+          "filament_runout": "Rilevamento esaurimento filamento",
+          "filament_jam": "Intasamento o ostruzione del filamento rilevata",
+          "level_failed": "Livellamento automatico del letto fallito",
+          "udisk_remove": "Unità USB rimossa durante la stampa",
+          "home_failed_x": "Guasto posizionamento asse X",
+          "home_failed_z": "Guasto posizionamento asse Z",
+          "home_failed": "Guasto generale di omologazione",
+          "bed_adhesion_failed": "Distacco della stampa dal letto",
+          "error": "Errore generale di stampa",
+          "move_abnormal": "Anomalia movimento motore",
+          "home_failed_y": "Guasto omologazione asse Y",
+          "file_error": "Errore file G-code",
+          "camera_error": "Errore connessione telecamera",
+          "network_error": "Errore connessione di rete",
+          "server_connect_failed": "Connessione al server fallita",
+          "disconnect_app": "App disconnessa durante la stampa",
+          "nozzle_temp_sensor_offline": "Sensore temperatura ugello offline",
+          "bed_temp_sensor_offline": "Sensore temperatura letto offline",
+          "filament_about_to_runout": "Esaurimento filamento imminente"
+        }
+      },
+      "end_time": {
+        "name": "Ora Fine"
+      }
+    }
+  }
+}

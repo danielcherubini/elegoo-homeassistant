@@ -1,0 +1,200 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "description": "للمساعدة في الإعداد، يرجى الاطلاع على صفحة مشروع GitHub.",
+        "data": {
+          "ip_address": "عنوان IP للطابعة",
+          "centauri_carbon": "هل هذه طابع FDM؟",
+          "proxy_enabled": "تفعيل خادم الوكيل",
+          "external_ip": "العنوان الخارجي (اختياري، لتهيئة الشبكة المتقدمة)"
+        },
+        "data_description": {
+          "external_ip": "استبدال العنوان المكتشف تلقائياً بعنوان IP أو اسم مضيف. اتركه فارغاً للكشف التلقائي. استخدم لتهيئات Kubernetes/Docker أو عند وجودك خلف وكيل عكسي. سيتم إضافة المنافذ 3030 و 3031 تلقائياً."
+        }
+      },
+      "cc2_options": {
+        "title": "خيارات Centauri Carbon 2",
+        "description": "قم بتكوين إعدادات طابعة Centauri Carbon 2 الخاصة بك.",
+        "data": {
+          "ip_address": "عنوان IP للطابعة",
+          "cc2_access_code": "رمز الوصول (اختياري)"
+        }
+      },
+      "mqtt_options": {
+        "title": "خيارات طابعة MQTT",
+        "description": "قم بتكوين إعدادات طابعتك MQTT.",
+        "data": {
+          "ip_address": "عنوان IP للطابعة"
+        }
+      },
+      "websocket_options": {
+        "title": "خيارات الطابعة",
+        "description": "للمساعدة في الإعداد، يرجى الاطلاع على صفحة مشروع GitHub.",
+        "data": {
+          "ip_address": "عنوان IP للطابعة",
+          "proxy_enabled": "تفعيل خادم الوكيل",
+          "external_ip": "العنوان الخارجي (اختياري، لتهيئة الشبكة المتقدمة)"
+        },
+        "data_description": {
+          "external_ip": "استبدال العنوان المكتشف تلقائياً بعنوان IP أو اسم مضيف. اتركه فارغاً للكشف التلقائي. استخدم لتهيئات Kubernetes/Docker أو عند وجودك خلف وكيل عكسي. سيتم إضافة المنافذ 3030 و 3031 تلقائياً."
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "discover_printers": {
+        "title": "اختر الطابعة",
+        "description": "اختر طابعة مكتشفة من القائمة أو اختر إدخال عنوان IP يدوياً.",
+        "data": {
+          "selection": "الطابعات المتاحة"
+        }
+      },
+      "manual_ip": {
+        "title": "الإعداد اليدوي",
+        "description": "أدخل عنوان IP لطابعة Elegoo الخاصة بك. ستكتشف التكامل نوع الطابعة تلقائياً وستدلك خلال خطوات الإعداد المناسبة.",
+        "data": {
+          "ip_address": "عنوان IP للطابعة",
+          "external_ip": "العنوان الخارجي (اختياري، لتهيئة الشبكة المتقدمة)"
+        },
+        "data_description": {
+          "external_ip": "استبدال العنوان المكتشف تلقائياً بعنوان IP أو اسم مضيف. اتركه فارغاً للكشف التلقائي. استخدم لتهيئات Kubernetes/Docker أو عند وجودك خلف وكيل عكسي. سيتم إضافة المنافذ 3030 و 3031 تلقائياً."
+        }
+      },
+      "fdm_options": {
+        "title": "خيارات طابعة FDM",
+        "description": "قم بتكوين خيارات إضافية لطابعتك المحددة. انظر صفحة مشروع GitHub للحصول على مزيد من المعلومات حول خادم الوكيل.",
+        "data": {
+          "proxy_enabled": "تفعيل خادم الوكيل"
+        }
+      },
+      "resin_options": {
+        "title": "خيارات طابعة الراتنج",
+        "description": "يمكن أن يؤدي تمكين الكاميرا إلى إنشاء عدم استقرار في الطابعة. استخدمها على مسؤوليتك الخاصة. انظر صفحة مشروع GitHub للتفاصيل وأفضل الممارسات.",
+        "data": {
+          "camera_enabled": "تفعيل الكاميرا"
+        }
+      },
+      "cc2_options": {
+        "title": "خيارات Centauri Carbon 2",
+        "description": "قم بتكوين طابعتك Centauri Carbon 2. إذا كان لديك تمكين مصادقة رمز الوصول في الطابعة، أدخل رمز الدخول أدناه. اتركه فارغاً إذا لم يكن مطلوب أي رمز دخول.",
+        "data": {
+          "cc2_access_code": "رمز الدخول (اختياري)"
+        }
+      },
+      "cc2_auth_check": {
+        "title": "مصادقة Centauri Carbon 2",
+        "description": "**هام:** تحقق من إعداد رمز الوصول لطابعتك قبل المتابعة.\n\nعلى طابعتك، اذهب إلى: **الإعدادات → الشبكة → رمز الدخول**\n\n• إذا كان الإعداد يظهر 'Off' أو فارغ/فارغ، اختر **لا**\n• إذا قمت بإعداد رمز دخول مخصص، اختر **نعم**\n\nتتم شحن معظم الطابعات بدون رمز دخول افتراضياً.",
+        "data": {
+          "requires_access_code": "هل يتطلب طابعتك رمز دخول؟"
+        }
+      },
+      "cc2_access_code_input": {
+        "title": "أدخل رمز الدخول",
+        "description": "اعثر على رمز الدخول لطابعتك في: الإعدادات → الشبكة → رمز الدخول",
+        "data": {
+          "cc2_access_code": "رمز الدخول"
+        }
+      }
+    },
+    "error": {
+      "connection": "تعذر الاتصال بالطابعة.",
+      "unknown": "حدث خطأ غير معروف.",
+      "invalid_printer_selection": "اختيار طابعة غير صالح.",
+      "no_printer_found": "لم يتم العثور على أي طابعة عند عنوان IP المحدد.",
+      "validation_no_printer_found": "فشل التحقق: لم يتم العثور على أي طابعة.",
+      "no_printer_selected_or_ip_provided": "يرجى اختيار طابعة مكتشفة أو تقديم عنوان IP.",
+      "manual_options_no_printer_found": "لم يتم العثور على الطابعة المحددة لتطبيق الخيارات.",
+      "init_no_printer_found": "فشل التهيئة: لم يتم العثور على الطابعة.",
+      "cc2_options_no_printer_found": "لم يتم العثور على طابعة CC2.",
+      "cc2_access_code_required": "تتطلب هذه الطابعة رمز دخول للمصادقة.",
+      "cc2_authentication_failed": "فشل المصادقة. تحقق من رمز الدخول في إعدادات الطابعة: الإعدادات → الشبكة → رمز الدخول."
+    },
+    "abort": {
+      "already_configured": "تم تكوين هذا الإدخال مسبقاً."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "print_status": {
+        "name": "حالة الطباعة",
+        "state": {
+          "idle": "خامل",
+          "homing": "التوجيه",
+          "dropping": "إسقاط",
+          "printing": "طباعة",
+          "lifting": "رفع",
+          "pausing": "إيقاف مؤقت",
+          "paused": "موقوف مؤقتاً",
+          "stopping": "إيقاف",
+          "stopped": "متوقف",
+          "complete": "كامل",
+          "file_checking": "فحص الملف",
+          "recovery": "استعادة",
+          "loading": "تحميل",
+          "preheating": "التسخين المسبق",
+          "leveling": "المستوي"
+        }
+      },
+      "current_status": {
+        "name": "الحالة الحالية",
+        "state": {
+          "idle": "خامل",
+          "printing": "طباعة",
+          "file_transferring": "نقل الملفات",
+          "exposure_testing": "اختبار التعرض",
+          "devices_testing": "اختبار الأجهزة",
+          "leveling": "المستوي",
+          "input_shaping": "تشكيل الإدخال",
+          "stopping": "إيقاف",
+          "stopped": "متوقف",
+          "homing": "التوجيه",
+          "loading_unloading": "تحميل / تفريغ",
+          "pid_tuning": "ضبط PID",
+          "recovery": "استعادة"
+        }
+      },
+      "print_error": {
+        "name": "خطأ الطباعة",
+        "state": {
+          "none": "لا يوجد",
+          "check": "فحص",
+          "fileio": "إدخال/إخراج",
+          "invalid_resolution": "دقة غير صالحة",
+          "unknown_format": "تنسيق غير معروف",
+          "unknown_model": "نموذج غير معروف"
+        }
+      },
+      "error_status_reason": {
+        "name": "سبب حالة الخطأ",
+        "state": {
+          "ok": "عادي",
+          "temp_error": "خطأ في الحرارة الزائدة (الفوهة/الحوض)",
+          "filament_runout": "كشف نفاد الخيط",
+          "filament_jam": "انسداد أو انسداد الخيط المكتشف",
+          "level_failed": "فشل تسوية السرير التلقائي",
+          "udisk_remove": "تم إزالة قرص USB أثناء الطباعة",
+          "home_failed_x": "فشل توجيه المحور X",
+          "home_failed_z": "فشل توجيه المحور Z",
+          "home_failed": "فشل التوجيه العام",
+          "bed_adhesion_failed": "انفصال الطباعة عن السرير",
+          "error": "خطأ طباعة عام",
+          "move_abnormal": "عيب في حركة المحرك",
+          "home_failed_y": "فشل توجيه المحور Y",
+          "file_error": "خطأ ملف G-code",
+          "camera_error": "خطأ اتصال الكاميرا",
+          "network_error": "خطأ اتصال الشبكة",
+          "server_connect_failed": "فشل الاتصال بالخادم",
+          "disconnect_app": "تم فصل التطبيق أثناء الطباعة",
+          "nozzle_temp_sensor_offline": "مستشعر درجة حرارة الفوهة غير متصل",
+          "bed_temp_sensor_offline": "مستشعر درجة حرارة السرير غير متصل",
+          "filament_about_to_runout": "نفاد الخيط وشيك"
+        }
+      },
+      "end_time": {
+        "name": "وقت الانتهاء"
+      }
+    }
+  }
+}

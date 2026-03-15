@@ -1,0 +1,200 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "description": "W celu pomocy przy konfiguracji, zobacz stronę projektu GitHub.",
+        "data": {
+          "ip_address": "Adres IP drukarki",
+          "centauri_carbon": "Czy to jest drukarka FDM?",
+          "proxy_enabled": "Włącz serwer proxy",
+          "external_ip": "Zewnętrzny adres (opcjonalne, zaawansowane ustawienia sieciowe)"
+        },
+        "data_description": {
+          "external_ip": "Nadpisz automatycznie wykryty adres adresem IP lub nazwą hosta. Pozostaw puste dla automatycznego wykrywania. Użyj do konfiguracji Kubernetes/Docker lub gdy jesteś za odwróconym proxy. Porty 3030 i 3031 zostaną dodane automatycznie."
+        }
+      },
+      "cc2_options": {
+        "title": "Opcje Centauri Carbon 2",
+        "description": "Skonfiguruj ustawienia swojej drukarki Centauri Carbon 2.",
+        "data": {
+          "ip_address": "Adres IP drukarki",
+          "cc2_access_code": "Kod dostępu (opcjonalne)"
+        }
+      },
+      "mqtt_options": {
+        "title": "Opcje drukarki MQTT",
+        "description": "Skonfiguruj ustawienia swojej drukarki MQTT.",
+        "data": {
+          "ip_address": "Adres IP drukarki"
+        }
+      },
+      "websocket_options": {
+        "title": "Opcje drukarki",
+        "description": "W celu pomocy przy konfiguracji, zobacz stronę projektu GitHub.",
+        "data": {
+          "ip_address": "Adres IP drukarki",
+          "proxy_enabled": "Włącz serwer proxy",
+          "external_ip": "Zewnętrzny adres (opcjonalne, zaawansowane ustawienia sieciowe)"
+        },
+        "data_description": {
+          "external_ip": "Nadpisz automatycznie wykryty adres adresem IP lub nazwą hosta. Pozostaw puste dla automatycznego wykrywania. Użyj do konfiguracji Kubernetes/Docker lub gdy jesteś za odwróconym proxy. Porty 3030 i 3031 zostaną dodane automatycznie."
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "discover_printers": {
+        "title": "Wybierz drukarkę",
+        "description": "Wybierz wykrytą drukarkę ze listy lub wybierz wprowadzenie adresu IP ręcznie.",
+        "data": {
+          "selection": "Dostępne drukarki"
+        }
+      },
+      "manual_ip": {
+        "title": "Ręczna konfiguracja",
+        "description": "Wpisz adres IP swojej drukarki Elegoo. Integracja automatycznie wykryje typ drukarki i poprowadzi przez odpowiednie kroki konfiguracji.",
+        "data": {
+          "ip_address": "Adres IP drukarki",
+          "external_ip": "Zewnętrzny adres (opcjonalne, zaawansowane ustawienia sieciowe)"
+        },
+        "data_description": {
+          "external_ip": "Nadpisz automatycznie wykryty adres adresem IP lub nazwą hosta. Pozostaw puste dla automatycznego wykrywania. Użyj do konfiguracji Kubernetes/Docker lub gdy jesteś za odwróconym proxy. Porty 3030 i 3031 zostaną dodane automatycznie."
+        }
+      },
+      "fdm_options": {
+        "title": "Opcje drukarki FDM",
+        "description": "Skonfiguruj dodatkowe opcje dla wybranej drukarki. Zobacz stronę projektu GitHub za więcej informacji o serwerze proxy.",
+        "data": {
+          "proxy_enabled": "Włącz serwer proxy"
+        }
+      },
+      "resin_options": {
+        "title": "Opcje drukarki żywicy",
+        "description": "Włączenie kamery może powodować niestabilność w drukarce. Używaj na własne ryzyko. Zobacz stronę projektu GitHub za szczegóły i najlepsze praktyki.",
+        "data": {
+          "camera_enabled": "Włącz kamerę"
+        }
+      },
+      "cc2_options": {
+        "title": "Opcje Centauri Carbon 2",
+        "description": "Skonfiguruj swoją drukarkę Centauri Carbon 2. Jeśli twoja drukarka ma włączone uwierzytelnianie kodem dostępu, wpisz poniżej swój kod dostępu. Pozostaw puste jeśli nie jest wymagany żaden kod dostępu.",
+        "data": {
+          "cc2_access_code": "Kod dostępu (opcjonalne)"
+        }
+      },
+      "cc2_auth_check": {
+        "title": "Uwierzytelnianie Centauri Carbon 2",
+        "description": "**WAŻNE:** Sprawdź ustawienie kodu dostępu swojej drukarki przed kontynuowaniem.\n\nNa swojej drukarce, przejdź do: **Ustawienia → Sieć → Kod dostępu**\n\n• Jeśli ustawienie wyświetla 'Wył' lub jest puste/puste, wybierz **Nie**\n• Jeśli ustawiłeś niestandardowy kod dostępu, wybierz **Tak**\n\nWiększość drukarek jest dostarczana bez kodu dostępu domyślnie.",
+        "data": {
+          "requires_access_code": "Czy twoja drukarka wymaga kodu dostępu?"
+        }
+      },
+      "cc2_access_code_input": {
+        "title": "Wpisz Kod Dostępu",
+        "description": "Znajdź kod dostępu swojej drukarki na: Ustawienia → Sieć → Kod dostępu",
+        "data": {
+          "cc2_access_code": "Kod dostępu"
+        }
+      }
+    },
+    "error": {
+      "connection": "Nie udało się połączyć z drukarką.",
+      "unknown": "Wystąpił nieznany błąd.",
+      "invalid_printer_selection": "Nieprawidłowy wybór drukarki.",
+      "no_printer_found": "Brak drukarki pod wskazanym adresem IP.",
+      "validation_no_printer_found": "Walidacja nie powiodła się: brak drukarki.",
+      "no_printer_selected_or_ip_provided": "Wybierz wykrytą drukarkę lub podaj adres IP.",
+      "manual_options_no_printer_found": "Wybrana drukarka nie może być znaleziona do zastosowania opcji.",
+      "init_no_printer_found": "Inicjalizacja nie powiodła się: drukarka nie została znaleziona.",
+      "cc2_options_no_printer_found": "Drukarka CC2 nie może zostać znaleziona.",
+      "cc2_access_code_required": "Ta drukarka wymaga kodu dostępu do uwierzytelniania.",
+      "cc2_authentication_failed": "Uwierzytelnianie nie powiodło się. Sprawdź kod dostępu w ustawieniach drukarki: Ustawienia → Sieć → Kod dostępu."
+    },
+    "abort": {
+      "already_configured": "Ten wpis jest już skonfigurowany."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "print_status": {
+        "name": "Status Druku",
+        "state": {
+          "idle": "Bezczynny",
+          "homing": "Homowanie",
+          "dropping": "Upuszczanie",
+          "printing": "Drukowanie",
+          "lifting": "Podnoszenie",
+          "pausing": "Pauza",
+          "paused": "W Pauzie",
+          "stopping": "Zatrzymywanie",
+          "stopped": "Zatrzymano",
+          "complete": "Kompletny",
+          "file_checking": "Sprawdzanie pliku",
+          "recovery": "Odzyskiwanie",
+          "loading": "Ładowanie",
+          "preheating": "Podgrzewanie",
+          "leveling": "Wyrównywanie"
+        }
+      },
+      "current_status": {
+        "name": "Bieżący Status",
+        "state": {
+          "idle": "Bezczynny",
+          "printing": "Drukowanie",
+          "file_transferring": "Przesyłanie pliku",
+          "exposure_testing": "Testowanie ekspozycji",
+          "devices_testing": "Testowanie urządzeń",
+          "leveling": "Wyrównywanie",
+          "input_shaping": "Kształtowanie wejścia",
+          "stopping": "Zatrzymywanie",
+          "stopped": "Zatrzymano",
+          "homing": "Homowanie",
+          "loading_unloading": "Ładowanie / Wyladunek",
+          "pid_tuning": "Dobieranie PID",
+          "recovery": "Odzyskiwanie"
+        }
+      },
+      "print_error": {
+        "name": "Błąd Druku",
+        "state": {
+          "none": "Brak",
+          "check": "Sprawdzanie",
+          "fileio": "Wejście/Wyjście",
+          "invalid_resolution": "Nieprawidłowe rozdzielczość",
+          "unknown_format": "Nieznany format",
+          "unknown_model": "Nieznany model"
+        }
+      },
+      "error_status_reason": {
+        "name": "Powód Statusu Błędu",
+        "state": {
+          "ok": "Normalny",
+          "temp_error": "Błąd przegrzania (dysza/podstawa)",
+          "filament_runout": "Wykrycie wyczerpania filamentu",
+          "filament_jam": "Zablokowanie lub zatkanie filamentu wykryto",
+          "level_failed": "Automatyczne wyrównywanie łóżka nie powiodło się",
+          "udisk_remove": "Dysk USB usunięty podczas druku",
+          "home_failed_x": "Błąd homowania osi X",
+          "home_failed_z": "Błąd homowania osi Z",
+          "home_failed": "Ogólny błąd homowania",
+          "bed_adhesion_failed": "Oddzielenie druku od łóżka",
+          "error": "Ogólny błąd drukowania",
+          "move_abnormal": "Anomalia ruchu silnika",
+          "home_failed_y": "Błąd homowania osi Y",
+          "file_error": "Błąd pliku G-code",
+          "camera_error": "Błąd połączenia kamery",
+          "network_error": "Błąd połączenia sieciowego",
+          "server_connect_failed": "Połączenie z serwerem nie powiodło się",
+          "disconnect_app": "Aplikacja odłączona podczas druku",
+          "nozzle_temp_sensor_offline": "Czujnik temperatury wtryskiwacza offline",
+          "bed_temp_sensor_offline": "Czujnik temperatury platformy offline",
+          "filament_about_to_runout": "Wyczerpanie filamentu nadchodzące"
+        }
+      },
+      "end_time": {
+        "name": "Czas Końcowy"
+      }
+    }
+  }
+}
