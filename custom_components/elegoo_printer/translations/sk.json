@@ -150,7 +150,7 @@
           "stopping": "Zastavovanie",
           "stopped": "Zastavené",
           "homing": "Nastavenie",
-          "loading_unloading": "Načítanie / Vykładanie",
+          "loading_unloading": "Načítanie / Vykladanie",
           "pid_tuning": "PID ladenie",
           "recovery": "Obnova"
         }
@@ -189,7 +189,7 @@
           "disconnect_app": "Aplikácia odpojená počas tlače",
           "nozzle_temp_sensor_offline": "Teplotný senzor trysky offline",
           "bed_temp_sensor_offline": "Teplotný senzor lôžka offline",
-          "filament_about_to_runout": "Hrozi vyprázdnenie filamentu"
+          "filament_about_to_runout": "Hrozí vyprázdnenie filamentu"
         }
       },
       "end_time": {

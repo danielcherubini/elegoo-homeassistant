@@ -188,7 +188,7 @@
           "server_connect_failed": "Serververbindung fehlgeschlagen",
           "disconnect_app": "App während des Drucks getrennt",
           "nozzle_temp_sensor_offline": "Düsentemperatursensor offline",
-          "bed_temp_sensor_offline": "Bettemperatur-Sensor offline",
+          "bed_temp_sensor_offline": "Betttemperatur-Sensor offline",
           "filament_about_to_runout": "Filamentauslauf bevorstehend"
         }
       },

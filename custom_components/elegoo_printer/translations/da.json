@@ -101,7 +101,7 @@
     "error": {
       "connection": "Kunne ikke oprette forbindelse til printer.",
       "unknown": "Ukendt fejl opstod.",
-      "invalid_printer_selection": "Ugyldig printer selection.",
+      "invalid_printer_selection": "Ugyldigt printervalg.",
       "no_printer_found": "Ingen printer blev fundet på den angivne IP-adresse.",
       "validation_no_printer_found": "Validering mislykkedes: Ingen printer blev fundet.",
       "no_printer_selected_or_ip_provided": "Vælg en opdaget printer eller angiv en IP-adresse.",
@@ -124,7 +124,7 @@
           "homing": "Homing",
           "dropping": "Droppende",
           "printing": "Printer",
-          "lifting": "Hevende",
+          "lifting": "Hævende",
           "pausing": "Pause",
           "paused": "På Pause",
           "stopping": "Stopper",

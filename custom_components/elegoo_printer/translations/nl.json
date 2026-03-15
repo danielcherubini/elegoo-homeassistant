@@ -78,7 +78,7 @@
       },
       "cc2_options": {
         "title": "Centauri Carbon 2 Opties",
-        "description": "Configureer je Centauri Carbon 2 printer-instellingen. Als uw printer toegangscoder authenticatie is ingeschakeld, voer hieronder uw toegangscode in. Laat leeg als geen toegangscode vereist wordt.",
+        "description": "Configureer je Centauri Carbon 2 printer-instellingen. Als uw printer toegangscode authenticatie is ingeschakeld, voer hieronder uw toegangscode in. Laat leeg als geen toegangscode vereist wordt.",
         "data": {
           "cc2_access_code": "Toegangscode (optioneel)"
         }
@@ -87,19 +87,19 @@
         "title": "Centauri Carbon 2 Authenticatie",
         "description": "**BELANGRIJK:** Controleer de toegangscoder instelling van je printer voordat je doorgaat.\n\nGa op je printer naar: **Instellingen → Netwerk → Toegangscode**\n\n• Als de instelling 'Uit' toont of leeg/leeg is, selecteer **Nee**\n• Als je een aangepaste toegangscade hebt ingesteld, selecteer **Ja**\n\nDe meeste printers worden standaard zonder toegangscode geleverd.",
         "data": {
-          "requires_access_code": "Vereist je printer een toegangscade?"
+          "requires_access_code": "Vereist je printer een toegangscode?"
         }
       },
       "cc2_access_code_input": {
         "title": "Voer Toegangscode In",
-        "description": "Vind de toegangscade van je printer op: Instellingen → Netwerk → Toegangscode",
+        "description": "Vind de toegangscode van je printer op: Instellingen → Netwerk → Toegangscode",
         "data": {
           "cc2_access_code": "Toegangscode"
         }
       }
     },
     "error": {
-      "connection": "Verbinding met de printer kon niet worden tot stand gebracht.",
+      "connection": "Verbinding met de printer kon niet tot stand worden gebracht.",
       "unknown": "Onbekende fout opgetreden.",
       "invalid_printer_selection": "Ongeldige printerselectie.",
       "no_printer_found": "Geen printer gevonden op het opgegeven IP-adres.",

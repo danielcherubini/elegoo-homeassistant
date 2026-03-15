@@ -189,7 +189,7 @@
           "disconnect_app": "แอปถูกตัดระหว่างการพิมพ์",
           "nozzle_temp_sensor_offline": "เซ็นเซอร์อุณหภูมิหัวฉีดออฟไลน์",
           "bed_temp_sensor_offline": "เซ็นเซอร์อุณหภูมิฐานออฟไลน์",
-          "filament_about_to_runout": " filament ใกล้หมด"
+          "filament_about_to_runout": "filament ใกล้หมด"
         }
       },
       "end_time": {
