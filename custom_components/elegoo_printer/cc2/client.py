@@ -64,6 +64,7 @@ from .const import (
     CC2_REG_TOO_MANY_CLIENTS,
     CC2_REGISTRATION_TIMEOUT,
     LOGGER,
+    UUID_PART_LEN,
 )
 from .models import CC2StatusMapper
 
@@ -138,6 +139,12 @@ class ElegooCC2Client:
             )
             for c in "xxxxxxxxxxxxxxxx"
         )
+
+        # Validate uuid_part length - 16 hex chars per CC2 protocol spec
+        error_msg = f"uuid_part has {len(uuid_part)} chars instead of 16"
+        if len(uuid_part) != UUID_PART_LEN:
+            raise ValueError(error_msg)
+
         timestamp_hex_long = format(int(time.time() * 1000), "x")
         self._request_id = f"{uuid_part}{timestamp_hex_long}"
 
