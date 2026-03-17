@@ -18,7 +18,11 @@
         "description": "Configura le impostazioni della tua stampante Centauri Carbon 2.",
         "data": {
           "ip_address": "Indirizzo IP della Stampante",
-          "cc2_access_code": "Codice di accesso (opzionale)"
+          "cc2_access_code": "Codice di accesso (opzionale)",
+          "gcode_proxy_url": "IP proxy GCode (opzionale)"
+        },
+        "data_description": {
+          "gcode_proxy_url": "Indirizzo IP del server cc2-gcode-capture-proxy per il tracciamento del filamento per estrusore. Lasciare vuoto per disabilitare."
         }
       },
       "mqtt_options": {
@@ -109,7 +113,8 @@
       "init_no_printer_found": "Inizializzazione fallita: la stampante non è stata trovata.",
       "cc2_options_no_printer_found": "La stampante CC2 non è stata trovata.",
       "cc2_access_code_required": "Questa stampante richiede un codice di accesso per l'autenticazione.",
-      "cc2_authentication_failed": "Autenticazione fallita. Verifica il codice di accesso nelle impostazioni della stampante: Impostazioni → Rete → Codice di accesso."
+      "cc2_authentication_failed": "Autenticazione fallita. Verifica il codice di accesso nelle impostazioni della stampante: Impostazioni → Rete → Codice di accesso.",
+      "gcode_proxy_unreachable": "Impossibile raggiungere il server proxy GCode. Verificare l'indirizzo IP e che il proxy sia in esecuzione."
     },
     "abort": {
       "already_configured": "Questa voce è già configurata."

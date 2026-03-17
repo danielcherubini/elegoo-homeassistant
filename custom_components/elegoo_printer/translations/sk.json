@@ -18,7 +18,11 @@
         "description": "Konfigurujte nastavenia svojej tlačiarne Centauri Carbon 2.",
         "data": {
           "ip_address": "IP adresa tlačiarne",
-          "cc2_access_code": "Prístupový kód (voliteľné)"
+          "cc2_access_code": "Prístupový kód (voliteľné)",
+          "gcode_proxy_url": "IP proxy GCode (voliteľné)"
+        },
+        "data_description": {
+          "gcode_proxy_url": "IP adresa servera cc2-gcode-capture-proxy na sledovanie filamentu podľa extrudéra. Nechajte prázdne na deaktivovanie."
         }
       },
       "mqtt_options": {
@@ -109,7 +113,8 @@
       "init_no_printer_found": "Inicializácia zlyhala: nebola nájdená žiadna tlačiareň.",
       "cc2_options_no_printer_found": "CC2 tlačiareň nemôže byť nájdená.",
       "cc2_access_code_required": "Táto tlačiareň vyžaduje prístupový kód na autentifikáciu.",
-      "cc2_authentication_failed": "Autentifikácia zlyhala. Skontrolujte prístupový kód v nastaveniach tlačiarne: Nastavenia → Sieť → Prístupový kód."
+      "cc2_authentication_failed": "Autentifikácia zlyhala. Skontrolujte prístupový kód v nastaveniach tlačiarne: Nastavenia → Sieť → Prístupový kód.",
+      "gcode_proxy_unreachable": "Nie je možné spojiť sa s proxy serverom GCode. Overte IP adresu a skontrolujte, či proxy server beží."
     },
     "abort": {
       "already_configured": "Tento záznam je už nakonfigurovaný."

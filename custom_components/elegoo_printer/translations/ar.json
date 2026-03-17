@@ -18,7 +18,11 @@
         "description": "قم بتكوين إعدادات طابعة Centauri Carbon 2 الخاصة بك.",
         "data": {
           "ip_address": "عنوان IP للطابعة",
-          "cc2_access_code": "رمز الوصول (اختياري)"
+          "cc2_access_code": "رمز الوصول (اختياري)",
+          "gcode_proxy_url": "عنوان IP وكيل GCode (اختياري)"
+        },
+        "data_description": {
+          "gcode_proxy_url": "عنوان IP لخادم cc2-gcode-capture-proxy لتتبع الفتيل لكل بثق. اتركه فارغًا لتعطيله."
         }
       },
       "mqtt_options": {
@@ -109,7 +113,8 @@
       "init_no_printer_found": "فشل التهيئة: لم يتم العثور على الطابعة.",
       "cc2_options_no_printer_found": "لم يتم العثور على طابعة CC2.",
       "cc2_access_code_required": "تتطلب هذه الطابعة رمز دخول للمصادقة.",
-      "cc2_authentication_failed": "فشل المصادقة. تحقق من رمز الدخول في إعدادات الطابعة: الإعدادات → الشبكة → رمز الدخول."
+      "cc2_authentication_failed": "فشل المصادقة. تحقق من رمز الدخول في إعدادات الطابعة: الإعدادات → الشبكة → رمز الدخول.",
+      "gcode_proxy_unreachable": "تعذّر الوصول إلى خادم وكيل GCode. تحقق من عنوان IP وتأكد من تشغيل الوكيل."
     },
     "abort": {
       "already_configured": "تم تكوين هذا الإدخال مسبقاً."

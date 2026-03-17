@@ -18,7 +18,11 @@
         "description": "Centauri Carbon 2 프린터 설정을 구성합니다.",
         "data": {
           "ip_address": "프린터 IP 주소",
-          "cc2_access_code": "액세스 코드 (선택사항)"
+          "cc2_access_code": "액세스 코드 (선택사항)",
+          "gcode_proxy_url": "GCode 프록시 IP (선택 사항)"
+        },
+        "data_description": {
+          "gcode_proxy_url": "익스트루더별 필라멘트 추적을 위한 cc2-gcode-capture-proxy 서버의 IP 주소입니다. 비활성화하려면 비워 두세요."
         }
       },
       "mqtt_options": {
@@ -109,7 +113,8 @@
       "init_no_printer_found": "초기화 실패: 프린터가 발견되지 않았습니다.",
       "cc2_options_no_printer_found": "CC2 프린터를 찾을 수 없습니다.",
       "cc2_access_code_required": "이 프린터는 인증을 위해 액세스 코드가 필요합니다.",
-      "cc2_authentication_failed": "인증에 실패했습니다. 프린터 설정에서 액세스 코드를 확인하세요: 설정 → 네트워크 → 액세스 코드."
+      "cc2_authentication_failed": "인증에 실패했습니다. 프린터 설정에서 액세스 코드를 확인하세요: 설정 → 네트워크 → 액세스 코드.",
+      "gcode_proxy_unreachable": "GCode 프록시 서버에 연결할 수 없습니다. IP 주소와 프록시 실행 여부를 확인하세요."
     },
     "abort": {
       "already_configured": "이 항목은 이미 구성되었습니다."
