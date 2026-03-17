@@ -915,6 +915,117 @@ PRINTER_STATUS_CANVAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ),
 )
 
+def _get_gcode_total_filament(printer_data: PrinterData) -> float | None:
+    """Get total filament used from gcode file detail data."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return None
+    return printer_data.gcode_filament_data.total_filament_used
+
+
+def _get_gcode_total_filament_attributes(printer_data: PrinterData) -> dict:
+    """Get extra attributes for the total filament sensor."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return {}
+    data = printer_data.gcode_filament_data
+    attrs: dict[str, Any] = {}
+    if data.filename:
+        attrs["filename"] = data.filename
+    if data.print_time is not None:
+        attrs["print_time_sec"] = data.print_time
+    attrs["extruder_count"] = len(data.color_map)
+    if data.color_map:
+        attrs["color_map"] = data.color_map
+    return attrs
+
+
+def _get_gcode_extruder_filament_type(
+    printer_data: PrinterData, index: int
+) -> str | None:
+    """Get filament type for a specific extruder from gcode color_map."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return None
+    color_map = printer_data.gcode_filament_data.color_map
+    if index >= len(color_map):
+        return None
+    return color_map[index].get("name")
+
+
+def _get_gcode_extruder_attributes(printer_data: PrinterData, index: int) -> dict:
+    """Get extra attributes for an extruder filament type sensor."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return {}
+    color_map = printer_data.gcode_filament_data.color_map
+    if index >= len(color_map):
+        return {}
+    entry = color_map[index]
+    attrs: dict[str, Any] = {}
+    if "color" in entry:
+        attrs["color"] = entry["color"]
+    if "t" in entry:
+        attrs["tray_index"] = entry["t"]
+    return attrs
+
+
+PRINTER_STATUS_CC2_GCODE_FILAMENT: tuple[
+    ElegooPrinterSensorEntityDescription, ...
+] = (
+    ElegooPrinterSensorEntityDescription(
+        key="gcode_total_filament_used",
+        name="Gcode Total Filament Used",
+        icon="mdi:printer-3d-nozzle",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda printer_data: _get_gcode_total_filament(printer_data),
+        extra_attributes=lambda entity: _get_gcode_total_filament_attributes(
+            entity.coordinator.data
+        ),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="gcode_extruder_0_filament_type",
+        name="Extruder 0 Filament Type",
+        icon="mdi:printer-3d-nozzle",
+        value_fn=lambda printer_data: _get_gcode_extruder_filament_type(
+            printer_data, 0
+        ),
+        extra_attributes=lambda entity: _get_gcode_extruder_attributes(
+            entity.coordinator.data, 0
+        ),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="gcode_extruder_1_filament_type",
+        name="Extruder 1 Filament Type",
+        icon="mdi:printer-3d-nozzle",
+        value_fn=lambda printer_data: _get_gcode_extruder_filament_type(
+            printer_data, 1
+        ),
+        extra_attributes=lambda entity: _get_gcode_extruder_attributes(
+            entity.coordinator.data, 1
+        ),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="gcode_extruder_2_filament_type",
+        name="Extruder 2 Filament Type",
+        icon="mdi:printer-3d-nozzle",
+        value_fn=lambda printer_data: _get_gcode_extruder_filament_type(
+            printer_data, 2
+        ),
+        extra_attributes=lambda entity: _get_gcode_extruder_attributes(
+            entity.coordinator.data, 2
+        ),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="gcode_extruder_3_filament_type",
+        name="Extruder 3 Filament Type",
+        icon="mdi:printer-3d-nozzle",
+        value_fn=lambda printer_data: _get_gcode_extruder_filament_type(
+            printer_data, 3
+        ),
+        extra_attributes=lambda entity: _get_gcode_extruder_attributes(
+            entity.coordinator.data, 3
+        ),
+    ),
+)
+
+
 PRINTER_IMAGES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="cover_image",

@@ -12,6 +12,7 @@ from .definitions import (
     PRINTER_ATTRIBUTES_RESIN,
     PRINTER_ATTRIBUTES_V3_ONLY,
     PRINTER_STATUS_CANVAS,
+    PRINTER_STATUS_CC2_GCODE_FILAMENT,
     PRINTER_STATUS_COMMON,
     PRINTER_STATUS_FDM,
     PRINTER_STATUS_FDM_CURRENT_EXTRUSION,
@@ -69,6 +70,10 @@ async def async_setup_entry(
         # Canvas/AMS sensors (CC2 with Canvas support)
         if protocol_version == ProtocolVersion.CC2:
             sensors.extend(PRINTER_STATUS_CANVAS)
+
+        # Gcode filament data sensors (CC2 only, uses CC2_CMD_GET_FILE_DETAIL)
+        if protocol_version == ProtocolVersion.CC2:
+            sensors.extend(PRINTER_STATUS_CC2_GCODE_FILAMENT)
 
         # Current extrusion
         if printer.open_centauri or protocol_version == ProtocolVersion.CC2:

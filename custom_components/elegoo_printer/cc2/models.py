@@ -15,6 +15,7 @@ from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooPrintError,
     ElegooPrintStatus,
 )
+from custom_components.elegoo_printer.sdcp.models.printer import FileFilamentData
 from custom_components.elegoo_printer.sdcp.models.status import (
     CurrentFanSpeed,
     LightStatus,
@@ -372,3 +373,39 @@ class CC2StatusMapper:
         }
 
         return PrinterAttributes(attrs_dict)
+
+    @classmethod
+    def map_filament_data(
+        cls,
+        cc2_data: dict[str, Any],
+        filename: str | None,
+    ) -> FileFilamentData | None:
+        """
+        Map cached file detail filament data to FileFilamentData.
+
+        Arguments:
+            cc2_data: The raw CC2 status data containing _file_details.
+            filename: The current print filename to look up.
+
+        Returns:
+            A FileFilamentData if filament data exists, otherwise None.
+
+        """
+        if not filename:
+            return None
+
+        file_details = cc2_data.get("_file_details", {})
+        file_info = file_details.get(filename, {})
+
+        total_filament_used = file_info.get("total_filament_used")
+        color_map = file_info.get("color_map")
+
+        if total_filament_used is None and not color_map:
+            return None
+
+        return FileFilamentData(
+            total_filament_used=total_filament_used,
+            color_map=color_map or [],
+            print_time=file_info.get("print_time"),
+            filename=filename,
+        )

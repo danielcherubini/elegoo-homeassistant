@@ -693,6 +693,17 @@ class ElegooCC2Client:
                 "Updated printer status: %s",
                 self.printer_data.status.current_status,
             )
+
+            # Map filament data from cached file details
+            current_filename = self._cached_status.get("print_status", {}).get(
+                "filename"
+            )
+            self.printer_data.gcode_filament_data = (
+                CC2StatusMapper.map_filament_data(
+                    self._cached_status, current_filename
+                )
+            )
+
             # Update current job for begin_time/end_time sensors
             self._update_current_job()
         except Exception:
@@ -801,7 +812,7 @@ class ElegooCC2Client:
     def _handle_file_detail_response(
         self, filename: str, result: dict[str, Any]
     ) -> None:
-        """Handle file detail response and cache TotalLayers."""
+        """Handle file detail response and cache TotalLayers + filament data."""
         if "_file_details" not in self._cached_status:
             self._cached_status["_file_details"] = {}
 
@@ -810,18 +821,37 @@ class ElegooCC2Client:
             or result.get("layer")
             or result.get("total_layer")
         )
-        if total_layers:
-            self._cached_status["_file_details"][filename] = {
-                "TotalLayers": total_layers,
-            }
+
+        total_filament_used = result.get("total_filament_used")
+        color_map = result.get("color_map")
+        print_time = result.get("print_time")
+
+        has_data = total_layers or total_filament_used is not None or color_map
+
+        if has_data:
+            detail: dict[str, Any] = {}
+            if total_layers:
+                detail["TotalLayers"] = total_layers
+            if total_filament_used is not None:
+                detail["total_filament_used"] = total_filament_used
+            if color_map:
+                detail["color_map"] = color_map
+            if print_time is not None:
+                detail["print_time"] = print_time
+
+            self._cached_status["_file_details"][filename] = detail
             self.logger.debug(
-                "Cached file details for %s: TotalLayers=%s", filename, total_layers
+                "Cached file details for %s: TotalLayers=%s, "
+                "total_filament_used=%s, color_map_entries=%s",
+                filename,
+                total_layers,
+                total_filament_used,
+                len(color_map) if color_map else 0,
             )
-            # Update printer status with new info
             self._update_printer_status()
         else:
             self.logger.debug(
-                "File detail response for %s had no TotalLayers. Keys: %s",
+                "File detail response for %s had no usable data. Keys: %s",
                 filename,
                 list(result.keys()),
             )

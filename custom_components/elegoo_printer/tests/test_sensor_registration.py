@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from custom_components.elegoo_printer.definitions import (
+    PRINTER_STATUS_CC2_GCODE_FILAMENT,
     PRINTER_STATUS_FDM_CURRENT_EXTRUSION,
     PRINTER_STATUS_FDM_TOTAL_EXTRUSION,
 )
@@ -19,6 +20,7 @@ from custom_components.elegoo_printer.sensor import async_setup_entry
 
 CURRENT_EXTRUSION_KEYS = {desc.key for desc in PRINTER_STATUS_FDM_CURRENT_EXTRUSION}
 TOTAL_EXTRUSION_KEYS = {desc.key for desc in PRINTER_STATUS_FDM_TOTAL_EXTRUSION}
+GCODE_FILAMENT_KEYS = {desc.key for desc in PRINTER_STATUS_CC2_GCODE_FILAMENT}
 
 
 class _FakeSensor:
@@ -145,3 +147,40 @@ class TestTotalExtrusionGating:
             printer_type, protocol_version, open_centauri=open_centauri
         )
         assert TOTAL_EXTRUSION_KEYS.issubset(keys) == expected
+
+
+class TestGcodeFilamentGating:
+    """Test gcode filament sensor inclusion via async_setup_entry."""
+
+    @pytest.mark.parametrize(
+        ("printer_type", "protocol_version", "open_centauri", "expected"),
+        [
+            # CC2 FDM — included
+            (PrinterType.FDM, ProtocolVersion.CC2, False, True),
+            (PrinterType.FDM, ProtocolVersion.CC2, True, True),
+            # Non-CC2 FDM — excluded
+            (PrinterType.FDM, ProtocolVersion.V3, False, False),
+            (PrinterType.FDM, ProtocolVersion.V3, True, False),
+            (PrinterType.FDM, ProtocolVersion.V1, False, False),
+            (PrinterType.FDM, ProtocolVersion.V1, True, False),
+            # Resin — excluded
+            (PrinterType.RESIN, ProtocolVersion.CC2, False, False),
+            (PrinterType.RESIN, ProtocolVersion.V3, False, False),
+            # Unknown printer type — excluded
+            (None, ProtocolVersion.CC2, False, False),
+            (None, ProtocolVersion.V3, False, False),
+            (None, ProtocolVersion.V1, False, False),
+        ],
+    )
+    def test_gcode_filament_gating(
+        self,
+        printer_type: PrinterType | None,
+        protocol_version: ProtocolVersion,
+        open_centauri: bool,  # noqa: FBT001
+        expected: bool,  # noqa: FBT001
+    ) -> None:
+        """Test gcode filament sensor inclusion for various printer configurations."""
+        keys = _registered_keys(
+            printer_type, protocol_version, open_centauri=open_centauri
+        )
+        assert GCODE_FILAMENT_KEYS.issubset(keys) == expected
