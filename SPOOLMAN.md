@@ -1,9 +1,11 @@
 # Spoolman Integration
 
-To integrate the filament usage provided by the total extrusion sensor (only available for the Elegoo Centauri Carbon), the following steps are needed:
+The total extrusion sensor is required for this integration to work. It is avaliable on the Elegoo Centauri Carbon with the OpenCentauri firmware on the stock Elegoo Centauri Carbon 2 firmware. When using the Elegoo Centauri Carbon, please follow the step bellow:
 
-* OpenCentauri firmware installed. Instructions [here](https://docs.opencentauri.cc/patched-firmware/). Only the patched version is required.
+*  Install OpenCentauri firmware. Instructions [here](https://docs.opencentauri.cc/patched-firmware/). Only the patched version is required.
     * If you already had [this integration](https://github.com/danielcherubini/elegoo-homeassistant) installed before installing the OpenCentauri firmware, you have to remove and re-add your printer so the Total Extrusion sensor is made available.
+
+On both printers the following steps are required (please be advised that the automations below have not been tested with the Elegoo Centauri Carbon 2 and the filament change is not automated):
 
 * [Spoolman Home Assistant](https://github.com/Disane87/spoolman-homeassistant) integration installed and configured
 
@@ -13,42 +15,42 @@ To integrate the filament usage provided by the total extrusion sensor (only ava
     * Current Spool - Template Select Helper (select.current_spool) - To provide a more user-friendly way to swap the current active spool without having to memorize IDs. Just add this select on the dashboard for the user to easily select the current spool.
         * State:
         ```jinja
-        {%
-        set spool = 'sensor.spoolman_spool_' ~ states('input_number.current_spool_id') | default(0) | int 
-        %}
-        {% if spool == 'sensor.spoolman_spool_0' %}
-        {{ '0: Unknown' }}
-        {% else %}
-        {% set id = state_attr(spool, 'id') | default(0) | int %}
-        {% set vendor = state_attr(spool, 'filament_vendor_name') | default('') %}
-        {% set material = state_attr(spool, 'filament_material') | default('') %}
-        {% set name = state_attr(spool, 'filament_name') | default('') %}
-        {% set location = state_attr(spool, 'location') %}
-        {% set weight = state_attr(spool, 'remaining_weight')|round(0) ~ ' g' %}
-        {% if location %}
-        {% set extra = weight + ' - ' + location %}
-        {% else %}
-        {% set extra = weight %}
-        {% endif %}
-        {{ id ~ ': ' + vendor + ' ' + material + ' ' + name + ' (' + extra + ')' }}
-        {% endif %}
+         {%
+         set spool = 'sensor.spoolman_spool_' ~ states('input_number.current_spool_id') | default(0) | int 
+         %}
+         {% if spool == 'sensor.spoolman_spool_0' %}
+         {{ '0: Unknown' }}
+         {% else %}
+         {% set id = state_attr(spool, 'id') | default(0) | int %}
+         {% set vendor = state_attr(spool, 'filament_vendor_name') | default('') %}
+         {% set material = state_attr(spool, 'filament_material') | default('') %}
+         {% set name = state_attr(spool, 'filament_name') | default('') %}
+         {% set location = state_attr(spool, 'location') %}
+         {% set weight = state_attr(spool, 'remaining_weight')|round(0) ~ ' g' %}
+         {% if location %}
+         {% set extra = weight + ' - ' + location %}
+         {% else %}
+         {% set extra = weight %}
+         {% endif %}
+         {{ id ~ ': ' + vendor + ' ' + material + ' ' + name + ' (' + extra + ')' }}
+         {% endif %}
         ```
         * Available Options:
         ```jinja
-        {% set spools = integration_entities('spoolman') | select('match', 'sensor.spoolman_spool_[0-9]+$') | list %}
-        {% set ns = namespace(x=['0: Unknown']) %}
-        {% for spool in spools -%}
-        {% set location = state_attr(spool, 'location') %}
-        {% set text = state_attr(spool, 'id') ~ ': ' + state_attr(spool, 'filament_vendor_name')|default('') + ' ' + state_attr(spool, 'filament_material')|default('') + ' ' + state_attr(spool, 'filament_name')|default('') %}
-        {% if location %}
-        {% set extra = ' (' ~ state_attr(spool, 'remaining_weight')|round(0) + ' g - ' + location + ')' %}
-        {% else %}
-        {% set extra = ' (' ~ state_attr(spool, 'remaining_weight')|round(0) + ' g)' %}
-        {% endif %}
-
-        {% set ns.x = ns.x + [text + extra] %}
-        {%- endfor %}
-        {{ ns.x }}
+         {% set spools = integration_entities('spoolman') | select('match', 'sensor.spoolman_spool_[0-9]+$') | list %}
+         {% set ns = namespace(x=['0: Unknown']) %}
+         {% for spool in spools -%}
+         {% set location = state_attr(spool, 'location') %}
+         {% set text = state_attr(spool, 'id') ~ ': ' + state_attr(spool, 'filament_vendor_name')|default('') + ' ' + state_attr(spool, 'filament_material')|default('') + ' ' + state_attr(spool, 'filament_name')|default('') %}
+         {% if location %}
+         {% set extra = ' (' ~ state_attr(spool, 'remaining_weight')|round(0) + ' g - ' + location + ')' %}
+         {% else %}
+         {% set extra = ' (' ~ state_attr(spool, 'remaining_weight')|round(0) + ' g)' %}
+         {% endif %}
+         
+         {% set ns.x = ns.x + [text + extra] %}
+         {%- endfor %}
+         {{ ns.x }}
         ```
         * Actions on Select
            - Action: Input Number: Set
@@ -64,7 +66,7 @@ To integrate the filament usage provided by the total extrusion sensor (only ava
     * Diff Accumulated Spool Usage - Template Number (number.diff_accumulated_spool_usage) - To report the difference between what has been updated to spoolman and the current usage
         * State:
         ```jinja
-        {{ states('sensor.centauri_carbon_total_extrusion') | float(0) - states('input_number.accumulated_spool_usage') | float(0) }}        
+        {{ states('sensor.centauri_carbon_total_extrusion')  | float(0) - states('input_number.accumulated_spool_usage') | float(0) }}
         ```
         With a minimum value of 0, a maximum value of 1000000 and unit of measurement mm
 
@@ -166,7 +168,7 @@ actions:
               - complete
               - stopped
           - condition: numeric_state
-            entity_id: input_number.accumulated_spool_usage
+            entity_id: number.diff_accumulated_spool_usage
             above: 0
         sequence:
           - action: script.update_spool_usage
@@ -185,7 +187,7 @@ mode: queued
 max: 1000
 ```
 
-* A recommended automation is auto reset filament id, so when an load/unloading of filament is detected (to prevent using the id of the previous spool):
+* A recommended automation is auto reset spool id, so when an load/unloading of filament is detected (to prevent using the id of the previous spool):
 
 ```yaml
 alias: Auto Reset Spool ID
@@ -207,7 +209,60 @@ actions:
 mode: single
 ```
 
-* A nice way to list your available spools (requires the [auto-entities](https://github.com/thomasloven/lovelace-auto-entities) and the [entity-progress-card](https://github.com/francois-le-ko4la/lovelace-entity-progress-card/):
+* An automation to pause the print right at the beggining if the current spool id is not set (to make sure all filament usage is tracked):
+
+```yaml
+alias: Prompt User For Spool ID Before Printing
+description: ""
+triggers:
+  - trigger: state
+    entity_id:
+      - sensor.centauri_carbon_print_status
+    to:
+      - printing
+conditions:
+  - condition: numeric_state
+    entity_id: input_number.current_spool_id
+    below: 1
+actions:
+  - action: button.press
+    metadata: {}
+    target:
+      entity_id: button.centauri_carbon_pause_print
+    data: {}
+   - action: notify.mobile_app_XXX
+     metadata: {}
+     data:
+       message: "3D Printer is starting a print, but the spool ID has not been set. Please set it before resuming the print."
+mode: single
+```
+
+To make for a more complex message with actions, I recommend using this [Notification Blueprint](https://github.com/MB901/t-house-blueprints/blob/main/notifications.yaml). With it you can allow the user perform an action right from the message.
+
+* To complement the above automation, this one automatically resumes the print, once the spool id is set:
+
+```yaml
+alias: Resume Printing on Spool ID Change
+description: ""
+triggers:
+  - trigger: state
+    entity_id:
+      - input_number.current_spool_id
+conditions:
+  - condition: state
+    entity_id: sensor.centauri_carbon_print_status
+    state:
+      - paused
+actions:
+  - action: button.press
+    metadata: {}
+    target:
+      entity_id: button.centauri_carbon_resume_print
+    data: {}
+mode: single
+```
+
+* A nice way to list your available spools (requires the [auto-entities](https://github.com/thomasloven/lovelace-auto-entities) and the [entity-progress-card](https://github.com/francois-le-ko4la/lovelace-entity-progress-card/)):
 
 ```yaml
 type: custom:auto-entities
@@ -282,4 +337,7 @@ card_param: cards
 ```
 - Preview:
 <img width="583" height="350" alt="image" src="https://github.com/user-attachments/assets/1a1f181b-2eaf-49f8-8fb1-375943306fae" />
+
+* For more examples / ideas checkout [Display Example](https://github.com/Disane87/spoolman-homeassistant?tab=readme-ov-file#spool-display-example)
+
 
