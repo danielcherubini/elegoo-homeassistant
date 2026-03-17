@@ -17,8 +17,10 @@ from PIL import Image as PILImage
 from PIL import UnidentifiedImageError
 
 from .cc2.client import ElegooCC2Client
+from .cc2.gcode_proxy import GCodeProxyClient
 from .const import (
     CONF_CC2_ACCESS_CODE,
+    CONF_GCODE_PROXY_URL,
     CONF_MQTT_BROKER_ENABLED,
     CONF_PROXY_ENABLED,
     FIRMWARE_SERVICE_BASE_URL,
@@ -191,12 +193,25 @@ class ElegooPrinterApiClient:
 
             # CC2 printers run their own MQTT broker - no embedded broker needed
             access_code = config.get(CONF_CC2_ACCESS_CODE)
+            gcode_proxy_url = config.get(CONF_GCODE_PROXY_URL)
+            gcode_proxy = None
+            if gcode_proxy_url and hass:
+                gcode_proxy = GCodeProxyClient(
+                    gcode_proxy_url,
+                    async_get_clientsession(hass),
+                )
+                logger.info(
+                    "GCode proxy configured at %s for printer %s",
+                    gcode_proxy_url,
+                    printer.name,
+                )
             self.client = ElegooCC2Client(
                 printer_ip=printer.ip_address or "",
                 serial_number=printer.id or "",
                 access_code=access_code,
                 logger=logger,
                 printer=printer,
+                gcode_proxy=gcode_proxy,
             )
             # No proxy or embedded broker for CC2
             self._proxy_server_enabled = False

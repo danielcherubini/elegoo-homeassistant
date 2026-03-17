@@ -41,12 +41,23 @@ PRINTERS_WITH_VAT_HEATER = [
 
 @dataclass
 class FileFilamentData:
-    """Filament data from CC2 file detail response (MQTT method 1046)."""
+    """Filament data from MQTT method 1046 file detail and parsed gcode."""
 
+    # From CC2_CMD_GET_FILE_DETAIL (MQTT method 1046)
     total_filament_used: float | None = None
     color_map: list[dict[str, Any]] = field(default_factory=list)
     print_time: int | None = None
     filename: str | None = None
+    # from parsed gode, empty when proxy not configured
+    per_slot_grams: list[float] = field(default_factory=list)
+    per_slot_mm: list[float] = field(default_factory=list)
+    per_slot_cm3: list[float] = field(default_factory=list)
+    per_slot_cost: list[float] = field(default_factory=list)
+    filament_names: list[str] = field(default_factory=list)
+    total_cost: float | None = None
+    total_filament_changes: int | None = None
+    estimated_time: str | None = None
+    slicer_version: str | None = None
 
 
 class FirmwareUpdateInfo(TypedDict, total=False):

@@ -381,9 +381,13 @@ class CC2StatusMapper:
         filename: str | None,
     ) -> FileFilamentData | None:
         """
-        Map cached file detail filament data to FileFilamentData.
+        Map cached file detail and proxy filament data to FileFilamentData.
 
-        Arguments:
+        Merges two sources:
+        - MQTT file detail: total_filament_used, color_map, print_time
+        - Proxy gcode capture: per_slot_grams, per_slot_cost, filament_names, etc.
+
+        Args:
             cc2_data: The raw CC2 status data containing _file_details.
             filename: The current print filename to look up.
 
@@ -399,8 +403,13 @@ class CC2StatusMapper:
 
         total_filament_used = file_info.get("total_filament_used")
         color_map = file_info.get("color_map")
+        proxy = file_info.get("proxy_filament", {})
+        proxy_filament = proxy.get("filament", {}) if proxy else {}
 
-        if total_filament_used is None and not color_map:
+        has_mqtt = total_filament_used is not None or color_map
+        has_proxy = bool(proxy_filament)
+
+        if not has_mqtt and not has_proxy:
             return None
 
         return FileFilamentData(
@@ -408,4 +417,13 @@ class CC2StatusMapper:
             color_map=color_map or [],
             print_time=file_info.get("print_time"),
             filename=filename,
+            per_slot_grams=proxy_filament.get("per_slot_grams", []),
+            per_slot_mm=proxy_filament.get("per_slot_mm", []),
+            per_slot_cm3=proxy_filament.get("per_slot_cm3", []),
+            per_slot_cost=proxy_filament.get("per_slot_cost", []),
+            filament_names=proxy_filament.get("filament_names", []),
+            total_cost=proxy_filament.get("total_cost"),
+            total_filament_changes=proxy_filament.get("total_filament_changes"),
+            estimated_time=proxy_filament.get("estimated_time"),
+            slicer_version=proxy.get("slicer_version") if proxy else None,
         )

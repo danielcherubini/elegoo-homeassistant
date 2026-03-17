@@ -71,6 +71,8 @@ if TYPE_CHECKING:
     from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
     from custom_components.elegoo_printer.sdcp.models.status import LightStatus
 
+    from .gcode_proxy import GCodeProxyClient
+
 
 class ElegooCC2Client:
     """
@@ -79,13 +81,14 @@ class ElegooCC2Client:
     Connects TO the printer's MQTT broker (inverted architecture).
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         printer_ip: str,
         serial_number: str,
         access_code: str | None = None,
         logger: Any = LOGGER,
         printer: Printer | None = None,
+        gcode_proxy: GCodeProxyClient | None = None,
     ) -> None:
         """
         Initialize an ElegooCC2Client.
@@ -96,6 +99,7 @@ class ElegooCC2Client:
             access_code: Optional access code for authentication.
             logger: The logger to use.
             printer: Optional Printer object with existing configuration.
+            gcode_proxy: Optional proxy client for per-extruder filament data.
 
         """
         self.printer_ip = printer_ip
@@ -103,6 +107,7 @@ class ElegooCC2Client:
         self.access_code = access_code  # Can be None - will try fallbacks
         self.logger = logger
         self.printer: Printer = printer or Printer()
+        self._gcode_proxy = gcode_proxy
         self.printer_data = PrinterData(printer=self.printer)
 
         # MQTT client state
@@ -730,6 +735,8 @@ class ElegooCC2Client:
                 # Request file details in background (only once per filename)
                 self._pending_file_detail_request = filename
                 self._request_file_detail_background(filename)
+                if self._gcode_proxy:
+                    self._request_proxy_filament_background(filename)
 
         # Get cached thumbnail for this file
         file_thumbnails = self._cached_status.get("_file_thumbnails", {})
@@ -786,6 +793,46 @@ class ElegooCC2Client:
         task = asyncio.create_task(self._request_file_detail(filename))
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
+
+    def _request_proxy_filament_background(self, filename: str) -> None:
+        """
+        Fetch per-extruder filament data from the gcode proxy in the background.
+
+        Args:
+            filename: The G-code filename to fetch proxy filament data for.
+
+        """
+        task = asyncio.create_task(self._request_proxy_filament(filename))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _request_proxy_filament(self, filename: str) -> None:
+        """
+        Query the gcode capture proxy for filament metadata.
+
+        Args:
+            filename: The G-code filename to fetch proxy filament data for.
+
+        """
+        if not self._gcode_proxy:
+            return
+        try:
+            data = await self._gcode_proxy.fetch_filament_data(filename)
+            if data:
+                if "_file_details" not in self._cached_status:
+                    self._cached_status["_file_details"] = {}
+                file_info = self._cached_status["_file_details"].setdefault(
+                    filename, {}
+                )
+                file_info["proxy_filament"] = data
+                self.logger.debug("Proxy filament data cached for %s", filename)
+                self._update_printer_status()
+        except (TimeoutError, OSError) as exc:
+            self.logger.debug(
+                "Failed to fetch proxy filament data for %s: %s",
+                filename,
+                exc,
+            )
 
     async def _request_file_detail(self, filename: str) -> None:
         """Request file details from printer."""

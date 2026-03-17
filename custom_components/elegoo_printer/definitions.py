@@ -982,14 +982,32 @@ PRINTER_STATUS_CANVAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
 )
 
 def _get_gcode_total_filament(printer_data: PrinterData) -> float | None:
-    """Get total filament used from gcode file detail data."""
+    """
+    Get total filament used from gcode file detail data.
+
+    Args:
+        printer_data: The current printer data object.
+
+    Returns:
+        The total filament used in grams, or None if unavailable.
+
+    """
     if not printer_data or not printer_data.gcode_filament_data:
         return None
     return printer_data.gcode_filament_data.total_filament_used
 
 
 def _get_gcode_total_filament_attributes(printer_data: PrinterData) -> dict:
-    """Get extra attributes for the total filament sensor."""
+    """
+    Get extra attributes for the total filament sensor.
+
+    Args:
+        printer_data: The current printer data object.
+
+    Returns:
+        A dict of extra state attributes, or an empty dict if unavailable.
+
+    """
     if not printer_data or not printer_data.gcode_filament_data:
         return {}
     data = printer_data.gcode_filament_data
@@ -1001,13 +1019,27 @@ def _get_gcode_total_filament_attributes(printer_data: PrinterData) -> dict:
     attrs["extruder_count"] = len(data.color_map)
     if data.color_map:
         attrs["color_map"] = data.color_map
+    if data.slicer_version:
+        attrs["slicer_version"] = data.slicer_version
+    if data.estimated_time:
+        attrs["estimated_time"] = data.estimated_time
     return attrs
 
 
 def _get_gcode_extruder_filament_type(
     printer_data: PrinterData, index: int
 ) -> str | None:
-    """Get filament type for a specific extruder from gcode color_map."""
+    """
+    Get filament type for a specific extruder from gcode color_map.
+
+    Args:
+        printer_data: The current printer data object.
+        index: The zero-based extruder index.
+
+    Returns:
+        The filament type name for the extruder, or None if unavailable.
+
+    """
     if not printer_data or not printer_data.gcode_filament_data:
         return None
     color_map = printer_data.gcode_filament_data.color_map
@@ -1017,19 +1049,99 @@ def _get_gcode_extruder_filament_type(
 
 
 def _get_gcode_extruder_attributes(printer_data: PrinterData, index: int) -> dict:
-    """Get extra attributes for an extruder filament type sensor."""
+    """
+    Get extra attributes for an extruder filament type sensor.
+
+    Args:
+        printer_data: The current printer data object.
+        index: The zero-based extruder index.
+
+    Returns:
+        A dict of extra state attributes, or an empty dict if unavailable.
+
+    """
     if not printer_data or not printer_data.gcode_filament_data:
         return {}
-    color_map = printer_data.gcode_filament_data.color_map
+    data = printer_data.gcode_filament_data
+    color_map = data.color_map
     if index >= len(color_map):
         return {}
     entry = color_map[index]
     attrs: dict[str, Any] = {}
     if "color" in entry:
         attrs["color"] = entry["color"]
-    if "t" in entry:
-        attrs["tray_index"] = entry["t"]
+    tray_idx = entry.get("t")
+    if tray_idx is not None:
+        attrs["tray_index"] = tray_idx
+        if tray_idx < len(data.per_slot_grams):
+            attrs["weight_grams"] = data.per_slot_grams[tray_idx]
+        if tray_idx < len(data.per_slot_mm):
+            attrs["filament_mm"] = data.per_slot_mm[tray_idx]
+        if tray_idx < len(data.per_slot_cm3):
+            attrs["filament_cm3"] = data.per_slot_cm3[tray_idx]
+        if tray_idx < len(data.per_slot_cost):
+            attrs["cost"] = data.per_slot_cost[tray_idx]
+    if index < len(data.filament_names):
+        attrs["filament_name"] = data.filament_names[index]
     return attrs
+
+
+def _get_proxy_extruder_weight(printer_data: PrinterData, index: int) -> float | None:
+    """Get filament weight in grams for a specific extruder via tray index."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return None
+    data = printer_data.gcode_filament_data
+    if index >= len(data.color_map):
+        return None
+    tray_idx = data.color_map[index].get("t")
+    if tray_idx is None or tray_idx >= len(data.per_slot_grams):
+        return None
+    return data.per_slot_grams[tray_idx]
+
+
+def _get_proxy_extruder_weight_attributes(
+    printer_data: PrinterData, index: int
+) -> dict:
+    """Get extra attributes for an extruder weight sensor."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return {}
+    data = printer_data.gcode_filament_data
+    attrs: dict[str, Any] = {}
+    if index < len(data.color_map):
+        entry = data.color_map[index]
+        if "name" in entry:
+            attrs["filament_type"] = entry["name"]
+        if "color" in entry:
+            attrs["color"] = entry["color"]
+        tray_idx = entry.get("t")
+        if tray_idx is not None:
+            attrs["tray_index"] = tray_idx
+            if tray_idx < len(data.per_slot_cost):
+                attrs["cost"] = data.per_slot_cost[tray_idx]
+    if index < len(data.filament_names):
+        attrs["filament_name"] = data.filament_names[index]
+    return attrs
+
+
+def _get_proxy_total_cost(printer_data: PrinterData) -> float | None:
+    if not printer_data or not printer_data.gcode_filament_data:
+        return None
+    return printer_data.gcode_filament_data.total_cost
+
+
+def _get_proxy_total_cost_attributes(printer_data: PrinterData) -> dict:
+    if not printer_data or not printer_data.gcode_filament_data:
+        return {}
+    data = printer_data.gcode_filament_data
+    if data.per_slot_cost:
+        return {"per_slot_cost": data.per_slot_cost}
+    return {}
+
+
+def _get_proxy_total_filament_changes(printer_data: PrinterData) -> int | None:
+    if not printer_data or not printer_data.gcode_filament_data:
+        return None
+    return printer_data.gcode_filament_data.total_filament_changes
 
 
 PRINTER_STATUS_CC2_GCODE_FILAMENT: tuple[
@@ -1088,6 +1200,71 @@ PRINTER_STATUS_CC2_GCODE_FILAMENT: tuple[
         extra_attributes=lambda entity: _get_gcode_extruder_attributes(
             entity.coordinator.data, 3
         ),
+    ),
+)
+
+PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT: tuple[
+    ElegooPrinterSensorEntityDescription, ...
+] = (
+    ElegooPrinterSensorEntityDescription(
+        key="gcode_extruder_0_filament_weight",
+        name="Extruder 0 Filament Weight",
+        icon="mdi:weight-gram",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="g",
+        value_fn=lambda printer_data: _get_proxy_extruder_weight(printer_data, 0),
+        extra_attributes=lambda entity: _get_proxy_extruder_weight_attributes(
+            entity.coordinator.data, 0
+        ),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="gcode_extruder_1_filament_weight",
+        name="Extruder 1 Filament Weight",
+        icon="mdi:weight-gram",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="g",
+        value_fn=lambda printer_data: _get_proxy_extruder_weight(printer_data, 1),
+        extra_attributes=lambda entity: _get_proxy_extruder_weight_attributes(
+            entity.coordinator.data, 1
+        ),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="gcode_extruder_2_filament_weight",
+        name="Extruder 2 Filament Weight",
+        icon="mdi:weight-gram",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="g",
+        value_fn=lambda printer_data: _get_proxy_extruder_weight(printer_data, 2),
+        extra_attributes=lambda entity: _get_proxy_extruder_weight_attributes(
+            entity.coordinator.data, 2
+        ),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="gcode_extruder_3_filament_weight",
+        name="Extruder 3 Filament Weight",
+        icon="mdi:weight-gram",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="g",
+        value_fn=lambda printer_data: _get_proxy_extruder_weight(printer_data, 3),
+        extra_attributes=lambda entity: _get_proxy_extruder_weight_attributes(
+            entity.coordinator.data, 3
+        ),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="gcode_total_filament_cost",
+        name="Gcode Total Filament Cost",
+        icon="mdi:cash",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda printer_data: _get_proxy_total_cost(printer_data),
+        extra_attributes=lambda entity: _get_proxy_total_cost_attributes(
+            entity.coordinator.data
+        ),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="gcode_total_filament_changes",
+        name="Gcode Total Filament Changes",
+        icon="mdi:swap-horizontal",
+        value_fn=lambda printer_data: _get_proxy_total_filament_changes(printer_data),
     ),
 )
 
