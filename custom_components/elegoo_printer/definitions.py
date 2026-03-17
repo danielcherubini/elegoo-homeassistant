@@ -1152,6 +1152,7 @@ PRINTER_STATUS_CC2_GCODE_FILAMENT: tuple[
         name="Gcode Total Filament Used",
         icon="mdi:printer-3d-nozzle",
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
         value_fn=lambda printer_data: _get_gcode_total_filament(printer_data),
         extra_attributes=lambda entity: _get_gcode_total_filament_attributes(
             entity.coordinator.data
@@ -1212,6 +1213,7 @@ PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT: tuple[
         icon="mdi:weight-gram",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="g",
+        suggested_display_precision=2,
         value_fn=lambda printer_data: _get_proxy_extruder_weight(printer_data, 0),
         extra_attributes=lambda entity: _get_proxy_extruder_weight_attributes(
             entity.coordinator.data, 0
@@ -1223,6 +1225,7 @@ PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT: tuple[
         icon="mdi:weight-gram",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="g",
+        suggested_display_precision=2,
         value_fn=lambda printer_data: _get_proxy_extruder_weight(printer_data, 1),
         extra_attributes=lambda entity: _get_proxy_extruder_weight_attributes(
             entity.coordinator.data, 1
@@ -1234,6 +1237,7 @@ PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT: tuple[
         icon="mdi:weight-gram",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="g",
+        suggested_display_precision=2,
         value_fn=lambda printer_data: _get_proxy_extruder_weight(printer_data, 2),
         extra_attributes=lambda entity: _get_proxy_extruder_weight_attributes(
             entity.coordinator.data, 2
@@ -1245,6 +1249,7 @@ PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT: tuple[
         icon="mdi:weight-gram",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="g",
+        suggested_display_precision=2,
         value_fn=lambda printer_data: _get_proxy_extruder_weight(printer_data, 3),
         extra_attributes=lambda entity: _get_proxy_extruder_weight_attributes(
             entity.coordinator.data, 3
@@ -1255,6 +1260,7 @@ PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT: tuple[
         name="Gcode Total Filament Cost",
         icon="mdi:cash",
         state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
         value_fn=lambda printer_data: _get_proxy_total_cost(printer_data),
         extra_attributes=lambda entity: _get_proxy_total_cost_attributes(
             entity.coordinator.data
