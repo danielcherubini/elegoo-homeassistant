@@ -256,10 +256,29 @@ class ElegooPrinterNumberEntityDescription(NumberEntityDescription):
     set_value_fn: Callable[..., Coroutine[Any, Any, None]]
 
 
-PRINT_SPEED_PRESETS = {"Silent": 50, "Balanced": 100, "Sport": 150, "Ludicrous": 200}
+# Print speed presets for SDCP (WebSocket/MQTT) printers
+# These values align with the 160% speed clamp in websocket/mqtt clients
+PRINT_SPEED_PRESETS_SDCP = {
+    "Silent": 50,
+    "Balanced": 100,
+    "Sport": 130,
+    "Ludicrous": 160,
+}
+
+# Print speed presets for CC2 printers
+# These values map to discrete mode thresholds in the printer firmware
+PRINT_SPEED_PRESETS_CC2 = {
+    "Silent": 50,
+    "Balanced": 100,
+    "Sport": 150,
+    "Ludicrous": 200,
+}
 
 
-def _get_closest_print_speed_preset(speed_pct: int | None) -> str | None:
+def _get_closest_print_speed_preset(
+    speed_pct: int | None,
+    presets: dict[str, int] = PRINT_SPEED_PRESETS_SDCP,
+) -> str | None:
     """
     Find the closest matching print speed preset name for a given percentage.
 
@@ -267,8 +286,9 @@ def _get_closest_print_speed_preset(speed_pct: int | None) -> str | None:
     exactly match a preset (e.g., 160% when Ludicrous mode is selected but
     clamped by the printer firmware).
 
-    Arguments:
+    Args:
         speed_pct: The current print speed percentage from the printer.
+        presets: Dictionary mapping preset names to their percentage values.
 
     Returns:
         The name of the closest matching preset, or None if speed_pct is None.
@@ -281,7 +301,7 @@ def _get_closest_print_speed_preset(speed_pct: int | None) -> str | None:
     closest_name = None
     min_diff = float("inf")
 
-    for name, value in PRINT_SPEED_PRESETS.items():
+    for name, value in presets.items():
         diff = abs(value - speed_pct)
         if diff < min_diff:
             min_diff = diff
@@ -329,7 +349,9 @@ PRINTER_ATTRIBUTES_V3_ONLY: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:camera",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.attributes.num_video_stream_connected,  # noqa: E501
+        value_fn=lambda printer_data: (
+            printer_data.attributes.num_video_stream_connected
+        ),
     ),
     ElegooPrinterSensorEntityDescription(
         key="video_stream_max",
@@ -352,7 +374,9 @@ PRINTER_ATTRIBUTES_V3_ONLY: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:cloud-check",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.attributes.num_cloud_sdcp_services_connected,  # noqa: E501
+        value_fn=lambda printer_data: (
+            printer_data.attributes.num_cloud_sdcp_services_connected
+        ),
     ),
     ElegooPrinterSensorEntityDescription(
         key="max_cloud_sdcp_services_allowed",
@@ -360,7 +384,9 @@ PRINTER_ATTRIBUTES_V3_ONLY: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:cloud-lock",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.attributes.max_cloud_sdcp_services_allowed,  # noqa: E501
+        value_fn=lambda printer_data: (
+            printer_data.attributes.max_cloud_sdcp_services_allowed
+        ),
     ),
 )
 
@@ -373,18 +399,22 @@ PRINTER_ATTRIBUTES_BINARY_COMMON: tuple[
         name="USB Disk Status",
         icon="mdi:usb",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: bool(printer_data.attributes.usb_disk_status)
-        if printer_data is not None
-        else False,
+        value_fn=lambda printer_data: (
+            bool(printer_data.attributes.usb_disk_status)
+            if printer_data is not None
+            else False
+        ),
     ),
     ElegooPrinterBinarySensorEntityDescription(
         key="sdcp_status",
         name="SDCP Status",
         icon="mdi:lan-connect",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: bool(printer_data.attributes.sdcp_status)
-        if printer_data is not None
-        else False,
+        value_fn=lambda printer_data: (
+            bool(printer_data.attributes.sdcp_status)
+            if printer_data is not None
+            else False
+        ),
     ),
 )
 
@@ -459,12 +489,16 @@ PRINTER_ATTRIBUTES_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.attributes.temp_of_uvled_max
-        if printer_data and printer_data.attributes
-        else None,
-        exists_fn=lambda printer_data: printer_data
-        and printer_data.attributes
-        and printer_data.attributes.temp_of_uvled_max > 0,
+        value_fn=lambda printer_data: (
+            printer_data.attributes.temp_of_uvled_max
+            if printer_data and printer_data.attributes
+            else None
+        ),
+        exists_fn=lambda printer_data: (
+            printer_data
+            and printer_data.attributes
+            and printer_data.attributes.temp_of_uvled_max > 0
+        ),
         entity_registry_enabled_default=False,
     ),
 )
@@ -505,18 +539,18 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         name="End Time",
         icon="mdi:clock",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda printer_data: printer_data.current_job.end_time
-        if printer_data.current_job
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.current_job.end_time if printer_data.current_job else None
+        ),
     ),
     ElegooPrinterSensorEntityDescription(
         key="begin_time",
         name="Begin Time",
         icon="mdi:clock-start",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda printer_data: printer_data.current_job.begin_time
-        if printer_data.current_job
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.current_job.begin_time if printer_data.current_job else None
+        ),
     ),
     ElegooPrinterSensorEntityDescription(
         key="total_layers",
@@ -572,9 +606,13 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:file",
         device_class=SensorDeviceClass.ENUM,
         options=[status.name.lower() for status in ElegooMachineStatus],
-        value_fn=lambda printer_data: printer_data.status.current_status.name.lower()
-        if printer_data and printer_data.status and printer_data.status.current_status
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.current_status.name.lower()
+            if printer_data
+            and printer_data.status
+            and printer_data.status.current_status
+            else None
+        ),
     ),
     ElegooPrinterSensorEntityDescription(
         key="print_status",
@@ -583,12 +621,14 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:file",
         device_class=SensorDeviceClass.ENUM,
         options=[status.name.lower() for status in ElegooPrintStatus],
-        value_fn=lambda printer_data: printer_data.status.print_info.status.name.lower()
-        if printer_data
-        and printer_data.status
-        and printer_data.status.print_info
-        and printer_data.status.print_info.status
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.print_info.status.name.lower()
+            if printer_data
+            and printer_data.status
+            and printer_data.status.print_info
+            and printer_data.status.print_info.status
+            else None
+        ),
     ),
     ElegooPrinterSensorEntityDescription(
         key="print_error",
@@ -598,12 +638,14 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENUM,
         entity_category=EntityCategory.DIAGNOSTIC,
         options=[error.name.lower() for error in ElegooPrintError],
-        value_fn=lambda printer_data: printer_data.status.print_info.error_number.name.lower()  # noqa: E501
-        if printer_data
-        and printer_data.status
-        and printer_data.status.print_info
-        and printer_data.status.print_info.error_number
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.print_info.error_number.name.lower()
+            if printer_data
+            and printer_data.status
+            and printer_data.status.print_info
+            and printer_data.status.print_info.error_number
+            else None
+        ),
     ),
     ElegooPrinterSensorEntityDescription(
         key="current_print_error_status_reason",
@@ -653,9 +695,11 @@ PRINTER_STATUS_RESIN_VAT_HEATER: tuple[ElegooPrinterSensorEntityDescription, ...
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda printer_data: printer_data.status.temp_of_tank
-        if printer_data and printer_data.status
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.temp_of_tank
+            if printer_data and printer_data.status
+            else None
+        ),
     ),
     # --- Target Vat Temperature Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -665,9 +709,11 @@ PRINTER_STATUS_RESIN_VAT_HEATER: tuple[ElegooPrinterSensorEntityDescription, ...
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda printer_data: printer_data.status.temp_target_tank
-        if printer_data and printer_data.status
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.temp_target_tank
+            if printer_data and printer_data.status
+            else None
+        ),
     ),
 )
 
@@ -681,9 +727,11 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda printer_data: printer_data.status.temp_of_box
-        if printer_data and printer_data.status
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.temp_of_box
+            if printer_data and printer_data.status
+            else None
+        ),
     ),
     # --- Nozzle Temperature Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -693,9 +741,11 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda printer_data: printer_data.status.temp_of_nozzle
-        if printer_data and printer_data.status
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.temp_of_nozzle
+            if printer_data and printer_data.status
+            else None
+        ),
     ),
     # --- Bed Temperature Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -705,9 +755,11 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda printer_data: printer_data.status.temp_of_hotbed
-        if printer_data and printer_data.status
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.temp_of_hotbed
+            if printer_data and printer_data.status
+            else None
+        ),
     ),
     # --- Z Offset Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -719,9 +771,11 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=4,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda printer_data: printer_data.status.z_offset
-        if printer_data and printer_data.status
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.z_offset
+            if printer_data and printer_data.status
+            else None
+        ),
     ),
     # --- Model Fan Speed Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -730,11 +784,13 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:fan",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
-        value_fn=lambda printer_data: printer_data.status.current_fan_speed.model_fan
-        if printer_data
-        and printer_data.status
-        and printer_data.status.current_fan_speed
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.current_fan_speed.model_fan
+            if printer_data
+            and printer_data.status
+            and printer_data.status.current_fan_speed
+            else None
+        ),
     ),
     # --- Auxiliary Fan Speed Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -743,11 +799,13 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:fan",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
-        value_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan  # noqa: E501
-        if printer_data
-        and printer_data.status
-        and printer_data.status.current_fan_speed
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.current_fan_speed.auxiliary_fan
+            if printer_data
+            and printer_data.status
+            and printer_data.status.current_fan_speed
+            else None
+        ),
     ),
     # --- Box/Enclosure Fan Speed Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -756,11 +814,13 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:fan",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
-        value_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan
-        if printer_data
-        and printer_data.status
-        and printer_data.status.current_fan_speed
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.current_fan_speed.box_fan
+            if printer_data
+            and printer_data.status
+            and printer_data.status.current_fan_speed
+            else None
+        ),
     ),
     # --- Print Speed Percentage Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -769,9 +829,11 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         icon="mdi:speedometer",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
-        value_fn=lambda printer_data: printer_data.status.print_info.print_speed_pct
-        if printer_data and printer_data.status and printer_data.status.print_info
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.print_info.print_speed_pct
+            if printer_data and printer_data.status and printer_data.status.print_info
+            else None
+        ),
     ),
     # --- Current X Coordinate Sensor ---
     ElegooPrinterSensorEntityDescription(
@@ -818,9 +880,11 @@ PRINTER_STATUS_FDM_TOTAL_EXTRUSION: tuple[ElegooPrinterSensorEntityDescription, 
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
-        value_fn=lambda printer_data: printer_data.status.print_info.total_extrusion
-        if printer_data and printer_data.status and printer_data.status.print_info
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.print_info.total_extrusion
+            if printer_data and printer_data.status and printer_data.status.print_info
+            else None
+        ),
     ),
 )
 
@@ -836,9 +900,11 @@ PRINTER_STATUS_FDM_CURRENT_EXTRUSION: tuple[
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
-        value_fn=lambda printer_data: printer_data.status.print_info.current_extrusion
-        if printer_data and printer_data.status and printer_data.status.print_info
-        else None,
+        value_fn=lambda printer_data: (
+            printer_data.status.print_info.current_extrusion
+            if printer_data and printer_data.status and printer_data.status.print_info
+            else None
+        ),
     ),
 )
 
@@ -1048,23 +1114,43 @@ PRINTER_FDM_LIGHTS: tuple[ElegooPrinterLightEntityDescription, ...] = (
     ElegooPrinterLightEntityDescription(
         key="second_light",
         name="Chamber Light",
-        value_fn=lambda light_status: light_status.second_light
-        if light_status
-        else None,
+        value_fn=lambda light_status: (
+            light_status.second_light if light_status else None
+        ),
     ),
 )
 
-PRINTER_SELECT_TYPES: tuple[ElegooPrinterSelectEntityDescription, ...] = (
+# Printer select types for SDCP (WebSocket/MQTT) printers - max 160% clamp
+PRINTER_SELECT_TYPES_V1V3: tuple[ElegooPrinterSelectEntityDescription, ...] = (
     ElegooPrinterSelectEntityDescription(
         key="print_speed",
         name="Print Speed",
         icon="mdi:speedometer",
-        options=list(PRINT_SPEED_PRESETS.keys()),
-        options_map=PRINT_SPEED_PRESETS,
+        options=list(PRINT_SPEED_PRESETS_SDCP.keys()),
+        options_map=PRINT_SPEED_PRESETS_SDCP,
         current_option_fn=lambda printer_data: _get_closest_print_speed_preset(
             printer_data.status.print_info.print_speed_pct
             if printer_data and printer_data.status and printer_data.status.print_info
-            else None
+            else None,
+            PRINT_SPEED_PRESETS_SDCP,
+        ),
+        select_option_fn=lambda api, value: api.async_set_print_speed(value),
+    ),
+)
+
+# Printer select types for CC2 protocol printers - discrete mode mapping
+PRINTER_SELECT_TYPES_CC2: tuple[ElegooPrinterSelectEntityDescription, ...] = (
+    ElegooPrinterSelectEntityDescription(
+        key="print_speed",
+        name="Print Speed",
+        icon="mdi:speedometer",
+        options=list(PRINT_SPEED_PRESETS_CC2.keys()),
+        options_map=PRINT_SPEED_PRESETS_CC2,
+        current_option_fn=lambda printer_data: _get_closest_print_speed_preset(
+            printer_data.status.print_info.print_speed_pct
+            if printer_data and printer_data.status and printer_data.status.print_info
+            else None,
+            PRINT_SPEED_PRESETS_CC2,
         ),
         select_option_fn=lambda api, value: api.async_set_print_speed(value),
     ),
@@ -1139,25 +1225,28 @@ PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (
         name="Pause Print",
         action_fn=_pause_print_action,
         icon="mdi:pause",
-        available_fn=lambda client: client.printer_data.status.current_status
-        == ElegooMachineStatus.PRINTING,
+        available_fn=lambda client: (
+            client.printer_data.status.current_status == ElegooMachineStatus.PRINTING
+        ),
     ),
     ElegooPrinterButtonEntityDescription(
         key="resume_print",
         name="Resume Print",
         action_fn=_resume_print_action,
         icon="mdi:play",
-        available_fn=lambda client: client.printer_data.status.print_info.status
-        == ElegooPrintStatus.PAUSED,
+        available_fn=lambda client: (
+            client.printer_data.status.print_info.status == ElegooPrintStatus.PAUSED
+        ),
     ),
     ElegooPrinterButtonEntityDescription(
         key="stop_print",
         name="Stop Print",
         action_fn=_stop_print_action,
         icon="mdi:stop",
-        available_fn=lambda client: client.printer_data.status.current_status
-        in [ElegooMachineStatus.PRINTING]
-        or client.printer_data.status.print_info.status == ElegooPrintStatus.PAUSED,
+        available_fn=lambda client: (
+            client.printer_data.status.current_status in [ElegooMachineStatus.PRINTING]
+            or client.printer_data.status.print_info.status == ElegooPrintStatus.PAUSED
+        ),
     ),
 )
 
@@ -1167,32 +1256,36 @@ PRINTER_FDM_BUTTONS_V3_ONLY: tuple[ElegooPrinterButtonEntityDescription, ...] = 
         name="Home All",
         action_fn=_home_all_action,
         icon="mdi:home",
-        available_fn=lambda client: client.printer_data.status.current_status
-        == ElegooMachineStatus.IDLE,
+        available_fn=lambda client: (
+            client.printer_data.status.current_status == ElegooMachineStatus.IDLE
+        ),
     ),
     ElegooPrinterButtonEntityDescription(
         key="home_x",
         name="Home X",
         action_fn=_home_x_action,
         icon="mdi:axis-x-arrow",
-        available_fn=lambda client: client.printer_data.status.current_status
-        == ElegooMachineStatus.IDLE,
+        available_fn=lambda client: (
+            client.printer_data.status.current_status == ElegooMachineStatus.IDLE
+        ),
     ),
     ElegooPrinterButtonEntityDescription(
         key="home_y",
         name="Home Y",
         action_fn=_home_y_action,
         icon="mdi:axis-y-arrow",
-        available_fn=lambda client: client.printer_data.status.current_status
-        == ElegooMachineStatus.IDLE,
+        available_fn=lambda client: (
+            client.printer_data.status.current_status == ElegooMachineStatus.IDLE
+        ),
     ),
     ElegooPrinterButtonEntityDescription(
         key="home_z",
         name="Home Z",
         action_fn=_home_z_action,
         icon="mdi:axis-z-arrow",
-        available_fn=lambda client: client.printer_data.status.current_status
-        == ElegooMachineStatus.IDLE,
+        available_fn=lambda client: (
+            client.printer_data.status.current_status == ElegooMachineStatus.IDLE
+        ),
     ),
 )
 
@@ -1204,9 +1297,12 @@ FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
         supported_features=FanEntityFeature.SET_SPEED
         | FanEntityFeature.TURN_ON
         | FanEntityFeature.TURN_OFF,
-        value_fn=lambda printer_data: printer_data.status.current_fan_speed.model_fan
-        > 0,
-        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.model_fan,  # noqa: E501
+        value_fn=lambda printer_data: (
+            printer_data.status.current_fan_speed.model_fan > 0
+        ),
+        percentage_fn=lambda printer_data: (
+            printer_data.status.current_fan_speed.model_fan
+        ),
     ),
     ElegooPrinterFanEntityDescription(
         key="auxiliary_fan",
@@ -1215,9 +1311,12 @@ FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
         supported_features=FanEntityFeature.SET_SPEED
         | FanEntityFeature.TURN_ON
         | FanEntityFeature.TURN_OFF,
-        value_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan  # noqa: E501
-        > 0,
-        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.auxiliary_fan,  # noqa: E501
+        value_fn=lambda printer_data: (
+            printer_data.status.current_fan_speed.auxiliary_fan > 0
+        ),
+        percentage_fn=lambda printer_data: (
+            printer_data.status.current_fan_speed.auxiliary_fan
+        ),
     ),
     ElegooPrinterFanEntityDescription(
         key="box_fan",
@@ -1227,6 +1326,8 @@ FANS: tuple[ElegooPrinterFanEntityDescription, ...] = (
         | FanEntityFeature.TURN_ON
         | FanEntityFeature.TURN_OFF,
         value_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan > 0,
-        percentage_fn=lambda printer_data: printer_data.status.current_fan_speed.box_fan,  # noqa: E501
+        percentage_fn=lambda printer_data: (
+            printer_data.status.current_fan_speed.box_fan
+        ),
     ),
 )

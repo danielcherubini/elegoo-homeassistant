@@ -1,0 +1,200 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "description": "구성을 위한 도움말은 프로젝트의 GitHub 페이지를 참조하세요.",
+        "data": {
+          "ip_address": "프린터 IP 주소",
+          "centauri_carbon": "FDM 프린터인가요?",
+          "proxy_enabled": "프록시 서버 활성화",
+          "external_ip": "외부 주소 (선택사항, 고급 네트워크 구성용)"
+        },
+        "data_description": {
+          "external_ip": "자동 감지된 주소를 IP 주소 또는 호스트 이름으로 덮어쓰세요. 자동 감지를 위해 비워두세요. Kubernetes/Docker 설정이나 리버스 프록시 뒤에 사용할 때 사용하세요. 포트 3030 과 3031 이 자동으로 추가됩니다."
+        }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 옵션",
+        "description": "Centauri Carbon 2 프린터 설정을 구성합니다.",
+        "data": {
+          "ip_address": "프린터 IP 주소",
+          "cc2_access_code": "액세스 코드 (선택사항)"
+        }
+      },
+      "mqtt_options": {
+        "title": "MQTT 프린터 옵션",
+        "description": "MQTT 프린터 설정을 구성합니다.",
+        "data": {
+          "ip_address": "프린터 IP 주소"
+        }
+      },
+      "websocket_options": {
+        "title": "프린터 옵션",
+        "description": "구성을 위한 도움말은 프로젝트의 GitHub 페이지를 참조하세요.",
+        "data": {
+          "ip_address": "프린터 IP 주소",
+          "proxy_enabled": "프록시 서버 활성화",
+          "external_ip": "외부 주소 (선택사항, 고급 네트워크 구성용)"
+        },
+        "data_description": {
+          "external_ip": "자동 감지된 주소를 IP 주소 또는 호스트 이름으로 덮어쓰세요. 자동 감지를 위해 비워두세요. Kubernetes/Docker 설정이나 리버스 프록시 뒤에 사용할 때 사용하세요. 포트 3030 과 3031 이 자동으로 추가됩니다."
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "discover_printers": {
+        "title": "프린터 선택",
+        "description": "목록에서 발견된 프린터를 선택하거나 IP 주소를 수동으로 입력하는 옵션을 선택하세요.",
+        "data": {
+          "selection": "사용 가능한 프린터"
+        }
+      },
+      "manual_ip": {
+        "title": "수동 설정",
+        "description": "Elegoo 프린터의 IP 주소를 입력하세요. 통합은 자동으로 프린터 유형을 감지하고 적절한 구성 단계를 안내합니다.",
+        "data": {
+          "ip_address": "프린터 IP 주소",
+          "external_ip": "외부 주소 (선택사항, 고급 네트워크 구성용)"
+        },
+        "data_description": {
+          "external_ip": "자동 감지된 주소를 IP 주소 또는 호스트 이름으로 덮어쓰세요. 자동 감지를 위해 비워두세요. Kubernetes/Docker 설정이나 리버스 프록시 뒤에 사용할 때 사용하세요. 포트 3030 과 3031 이 자동으로 추가됩니다."
+        }
+      },
+      "fdm_options": {
+        "title": "FDM 프린터 옵션",
+        "description": "선택한 프린터에 대한 추가 옵션을 구성합니다. 프록시 서버에 대한 자세한 내용은 프로젝트의 GitHub 페이지를 참조하세요.",
+        "data": {
+          "proxy_enabled": "프록시 서버 활성화"
+        }
+      },
+      "resin_options": {
+        "title": "레진 프린터 옵션",
+        "description": "카메라를 활성화하면 프린터에 불안정성을 생성할 수 있습니다. 자신의 책임 하에 사용하세요. 자세한 내용과 모범 사례는 프로젝트의 GitHub 페이지를 참조하세요.",
+        "data": {
+          "camera_enabled": "카메라 활성화"
+        }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 옵션",
+        "description": "Centauri Carbon 2 프린터를 구성합니다. 프린터가 액세스 코드 인증을 활성화한 경우 아래에 액세스 코드를 입력하세요. 액세스 코드가 필요하지 않은 경우 비워두세요.",
+        "data": {
+          "cc2_access_code": "액세스 코드 (선택사항)"
+        }
+      },
+      "cc2_auth_check": {
+        "title": "Centauri Carbon 2 인증",
+        "description": "**중요:** 계속하기 전에 프린터의 액세스 코드 설정을 확인하세요.\n\n프린터에서 다음으로 이동하세요: **설정 → 네트워크 → 액세스 코드**\n\n• 설정이 'Off' 또는 공백/빈 경우 **아니오**를 선택하세요\n• 사용자 정의 액세스 코드를 설정한 경우 **예**를 선택하세요\n\n대부분의 프린터는 기본값으로 액세스 코드 없이 배송됩니다.",
+        "data": {
+          "requires_access_code": "프린터에 액세스 코드가 필요한가요?"
+        }
+      },
+      "cc2_access_code_input": {
+        "title": "액세스 코드 입력",
+        "description": "프린터의 액세스 코드를 다음에서 찾으세요: 설정 → 네트워크 → 액세스 코드",
+        "data": {
+          "cc2_access_code": "액세스 코드"
+        }
+      }
+    },
+    "error": {
+      "connection": "프린터에 연결할 수 없습니다.",
+      "unknown": "알 수 없는 오류가 발생했습니다.",
+      "invalid_printer_selection": "유효하지 않은 프린터 선택.",
+      "no_printer_found": "지정된 IP 주소에서 프린터를 찾을 수 없습니다.",
+      "validation_no_printer_found": "검증 실패: 프린터가 발견되지 않았습니다.",
+      "no_printer_selected_or_ip_provided": "발견된 프린터를 선택하거나 IP 주소를 제공하세요.",
+      "manual_options_no_printer_found": "옵션을 적용하기 위해 선택한 프린터를 찾을 수 없습니다.",
+      "init_no_printer_found": "초기화 실패: 프린터가 발견되지 않았습니다.",
+      "cc2_options_no_printer_found": "CC2 프린터를 찾을 수 없습니다.",
+      "cc2_access_code_required": "이 프린터는 인증을 위해 액세스 코드가 필요합니다.",
+      "cc2_authentication_failed": "인증에 실패했습니다. 프린터 설정에서 액세스 코드를 확인하세요: 설정 → 네트워크 → 액세스 코드."
+    },
+    "abort": {
+      "already_configured": "이 항목은 이미 구성되었습니다."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "print_status": {
+        "name": "인쇄 상태",
+        "state": {
+          "idle": "비활성",
+          "homing": "홈링",
+          "dropping": "드롭",
+          "printing": "인쇄 중",
+          "lifting": "리프트",
+          "pausing": "일시 중지",
+          "paused": "일시 중지됨",
+          "stopping": "중지 중",
+          "stopped": "중지됨",
+          "complete": "완료",
+          "file_checking": "파일 확인 중",
+          "recovery": "복구",
+          "loading": "로딩 중",
+          "preheating": "예열 중",
+          "leveling": "레벨링"
+        }
+      },
+      "current_status": {
+        "name": "현재 상태",
+        "state": {
+          "idle": "비활성",
+          "printing": "인쇄 중",
+          "file_transferring": "파일 전송 중",
+          "exposure_testing": "노출 테스트",
+          "devices_testing": "장치 테스트",
+          "leveling": "레벨링",
+          "input_shaping": "입력 셰이핑",
+          "stopping": "중지 중",
+          "stopped": "중지됨",
+          "homing": "홈링",
+          "loading_unloading": "로딩 / 언로딩",
+          "pid_tuning": "PID 튜닝",
+          "recovery": "복구"
+        }
+      },
+      "print_error": {
+        "name": "인쇄 오류",
+        "state": {
+          "none": "없음",
+          "check": "확인 중",
+          "fileio": "파일 입출력",
+          "invalid_resolution": "무효한 해상도",
+          "unknown_format": "알 수 없는 형식",
+          "unknown_model": "알 수 없는 모델"
+        }
+      },
+      "error_status_reason": {
+        "name": "오류 상태 이유",
+        "state": {
+          "ok": "정상",
+          "temp_error": "과열 오류 (노즐/베드)",
+          "filament_runout": "필라멘트 소진 감지",
+          "filament_jam": "필라멘트 막힘 또는 막힘 감지됨",
+          "level_failed": "자동 베드 레벨링 실패",
+          "udisk_remove": "인쇄 중 USB 드라이브 제거됨",
+          "home_failed_x": "X 축 홈링 실패",
+          "home_failed_z": "Z 축 홈링 실패",
+          "home_failed": "일반 홈링 실패",
+          "bed_adhesion_failed": "베드에서 인쇄 분리",
+          "error": "일반 인쇄 오류",
+          "move_abnormal": "모터 이동 이상",
+          "home_failed_y": "Y 축 홈링 실패",
+          "file_error": "G 코드 파일 오류",
+          "camera_error": "카메라 연결 오류",
+          "network_error": "네트워크 연결 오류",
+          "server_connect_failed": "서버 연결 실패",
+          "disconnect_app": "인쇄 중 앱 연결 끊김",
+          "nozzle_temp_sensor_offline": "노즐 온도 센서 오프라인",
+          "bed_temp_sensor_offline": "베드 온도 센서 오프라인",
+          "filament_about_to_runout": "필라멘트 소진 임박"
+        }
+      },
+      "end_time": {
+        "name": "종료 시간"
+      }
+    }
+  }
+}

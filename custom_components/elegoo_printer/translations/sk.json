@@ -1,0 +1,200 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "description": "Pre pomoc s konfiguráciou, navštívte stránku GitHub projektu.",
+        "data": {
+          "ip_address": "IP adresa tlačiarne",
+          "centauri_carbon": "Je to FDM tlačiareň?",
+          "proxy_enabled": "Povoliť proxy server",
+          "external_ip": "Externá adresa (voliteľné, pre pokročilé sieťové nastavenia)"
+        },
+        "data_description": {
+          "external_ip": "Prepísať automaticky detegovanú adresu IP alebo názvom hostiteľa. Nechajte prázdne pre automatickú detekciu. Použite pre Kubernetes/Docker nastavenie alebo za reverzný proxy. Porty 3030 a 3031 budú pridané automaticky."
+        }
+      },
+      "cc2_options": {
+        "title": "Možnosti Centauri Carbon 2",
+        "description": "Konfigurujte nastavenia svojej tlačiarne Centauri Carbon 2.",
+        "data": {
+          "ip_address": "IP adresa tlačiarne",
+          "cc2_access_code": "Prístupový kód (voliteľné)"
+        }
+      },
+      "mqtt_options": {
+        "title": "Možnosti MQTT tlačiarne",
+        "description": "Konfigurujte nastavenia svojej MQTT tlačiarne.",
+        "data": {
+          "ip_address": "IP adresa tlačiarne"
+        }
+      },
+      "websocket_options": {
+        "title": "Možnosti tlačiarne",
+        "description": "Pre pomoc s konfiguráciou, navštívte stránku GitHub projektu.",
+        "data": {
+          "ip_address": "IP adresa tlačiarne",
+          "proxy_enabled": "Povoliť proxy server",
+          "external_ip": "Externá adresa (voliteľné, pre pokročilé sieťové nastavenia)"
+        },
+        "data_description": {
+          "external_ip": "Prepísať automaticky detegovanú adresu IP alebo názvom hostiteľa. Nechajte prázdne pre automatickú detekciu. Použite pre Kubernetes/Docker nastavenie alebo za reverzný proxy. Porty 3030 a 3031 budú pridané automaticky."
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "discover_printers": {
+        "title": "Vybrať tlačiareň",
+        "description": "Vyberte nájdenú tlačiareň zo zoznamu alebo vyberte zadať IP adresu ručne.",
+        "data": {
+          "selection": "Dostupné tlačiarene"
+        }
+      },
+      "manual_ip": {
+        "title": "Manuálne nastavenie",
+        "description": "Zadajte IP adresu svojej Elegoo tlačiarne. Integrácia automaticky deteguje typ tlačiarne a prevedie vás príslušnými krokmi nastavenia.",
+        "data": {
+          "ip_address": "IP adresa tlačiarne",
+          "external_ip": "Externá adresa (voliteľné, pre pokročilé sieťové nastavenia)"
+        },
+        "data_description": {
+          "external_ip": "Prepísať automaticky detegovanú adresu IP alebo názvom hostiteľa. Nechajte prázdne pre automatickú detekciu. Použite pre Kubernetes/Docker nastavenie alebo za reverzný proxy. Porty 3030 a 3031 budú pridané automaticky."
+        }
+      },
+      "fdm_options": {
+        "title": "Možnosti FDM tlačiarne",
+        "description": "Konfigurujte ďalšie možnosti pre vybranú tlačiareň. Navštívte stránku GitHub projektu pre viac informácií o proxy serveri.",
+        "data": {
+          "proxy_enabled": "Povoliť proxy server"
+        }
+      },
+      "resin_options": {
+        "title": "Možnosti resinovej tlačiarne",
+        "description": "Povolenie kamery môže spôsobiť nestabilitu v tlačiarni. Používajte na vlastné nebezpečenstvo. Navštívte stránku GitHub projektu pre detaily a najlepšie postupy.",
+        "data": {
+          "camera_enabled": "Povoliť kameru"
+        }
+      },
+      "cc2_options": {
+        "title": "Možnosti Centauri Carbon 2",
+        "description": "Konfigurujte svoju tlačiareň Centauri Carbon 2. Ak má vaša tlačiareň povolenú autentizáciu prístupovým kódom, zadajte nižšie svoj prístupový kód. Nechajte prázdne ak nie je vyžadovaný žiadny prístupový kód.",
+        "data": {
+          "cc2_access_code": "Prístupový kód (voliteľné)"
+        }
+      },
+      "cc2_auth_check": {
+        "title": "Autentifikácia Centauri Carbon 2",
+        "description": "**DÔLEŽITÉ:** Skontrolujte nastavenie prístupového kódu svojej tlačiarne pred pokračovaním.\n\nNa vašej tlačiarni, choďte na: **Nastavenia → Sieť → Prístupový kód**\n\n• Ak nastavenie zobrazuje 'Vyp' alebo je prázdne/prázdne, vyberte **Nie**\n• Ak ste nastavili vlastný prístupový kód, vyberte **Áno**\n\nVäčšina tlačární dorazí bez prístupového kódu predvolene.",
+        "data": {
+          "requires_access_code": "Vyžaduje vaša tlačiareň prístupový kód?"
+        }
+      },
+      "cc2_access_code_input": {
+        "title": "Zadajte prístupový kód",
+        "description": "Nájdite prístupový kód svojej tlačiarne na: Nastavenia → Sieť → Prístupový kód",
+        "data": {
+          "cc2_access_code": "Prístupový kód"
+        }
+      }
+    },
+    "error": {
+      "connection": "Nepodarilo sa pripojiť k tlačiarni.",
+      "unknown": "Došlo k neznámej chybe.",
+      "invalid_printer_selection": "Neplatný výber tlačiarne.",
+      "no_printer_found": "Na zadanú IP adresu nebola nájdená žiadna tlačiareň.",
+      "validation_no_printer_found": "Validácia zlyhala: nebola nájdená žiadna tlačiareň.",
+      "no_printer_selected_or_ip_provided": "Prosím vyberte nájdenú tlačiareň alebo poskytnite IP adresu.",
+      "manual_options_no_printer_found": "Vybraná tlačiareň nemôže byť nájdená na aplikovanie možností.",
+      "init_no_printer_found": "Inicializácia zlyhala: nebola nájdená žiadna tlačiareň.",
+      "cc2_options_no_printer_found": "CC2 tlačiareň nemôže byť nájdená.",
+      "cc2_access_code_required": "Táto tlačiareň vyžaduje prístupový kód na autentifikáciu.",
+      "cc2_authentication_failed": "Autentifikácia zlyhala. Skontrolujte prístupový kód v nastaveniach tlačiarne: Nastavenia → Sieť → Prístupový kód."
+    },
+    "abort": {
+      "already_configured": "Tento záznam je už nakonfigurovaný."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "print_status": {
+        "name": "Stav tlače",
+        "state": {
+          "idle": "Nečinné",
+          "homing": "Nastavenie",
+          "dropping": "Púšťanie",
+          "printing": "Tlačenie",
+          "lifting": "Zdvíhanie",
+          "pausing": "Pauza",
+          "paused": "Na pauze",
+          "stopping": "Zastavovanie",
+          "stopped": "Zastavené",
+          "complete": "Hotovo",
+          "file_checking": "Kontrola súboru",
+          "recovery": "Obnova",
+          "loading": "Načítanie",
+          "preheating": "Predohrievanie",
+          "leveling": "Vyrovnávanie"
+        }
+      },
+      "current_status": {
+        "name": "Aktuálny stav",
+        "state": {
+          "idle": "Nečinné",
+          "printing": "Tlačenie",
+          "file_transferring": "Prenos súboru",
+          "exposure_testing": "Test expozície",
+          "devices_testing": "Test zariadenia",
+          "leveling": "Vyrovnávanie",
+          "input_shaping": "Vstupné tvarovanie",
+          "stopping": "Zastavovanie",
+          "stopped": "Zastavené",
+          "homing": "Nastavenie",
+          "loading_unloading": "Načítanie / Vykladanie",
+          "pid_tuning": "PID ladenie",
+          "recovery": "Obnova"
+        }
+      },
+      "print_error": {
+        "name": "Chyba tlače",
+        "state": {
+          "none": "Žiadna",
+          "check": "Kontrola",
+          "fileio": "Vstup/výstup",
+          "invalid_resolution": "Neplatné rozlíšenie",
+          "unknown_format": "Neznámy formát",
+          "unknown_model": "Neznámy model"
+        }
+      },
+      "error_status_reason": {
+        "name": "Dôvod chybového stavu",
+        "state": {
+          "ok": "Normálne",
+          "temp_error": "Chyba prehriatia (tryska/lôžko)",
+          "filament_runout": "Detekcia vyprázdnenia filamentu",
+          "filament_jam": "Zatknutie alebo zablokovanie filamentu detegované",
+          "level_failed": "Automatické vyrovnávanie lôžka zlyhalo",
+          "udisk_remove": "USB disk odstránený počas tlače",
+          "home_failed_x": "Zlyhanie nastavenia osi X",
+          "home_failed_z": "Zlyhanie nastavenia osi Z",
+          "home_failed": "Všeobecné zlyhanie nastavenia",
+          "bed_adhesion_failed": "Oddelenie tlače od lôžka",
+          "error": "Všeobecná chyba tlače",
+          "move_abnormal": "Anomália pohybu motora",
+          "home_failed_y": "Zlyhanie nastavenia osi Y",
+          "file_error": "Chyba G-code súboru",
+          "camera_error": "Chyba pripojenia kamery",
+          "network_error": "Chyba sieťového pripojenia",
+          "server_connect_failed": "Pripojenie k serveru zlyhalo",
+          "disconnect_app": "Aplikácia odpojená počas tlače",
+          "nozzle_temp_sensor_offline": "Teplotný senzor trysky offline",
+          "bed_temp_sensor_offline": "Teplotný senzor lôžka offline",
+          "filament_about_to_runout": "Hrozí vyprázdnenie filamentu"
+        }
+      },
+      "end_time": {
+        "name": "Doba ukončenia"
+      }
+    }
+  }
+}

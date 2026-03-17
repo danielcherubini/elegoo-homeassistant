@@ -1,0 +1,200 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "description": "設定に関するヘルプについては、プロジェクトの GitHub ページをご覧ください。",
+        "data": {
+          "ip_address": "プリンター IP アドレス",
+          "centauri_carbon": "FDM プリンターですか？",
+          "proxy_enabled": "プロキシサーバーを有効にする",
+          "external_ip": "外部アドレス（オプション、高度なネットワーク設定用）"
+        },
+        "data_description": {
+          "external_ip": "自動検出されたアドレスを IP アドレスまたはホスト名で上書きします。自動検出のために空白のままにしてください。Kubernetes/Docker 設定やリバースプロキシの背後で使用します。ポート 3030 および 3031 が自動的に追加されます。"
+        }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 オプション",
+        "description": "Centauri Carbon 2 プリンターの設定を構成します。",
+        "data": {
+          "ip_address": "プリンター IP アドレス",
+          "cc2_access_code": "アクセスコード（オプション）"
+        }
+      },
+      "mqtt_options": {
+        "title": "MQTT プリンターオプション",
+        "description": "MQTT プリンターの設定を構成します。",
+        "data": {
+          "ip_address": "プリンター IP アドレス"
+        }
+      },
+      "websocket_options": {
+        "title": "プリンターオプション",
+        "description": "設定に関するヘルプについては、プロジェクトの GitHub ページをご覧ください。",
+        "data": {
+          "ip_address": "プリンター IP アドレス",
+          "proxy_enabled": "プロキシサーバーを有効にする",
+          "external_ip": "外部アドレス（オプション、高度なネットワーク設定用）"
+        },
+        "data_description": {
+          "external_ip": "自動検出されたアドレスを IP アドレスまたはホスト名で上書きします。自動検出のために空白のままにしてください。Kubernetes/Docker 設定やリバースプロキシの背後で使用します。ポート 3030 および 3031 が自動的に追加されます。"
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "discover_printers": {
+        "title": "プリンターを選択",
+        "description": "リストから発見されたプリンターを選択するか、IP アドレスを手動で入力するオプションを選択します。",
+        "data": {
+          "selection": "利用可能なプリンター"
+        }
+      },
+      "manual_ip": {
+        "title": "手動設定",
+        "description": "Elegoo プリンターの IP アドレスを入力します。統合は自動的にプリンタータイプを検出し、適切な設定手順を案内します。",
+        "data": {
+          "ip_address": "プリンター IP アドレス",
+          "external_ip": "外部アドレス（オプション、高度なネットワーク設定用）"
+        },
+        "data_description": {
+          "external_ip": "自動検出されたアドレスを IP アドレスまたはホスト名で上書きします。自動検出のために空白のままにしてください。Kubernetes/Docker 設定やリバースプロキシの背後で使用します。ポート 3030 および 3031 が自動的に追加されます。"
+        }
+      },
+      "fdm_options": {
+        "title": "FDM プリンターオプション",
+        "description": "選択したプリンターの追加オプションを構成します。プロキシサーバーに関する詳細については、プロジェクトの GitHub ページをご覧ください。",
+        "data": {
+          "proxy_enabled": "プロキシサーバーを有効にする"
+        }
+      },
+      "resin_options": {
+        "title": "レジンプリンターオプション",
+        "description": "カメラの有効化は、プリンターの不安定さを作成できます。ご自身の責任で使用してください。詳細とベストプラクティスについては、プロジェクトの GitHub ページをご覧ください。",
+        "data": {
+          "camera_enabled": "カメラを有効にする"
+        }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 オプション",
+        "description": "Centauri Carbon 2 プリンターを設定します。プリンターがアクセスコード認証を有効にしている場合、ここにアクセスコードを入力してください。アクセスコードが必要ない場合は空白のままにしてください。",
+        "data": {
+          "cc2_access_code": "アクセスコード（オプション）"
+        }
+      },
+      "cc2_auth_check": {
+        "title": "Centauri Carbon 2 認証",
+        "description": "**重要:** 続行する前に、プリンターのアクセスコード設定を確認してください。\n\nプリンターで、次の場所に行ってください: **設定 → ネットワーク → アクセスコード**\n\n• 設定が 'Off' を表示しているか空白/空の場合、**いいえ**を選択します\n• カスタムアクセスコードを設定した場合、**はい**を選択します\n\nほとんどのプリンターはデフォルトでアクセスコードなしで出荷されます。",
+        "data": {
+          "requires_access_code": "あなたのプリンターにはアクセスコードが必要ですか？"
+        }
+      },
+      "cc2_access_code_input": {
+        "title": "アクセスコードを入力",
+        "description": "プリンターのアクセスコードを見つける場所: 設定 → ネットワーク → アクセスコード",
+        "data": {
+          "cc2_access_code": "アクセスコード"
+        }
+      }
+    },
+    "error": {
+      "connection": "プリンターに接続できません。",
+      "unknown": "不明なエラーが発生しました。",
+      "invalid_printer_selection": "無効なプリンターの選択。",
+      "no_printer_found": "指定された IP アドレスでプリンターが見つかりません。",
+      "validation_no_printer_found": "検証に失敗: プリンターが見つかりませんでした。",
+      "no_printer_selected_or_ip_provided": "発見されたプリンターを選択するか、IP アドレスを提供してください。",
+      "manual_options_no_printer_found": "オプションを適用するために選択したプリンターが見つかりません。",
+      "init_no_printer_found": "初期化に失敗: プリンターが見つかりませんでした。",
+      "cc2_options_no_printer_found": "CC2 プリンターが見つかりません。",
+      "cc2_access_code_required": "このプリンターには認証のためにアクセスコードが必要です。",
+      "cc2_authentication_failed": "認証に失敗しました。プリンターの設定でアクセスコードを確認してください: 設定 → ネットワーク → アクセスコード。"
+    },
+    "abort": {
+      "already_configured": "このエントリは既に構成されています。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "print_status": {
+        "name": "印刷状態",
+        "state": {
+          "idle": "アイドル",
+          "homing": "ホーミング",
+          "dropping": "ドロップ中",
+          "printing": "印刷中",
+          "lifting": "リフティング",
+          "pausing": "ポーズ中",
+          "paused": "一時停止済み",
+          "stopping": "停止中",
+          "stopped": "停止済み",
+          "complete": "完了",
+          "file_checking": "ファイルチェック中",
+          "recovery": "回復",
+          "loading": "読み込み中",
+          "preheating": "予熱中",
+          "leveling": "レベルリング"
+        }
+      },
+      "current_status": {
+        "name": "現在の状態",
+        "state": {
+          "idle": "アイドル",
+          "printing": "印刷中",
+          "file_transferring": "ファイル転送中",
+          "exposure_testing": "露光テスト",
+          "devices_testing": "デバイステスト",
+          "leveling": "レベルリング",
+          "input_shaping": "入力シェーピング",
+          "stopping": "停止中",
+          "stopped": "停止済み",
+          "homing": "ホーミング",
+          "loading_unloading": "読み込み / 読み出し",
+          "pid_tuning": "PID チューニング",
+          "recovery": "回復"
+        }
+      },
+      "print_error": {
+        "name": "印刷エラー",
+        "state": {
+          "none": "なし",
+          "check": "チェック中",
+          "fileio": "ファイル入出力",
+          "invalid_resolution": "無効な解像度",
+          "unknown_format": "不明な形式",
+          "unknown_model": "不明なモデル"
+        }
+      },
+      "error_status_reason": {
+        "name": "エラー状態の理由",
+        "state": {
+          "ok": "正常",
+          "temp_error": "過熱エラー（ノズル/ベッド）",
+          "filament_runout": "フィラメント切れ検出",
+          "filament_jam": "フィラメント詰まりまたはブロック検出",
+          "level_failed": "自動ベッドレベルリング失敗",
+          "udisk_remove": "印刷中に USB ドライブが削除されました",
+          "home_failed_x": "X 軸ホーミング失敗",
+          "home_failed_z": "Z 軸ホーミング失敗",
+          "home_failed": "一般的なホーミング失敗",
+          "bed_adhesion_failed": "ベッドからの印刷剥離",
+          "error": "一般的な印刷エラー",
+          "move_abnormal": "モーター動作異常",
+          "home_failed_y": "Y 軸ホーミング失敗",
+          "file_error": "G コードファイルエラー",
+          "camera_error": "カメラ接続エラー",
+          "network_error": "ネットワーク接続エラー",
+          "server_connect_failed": "サーバー接続失敗",
+          "disconnect_app": "印刷中にアプリが切断されました",
+          "nozzle_temp_sensor_offline": "ノズル温度センサーオフライン",
+          "bed_temp_sensor_offline": "ベッド温度センサーオフライン",
+          "filament_about_to_runout": "フィラメント切れ間近"
+        }
+      },
+      "end_time": {
+        "name": "終了時間"
+      }
+    }
+  }
+}
