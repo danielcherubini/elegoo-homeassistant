@@ -642,7 +642,13 @@ class ElegooCC2Client:
     def _handle_full_status(self, status_data: dict[str, Any]) -> None:
         """Handle a full status response (from method 1002)."""
         self.logger.debug("Received full status update")
+        preserved = {
+            key: value
+            for key, value in self._cached_status.items()
+            if key.startswith("_")
+        }
         self._cached_status = deepcopy(status_data)
+        self._cached_status.update(preserved)
         self._status_sequence = status_data.get("sequence", 0)
         self._non_continuous_count = 0
 
