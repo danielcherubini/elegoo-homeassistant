@@ -882,7 +882,7 @@ class ElegooCC2Client:
         has_data = total_layers or total_filament_used is not None or color_map
 
         if has_data:
-            detail: dict[str, Any] = {}
+            detail = self._cached_status["_file_details"].get(filename, {})
             if total_layers:
                 detail["TotalLayers"] = total_layers
             if total_filament_used is not None:

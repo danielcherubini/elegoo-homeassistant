@@ -96,6 +96,57 @@ class TestHandleFileDetailResponse:
 
         assert "empty.gcode" not in client._cached_status.get("_file_details", {})
 
+    def test_preserves_existing_proxy_filament(self) -> None:
+        """File detail arriving after proxy must not nuke proxy_filament."""
+        client = self._make_client()
+        client._cached_status["_file_details"] = {
+            "test.gcode": {
+                "proxy_filament": {
+                    "filename": "test.gcode",
+                    "filament": {
+                        "per_slot_grams": [0.0, 0.0, 0.94, 11.95],
+                        "total_filament_changes": 1,
+                    },
+                },
+            },
+        }
+        result = {
+            "total_filament_used": 24.8,
+            "color_map": [{"color": "#0B6283", "name": "PLA", "t": 3}],
+            "print_time": 4690,
+            "layer": 722,
+        }
+
+        client._handle_file_detail_response("test.gcode", result)
+
+        details = client._cached_status["_file_details"]["test.gcode"]
+        assert details["TotalLayers"] == 722
+        assert details["total_filament_used"] == 24.8
+        assert details["color_map"] == [{"color": "#0B6283", "name": "PLA", "t": 3}]
+        assert details["print_time"] == 4690
+        assert details["proxy_filament"]["filament"]["per_slot_grams"] == [
+            0.0, 0.0, 0.94, 11.95,
+        ]
+
+    def test_proxy_arriving_after_file_detail_merges(self) -> None:
+        """Proxy data arriving after file detail adds to existing entry."""
+        client = self._make_client()
+        file_detail_result = {
+            "total_filament_used": 24.8,
+            "color_map": [{"color": "#0B6283", "name": "PLA", "t": 3}],
+            "layer": 722,
+        }
+        client._handle_file_detail_response("test.gcode", file_detail_result)
+
+        details = client._cached_status["_file_details"]["test.gcode"]
+        details["proxy_filament"] = {
+            "filename": "test.gcode",
+            "filament": {"per_slot_grams": [1.0, 2.0]},
+        }
+
+        assert details["TotalLayers"] == 722
+        assert details["proxy_filament"]["filament"]["per_slot_grams"] == [1.0, 2.0]
+
     def test_empty_color_map_not_cached_as_filament(self) -> None:
         """Empty color_map without other filament data is not cached."""
         client = self._make_client()
