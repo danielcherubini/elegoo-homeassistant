@@ -66,7 +66,8 @@ class GCodeProxyClient:
         Check whether the proxy service is reachable and healthy.
 
         Returns:
-            True if the proxy health endpoint responds with status "ok", False otherwise.
+            True if the proxy health endpoint responds with status "ok",
+            False otherwise.
 
         """
         url = f"{self._base_url}/api/health"
