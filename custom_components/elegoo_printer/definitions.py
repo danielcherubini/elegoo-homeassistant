@@ -1030,22 +1030,25 @@ def _get_gcode_extruder_filament_type(
     printer_data: PrinterData, index: int
 ) -> str | None:
     """
-    Get filament type for a specific extruder from gcode color_map.
+    Get filament type for a physical slot from proxy names or gcode color_map.
 
     Args:
         printer_data: The current printer data object.
-        index: The zero-based extruder index.
+        index: The zero-based physical slot index.
 
     Returns:
-        The filament type name for the extruder, or None if unavailable.
+        The filament type name for the slot, or None if unavailable.
 
     """
     if not printer_data or not printer_data.gcode_filament_data:
         return None
-    color_map = printer_data.gcode_filament_data.color_map
-    if index >= len(color_map):
-        return None
-    return color_map[index].get("name")
+    data = printer_data.gcode_filament_data
+    if index < len(data.filament_names):
+        return data.filament_names[index]
+    for entry in data.color_map:
+        if entry.get("t") == index:
+            return entry.get("name")
+    return None
 
 
 def _get_gcode_extruder_attributes(printer_data: PrinterData, index: int) -> dict:
@@ -1054,7 +1057,7 @@ def _get_gcode_extruder_attributes(printer_data: PrinterData, index: int) -> dic
 
     Args:
         printer_data: The current printer data object.
-        index: The zero-based extruder index.
+        index: The zero-based physical slot index.
 
     Returns:
         A dict of extra state attributes, or an empty dict if unavailable.
@@ -1063,40 +1066,33 @@ def _get_gcode_extruder_attributes(printer_data: PrinterData, index: int) -> dic
     if not printer_data or not printer_data.gcode_filament_data:
         return {}
     data = printer_data.gcode_filament_data
-    color_map = data.color_map
-    if index >= len(color_map):
-        return {}
-    entry = color_map[index]
     attrs: dict[str, Any] = {}
-    if "color" in entry:
-        attrs["color"] = entry["color"]
-    tray_idx = entry.get("t")
-    if tray_idx is not None:
-        attrs["tray_index"] = tray_idx
-        if tray_idx < len(data.per_slot_grams):
-            attrs["weight_grams"] = data.per_slot_grams[tray_idx]
-        if tray_idx < len(data.per_slot_mm):
-            attrs["filament_mm"] = data.per_slot_mm[tray_idx]
-        if tray_idx < len(data.per_slot_cm3):
-            attrs["filament_cm3"] = data.per_slot_cm3[tray_idx]
-        if tray_idx < len(data.per_slot_cost):
-            attrs["cost"] = data.per_slot_cost[tray_idx]
+    for entry in data.color_map:
+        if entry.get("t") == index:
+            if "color" in entry:
+                attrs["color"] = entry["color"]
+            break
+    if index < len(data.per_slot_grams):
+        attrs["weight_grams"] = data.per_slot_grams[index]
+    if index < len(data.per_slot_mm):
+        attrs["filament_mm"] = data.per_slot_mm[index]
+    if index < len(data.per_slot_cm3):
+        attrs["filament_cm3"] = data.per_slot_cm3[index]
+    if index < len(data.per_slot_cost):
+        attrs["cost"] = data.per_slot_cost[index]
     if index < len(data.filament_names):
         attrs["filament_name"] = data.filament_names[index]
     return attrs
 
 
 def _get_proxy_extruder_weight(printer_data: PrinterData, index: int) -> float | None:
-    """Get filament weight in grams for a specific extruder via tray index."""
+    """Get filament weight in grams for a physical slot."""
     if not printer_data or not printer_data.gcode_filament_data:
         return None
     data = printer_data.gcode_filament_data
-    if index >= len(data.color_map):
+    if index >= len(data.per_slot_grams):
         return None
-    tray_idx = data.color_map[index].get("t")
-    if tray_idx is None or tray_idx >= len(data.per_slot_grams):
-        return None
-    return data.per_slot_grams[tray_idx]
+    return data.per_slot_grams[index]
 
 
 def _get_proxy_extruder_weight_attributes(
@@ -1107,17 +1103,15 @@ def _get_proxy_extruder_weight_attributes(
         return {}
     data = printer_data.gcode_filament_data
     attrs: dict[str, Any] = {}
-    if index < len(data.color_map):
-        entry = data.color_map[index]
-        if "name" in entry:
-            attrs["filament_type"] = entry["name"]
-        if "color" in entry:
-            attrs["color"] = entry["color"]
-        tray_idx = entry.get("t")
-        if tray_idx is not None:
-            attrs["tray_index"] = tray_idx
-            if tray_idx < len(data.per_slot_cost):
-                attrs["cost"] = data.per_slot_cost[tray_idx]
+    for entry in data.color_map:
+        if entry.get("t") == index:
+            if "name" in entry:
+                attrs["filament_type"] = entry["name"]
+            if "color" in entry:
+                attrs["color"] = entry["color"]
+            break
+    if index < len(data.per_slot_cost):
+        attrs["cost"] = data.per_slot_cost[index]
     if index < len(data.filament_names):
         attrs["filament_name"] = data.filament_names[index]
     return attrs
