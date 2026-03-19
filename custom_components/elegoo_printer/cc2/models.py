@@ -421,6 +421,8 @@ class CC2StatusMapper:
             per_slot_mm=proxy_filament.get("per_slot_mm", []),
             per_slot_cm3=proxy_filament.get("per_slot_cm3", []),
             per_slot_cost=proxy_filament.get("per_slot_cost", []),
+            per_slot_density=proxy_filament.get("per_slot_density", []),
+            per_slot_diameter=proxy_filament.get("per_slot_diameter", []),
             filament_names=proxy_filament.get("filament_names", []),
             total_cost=proxy_filament.get("total_cost"),
             total_filament_changes=proxy_filament.get("total_filament_changes"),

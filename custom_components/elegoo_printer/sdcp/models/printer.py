@@ -53,6 +53,8 @@ class FileFilamentData:
     per_slot_mm: list[float] = field(default_factory=list)
     per_slot_cm3: list[float] = field(default_factory=list)
     per_slot_cost: list[float] = field(default_factory=list)
+    per_slot_density: list[float] = field(default_factory=list)
+    per_slot_diameter: list[float] = field(default_factory=list)
     filament_names: list[str] = field(default_factory=list)
     total_cost: float | None = None
     total_filament_changes: int | None = None

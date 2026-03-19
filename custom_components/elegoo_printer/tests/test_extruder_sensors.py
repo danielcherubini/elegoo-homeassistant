@@ -1,15 +1,20 @@
-"""Tests for slot-based extruder sensor functions."""
+"""Tests for A1-A4 slot sensor helper functions."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock
 
 from custom_components.elegoo_printer.definitions import (
-    _get_gcode_extruder_attributes,
-    _get_gcode_extruder_filament_type,
-    _get_proxy_extruder_weight,
-    _get_proxy_extruder_weight_attributes,
+    _get_slot_attributes,
+    _get_slot_cm3,
+    _get_slot_color,
+    _get_slot_filament_type,
+    _get_slot_grams,
+    _get_slot_mm,
+    _get_slot_name,
+    _has_slot,
 )
+from custom_components.elegoo_printer.sdcp.models.ams import AMSBox, AMSStatus, AMSTray
 from custom_components.elegoo_printer.sdcp.models.printer import (
     FileFilamentData,
     PrinterData,
@@ -23,6 +28,10 @@ SLOT_0_CM3 = 11.11
 SLOT_3_CM3 = 22.22
 SLOT_0_COST = 11.11
 SLOT_1_COST = 22.22
+SLOT_0_DENSITY = 1.24
+SLOT_3_DENSITY = 1.27
+SLOT_0_DIAMETER = 1.75
+SLOT_3_DIAMETER = 1.75
 
 PROXY_FILAMENT = FileFilamentData(
     total_filament_used=111.11,
@@ -34,6 +43,8 @@ PROXY_FILAMENT = FileFilamentData(
     per_slot_mm=[SLOT_0_MM, 0.0, 0.0, SLOT_3_MM],
     per_slot_cm3=[SLOT_0_CM3, 0.0, 0.0, SLOT_3_CM3],
     per_slot_cost=[SLOT_0_COST, SLOT_1_COST, 0.0, 0.0],
+    per_slot_density=[SLOT_0_DENSITY, 0.0, 0.0, SLOT_3_DENSITY],
+    per_slot_diameter=[SLOT_0_DIAMETER, 1.75, 1.75, SLOT_3_DIAMETER],
     filament_names=[
         "ElegooPLA-Basic-White",
         "ElegooPLA-Matte-Ruby Red",
@@ -44,30 +55,133 @@ PROXY_FILAMENT = FileFilamentData(
     total_filament_changes=11,
 )
 
+CANVAS_TRAY_DATA = {
+    "canvas_list": [
+        {
+            "canvas_id": 0,
+            "connected": 1,
+            "tray_list": [
+                {
+                    "tray_id": 0,
+                    "brand": "ELEGOO",
+                    "filament_type": "PLA",
+                    "filament_name": "Canvas-White",
+                    "filament_color": "#CCCCCC",
+                    "min_nozzle_temp": 190,
+                    "max_nozzle_temp": 230,
+                    "status": 1,
+                },
+                {
+                    "tray_id": 1,
+                    "brand": "ELEGOO",
+                    "filament_type": "PETG",
+                    "filament_name": "Canvas-Red",
+                    "filament_color": "#FF0000",
+                    "min_nozzle_temp": 220,
+                    "max_nozzle_temp": 260,
+                    "status": 1,
+                },
+            ],
+        }
+    ],
+}
 
-def _make_printer_data(filament_data: FileFilamentData | None) -> PrinterData:
+
+def _make_printer_data(
+    filament_data: FileFilamentData | None = None,
+    ams_status: AMSStatus | None = None,
+) -> PrinterData:
     printer_data = MagicMock(spec=PrinterData)
     printer_data.gcode_filament_data = filament_data
+    printer_data.ams_status = ams_status
     return printer_data
 
 
-class TestGetGcodeExtruderFilamentType:
-    """Filament type should resolve by physical slot index."""
+def _make_canvas_status() -> AMSStatus:
+    return AMSStatus(CANVAS_TRAY_DATA)
 
-    def test_used_slot_returns_proxy_name(self) -> None:
-        """Slot 0 is used in print — returns proxy filament_names[0]."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        assert _get_gcode_extruder_filament_type(pd, 0) == "ElegooPLA-Basic-White"
 
-    def test_unused_slot_returns_proxy_name(self) -> None:
-        """Slot 1 is not used in print — still returns filament_names[1]."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        assert _get_gcode_extruder_filament_type(pd, 1) == "ElegooPLA-Matte-Ruby Red"
+class TestHasSlot:
+    """_has_slot checks Canvas tray existence by 0-based index."""
 
-    def test_all_four_slots_filled(self) -> None:
-        """All 4 slots return names from proxy filament_names."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        names = [_get_gcode_extruder_filament_type(pd, i) for i in range(4)]
+    def test_existing_tray(self) -> None:
+        pd = _make_printer_data(ams_status=_make_canvas_status())
+        assert _has_slot(pd, 0) is True
+        assert _has_slot(pd, 1) is True
+
+    def test_missing_tray(self) -> None:
+        pd = _make_printer_data(ams_status=_make_canvas_status())
+        assert _has_slot(pd, 2) is False
+        assert _has_slot(pd, 3) is False
+
+    def test_no_ams_status(self) -> None:
+        pd = _make_printer_data()
+        assert _has_slot(pd, 0) is False
+
+    def test_none_printer_data(self) -> None:
+        assert _has_slot(None, 0) is False
+
+
+class TestGetSlotColor:
+    """Color uses proxy color_map first, Canvas tray fallback."""
+
+    def test_proxy_color_map_takes_priority(self) -> None:
+        pd = _make_printer_data(
+            filament_data=PROXY_FILAMENT,
+            ams_status=_make_canvas_status(),
+        )
+        assert _get_slot_color(pd, 0) == "#FFFFFF"
+
+    def test_falls_back_to_canvas_when_no_proxy(self) -> None:
+        pd = _make_printer_data(ams_status=_make_canvas_status())
+        assert _get_slot_color(pd, 0) == "#CCCCCC"
+
+    def test_falls_back_to_canvas_for_slot_not_in_color_map(self) -> None:
+        pd = _make_printer_data(
+            filament_data=PROXY_FILAMENT,
+            ams_status=_make_canvas_status(),
+        )
+        assert _get_slot_color(pd, 1) == "#FF0000"
+
+    def test_no_data_returns_none(self) -> None:
+        pd = _make_printer_data()
+        assert _get_slot_color(pd, 0) is None
+
+    def test_none_printer_data(self) -> None:
+        assert _get_slot_color(None, 0) is None
+
+
+class TestGetSlotName:
+    """Name resolves: proxy filament_names -> color_map name -> Canvas."""
+
+    def test_proxy_filament_names_takes_priority(self) -> None:
+        pd = _make_printer_data(
+            filament_data=PROXY_FILAMENT,
+            ams_status=_make_canvas_status(),
+        )
+        assert _get_slot_name(pd, 0) == "ElegooPLA-Basic-White"
+
+    def test_falls_back_to_color_map_name(self) -> None:
+        data = FileFilamentData(
+            color_map=[{"color": "#FF0000", "name": "PETG", "t": 2}],
+        )
+        pd = _make_printer_data(filament_data=data)
+        assert _get_slot_name(pd, 2) == "PETG"
+
+    def test_falls_back_to_canvas_name(self) -> None:
+        pd = _make_printer_data(ams_status=_make_canvas_status())
+        assert _get_slot_name(pd, 0) == "Canvas-White"
+
+    def test_no_data_returns_none(self) -> None:
+        pd = _make_printer_data()
+        assert _get_slot_name(pd, 0) is None
+
+    def test_none_printer_data(self) -> None:
+        assert _get_slot_name(None, 0) is None
+
+    def test_all_four_proxy_names(self) -> None:
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        names = [_get_slot_name(pd, i) for i in range(4)]
         assert names == [
             "ElegooPLA-Basic-White",
             "ElegooPLA-Matte-Ruby Red",
@@ -75,134 +189,122 @@ class TestGetGcodeExtruderFilamentType:
             "ElegooPLA-Metallic-Blue",
         ]
 
-    def test_falls_back_to_color_map_when_no_proxy_names(self) -> None:
-        """Without proxy filament_names, falls back to color_map by tray index."""
-        data = FileFilamentData(
-            color_map=[
-                {"color": "#FF0000", "name": "PETG", "t": 2},
-            ],
+
+class TestGetSlotFilamentType:
+    """Filament type comes from Canvas tray data."""
+
+    def test_returns_canvas_type(self) -> None:
+        pd = _make_printer_data(ams_status=_make_canvas_status())
+        assert _get_slot_filament_type(pd, 0) == "PLA"
+        assert _get_slot_filament_type(pd, 1) == "PETG"
+
+    def test_missing_tray_returns_none(self) -> None:
+        pd = _make_printer_data(ams_status=_make_canvas_status())
+        assert _get_slot_filament_type(pd, 3) is None
+
+    def test_no_ams_returns_none(self) -> None:
+        pd = _make_printer_data()
+        assert _get_slot_filament_type(pd, 0) is None
+
+
+class TestGetSlotAttributes:
+    """Attributes merge Canvas metadata with proxy density/diameter/cost."""
+
+    def test_canvas_only_attributes(self) -> None:
+        pd = _make_printer_data(ams_status=_make_canvas_status())
+        attrs = _get_slot_attributes(pd, 0)
+        assert attrs["brand"] == "ELEGOO"
+        assert attrs["source"] == "canvas"
+        assert attrs["diameter"] == "1.75"
+        assert attrs["nozzle_temp_range"] == "190-230°C"
+        assert attrs["enabled"] is True
+        assert "density" not in attrs
+        assert "cost" not in attrs
+
+    def test_proxy_overrides_diameter(self) -> None:
+        pd = _make_printer_data(
+            filament_data=PROXY_FILAMENT,
+            ams_status=_make_canvas_status(),
         )
-        pd = _make_printer_data(data)
-        assert _get_gcode_extruder_filament_type(pd, 2) == "PETG"
-        assert _get_gcode_extruder_filament_type(pd, 0) is None
+        attrs = _get_slot_attributes(pd, 0)
+        assert attrs["diameter"] == SLOT_0_DIAMETER
+        assert attrs["density"] == SLOT_0_DENSITY
+        assert attrs["cost"] == SLOT_0_COST
+        assert attrs["brand"] == "ELEGOO"
 
-    def test_out_of_range_returns_none(self) -> None:
-        """Index beyond all data sources returns None."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        assert _get_gcode_extruder_filament_type(pd, 5) is None
+    def test_proxy_only_no_canvas(self) -> None:
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        attrs = _get_slot_attributes(pd, 0)
+        assert attrs["density"] == SLOT_0_DENSITY
+        assert attrs["diameter"] == SLOT_0_DIAMETER
+        assert attrs["cost"] == SLOT_0_COST
+        assert "brand" not in attrs
 
-    def test_no_filament_data_returns_none(self) -> None:
-        """No gcode_filament_data on printer_data returns None."""
-        pd = _make_printer_data(None)
-        assert _get_gcode_extruder_filament_type(pd, 0) is None
+    def test_no_data_returns_empty(self) -> None:
+        pd = _make_printer_data()
+        assert _get_slot_attributes(pd, 0) == {}
 
-    def test_none_printer_data_returns_none(self) -> None:
-        """None printer_data returns None."""
-        assert _get_gcode_extruder_filament_type(None, 0) is None
+    def test_none_printer_data(self) -> None:
+        assert _get_slot_attributes(None, 0) == {}
 
 
-class TestGetProxyExtruderWeight:
-    """Weight should index per_slot_grams by physical slot directly."""
+class TestGetSlotGrams:
+    """Grams comes from proxy per_slot_grams."""
 
-    def test_used_slot_returns_weight(self) -> None:
-        """Slot 0 used in print returns its grams."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        assert _get_proxy_extruder_weight(pd, 0) == SLOT_0_GRAMS
+    def test_returns_weight(self) -> None:
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        assert _get_slot_grams(pd, 0) == SLOT_0_GRAMS
 
     def test_unused_slot_returns_zero(self) -> None:
-        """Slot 1 not used in print returns 0.0."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        assert _get_proxy_extruder_weight(pd, 1) == 0.0
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        assert _get_slot_grams(pd, 1) == 0.0
 
     def test_all_four_slots(self) -> None:
-        """All 4 slots return correct per_slot_grams values."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        weights = [_get_proxy_extruder_weight(pd, i) for i in range(4)]
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        weights = [_get_slot_grams(pd, i) for i in range(4)]
         assert weights == [SLOT_0_GRAMS, 0.0, 0.0, SLOT_3_GRAMS]
 
     def test_out_of_range_returns_none(self) -> None:
-        """Index beyond per_slot_grams returns None."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        assert _get_proxy_extruder_weight(pd, 5) is None
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        assert _get_slot_grams(pd, 5) is None
 
     def test_no_filament_data_returns_none(self) -> None:
-        """No gcode_filament_data on printer_data returns None."""
-        pd = _make_printer_data(None)
-        assert _get_proxy_extruder_weight(pd, 0) is None
+        pd = _make_printer_data()
+        assert _get_slot_grams(pd, 0) is None
 
     def test_empty_per_slot_grams(self) -> None:
-        """Empty per_slot_grams returns None for any index."""
         data = FileFilamentData(per_slot_grams=[])
-        pd = _make_printer_data(data)
-        assert _get_proxy_extruder_weight(pd, 0) is None
+        pd = _make_printer_data(filament_data=data)
+        assert _get_slot_grams(pd, 0) is None
 
 
-class TestGetGcodeExtruderAttributes:
-    """Extra attributes should be slot-indexed with color from color_map."""
+class TestGetSlotCm3:
+    """Cubic centimeters comes from proxy per_slot_cm3."""
 
-    def test_used_slot_has_color_and_all_metrics(self) -> None:
-        """Slot 0 is in color_map — gets color plus all per-slot metrics."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        attrs = _get_gcode_extruder_attributes(pd, 0)
-        assert attrs["color"] == "#FFFFFF"
-        assert attrs["weight_grams"] == SLOT_0_GRAMS
-        assert attrs["filament_mm"] == SLOT_0_MM
-        assert attrs["filament_cm3"] == SLOT_0_CM3
-        assert attrs["cost"] == SLOT_0_COST
-        assert attrs["filament_name"] == "ElegooPLA-Basic-White"
+    def test_returns_volume(self) -> None:
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        assert _get_slot_cm3(pd, 0) == SLOT_0_CM3
 
-    def test_unused_slot_has_metrics_but_no_color(self) -> None:
-        """Slot 1 is not in color_map — no color, but per-slot metrics present."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        attrs = _get_gcode_extruder_attributes(pd, 1)
-        assert "color" not in attrs
-        assert attrs["weight_grams"] == 0.0
-        assert attrs["filament_name"] == "ElegooPLA-Matte-Ruby Red"
+    def test_out_of_range_returns_none(self) -> None:
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        assert _get_slot_cm3(pd, 5) is None
 
-    def test_slot_3_has_color_from_color_map(self) -> None:
-        """Slot 3 is in color_map (t=3) — gets color and weight."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        attrs = _get_gcode_extruder_attributes(pd, 3)
-        assert attrs["color"] == "#17656B"
-        assert attrs["weight_grams"] == SLOT_3_GRAMS
-        assert attrs["filament_name"] == "ElegooPLA-Metallic-Blue"
-
-    def test_no_filament_data_returns_empty(self) -> None:
-        """No gcode_filament_data returns empty dict."""
-        pd = _make_printer_data(None)
-        assert _get_gcode_extruder_attributes(pd, 0) == {}
+    def test_no_filament_data_returns_none(self) -> None:
+        pd = _make_printer_data()
+        assert _get_slot_cm3(pd, 0) is None
 
 
-class TestGetProxyExtruderWeightAttributes:
-    """Weight sensor attributes should be slot-indexed."""
+class TestGetSlotMm:
+    """Length millimeters comes from proxy per_slot_mm."""
 
-    def test_used_slot_has_type_and_color(self) -> None:
-        """Slot 0 is in color_map — gets filament_type and color."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        attrs = _get_proxy_extruder_weight_attributes(pd, 0)
-        assert attrs["filament_type"] == "PLA"
-        assert attrs["color"] == "#FFFFFF"
-        assert attrs["cost"] == SLOT_0_COST
-        assert attrs["filament_name"] == "ElegooPLA-Basic-White"
+    def test_returns_length(self) -> None:
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        assert _get_slot_mm(pd, 0) == SLOT_0_MM
 
-    def test_unused_slot_has_cost_and_name(self) -> None:
-        """Slot 1 not in color_map — no type/color, but cost and name."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        attrs = _get_proxy_extruder_weight_attributes(pd, 1)
-        assert "filament_type" not in attrs
-        assert "color" not in attrs
-        assert attrs["cost"] == SLOT_1_COST
-        assert attrs["filament_name"] == "ElegooPLA-Matte-Ruby Red"
+    def test_out_of_range_returns_none(self) -> None:
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        assert _get_slot_mm(pd, 5) is None
 
-    def test_slot_3_has_color_map_data(self) -> None:
-        """Slot 3 in color_map — gets type, color, and name."""
-        pd = _make_printer_data(PROXY_FILAMENT)
-        attrs = _get_proxy_extruder_weight_attributes(pd, 3)
-        assert attrs["filament_type"] == "PLA"
-        assert attrs["color"] == "#17656B"
-        assert attrs["filament_name"] == "ElegooPLA-Metallic-Blue"
-
-    def test_no_filament_data_returns_empty(self) -> None:
-        """No gcode_filament_data returns empty dict."""
-        pd = _make_printer_data(None)
-        assert _get_proxy_extruder_weight_attributes(pd, 0) == {}
+    def test_no_filament_data_returns_none(self) -> None:
+        pd = _make_printer_data()
+        assert _get_slot_mm(pd, 0) is None
