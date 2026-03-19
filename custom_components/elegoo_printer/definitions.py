@@ -28,6 +28,7 @@ from homeassistant.helpers.typing import StateType
 
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
+from .sdcp.models.ams import AMSTray
 from .sdcp.models.enums import (
     ElegooErrorStatusReason,
     ElegooMachineStatus,
@@ -112,7 +113,7 @@ def _get_active_filament_attributes(printer_data: PrinterData) -> dict:
     return {}
 
 
-def _get_canvas_tray(printer_data: PrinterData, index: int):
+def _get_canvas_tray(printer_data: PrinterData, index: int) -> AMSTray | None:
     """Get Canvas tray object for a 0-based slot index, or None."""
     if not printer_data or not printer_data.ams_status:
         return None

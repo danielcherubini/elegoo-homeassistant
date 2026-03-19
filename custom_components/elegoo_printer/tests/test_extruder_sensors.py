@@ -14,7 +14,7 @@ from custom_components.elegoo_printer.definitions import (
     _get_slot_name,
     _has_slot,
 )
-from custom_components.elegoo_printer.sdcp.models.ams import AMSBox, AMSStatus, AMSTray
+from custom_components.elegoo_printer.sdcp.models.ams import AMSStatus
 from custom_components.elegoo_printer.sdcp.models.printer import (
     FileFilamentData,
     PrinterData,
