@@ -93,6 +93,8 @@ CC2 printers **MUST** be configured for LAN-Only mode:
 - For containerized Home Assistant (Docker/Kubernetes): Use host networking or proper network bridging
 - Port 1883 (MQTT) must be accessible between HA and printer
 
+**Optional GCode capture proxy:** In integration options you can set the cc2-gcode-capture-proxy base URL. Enter a hostname or IP, optional port, or a full `http://` / `https://` URL; the config flow normalizes the value so duplicate schemes (for example pasting `http://` twice) are not saved.
+
 See [CC2 Protocol Documentation](docs/CC2_PROTOCOL.md) for technical details.
 
 ---

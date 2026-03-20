@@ -68,6 +68,48 @@ def _sanitize_ip_address(ip: str) -> str | None:
     return cleaned or None
 
 
+def _normalize_gcode_proxy_base_url(raw: str) -> str | None:
+    """
+    Build a canonical http(s) base URL for the GCode capture proxy from user input.
+
+    Strips repeated ``http://`` / ``https://`` / ``//`` prefixes so values like
+    ``http://http://192.168.1.1`` are not stored. Defaults to ``http`` when no
+    scheme is given. Returns ``None`` if the value is empty or malformed.
+
+    Arguments:
+        raw: User-entered host, host:port, or URL.
+
+    Returns:
+        Canonical ``http://...`` or ``https://...`` base URL, or ``None``.
+
+    """
+    cleaned = raw.strip()
+    if not cleaned:
+        return None
+
+    scheme = "http"
+    while cleaned:
+        lower = cleaned.lower()
+        if lower.startswith("https://"):
+            scheme = "https"
+            cleaned = cleaned[8:].strip()
+            continue
+        if lower.startswith("http://"):
+            cleaned = cleaned[7:].strip()
+            continue
+        if lower.startswith("//"):
+            cleaned = cleaned[2:].strip()
+            continue
+        break
+
+    cleaned = cleaned.rstrip("/")
+    if not cleaned:
+        return None
+    if "://" in cleaned:
+        return None
+    return f"{scheme}://{cleaned}"
+
+
 MANUAL_IP_SCHEMA = vol.Schema(
     {
         vol.Required(
@@ -1038,9 +1080,19 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             if access_code:
                 printer_data[CONF_CC2_ACCESS_CODE] = access_code
 
-            proxy_ip = (user_input.get(CONF_GCODE_PROXY_URL) or "").strip()
-            if proxy_ip:
-                proxy_url = f"http://{proxy_ip}"
+            proxy_raw = (user_input.get(CONF_GCODE_PROXY_URL) or "").strip()
+            if proxy_raw:
+                proxy_url = _normalize_gcode_proxy_base_url(proxy_raw)
+                if proxy_url is None:
+                    _errors[CONF_GCODE_PROXY_URL] = "gcode_proxy_invalid"
+                    return self.async_show_form(
+                        step_id="cc2_options",
+                        data_schema=self.add_suggested_values_to_schema(
+                            vol.Schema(self._cc2_options_schema()),
+                            suggested_values=user_input,
+                        ),
+                        errors=_errors,
+                    )
                 session = async_get_clientsession(self.hass)
                 proxy_client = GCodeProxyClient(proxy_url, session)
                 if not await proxy_client.check_health():
@@ -1088,9 +1140,14 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
     @staticmethod
     def _cc2_options_suggested(settings: dict) -> dict:
         suggested = dict(settings)
-        proxy_url = suggested.get(CONF_GCODE_PROXY_URL, "")
-        if proxy_url and proxy_url.startswith("http://"):
-            suggested[CONF_GCODE_PROXY_URL] = proxy_url.removeprefix("http://")
+        proxy_url = (suggested.get(CONF_GCODE_PROXY_URL) or "").strip()
+        if proxy_url:
+            normalized = _normalize_gcode_proxy_base_url(proxy_url)
+            suggested[CONF_GCODE_PROXY_URL] = (
+                normalized if normalized is not None else proxy_url
+            )
+        else:
+            suggested[CONF_GCODE_PROXY_URL] = ""
         return suggested
 
     async def async_step_mqtt_options(

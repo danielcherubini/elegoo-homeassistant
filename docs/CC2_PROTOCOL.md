@@ -2419,6 +2419,8 @@ The CONFIG_BLOCK at the end contains slicer profile settings with semicolon-sepa
 > On stock firmware, G-code file content cannot be downloaded from the printer (see [Method 1057](#method-1057--download_file)). To access per-slot filament data, the file may be captured at upload time using a local network proxy between the slicer and the printer.
 >
 > **Proxy approach:** A local network proxy intercepts the slicer's `PUT /upload` request on port 80, parses the G-code file, and forwards the request to the printer. The slicer is pointed at the proxy's IP instead of the printer's IP and can query it for per-slot filament data. The proxy also provides TCP pass-through on ports 1883 (MQTT over TCP), 9001 (MQTT over WebSocket), and 8080 (camera) so the slicer's Device page continues to work normally. The Device page's JavaScript creates its own MQTT-over-WebSocket client on port 9001 for file lists, live status, and controls. The HA integration connects directly to the printer and does not need to go through the proxy.
+>
+> **Home Assistant:** CC2 integration options store the capture-proxy **base URL** (`http://` or `https://`, host, optional port). The config flow normalizes input (for example repeated `http://` prefixes) before saving and before calling the proxy health endpoint.
 
 ---
 
