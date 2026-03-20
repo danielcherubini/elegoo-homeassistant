@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 
+from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.cc2.gcode_proxy import GCodeProxyClient
 
 
@@ -192,3 +193,74 @@ class TestMapFilamentDataWithProxy:
         assert result.total_filament_used == 10.0  # noqa: PLR2004
         assert result.per_slot_grams == []
         assert result.filament_names == []
+
+
+class TestRequestProxyFilamentEndToEnd:
+    """Exercise ``_request_proxy_filament`` with a real client and mock proxy."""
+
+    def test_caches_payload_and_refreshes_gcode_filament_data(self) -> None:
+        """Proxy JSON is stored under ``_file_details`` and mapper sees it."""
+
+        async def _run() -> None:
+            proxy = AsyncMock()
+            proxy.fetch_filament_data = AsyncMock(return_value=SAMPLE_RESPONSE)
+            client = ElegooCC2Client(
+                printer_ip="192.0.2.1",
+                serial_number="test-serial",
+                gcode_proxy=proxy,
+            )
+            client._cached_status = {
+                "machine_status": {"status": 2},
+                "print_status": {"filename": "CC2_benchy.gcode"},
+            }
+            await client._request_proxy_filament("CC2_benchy.gcode")
+
+            proxy.fetch_filament_data.assert_awaited_once_with("CC2_benchy.gcode")
+            cached = client._integration_data["_file_details"]["CC2_benchy.gcode"]
+            assert cached["proxy_filament"] == SAMPLE_RESPONSE
+            assert client.printer_data.gcode_filament_data is not None
+            filament = client.printer_data.gcode_filament_data
+            assert filament.filename == "CC2_benchy.gcode"
+            assert filament.per_slot_grams == [1.1, 0.6, 0.0, 0.0]
+            assert filament.slicer_version == "ElegooSlicer 1.3.2.9"
+
+        asyncio.run(_run())
+
+    def test_empty_proxy_response_skips_cache_and_status_refresh(self) -> None:
+        """Falsy API payload does not mutate integration data."""
+
+        async def _run() -> None:
+            proxy = AsyncMock()
+            proxy.fetch_filament_data = AsyncMock(return_value=None)
+            client = ElegooCC2Client(
+                printer_ip="192.0.2.1",
+                serial_number="test-serial",
+                gcode_proxy=proxy,
+            )
+            client._cached_status = {
+                "print_status": {"filename": "job.gcode"},
+            }
+            await client._request_proxy_filament("job.gcode")
+
+            assert client._integration_data == {}
+            assert client.printer_data.gcode_filament_data is None
+
+        asyncio.run(_run())
+
+    def test_fetch_oserror_is_swallowed(self) -> None:
+        """Network errors are logged and do not propagate."""
+
+        async def _run() -> None:
+            proxy = AsyncMock()
+            proxy.fetch_filament_data = AsyncMock(side_effect=OSError("boom"))
+            client = ElegooCC2Client(
+                printer_ip="192.0.2.1",
+                serial_number="test-serial",
+                gcode_proxy=proxy,
+            )
+            client._cached_status = {"print_status": {"filename": "x.gcode"}}
+            await client._request_proxy_filament("x.gcode")
+
+            assert "_file_details" not in client._integration_data
+
+        asyncio.run(_run())

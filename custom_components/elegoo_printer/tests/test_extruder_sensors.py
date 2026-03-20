@@ -12,6 +12,7 @@ from custom_components.elegoo_printer.definitions import (
     _get_slot_grams,
     _get_slot_mm,
     _get_slot_name,
+    _get_total_filament_used_attributes,
     _has_gcode_filament_slot,
     _has_slot,
     _has_total_filament_changes_data,
@@ -379,3 +380,38 @@ class TestGetSlotMm:
     def test_no_filament_data_returns_none(self) -> None:
         pd = _make_printer_data()
         assert _get_slot_mm(pd, 0) is None
+
+
+class TestGetTotalFilamentUsedAttributes:
+    """``_get_total_filament_used_attributes`` builds sensor extra state attributes."""
+
+    def test_no_data_returns_empty(self) -> None:
+        assert _get_total_filament_used_attributes(_make_printer_data()) == {}
+
+    def test_full_filament_data_returns_expected_keys(self) -> None:
+        data = FileFilamentData(
+            filename="part.gcode",
+            print_time=3600,
+            color_map=[{"color": "#111111", "name": "PLA", "t": 0}],
+            slicer_version="Slicer 1.0",
+            estimated_time="1h",
+        )
+        pd = _make_printer_data(filament_data=data)
+        attrs = _get_total_filament_used_attributes(pd)
+        assert attrs == {
+            "filename": "part.gcode",
+            "print_time_sec": 3600,
+            "extruder_count": 1,
+            "color_map": [{"color": "#111111", "name": "PLA", "t": 0}],
+            "slicer_version": "Slicer 1.0",
+            "estimated_time": "1h",
+        }
+
+    def test_empty_color_map_yields_zero_extruder_count(self) -> None:
+        data = FileFilamentData(filename="only_name.gcode")
+        pd = _make_printer_data(filament_data=data)
+        attrs = _get_total_filament_used_attributes(pd)
+        assert attrs["extruder_count"] == 0
+        assert attrs["filename"] == "only_name.gcode"
+        assert "print_time_sec" not in attrs
+        assert "color_map" not in attrs
