@@ -77,6 +77,29 @@ class TestHandleFileDetailResponse:
         assert details["color_map"] == [{"color": "#FF0000", "name": "PETG", "t": 0}]
         assert "TotalLayers" not in details
 
+    def test_caches_only_print_time(self) -> None:
+        """Response with only print_time still caches (no layers/filament/color)."""
+        client = self._make_client()
+        result = {"print_time": PRINT_TIME}
+
+        client._handle_file_detail_response("time_only.gcode", result)
+
+        details = client._integration_data["_file_details"]["time_only.gcode"]
+        assert details["print_time"] == PRINT_TIME
+        assert "TotalLayers" not in details
+        assert "total_filament_used" not in details
+        assert "color_map" not in details
+
+    def test_caches_print_time_zero(self) -> None:
+        """print_time=0 is valid and must not be treated as missing."""
+        client = self._make_client()
+        result = {"print_time": 0}
+
+        client._handle_file_detail_response("zero_time.gcode", result)
+
+        details = client._integration_data["_file_details"]["zero_time.gcode"]
+        assert details["print_time"] == 0
+
     def test_multi_extruder_color_map(self) -> None:
         """Multi-extruder color_map is fully preserved."""
         client = self._make_client()

@@ -888,7 +888,12 @@ class ElegooCC2Client:
         color_map = result.get("color_map")
         print_time = result.get("print_time")
 
-        has_data = total_layers or total_filament_used is not None or color_map
+        has_data = (
+            total_layers
+            or total_filament_used is not None
+            or color_map
+            or print_time is not None
+        )
 
         if has_data:
             detail = self._integration_data["_file_details"].get(filename, {})
