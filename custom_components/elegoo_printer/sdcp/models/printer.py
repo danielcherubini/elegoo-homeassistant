@@ -48,7 +48,7 @@ class FileFilamentData:
     color_map: list[dict[str, Any]] = field(default_factory=list)
     print_time: int | None = None
     filename: str | None = None
-    # from parsed gode, empty when proxy not configured
+    # from parsed gcode, empty when proxy not configured
     per_slot_grams: list[float] = field(default_factory=list)
     per_slot_mm: list[float] = field(default_factory=list)
     per_slot_cm3: list[float] = field(default_factory=list)
