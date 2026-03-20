@@ -7,6 +7,18 @@ from unittest.mock import MagicMock
 from custom_components.elegoo_printer.cc2.models import CC2StatusMapper
 from custom_components.elegoo_printer.sdcp.models.printer import FileFilamentData
 
+TOTAL_LAYERS = 722
+TOTAL_FILAMENT_USED = 24.8
+PRINT_TIME = 4690
+COLOR_MAP_SINGLE = [{"color": "#0B6283", "name": "PLA", "t": 3}]
+
+FILE_DETAIL_FULL = {
+    "total_filament_used": TOTAL_FILAMENT_USED,
+    "color_map": COLOR_MAP_SINGLE,
+    "print_time": PRINT_TIME,
+    "layer": TOTAL_LAYERS,
+}
+
 
 class TestHandleFileDetailResponse:
     """Test _handle_file_detail_response caches filament data."""
@@ -29,20 +41,14 @@ class TestHandleFileDetailResponse:
     def test_caches_total_filament_and_color_map(self) -> None:
         """Full response caches all filament fields."""
         client = self._make_client()
-        result = {
-            "total_filament_used": 24.8,
-            "color_map": [{"color": "#0B6283", "name": "PLA", "t": 3}],
-            "print_time": 4690,
-            "layer": 722,
-        }
 
-        client._handle_file_detail_response("test.gcode", result)
+        client._handle_file_detail_response("test.gcode", FILE_DETAIL_FULL)
 
         details = client._integration_data["_file_details"]["test.gcode"]
-        assert details["TotalLayers"] == 722
-        assert details["total_filament_used"] == 24.8
-        assert details["color_map"] == [{"color": "#0B6283", "name": "PLA", "t": 3}]
-        assert details["print_time"] == 4690
+        assert details["TotalLayers"] == TOTAL_LAYERS
+        assert details["total_filament_used"] == TOTAL_FILAMENT_USED
+        assert details["color_map"] == COLOR_MAP_SINGLE
+        assert details["print_time"] == PRINT_TIME
 
     def test_caches_only_total_layers(self) -> None:
         """Response with only TotalLayers still caches."""
@@ -52,7 +58,7 @@ class TestHandleFileDetailResponse:
         client._handle_file_detail_response("test.gcode", result)
 
         details = client._integration_data["_file_details"]["test.gcode"]
-        assert details["TotalLayers"] == 500
+        assert details["TotalLayers"] == 500  # noqa: PLR2004
         assert "total_filament_used" not in details
         assert "color_map" not in details
 
@@ -67,7 +73,7 @@ class TestHandleFileDetailResponse:
         client._handle_file_detail_response("test.gcode", result)
 
         details = client._integration_data["_file_details"]["test.gcode"]
-        assert details["total_filament_used"] == 10.5
+        assert details["total_filament_used"] == 10.5  # noqa: PLR2004
         assert details["color_map"] == [{"color": "#FF0000", "name": "PETG", "t": 0}]
         assert "TotalLayers" not in details
 
@@ -85,7 +91,7 @@ class TestHandleFileDetailResponse:
         client._handle_file_detail_response("multi.gcode", result)
 
         details = client._integration_data["_file_details"]["multi.gcode"]
-        assert len(details["color_map"]) == 4
+        assert len(details["color_map"]) == 4  # noqa: PLR2004
         assert details["color_map"][3]["name"] == "ABS"
 
     def test_empty_response_not_cached(self) -> None:
@@ -111,20 +117,13 @@ class TestHandleFileDetailResponse:
                 },
             },
         }
-        result = {
-            "total_filament_used": 24.8,
-            "color_map": [{"color": "#0B6283", "name": "PLA", "t": 3}],
-            "print_time": 4690,
-            "layer": 722,
-        }
-
-        client._handle_file_detail_response("test.gcode", result)
+        client._handle_file_detail_response("test.gcode", FILE_DETAIL_FULL)
 
         details = client._integration_data["_file_details"]["test.gcode"]
-        assert details["TotalLayers"] == 722
-        assert details["total_filament_used"] == 24.8
-        assert details["color_map"] == [{"color": "#0B6283", "name": "PLA", "t": 3}]
-        assert details["print_time"] == 4690
+        assert details["TotalLayers"] == TOTAL_LAYERS
+        assert details["total_filament_used"] == TOTAL_FILAMENT_USED
+        assert details["color_map"] == COLOR_MAP_SINGLE
+        assert details["print_time"] == PRINT_TIME
         assert details["proxy_filament"]["filament"]["per_slot_grams"] == [
             0.0, 0.0, 0.94, 11.95,
         ]
@@ -132,12 +131,7 @@ class TestHandleFileDetailResponse:
     def test_proxy_arriving_after_file_detail_merges(self) -> None:
         """Proxy data arriving after file detail adds to existing entry."""
         client = self._make_client()
-        file_detail_result = {
-            "total_filament_used": 24.8,
-            "color_map": [{"color": "#0B6283", "name": "PLA", "t": 3}],
-            "layer": 722,
-        }
-        client._handle_file_detail_response("test.gcode", file_detail_result)
+        client._handle_file_detail_response("test.gcode", FILE_DETAIL_FULL)
 
         details = client._integration_data["_file_details"]["test.gcode"]
         details["proxy_filament"] = {
@@ -145,7 +139,7 @@ class TestHandleFileDetailResponse:
             "filament": {"per_slot_grams": [1.0, 2.0]},
         }
 
-        assert details["TotalLayers"] == 722
+        assert details["TotalLayers"] == TOTAL_LAYERS
         assert details["proxy_filament"]["filament"]["per_slot_grams"] == [1.0, 2.0]
 
     def test_empty_color_map_not_cached_as_filament(self) -> None:
@@ -156,7 +150,7 @@ class TestHandleFileDetailResponse:
         client._handle_file_detail_response("test.gcode", result)
 
         details = client._integration_data["_file_details"]["test.gcode"]
-        assert details["TotalLayers"] == 200
+        assert details["TotalLayers"] == 200  # noqa: PLR2004
         assert "color_map" not in details
 
     def test_zero_total_filament_is_cached(self) -> None:
@@ -193,10 +187,10 @@ class TestMapFilamentData:
         cc2_data = {
             "_file_details": {
                 "test.gcode": {
-                    "TotalLayers": 722,
-                    "total_filament_used": 24.8,
-                    "color_map": [{"color": "#0B6283", "name": "PLA", "t": 3}],
-                    "print_time": 4690,
+                    "TotalLayers": TOTAL_LAYERS,
+                    "total_filament_used": TOTAL_FILAMENT_USED,
+                    "color_map": COLOR_MAP_SINGLE,
+                    "print_time": PRINT_TIME,
                 },
             },
         }
@@ -204,10 +198,10 @@ class TestMapFilamentData:
         result = CC2StatusMapper.map_filament_data(cc2_data, "test.gcode")
 
         assert isinstance(result, FileFilamentData)
-        assert result.total_filament_used == 24.8
+        assert result.total_filament_used == TOTAL_FILAMENT_USED
         assert len(result.color_map) == 1
         assert result.color_map[0]["name"] == "PLA"
-        assert result.print_time == 4690
+        assert result.print_time == PRINT_TIME
         assert result.filename == "test.gcode"
 
     def test_maps_color_map_only(self) -> None:
@@ -237,7 +231,7 @@ class TestMapFilamentData:
         result = CC2StatusMapper.map_filament_data(cc2_data, "test.gcode")
 
         assert result is not None
-        assert result.total_filament_used == 10.0
+        assert result.total_filament_used == 10.0  # noqa: PLR2004
         assert result.color_map == []
 
     def test_wrong_filename_returns_none(self) -> None:

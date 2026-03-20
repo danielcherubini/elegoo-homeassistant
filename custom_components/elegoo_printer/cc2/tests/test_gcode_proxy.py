@@ -126,15 +126,15 @@ class TestMapFilamentDataWithProxy:
         result = CC2StatusMapper.map_filament_data(cc2_data, "test.gcode")
 
         assert result is not None
-        assert result.total_filament_used == 24.8
+        assert result.total_filament_used == 24.8  # noqa: PLR2004
         assert result.per_slot_grams == [1.1, 0.6, 0.0, 0.0]
         assert result.per_slot_cost == [0.41, 0.24, 0.0, 0.0]
         assert result.filament_names == [
             "ElegooPLA-Basic-White",
             "ElegooPLA-Matte-Ruby Red",
         ]
-        assert result.total_cost == 0.65
-        assert result.total_filament_changes == 46
+        assert result.total_cost == 0.65  # noqa: PLR2004
+        assert result.total_filament_changes == 46  # noqa: PLR2004
         assert result.slicer_version == "ElegooSlicer 1.3.2.9"
 
     def test_proxy_only_no_mqtt(self) -> None:
@@ -171,6 +171,6 @@ class TestMapFilamentDataWithProxy:
         result = CC2StatusMapper.map_filament_data(cc2_data, "test.gcode")
 
         assert result is not None
-        assert result.total_filament_used == 10.0
+        assert result.total_filament_used == 10.0  # noqa: PLR2004
         assert result.per_slot_grams == []
         assert result.filament_names == []

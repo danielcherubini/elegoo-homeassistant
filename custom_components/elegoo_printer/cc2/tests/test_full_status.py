@@ -69,9 +69,9 @@ class TestHandleFullStatusPreservesInternalKeys:
         assert "_file_details" not in client._cached_status
         assert "_file_details" in client._integration_data
         details = client._integration_data["_file_details"]["test.gcode"]
-        assert details["TotalLayers"] == 111
-        assert details["total_filament_used"] == 11.1
-        assert details["proxy_filament"]["filament"]["total_filament_changes"] == 11
+        assert details["TotalLayers"] == 111  # noqa: PLR2004
+        assert details["total_filament_used"] == 11.1  # noqa: PLR2004
+        assert details["proxy_filament"]["filament"]["total_filament_changes"] == 11  # noqa: PLR2004
 
     def test_preserves_file_thumbnails(self) -> None:
         """_file_thumbnails survives a full status replacement."""
@@ -116,8 +116,8 @@ class TestHandleFullStatusPreservesInternalKeys:
 
         client._handle_full_status(PRINTER_STATUS)
 
-        assert client._cached_status["extruder"]["temperature"] == 210.0
-        assert client._cached_status["machine_status"]["status"] == 2
+        assert client._cached_status["extruder"]["temperature"] == 210.0  # noqa: PLR2004
+        assert client._cached_status["machine_status"]["status"] == 2  # noqa: PLR2004
 
     def test_sequence_number_updated(self) -> None:
         """Sequence number is updated from the new status data."""
@@ -125,7 +125,7 @@ class TestHandleFullStatusPreservesInternalKeys:
 
         client._handle_full_status(PRINTER_STATUS)
 
-        assert client._status_sequence == 42
+        assert client._status_sequence == 42  # noqa: PLR2004
 
     def test_non_continuous_count_reset(self) -> None:
         """Non-continuous count is reset to 0."""
@@ -143,7 +143,7 @@ class TestHandleFullStatusPreservesInternalKeys:
         client._handle_full_status(PRINTER_STATUS)
 
         assert "_file_details" not in client._cached_status
-        assert client._cached_status["extruder"]["temperature"] == 210.0
+        assert client._cached_status["extruder"]["temperature"] == 210.0  # noqa: PLR2004
 
     def test_calls_update_printer_status(self) -> None:
         """_update_printer_status is called after handling full status."""
@@ -190,7 +190,7 @@ class TestHandleFullStatusPreservesInternalKeys:
 
         assert client._integration_data["_file_details"] is SAMPLE_FILE_DETAILS
         assert client._integration_data["_file_thumbnails"] is SAMPLE_FILE_THUMBNAILS
-        assert client._status_sequence == 50
+        assert client._status_sequence == 50  # noqa: PLR2004
 
     def test_firmware_underscore_top_level_key_is_printer_data(self) -> None:
         """Keys starting with _ in MQTT payload stay in _cached_status, not guessed."""
