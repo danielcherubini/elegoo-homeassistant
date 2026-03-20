@@ -153,8 +153,10 @@ class ElegooCC2Client:
             self._request_id,
         )
 
-        # Status caching for delta updates
+        # Status caching for delta updates (printer-reported keys only)
         self._cached_status: dict[str, Any] = {}
+        # Enrichment not present in MQTT status (file details, thumbnails, etc.)
+        self._integration_data: dict[str, Any] = {}
         self._status_sequence = 0
         self._non_continuous_count = 0
 
@@ -642,13 +644,7 @@ class ElegooCC2Client:
     def _handle_full_status(self, status_data: dict[str, Any]) -> None:
         """Handle a full status response (from method 1002)."""
         self.logger.debug("Received full status update")
-        preserved = {
-            key: value
-            for key, value in self._cached_status.items()
-            if key.startswith("_")
-        }
         self._cached_status = deepcopy(status_data)
-        self._cached_status.update(preserved)
         self._status_sequence = status_data.get("sequence", 0)
         self._non_continuous_count = 0
 
@@ -692,12 +688,19 @@ class ElegooCC2Client:
             else:
                 base[key] = value
 
+    def _cc2_status_view(self) -> dict[str, Any]:
+        """Printer cache plus integration-only keys for status mappers."""
+        if not self._integration_data:
+            return self._cached_status
+        return self._cached_status | self._integration_data
+
     def _update_printer_status(self) -> None:
         """Update printer_data.status from cached status."""
         try:
+            cc2_view = self._cc2_status_view()
             # Map CC2 status format to PrinterStatus
             mapped_status = CC2StatusMapper.map_status(
-                self._cached_status, self.printer.printer_type
+                cc2_view, self.printer.printer_type
             )
             self.printer_data.status = mapped_status
             self.logger.debug(
@@ -710,9 +713,7 @@ class ElegooCC2Client:
                 "filename"
             )
             self.printer_data.gcode_filament_data = (
-                CC2StatusMapper.map_filament_data(
-                    self._cached_status, current_filename
-                )
+                CC2StatusMapper.map_filament_data(cc2_view, current_filename)
             )
 
             # Update current job for begin_time/end_time sensors
@@ -734,7 +735,7 @@ class ElegooCC2Client:
         total_layer = print_status.get("total_layer")
         if total_layer is None:
             # Try to get from cached file details
-            file_details = self._cached_status.get("_file_details", {})
+            file_details = self._integration_data.get("_file_details", {})
             if filename in file_details:
                 total_layer = file_details[filename].get("TotalLayers")
             elif not hasattr(self, "_pending_file_detail_request"):
@@ -745,7 +746,7 @@ class ElegooCC2Client:
                     self._request_proxy_filament_background(filename)
 
         # Get cached thumbnail for this file
-        file_thumbnails = self._cached_status.get("_file_thumbnails", {})
+        file_thumbnails = self._integration_data.get("_file_thumbnails", {})
         thumbnail = file_thumbnails.get(filename)
         if not thumbnail and not hasattr(self, "_pending_thumbnail_request"):
             # Request thumbnail in background (only once per filename)
@@ -825,9 +826,9 @@ class ElegooCC2Client:
         try:
             data = await self._gcode_proxy.fetch_filament_data(filename)
             if data:
-                if "_file_details" not in self._cached_status:
-                    self._cached_status["_file_details"] = {}
-                file_info = self._cached_status["_file_details"].setdefault(
+                if "_file_details" not in self._integration_data:
+                    self._integration_data["_file_details"] = {}
+                file_info = self._integration_data["_file_details"].setdefault(
                     filename, {}
                 )
                 file_info["proxy_filament"] = data
@@ -866,8 +867,8 @@ class ElegooCC2Client:
         self, filename: str, result: dict[str, Any]
     ) -> None:
         """Handle file detail response and cache TotalLayers + filament data."""
-        if "_file_details" not in self._cached_status:
-            self._cached_status["_file_details"] = {}
+        if "_file_details" not in self._integration_data:
+            self._integration_data["_file_details"] = {}
 
         total_layers = (
             result.get("TotalLayers")
@@ -882,7 +883,7 @@ class ElegooCC2Client:
         has_data = total_layers or total_filament_used is not None or color_map
 
         if has_data:
-            detail = self._cached_status["_file_details"].get(filename, {})
+            detail = self._integration_data["_file_details"].get(filename, {})
             if total_layers:
                 detail["TotalLayers"] = total_layers
             if total_filament_used is not None:
@@ -892,7 +893,7 @@ class ElegooCC2Client:
             if print_time is not None:
                 detail["print_time"] = print_time
 
-            self._cached_status["_file_details"][filename] = detail
+            self._integration_data["_file_details"][filename] = detail
             self.logger.debug(
                 "Cached file details for %s: TotalLayers=%s, "
                 "total_filament_used=%s, color_map_entries=%s",
@@ -939,15 +940,15 @@ class ElegooCC2Client:
         self, filename: str, result: dict[str, Any]
     ) -> None:
         """Handle file thumbnail response and cache thumbnail data."""
-        if "_file_thumbnails" not in self._cached_status:
-            self._cached_status["_file_thumbnails"] = {}
+        if "_file_thumbnails" not in self._integration_data:
+            self._integration_data["_file_thumbnails"] = {}
 
         thumbnail = result.get("thumbnail")
         if thumbnail:
             # Store as data URI for use by the image entity
             if not thumbnail.startswith("data:"):
                 thumbnail = f"data:image/png;base64,{thumbnail}"
-            self._cached_status["_file_thumbnails"][filename] = thumbnail
+            self._integration_data["_file_thumbnails"][filename] = thumbnail
             self.logger.debug("Cached file thumbnail for %s", filename)
             # Update printer status so the thumbnail propagates to the job
             self._update_printer_status()

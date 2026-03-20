@@ -17,6 +17,7 @@ class TestHandleFileDetailResponse:
 
         client = MagicMock(spec=ElegooCC2Client)
         client._cached_status = {}
+        client._integration_data = {}
         client.logger = MagicMock()
         client._handle_file_detail_response = (
             ElegooCC2Client._handle_file_detail_response.__get__(
@@ -37,7 +38,7 @@ class TestHandleFileDetailResponse:
 
         client._handle_file_detail_response("test.gcode", result)
 
-        details = client._cached_status["_file_details"]["test.gcode"]
+        details = client._integration_data["_file_details"]["test.gcode"]
         assert details["TotalLayers"] == 722
         assert details["total_filament_used"] == 24.8
         assert details["color_map"] == [{"color": "#0B6283", "name": "PLA", "t": 3}]
@@ -50,7 +51,7 @@ class TestHandleFileDetailResponse:
 
         client._handle_file_detail_response("test.gcode", result)
 
-        details = client._cached_status["_file_details"]["test.gcode"]
+        details = client._integration_data["_file_details"]["test.gcode"]
         assert details["TotalLayers"] == 500
         assert "total_filament_used" not in details
         assert "color_map" not in details
@@ -65,7 +66,7 @@ class TestHandleFileDetailResponse:
 
         client._handle_file_detail_response("test.gcode", result)
 
-        details = client._cached_status["_file_details"]["test.gcode"]
+        details = client._integration_data["_file_details"]["test.gcode"]
         assert details["total_filament_used"] == 10.5
         assert details["color_map"] == [{"color": "#FF0000", "name": "PETG", "t": 0}]
         assert "TotalLayers" not in details
@@ -83,7 +84,7 @@ class TestHandleFileDetailResponse:
 
         client._handle_file_detail_response("multi.gcode", result)
 
-        details = client._cached_status["_file_details"]["multi.gcode"]
+        details = client._integration_data["_file_details"]["multi.gcode"]
         assert len(details["color_map"]) == 4
         assert details["color_map"][3]["name"] == "ABS"
 
@@ -94,12 +95,12 @@ class TestHandleFileDetailResponse:
 
         client._handle_file_detail_response("empty.gcode", result)
 
-        assert "empty.gcode" not in client._cached_status.get("_file_details", {})
+        assert "empty.gcode" not in client._integration_data.get("_file_details", {})
 
     def test_preserves_existing_proxy_filament(self) -> None:
         """File detail arriving after proxy must not nuke proxy_filament."""
         client = self._make_client()
-        client._cached_status["_file_details"] = {
+        client._integration_data["_file_details"] = {
             "test.gcode": {
                 "proxy_filament": {
                     "filename": "test.gcode",
@@ -119,7 +120,7 @@ class TestHandleFileDetailResponse:
 
         client._handle_file_detail_response("test.gcode", result)
 
-        details = client._cached_status["_file_details"]["test.gcode"]
+        details = client._integration_data["_file_details"]["test.gcode"]
         assert details["TotalLayers"] == 722
         assert details["total_filament_used"] == 24.8
         assert details["color_map"] == [{"color": "#0B6283", "name": "PLA", "t": 3}]
@@ -138,7 +139,7 @@ class TestHandleFileDetailResponse:
         }
         client._handle_file_detail_response("test.gcode", file_detail_result)
 
-        details = client._cached_status["_file_details"]["test.gcode"]
+        details = client._integration_data["_file_details"]["test.gcode"]
         details["proxy_filament"] = {
             "filename": "test.gcode",
             "filament": {"per_slot_grams": [1.0, 2.0]},
@@ -154,7 +155,7 @@ class TestHandleFileDetailResponse:
 
         client._handle_file_detail_response("test.gcode", result)
 
-        details = client._cached_status["_file_details"]["test.gcode"]
+        details = client._integration_data["_file_details"]["test.gcode"]
         assert details["TotalLayers"] == 200
         assert "color_map" not in details
 
@@ -165,7 +166,7 @@ class TestHandleFileDetailResponse:
 
         client._handle_file_detail_response("test.gcode", result)
 
-        details = client._cached_status["_file_details"]["test.gcode"]
+        details = client._integration_data["_file_details"]["test.gcode"]
         assert details["total_filament_used"] == 0
 
 
