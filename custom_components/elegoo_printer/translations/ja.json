@@ -19,10 +19,10 @@
         "data": {
           "ip_address": "プリンター IP アドレス",
           "cc2_access_code": "アクセスコード（オプション）",
-          "gcode_proxy_url": "GCode プロキシ IP（オプション）"
+          "gcode_proxy_url": "GCode プロキシ URL（オプション）"
         },
         "data_description": {
-          "gcode_proxy_url": "エクストルーダーごとのフィラメント追跡のための cc2-gcode-capture-proxy サーバーの IP アドレス。無効にするには空白のままにしてください。"
+          "gcode_proxy_url": "cc2-gcode-capture-proxy のベース URL（ホスト、ホスト:ポート、または http(s) URL。スキームを省略すると http が使用されます）。無効にするには空白のままにしてください。"
         }
       },
       "mqtt_options": {
@@ -114,7 +114,8 @@
       "cc2_options_no_printer_found": "CC2 プリンターが見つかりません。",
       "cc2_access_code_required": "このプリンターには認証のためにアクセスコードが必要です。",
       "cc2_authentication_failed": "認証に失敗しました。プリンターの設定でアクセスコードを確認してください: 設定 → ネットワーク → アクセスコード。",
-      "gcode_proxy_unreachable": "GCode プロキシサーバーに接続できません。IP アドレスとプロキシが実行中であることを確認してください。"
+      "gcode_proxy_unreachable": "GCode プロキシサーバーに接続できません。IP アドレスとプロキシが実行中であることを確認してください。",
+      "gcode_proxy_invalid": "GCode プロキシアドレスが無効です。ホストまたはホスト:ポート、もしくはスキームが重複していない http(s) URL を使用してください。"
     },
     "abort": {
       "already_configured": "このエントリは既に構成されています。"

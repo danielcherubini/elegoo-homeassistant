@@ -19,10 +19,10 @@
         "data": {
           "ip_address": "Adres IP drukarki",
           "cc2_access_code": "Kod dostępu (opcjonalne)",
-          "gcode_proxy_url": "IP serwera proxy GCode (opcjonalne)"
+          "gcode_proxy_url": "URL proxy GCode (opcjonalne)"
         },
         "data_description": {
-          "gcode_proxy_url": "Adres IP serwera cc2-gcode-capture-proxy do śledzenia filamentu na ekstruder. Pozostaw puste, aby wyłączyć."
+          "gcode_proxy_url": "Bazowy URL cc2-gcode-capture-proxy (host, host:port lub URL http(s); jeśli pominiesz schemat, zostanie użyty http). Pozostaw puste, aby wyłączyć."
         }
       },
       "mqtt_options": {
@@ -114,7 +114,8 @@
       "cc2_options_no_printer_found": "Drukarka CC2 nie może zostać znaleziona.",
       "cc2_access_code_required": "Ta drukarka wymaga kodu dostępu do uwierzytelniania.",
       "cc2_authentication_failed": "Uwierzytelnianie nie powiodło się. Sprawdź kod dostępu w ustawieniach drukarki: Ustawienia → Sieć → Kod dostępu.",
-      "gcode_proxy_unreachable": "Nie można połączyć się z serwerem proxy GCode. Sprawdź adres IP i czy serwer proxy jest uruchomiony."
+      "gcode_proxy_unreachable": "Nie można połączyć się z serwerem proxy GCode. Sprawdź adres IP i czy serwer proxy jest uruchomiony.",
+      "gcode_proxy_invalid": "Nieprawidłowy adres proxy GCode. Użyj hosta lub host:port, lub adresu URL http(s) bez zduplikowanych schematów."
     },
     "abort": {
       "already_configured": "Ten wpis jest już skonfigurowany."

@@ -19,10 +19,10 @@
         "data": {
           "ip_address": "عنوان IP للطابعة",
           "cc2_access_code": "رمز الوصول (اختياري)",
-          "gcode_proxy_url": "عنوان IP وكيل GCode (اختياري)"
+          "gcode_proxy_url": "عنوان URL وكيل GCode (اختياري)"
         },
         "data_description": {
-          "gcode_proxy_url": "عنوان IP لخادم cc2-gcode-capture-proxy لتتبع الفتيل لكل بثق. اتركه فارغًا لتعطيله."
+          "gcode_proxy_url": "عنوان URL الأساسي لـ cc2-gcode-capture-proxy (مضيف، مضيف:منفذ، أو عنوان http(s)؛ يُستخدم http إذا لم يُحدد البروتوكول). اتركه فارغًا لتعطيله."
         }
       },
       "mqtt_options": {
@@ -114,7 +114,8 @@
       "cc2_options_no_printer_found": "لم يتم العثور على طابعة CC2.",
       "cc2_access_code_required": "تتطلب هذه الطابعة رمز دخول للمصادقة.",
       "cc2_authentication_failed": "فشل المصادقة. تحقق من رمز الدخول في إعدادات الطابعة: الإعدادات → الشبكة → رمز الدخول.",
-      "gcode_proxy_unreachable": "تعذّر الوصول إلى خادم وكيل GCode. تحقق من عنوان IP وتأكد من تشغيل الوكيل."
+      "gcode_proxy_unreachable": "تعذّر الوصول إلى خادم وكيل GCode. تحقق من عنوان IP وتأكد من تشغيل الوكيل.",
+      "gcode_proxy_invalid": "عنوان وكيل GCode غير صالح. استخدم مضيفًا أو مضيف:منفذ، أو عنوان http(s) بدون تكرار البروتوكول."
     },
     "abort": {
       "already_configured": "تم تكوين هذا الإدخال مسبقاً."

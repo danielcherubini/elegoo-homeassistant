@@ -19,10 +19,10 @@
         "data": {
           "ip_address": "IP-адрес принтера",
           "cc2_access_code": "Код доступа (необязательно)",
-          "gcode_proxy_url": "IP прокси GCode (необязательно)"
+          "gcode_proxy_url": "URL прокси GCode (необязательно)"
         },
         "data_description": {
-          "gcode_proxy_url": "IP-адрес сервера cc2-gcode-capture-proxy для отслеживания филамента по экструдеру. Оставьте пустым для отключения."
+          "gcode_proxy_url": "Базовый URL cc2-gcode-capture-proxy (хост, хост:порт или URL http(s); если схема не указана, используется http). Оставьте пустым для отключения."
         }
       },
       "mqtt_options": {
@@ -114,7 +114,8 @@
       "cc2_options_no_printer_found": "Принтер CC2 не может быть найден.",
       "cc2_access_code_required": "Этот принтер требует код доступа для аутентификации.",
       "cc2_authentication_failed": "Аутентификация провалилась. Проверьте код доступа в настройках принтера: Настройки → Сеть → Код доступа.",
-      "gcode_proxy_unreachable": "Не удаётся связаться с прокси-сервером GCode. Проверьте IP-адрес и работу прокси."
+      "gcode_proxy_unreachable": "Не удаётся связаться с прокси-сервером GCode. Проверьте IP-адрес и работу прокси.",
+      "gcode_proxy_invalid": "Неверный адрес прокси GCode. Укажите хост или хост:порт, или URL http(s) без повторяющихся схем."
     },
     "abort": {
       "already_configured": "Этот элемент уже настроен."

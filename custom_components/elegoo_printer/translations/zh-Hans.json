@@ -19,10 +19,10 @@
         "data": {
           "ip_address": "打印机 IP 地址",
           "cc2_access_code": "访问码（可选）",
-          "gcode_proxy_url": "GCode 代理服务器 IP（可选）"
+          "gcode_proxy_url": "GCode 代理 URL（可选）"
         },
         "data_description": {
-          "gcode_proxy_url": "cc2-gcode-capture-proxy 服务器的 IP 地址，用于按挤出机追踪耗材。留空则禁用。"
+          "gcode_proxy_url": "cc2-gcode-capture-proxy 的基础 URL（主机、主机:端口或 http(s) URL；省略协议时默认使用 http）。留空则禁用。"
         }
       },
       "mqtt_options": {
@@ -114,7 +114,8 @@
       "cc2_options_no_printer_found": "CC2 打印机未找到。",
       "cc2_access_code_required": "此打印机需要访问码进行认证。",
       "cc2_authentication_failed": "认证失败。在打印机设置中检查访问码：设置 → 网络 → 访问码。",
-      "gcode_proxy_unreachable": "无法连接到 GCode 代理服务器。请验证 IP 地址并确认代理正在运行。"
+      "gcode_proxy_unreachable": "无法连接到 GCode 代理服务器。请验证 IP 地址并确认代理正在运行。",
+      "gcode_proxy_invalid": "GCode 代理地址无效。请使用主机或主机:端口，或不含重复协议前缀的 http(s) URL。"
     },
     "abort": {
       "already_configured": "此条目已配置。"
