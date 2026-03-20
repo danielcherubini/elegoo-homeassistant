@@ -695,7 +695,8 @@ class ElegooCC2Client:
         return self._cached_status | self._integration_data
 
     def _update_printer_status(self) -> None:
-        """Update printer_data.status from cached status.
+        """
+        Update printer_data.status from cached status.
 
         Concurrency note: all callers run on the same asyncio event loop and
         never ``await`` between mutating ``_cached_status`` /
