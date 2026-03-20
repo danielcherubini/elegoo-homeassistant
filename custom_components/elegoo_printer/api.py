@@ -50,6 +50,15 @@ if TYPE_CHECKING:
     )
 
 
+def _sanitize_url_for_log(url: str) -> str:
+    """Return a copy of URL with userinfo removed, safe for logs."""
+    parts = urlsplit(url.strip())
+    netloc = parts.netloc
+    if "@" in netloc:
+        netloc = netloc.rpartition("@")[-1]
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
 class ElegooPrinterApiClient:
     """Sample API Client."""
 
@@ -202,7 +211,7 @@ class ElegooPrinterApiClient:
                 )
                 logger.info(
                     "GCode proxy configured at %s for printer %s",
-                    gcode_proxy_url,
+                    _sanitize_url_for_log(gcode_proxy_url),
                     printer.name,
                 )
             self.client = ElegooCC2Client(
