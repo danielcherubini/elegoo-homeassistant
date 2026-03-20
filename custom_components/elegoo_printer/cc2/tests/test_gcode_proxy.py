@@ -9,6 +9,15 @@ import aiohttp
 
 from custom_components.elegoo_printer.cc2.gcode_proxy import GCodeProxyClient
 
+
+def _response_context(resp: AsyncMock) -> MagicMock:
+    """Async context manager that yields resp (matches aiohttp session.get)."""
+    context_manager = MagicMock()
+    context_manager.__aenter__ = AsyncMock(return_value=resp)
+    context_manager.__aexit__ = AsyncMock(return_value=None)
+    return context_manager
+
+
 SAMPLE_RESPONSE = {
     "filename": "CC2_benchy.gcode",
     "slicer_version": "ElegooSlicer 1.3.2.9",
@@ -38,7 +47,7 @@ class TestFetchFilamentData:
         resp = AsyncMock()
         resp.status = 200
         resp.json = AsyncMock(return_value=SAMPLE_RESPONSE)
-        session.get = AsyncMock(return_value=resp)
+        session.get = MagicMock(return_value=_response_context(resp))
 
         result = asyncio.run(client.fetch_filament_data("CC2_benchy.gcode"))
 
@@ -50,7 +59,7 @@ class TestFetchFilamentData:
         client, session = _make_client()
         resp = AsyncMock()
         resp.status = 404
-        session.get = AsyncMock(return_value=resp)
+        session.get = MagicMock(return_value=_response_context(resp))
 
         result = asyncio.run(client.fetch_filament_data("unknown.gcode"))
 
@@ -59,7 +68,10 @@ class TestFetchFilamentData:
     def test_timeout_returns_none(self) -> None:
         """Timeout returns None."""
         client, session = _make_client()
-        session.get = AsyncMock(side_effect=TimeoutError)
+        failing = MagicMock()
+        failing.__aenter__ = AsyncMock(side_effect=TimeoutError)
+        failing.__aexit__ = AsyncMock(return_value=None)
+        session.get = MagicMock(return_value=failing)
 
         result = asyncio.run(client.fetch_filament_data("test.gcode"))
 
@@ -68,7 +80,10 @@ class TestFetchFilamentData:
     def test_connection_error_returns_none(self) -> None:
         """Connection error returns None."""
         client, session = _make_client()
-        session.get = AsyncMock(side_effect=aiohttp.ClientError)
+        failing = MagicMock()
+        failing.__aenter__ = AsyncMock(side_effect=aiohttp.ClientError)
+        failing.__aexit__ = AsyncMock(return_value=None)
+        session.get = MagicMock(return_value=failing)
 
         result = asyncio.run(client.fetch_filament_data("test.gcode"))
 
@@ -84,7 +99,7 @@ class TestCheckHealth:
         resp = AsyncMock()
         resp.status = 200
         resp.json = AsyncMock(return_value={"status": "ok"})
-        session.get = AsyncMock(return_value=resp)
+        session.get = MagicMock(return_value=_response_context(resp))
 
         assert asyncio.run(client.check_health()) is True
 
@@ -93,14 +108,17 @@ class TestCheckHealth:
         client, session = _make_client()
         resp = AsyncMock()
         resp.status = 500
-        session.get = AsyncMock(return_value=resp)
+        session.get = MagicMock(return_value=_response_context(resp))
 
         assert asyncio.run(client.check_health()) is False
 
     def test_unreachable(self) -> None:
         """Unreachable proxy returns False."""
         client, session = _make_client()
-        session.get = AsyncMock(side_effect=aiohttp.ClientError)
+        failing = MagicMock()
+        failing.__aenter__ = AsyncMock(side_effect=aiohttp.ClientError)
+        failing.__aexit__ = AsyncMock(return_value=None)
+        session.get = MagicMock(return_value=failing)
 
         assert asyncio.run(client.check_health()) is False
 

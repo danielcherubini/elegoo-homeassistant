@@ -48,11 +48,17 @@ class GCodeProxyClient:
         url = f"{self._base_url}/api/filament"
         try:
             async with asyncio.timeout(REQUEST_TIMEOUT):
-                resp = await self._session.get(url, params={"filename": filename})
-            if resp.status != HTTPStatus.OK:
-                logger.debug("Proxy returned %s for filename %s", resp.status, filename)
-                return None
-            return await resp.json()
+                async with self._session.get(
+                    url, params={"filename": filename}
+                ) as resp:
+                    if resp.status != HTTPStatus.OK:
+                        logger.debug(
+                            "Proxy returned %s for filename %s",
+                            resp.status,
+                            filename,
+                        )
+                        return None
+                    return await resp.json()
         except TimeoutError:
             logger.debug("Proxy request timed out for filename %s", filename)
         except aiohttp.ClientError as exc:
@@ -71,10 +77,10 @@ class GCodeProxyClient:
         url = f"{self._base_url}/api/health"
         try:
             async with asyncio.timeout(REQUEST_TIMEOUT):
-                resp = await self._session.get(url)
-            if resp.status == HTTPStatus.OK:
-                data = await resp.json()
-                return data.get("status") == "ok"
+                async with self._session.get(url) as resp:
+                    if resp.status == HTTPStatus.OK:
+                        data = await resp.json()
+                        return data.get("status") == "ok"
         except (TimeoutError, aiohttp.ClientError):
             logger.debug("Proxy health check failed", exc_info=True)
         return False

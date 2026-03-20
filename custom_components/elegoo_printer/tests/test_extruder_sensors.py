@@ -16,6 +16,7 @@ from custom_components.elegoo_printer.definitions import (
     _has_slot,
     _has_total_filament_changes_data,
     _has_total_filament_cost_data,
+    _has_total_filament_used_data,
 )
 from custom_components.elegoo_printer.sdcp.models.ams import AMSStatus
 from custom_components.elegoo_printer.sdcp.models.printer import (
@@ -131,7 +132,28 @@ class TestHasGcodeFilamentSlot:
 
 
 class TestHasTotalFilamentProxyTotals:
-    """exists_fn helpers for total cost / changes proxy sensors."""
+    """exists_fn helpers for total used / cost / changes sensors."""
+
+    def test_used_when_present(self) -> None:
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        assert _has_total_filament_used_data(pd) is True
+
+    def test_used_when_absent(self) -> None:
+        pd = _make_printer_data(filament_data=FileFilamentData())
+        assert _has_total_filament_used_data(pd) is False
+
+    def test_used_zero_counts(self) -> None:
+        pd = _make_printer_data(
+            filament_data=FileFilamentData(total_filament_used=0.0),
+        )
+        assert _has_total_filament_used_data(pd) is True
+
+    def test_used_no_gcode_filament_object(self) -> None:
+        pd = _make_printer_data()
+        assert _has_total_filament_used_data(pd) is False
+
+    def test_used_none_printer_data(self) -> None:
+        assert _has_total_filament_used_data(None) is False
 
     def test_cost_when_present(self) -> None:
         pd = _make_printer_data(filament_data=PROXY_FILAMENT)
@@ -264,7 +286,7 @@ class TestGetSlotAttributes:
         attrs = _get_slot_attributes(pd, 0)
         assert attrs["brand"] == "ELEGOO"
         assert attrs["source"] == "canvas"
-        assert attrs["diameter"] == "1.75"
+        assert attrs["diameter"] == SLOT_0_DIAMETER
         assert attrs["nozzle_temp_range"] == "190-230°C"
         assert attrs["enabled"] is True
         assert "density" not in attrs

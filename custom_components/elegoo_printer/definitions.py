@@ -159,6 +159,13 @@ def _has_gcode_filament_slot(printer_data: PrinterData, index: int) -> bool:
     )
 
 
+def _has_total_filament_used_data(printer_data: PrinterData) -> bool:
+    """Return whether file detail includes a total filament used value."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return False
+    return printer_data.gcode_filament_data.total_filament_used is not None
+
+
 def _has_total_filament_cost_data(printer_data: PrinterData) -> bool:
     """Return whether proxy/file detail includes a total cost value."""
     if not printer_data or not printer_data.gcode_filament_data:
@@ -212,6 +219,23 @@ def _get_slot_filament_type(printer_data: PrinterData, index: int) -> str | None
     return tray.filament_type if tray and tray.filament_type else None
 
 
+def _normalize_filament_diameter_mm(value: Any) -> float | str | None:
+    """Coerce diameter to float for consistent entity attributes when possible."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return float(stripped)
+        except ValueError:
+            return stripped
+    return None
+
+
 def _get_slot_attributes(printer_data: PrinterData, index: int) -> dict:
     """Get non-duplicate metadata attributes for A{n} Attributes sensor."""
     if not printer_data:
@@ -223,7 +247,9 @@ def _get_slot_attributes(printer_data: PrinterData, index: int) -> dict:
         if tray.brand:
             attrs["brand"] = tray.brand
         attrs["source"] = tray.from_source
-        attrs["diameter"] = tray.filament_diameter
+        tray_diameter = _normalize_filament_diameter_mm(tray.filament_diameter)
+        if tray_diameter is not None:
+            attrs["diameter"] = tray_diameter
         if tray.min_nozzle_temp > 0 and tray.max_nozzle_temp > 0:
             attrs["nozzle_temp_range"] = (
                 f"{tray.min_nozzle_temp}-{tray.max_nozzle_temp}°C"
@@ -237,7 +263,11 @@ def _get_slot_attributes(printer_data: PrinterData, index: int) -> dict:
         if index < len(data.per_slot_density):
             attrs["density"] = data.per_slot_density[index]
         if index < len(data.per_slot_diameter):
-            attrs["diameter"] = data.per_slot_diameter[index]
+            proxy_diameter = _normalize_filament_diameter_mm(
+                data.per_slot_diameter[index]
+            )
+            if proxy_diameter is not None:
+                attrs["diameter"] = proxy_diameter
         if index < len(data.per_slot_cost):
             attrs["cost"] = data.per_slot_cost[index]
 
@@ -1144,6 +1174,7 @@ PRINTER_STATUS_CC2_GCODE_FILAMENT: tuple[ElegooPrinterSensorEntityDescription, .
         extra_attributes=lambda entity: _get_total_filament_used_attributes(
             entity.coordinator.data
         ),
+        exists_fn=_has_total_filament_used_data,
     ),
 )
 
