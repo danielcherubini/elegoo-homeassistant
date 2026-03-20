@@ -229,9 +229,7 @@ def _get_slot_attributes(printer_data: PrinterData, index: int) -> dict:
                 f"{tray.min_nozzle_temp}-{tray.max_nozzle_temp}°C"
             )
         if tray.min_bed_temp > 0 and tray.max_bed_temp > 0:
-            attrs["bed_temp_range"] = (
-                f"{tray.min_bed_temp}-{tray.max_bed_temp}°C"
-            )
+            attrs["bed_temp_range"] = f"{tray.min_bed_temp}-{tray.max_bed_temp}°C"
         attrs["enabled"] = tray.enabled
 
     if printer_data.gcode_filament_data:
@@ -1075,15 +1073,14 @@ PRINTER_STATUS_CANVAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
             icon="mdi:information-outline",
             value_fn=(lambda pd, _i=i: _get_slot_filament_type(pd, _i)),
             extra_attributes=(
-                lambda entity, _i=i: _get_slot_attributes(
-                    entity.coordinator.data, _i
-                )
+                lambda entity, _i=i: _get_slot_attributes(entity.coordinator.data, _i)
             ),
             exists_fn=(lambda pd, _i=i: _has_slot(pd, _i)),
         )
         for i in range(4)
     ),
 )
+
 
 def _get_total_filament_used(printer_data: PrinterData) -> float | None:
     """Get total filament used in grams from gcode file detail."""
@@ -1136,9 +1133,7 @@ def _get_total_filament_changes(printer_data: PrinterData) -> int | None:
     return printer_data.gcode_filament_data.total_filament_changes
 
 
-PRINTER_STATUS_CC2_GCODE_FILAMENT: tuple[
-    ElegooPrinterSensorEntityDescription, ...
-] = (
+PRINTER_STATUS_CC2_GCODE_FILAMENT: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
         key="total_filament_used",
         name="Total Filament Used",

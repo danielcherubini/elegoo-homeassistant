@@ -50,9 +50,7 @@ class GCodeProxyClient:
             async with asyncio.timeout(REQUEST_TIMEOUT):
                 resp = await self._session.get(url, params={"filename": filename})
             if resp.status != HTTPStatus.OK:
-                logger.debug(
-                    "Proxy returned %s for filename %s", resp.status, filename
-                )
+                logger.debug("Proxy returned %s for filename %s", resp.status, filename)
                 return None
             return await resp.json()
         except TimeoutError:

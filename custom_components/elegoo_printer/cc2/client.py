@@ -720,8 +720,8 @@ class ElegooCC2Client:
             current_filename = self._cached_status.get("print_status", {}).get(
                 "filename"
             )
-            self.printer_data.gcode_filament_data = (
-                CC2StatusMapper.map_filament_data(cc2_view, current_filename)
+            self.printer_data.gcode_filament_data = CC2StatusMapper.map_filament_data(
+                cc2_view, current_filename
             )
 
             # Update current job for begin_time/end_time sensors

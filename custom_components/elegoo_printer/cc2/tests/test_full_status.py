@@ -20,8 +20,8 @@ def _make_client(
     client._non_continuous_count = 0
     client.logger = MagicMock()
 
-    client._handle_full_status = (
-        ElegooCC2Client._handle_full_status.__get__(client, ElegooCC2Client)
+    client._handle_full_status = ElegooCC2Client._handle_full_status.__get__(
+        client, ElegooCC2Client
     )
     client._update_printer_status = MagicMock()
     return client

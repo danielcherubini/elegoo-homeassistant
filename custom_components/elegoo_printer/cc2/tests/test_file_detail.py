@@ -125,7 +125,10 @@ class TestHandleFileDetailResponse:
         assert details["color_map"] == COLOR_MAP_SINGLE
         assert details["print_time"] == PRINT_TIME
         assert details["proxy_filament"]["filament"]["per_slot_grams"] == [
-            0.0, 0.0, 0.94, 11.95,
+            0.0,
+            0.0,
+            0.94,
+            11.95,
         ]
 
     def test_proxy_arriving_after_file_detail_merges(self) -> None:
