@@ -93,7 +93,14 @@ CC2 printers **MUST** be configured for LAN-Only mode:
 - For containerized Home Assistant (Docker/Kubernetes): Use host networking or proper network bridging
 - Port 1883 (MQTT) must be accessible between HA and printer
 
-**Optional GCode capture proxy:** In integration options you can set the cc2-gcode-capture-proxy base URL. Enter a hostname or IP, optional port, or a full `http://` / `https://` URL; the config flow normalizes the value so duplicate schemes (for example pasting `http://` twice) are not saved.
+**Optional GCode capture proxy:** 
+
+As of early 2026, Elegoo has not yet added per-slot filament data to the printer's MQTT status response.
+For Centauri Carbon 2 printers, you can use the [cc2-gcode-capture-proxy](https://github.com/lantern-eight/cc2-gcode-capture-proxy) which will capture the GCode file and provide the per-slot filament data to the integration.
+
+In integration options you can set the cc2-gcode-capture-proxy URL that you setup on your local network.
+
+With the proxy configured, additional sensors are created: per-slot A1–A4 grams, volume, and length, plus total filament cost and change count when the slicer provides them.
 
 See [CC2 Protocol Documentation](docs/CC2_PROTOCOL.md) for technical details.
 

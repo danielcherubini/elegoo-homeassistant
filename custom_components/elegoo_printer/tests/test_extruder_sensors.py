@@ -12,7 +12,10 @@ from custom_components.elegoo_printer.definitions import (
     _get_slot_grams,
     _get_slot_mm,
     _get_slot_name,
+    _has_gcode_filament_slot,
     _has_slot,
+    _has_total_filament_changes_data,
+    _has_total_filament_cost_data,
 )
 from custom_components.elegoo_printer.sdcp.models.ams import AMSStatus
 from custom_components.elegoo_printer.sdcp.models.printer import (
@@ -99,6 +102,52 @@ def _make_printer_data(
 
 def _make_canvas_status() -> AMSStatus:
     return AMSStatus(CANVAS_TRAY_DATA)
+
+
+class TestHasGcodeFilamentSlot:
+    """_has_gcode_filament_slot gates proxy quantity sensors per slot."""
+
+    def test_canvas_tray_implies_slot(self) -> None:
+        pd = _make_printer_data(ams_status=_make_canvas_status())
+        assert _has_gcode_filament_slot(pd, 0) is True
+        assert _has_gcode_filament_slot(pd, 1) is True
+
+    def test_proxy_color_map_implies_slot_without_canvas(self) -> None:
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        assert _has_gcode_filament_slot(pd, 0) is True
+        assert _has_gcode_filament_slot(pd, 3) is True
+
+    def test_unused_proxy_slot_false(self) -> None:
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        assert _has_gcode_filament_slot(pd, 1) is False
+        assert _has_gcode_filament_slot(pd, 2) is False
+
+    def test_no_data_false(self) -> None:
+        pd = _make_printer_data()
+        assert _has_gcode_filament_slot(pd, 0) is False
+
+    def test_none_printer_data(self) -> None:
+        assert _has_gcode_filament_slot(None, 0) is False
+
+
+class TestHasTotalFilamentProxyTotals:
+    """exists_fn helpers for total cost / changes proxy sensors."""
+
+    def test_cost_when_present(self) -> None:
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        assert _has_total_filament_cost_data(pd) is True
+
+    def test_cost_when_absent(self) -> None:
+        pd = _make_printer_data(filament_data=FileFilamentData())
+        assert _has_total_filament_cost_data(pd) is False
+
+    def test_changes_when_present(self) -> None:
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        assert _has_total_filament_changes_data(pd) is True
+
+    def test_changes_when_absent(self) -> None:
+        pd = _make_printer_data(filament_data=FileFilamentData())
+        assert _has_total_filament_changes_data(pd) is False
 
 
 class TestHasSlot:

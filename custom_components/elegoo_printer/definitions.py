@@ -131,6 +131,48 @@ def _has_slot(printer_data: PrinterData, index: int) -> bool:
     return _get_canvas_tray(printer_data, index) is not None
 
 
+def _has_gcode_filament_slot(printer_data: PrinterData, index: int) -> bool:
+    """
+    Whether an A{n} slot should exist for gcode/proxy filament quantity sensors.
+
+    Matches Canvas tray gating when AMS trays exist; otherwise uses proxy/file
+    data (color_map or non-zero per-slot usage).
+    """
+    if _has_slot(printer_data, index):
+        return True
+    if not printer_data or not printer_data.gcode_filament_data:
+        return False
+    data = printer_data.gcode_filament_data
+    if any(entry.get("t") == index for entry in data.color_map):
+        return True
+
+    def _slot_has_nonzero_usage(values: list[float]) -> bool:
+        if index >= len(values):
+            return False
+        amount = values[index]
+        return amount is not None and amount != 0
+
+    return (
+        _slot_has_nonzero_usage(data.per_slot_grams)
+        or _slot_has_nonzero_usage(data.per_slot_cm3)
+        or _slot_has_nonzero_usage(data.per_slot_mm)
+    )
+
+
+def _has_total_filament_cost_data(printer_data: PrinterData) -> bool:
+    """Return whether proxy/file detail includes a total cost value."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return False
+    return printer_data.gcode_filament_data.total_cost is not None
+
+
+def _has_total_filament_changes_data(printer_data: PrinterData) -> bool:
+    """Return whether proxy/file detail includes a filament change count."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return False
+    return printer_data.gcode_filament_data.total_filament_changes is not None
+
+
 def _get_slot_color(printer_data: PrinterData, index: int) -> str | None:
     """Get hex color for a slot. Proxy color_map first, Canvas fallback."""
     if not printer_data:
@@ -1123,6 +1165,7 @@ PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT: tuple[
             native_unit_of_measurement="g",
             suggested_display_precision=2,
             value_fn=(lambda pd, _i=i: _get_slot_grams(pd, _i)),
+            exists_fn=(lambda pd, _i=i: _has_gcode_filament_slot(pd, _i)),
         )
         for i in range(4)
     ),
@@ -1136,6 +1179,7 @@ PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT: tuple[
             native_unit_of_measurement="cm³",
             suggested_display_precision=2,
             value_fn=(lambda pd, _i=i: _get_slot_cm3(pd, _i)),
+            exists_fn=(lambda pd, _i=i: _has_gcode_filament_slot(pd, _i)),
         )
         for i in range(4)
     ),
@@ -1149,6 +1193,7 @@ PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT: tuple[
             native_unit_of_measurement=UnitOfLength.MILLIMETERS,
             suggested_display_precision=2,
             value_fn=(lambda pd, _i=i: _get_slot_mm(pd, _i)),
+            exists_fn=(lambda pd, _i=i: _has_gcode_filament_slot(pd, _i)),
         )
         for i in range(4)
     ),
@@ -1163,12 +1208,14 @@ PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT: tuple[
         extra_attributes=lambda entity: _get_total_filament_cost_attributes(
             entity.coordinator.data
         ),
+        exists_fn=_has_total_filament_cost_data,
     ),
     ElegooPrinterSensorEntityDescription(
         key="total_filament_changes",
         name="Total Filament Changes",
         icon="mdi:swap-horizontal",
         value_fn=lambda printer_data: _get_total_filament_changes(printer_data),
+        exists_fn=_has_total_filament_changes_data,
     ),
 )
 

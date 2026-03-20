@@ -132,6 +132,13 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
         )
 
     @property
+    def available(self) -> bool:
+        """Gate availability on exists_fn for optional slot/total sensors."""
+        if not super().available:
+            return False
+        return self.entity_description.exists_fn(self.coordinator.data)
+
+    @property
     def extra_state_attributes(self) -> dict:
         """
         Returns additional state attributes for the sensor.
