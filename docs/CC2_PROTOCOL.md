@@ -2416,7 +2416,7 @@ The CONFIG_BLOCK at the end contains slicer profile settings with semicolon-sepa
 
 > **Note:** This per-slot data is only accessible from the G-code file itself, not from the printer's MQTT status or file detail responses. The MQTT file detail (method 1046) provides `total_filament_used` as a single number and `color_map` with filament types, but not the per-slot weight breakdown.
 >
-> On stock firmware, G-code file content cannot be downloaded from the printer (see [Method 1057](#method-1057--download_file)). To access per-slot filament data, the file may be captured at upload time using a local network proxy between the slicer and the printer.
+> On stock firmware, G-code file content cannot be downloaded from the printer (see [Method 1057](#method-1057---set_printer_download_file)). To access per-slot filament data, the file may be captured at upload time using a local network proxy between the slicer and the printer.
 >
 > **Proxy approach:** A local network proxy intercepts the slicer's `PUT /upload` request on port 80, parses the G-code file, and forwards the request to the printer. The slicer is pointed at the proxy's IP instead of the printer's IP and can query it for per-slot filament data. The proxy also provides TCP pass-through on ports 1883 (MQTT over TCP), 9001 (MQTT over WebSocket), and 8080 (camera) so the slicer's Device page continues to work normally. The Device page's JavaScript creates its own MQTT-over-WebSocket client on port 9001 for file lists, live status, and controls. The HA integration connects directly to the printer and does not need to go through the proxy.
 >
