@@ -114,7 +114,7 @@
       "cc2_options_no_printer_found": "CC2 tiskárna nemůže být nalezena.",
       "cc2_access_code_required": "Tato tiskárna vyžaduje přístupový kód pro autentizaci.",
       "cc2_authentication_failed": "Autentizace selhala. Zkontrolujte přístupový kód v nastavení tiskárny: Nastavení → Síť → Přístupový kód.",
-      "gcode_proxy_unreachable": "Nelze se připojit k proxy serveru GCode. Ověřte IP adresu a zda proxy server běží.",
+      "gcode_proxy_unreachable": "Nelze se připojit k proxy serveru GCode. Ověřte adresu nebo URL a zda proxy server běží.",
       "gcode_proxy_invalid": "Neplatná adresa proxy GCode. Použijte hostitele nebo hostitel:port, nebo http(s) URL bez duplicitních schémat."
     },
     "abort": {

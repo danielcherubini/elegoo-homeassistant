@@ -114,7 +114,7 @@
       "cc2_options_no_printer_found": "CC2 printer kunne ikke findes.",
       "cc2_access_code_required": "Denne printer kræver en adgangskode til autentificering.",
       "cc2_authentication_failed": "Autentificering mislykkedes. Verificer adgangskode i printerindstillinger: Indstillinger → Netværk → Adgangskode.",
-      "gcode_proxy_unreachable": "Kan ikke nå GCode-proxyserveren. Bekræft IP-adressen og at proxyen kører.",
+      "gcode_proxy_unreachable": "Kan ikke nå GCode-proxyserveren. Bekræft adressen eller URL'en og at proxyen kører.",
       "gcode_proxy_invalid": "Ugyldig GCode-proxyadresse. Brug en vært eller vært:port, eller en http(s)-URL uden dobbelte skemaer."
     },
     "abort": {

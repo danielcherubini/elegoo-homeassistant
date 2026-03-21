@@ -114,7 +114,7 @@
       "cc2_options_no_printer_found": "Drukarka CC2 nie może zostać znaleziona.",
       "cc2_access_code_required": "Ta drukarka wymaga kodu dostępu do uwierzytelniania.",
       "cc2_authentication_failed": "Uwierzytelnianie nie powiodło się. Sprawdź kod dostępu w ustawieniach drukarki: Ustawienia → Sieć → Kod dostępu.",
-      "gcode_proxy_unreachable": "Nie można połączyć się z serwerem proxy GCode. Sprawdź adres IP i czy serwer proxy jest uruchomiony.",
+      "gcode_proxy_unreachable": "Nie można połączyć się z serwerem proxy GCode. Sprawdź adres lub URL i czy serwer proxy jest uruchomiony.",
       "gcode_proxy_invalid": "Nieprawidłowy adres proxy GCode. Użyj hosta lub host:port, lub adresu URL http(s) bez zduplikowanych schematów."
     },
     "abort": {

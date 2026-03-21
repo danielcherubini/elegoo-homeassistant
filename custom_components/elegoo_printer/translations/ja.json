@@ -114,7 +114,7 @@
       "cc2_options_no_printer_found": "CC2 プリンターが見つかりません。",
       "cc2_access_code_required": "このプリンターには認証のためにアクセスコードが必要です。",
       "cc2_authentication_failed": "認証に失敗しました。プリンターの設定でアクセスコードを確認してください: 設定 → ネットワーク → アクセスコード。",
-      "gcode_proxy_unreachable": "GCode プロキシサーバーに接続できません。IP アドレスとプロキシが実行中であることを確認してください。",
+      "gcode_proxy_unreachable": "GCode プロキシサーバーに接続できません。アドレスまたは URL とプロキシが実行中であることを確認してください。",
       "gcode_proxy_invalid": "GCode プロキシアドレスが無効です。ホストまたはホスト:ポート、もしくはスキームが重複していない http(s) URL を使用してください。"
     },
     "abort": {

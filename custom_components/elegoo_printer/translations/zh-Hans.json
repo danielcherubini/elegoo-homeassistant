@@ -114,7 +114,7 @@
       "cc2_options_no_printer_found": "CC2 打印机未找到。",
       "cc2_access_code_required": "此打印机需要访问码进行认证。",
       "cc2_authentication_failed": "认证失败。在打印机设置中检查访问码：设置 → 网络 → 访问码。",
-      "gcode_proxy_unreachable": "无法连接到 GCode 代理服务器。请验证 IP 地址并确认代理正在运行。",
+      "gcode_proxy_unreachable": "无法连接到 GCode 代理服务器。请验证地址或 URL 并确认代理正在运行。",
       "gcode_proxy_invalid": "GCode 代理地址无效。请使用主机或主机:端口，或不含重复协议前缀的 http(s) URL。"
     },
     "abort": {

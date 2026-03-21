@@ -114,7 +114,7 @@
       "cc2_options_no_printer_found": "A impressora CC2 não pôde ser encontrada.",
       "cc2_access_code_required": "Esta impressora requer um código de acesso para autenticação.",
       "cc2_authentication_failed": "Falha na autenticação. Verifique o código de acesso nas configurações da impressora: Configurações → Rede → Código de Acesso.",
-      "gcode_proxy_unreachable": "Não é possível alcançar o servidor proxy GCode. Verifique o endereço IP e se o proxy está em execução.",
+      "gcode_proxy_unreachable": "Não é possível alcançar o servidor proxy GCode. Verifique o endereço ou URL e se o proxy está em execução.",
       "gcode_proxy_invalid": "Endereço do proxy GCode inválido. Use um host ou host:porta, ou uma URL http(s) sem esquemas duplicados."
     },
     "abort": {
