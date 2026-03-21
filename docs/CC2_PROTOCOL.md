@@ -6,11 +6,11 @@ This document is the authoritative reference for the Elegoo Centauri Carbon 2 (C
 
 **Sources**: Derived from analysis of the [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) open-source SDK (v1.3.6), packet captures of ElegooSlicer traffic, port scanning and endpoint probing of stock firmware, and community reverse engineering efforts.
 
-### elegoo-link SDK
+## elegoo-link SDK
 
 Elegoo provides an official open-source C++ SDK — [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) — that implements the full CC2 protocol. This is the same library that ElegooSlicer uses internally.
 
-### ⚠️ Firmware Compatibility
+## ⚠️ Firmware Compatibility
 
 This document covers **two firmware variants** that behave differently. Sections are labeled accordingly:
 
