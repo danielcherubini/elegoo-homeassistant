@@ -133,7 +133,7 @@ class ElegooPrinterSensor(ElegooPrinterEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
-        """Gate availability on exists_fn for optional slot/total sensors."""
+        """Use exists_fn when set (e.g. UV LED); otherwise entity stays available."""
         if not super().available:
             return False
         return self.entity_description.exists_fn(self.coordinator.data)

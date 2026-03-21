@@ -5,6 +5,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from custom_components.elegoo_printer.definitions import (
+    PRINTER_STATUS_CANVAS,
+    PRINTER_STATUS_CC2_GCODE_FILAMENT,
+    PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT,
     _get_slot_attributes,
     _get_slot_cm3,
     _get_slot_color,
@@ -13,11 +16,6 @@ from custom_components.elegoo_printer.definitions import (
     _get_slot_mm,
     _get_slot_name,
     _get_total_filament_used_attributes,
-    _has_gcode_filament_slot,
-    _has_slot,
-    _has_total_filament_changes_data,
-    _has_total_filament_cost_data,
-    _has_total_filament_used_data,
 )
 from custom_components.elegoo_printer.sdcp.models.ams import AMSStatus
 from custom_components.elegoo_printer.sdcp.models.printer import (
@@ -104,94 +102,6 @@ def _make_printer_data(
 
 def _make_canvas_status() -> AMSStatus:
     return AMSStatus(CANVAS_TRAY_DATA)
-
-
-class TestHasGcodeFilamentSlot:
-    """_has_gcode_filament_slot gates proxy quantities and Canvas A{n} color/name."""
-
-    def test_canvas_tray_implies_slot(self) -> None:
-        pd = _make_printer_data(ams_status=_make_canvas_status())
-        assert _has_gcode_filament_slot(pd, 0) is True
-        assert _has_gcode_filament_slot(pd, 1) is True
-
-    def test_proxy_color_map_implies_slot_without_canvas(self) -> None:
-        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
-        assert _has_gcode_filament_slot(pd, 0) is True
-        assert _has_gcode_filament_slot(pd, 3) is True
-
-    def test_unused_proxy_slot_false(self) -> None:
-        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
-        assert _has_gcode_filament_slot(pd, 1) is False
-        assert _has_gcode_filament_slot(pd, 2) is False
-
-    def test_no_data_false(self) -> None:
-        pd = _make_printer_data()
-        assert _has_gcode_filament_slot(pd, 0) is False
-
-    def test_none_printer_data(self) -> None:
-        assert _has_gcode_filament_slot(None, 0) is False
-
-
-class TestHasTotalFilamentProxyTotals:
-    """exists_fn helpers for total used / cost / changes sensors."""
-
-    def test_used_when_present(self) -> None:
-        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
-        assert _has_total_filament_used_data(pd) is True
-
-    def test_used_when_absent(self) -> None:
-        pd = _make_printer_data(filament_data=FileFilamentData())
-        assert _has_total_filament_used_data(pd) is False
-
-    def test_used_zero_counts(self) -> None:
-        pd = _make_printer_data(
-            filament_data=FileFilamentData(total_filament_used=0.0),
-        )
-        assert _has_total_filament_used_data(pd) is True
-
-    def test_used_no_gcode_filament_object(self) -> None:
-        pd = _make_printer_data()
-        assert _has_total_filament_used_data(pd) is False
-
-    def test_used_none_printer_data(self) -> None:
-        assert _has_total_filament_used_data(None) is False
-
-    def test_cost_when_present(self) -> None:
-        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
-        assert _has_total_filament_cost_data(pd) is True
-
-    def test_cost_when_absent(self) -> None:
-        pd = _make_printer_data(filament_data=FileFilamentData())
-        assert _has_total_filament_cost_data(pd) is False
-
-    def test_changes_when_present(self) -> None:
-        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
-        assert _has_total_filament_changes_data(pd) is True
-
-    def test_changes_when_absent(self) -> None:
-        pd = _make_printer_data(filament_data=FileFilamentData())
-        assert _has_total_filament_changes_data(pd) is False
-
-
-class TestHasSlot:
-    """_has_slot checks Canvas tray existence by 0-based index."""
-
-    def test_existing_tray(self) -> None:
-        pd = _make_printer_data(ams_status=_make_canvas_status())
-        assert _has_slot(pd, 0) is True
-        assert _has_slot(pd, 1) is True
-
-    def test_missing_tray(self) -> None:
-        pd = _make_printer_data(ams_status=_make_canvas_status())
-        assert _has_slot(pd, 2) is False
-        assert _has_slot(pd, 3) is False
-
-    def test_no_ams_status(self) -> None:
-        pd = _make_printer_data()
-        assert _has_slot(pd, 0) is False
-
-    def test_none_printer_data(self) -> None:
-        assert _has_slot(None, 0) is False
 
 
 class TestGetSlotColor:
@@ -415,3 +325,17 @@ class TestGetTotalFilamentUsedAttributes:
         assert attrs["filename"] == "only_name.gcode"
         assert "print_time_sec" not in attrs
         assert "color_map" not in attrs
+
+
+class TestFilamentSensorAvailability:
+    """Filament-related sensors stay available; idle state is unknown via value_fn."""
+
+    def test_exists_fn_true_without_job_data(self) -> None:
+        empty_pd = _make_printer_data()
+        for group in (
+            PRINTER_STATUS_CANVAS,
+            PRINTER_STATUS_CC2_GCODE_FILAMENT,
+            PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT,
+        ):
+            for desc in group:
+                assert desc.exists_fn(empty_pd) is True
