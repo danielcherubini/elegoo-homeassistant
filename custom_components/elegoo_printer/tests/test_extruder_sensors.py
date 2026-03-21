@@ -107,7 +107,7 @@ def _make_canvas_status() -> AMSStatus:
 
 
 class TestHasGcodeFilamentSlot:
-    """_has_gcode_filament_slot gates proxy quantity sensors per slot."""
+    """_has_gcode_filament_slot gates proxy quantities and Canvas A{n} color/name."""
 
     def test_canvas_tray_implies_slot(self) -> None:
         pd = _make_printer_data(ams_status=_make_canvas_status())

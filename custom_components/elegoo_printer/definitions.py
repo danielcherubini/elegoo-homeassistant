@@ -133,8 +133,9 @@ def _has_slot(printer_data: PrinterData, index: int) -> bool:
 
 def _has_gcode_filament_slot(printer_data: PrinterData, index: int) -> bool:
     """
-    Whether an A{n} slot should exist for gcode/proxy filament quantity sensors.
+    Whether an A{n} slot should exist for proxy-aware per-slot sensors.
 
+    Used for gcode/proxy quantity sensors and Canvas A{n} color/name sensors.
     Matches Canvas tray gating when AMS trays exist; otherwise uses proxy/file
     data (color_map or non-zero per-slot usage).
     """
@@ -1080,7 +1081,7 @@ PRINTER_STATUS_CANVAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
             name=f"A{i + 1} Color",
             icon="mdi:palette",
             value_fn=(lambda pd, _i=i: _get_slot_color(pd, _i)),
-            exists_fn=(lambda pd, _i=i: _has_slot(pd, _i)),
+            exists_fn=(lambda pd, _i=i: _has_gcode_filament_slot(pd, _i)),
         )
         for i in range(4)
     ),
@@ -1091,7 +1092,7 @@ PRINTER_STATUS_CANVAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
             name=f"A{i + 1} Name",
             icon="mdi:tag",
             value_fn=(lambda pd, _i=i: _get_slot_name(pd, _i)),
-            exists_fn=(lambda pd, _i=i: _has_slot(pd, _i)),
+            exists_fn=(lambda pd, _i=i: _has_gcode_filament_slot(pd, _i)),
         )
         for i in range(4)
     ),
