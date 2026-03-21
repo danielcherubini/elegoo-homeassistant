@@ -747,11 +747,15 @@ class ElegooCC2Client:
             if filename in file_details:
                 total_layer = file_details[filename].get("TotalLayers")
             elif not hasattr(self, "_pending_file_detail_request"):
-                # Request file details in background (only once per filename)
                 self._pending_file_detail_request = filename
                 self._request_file_detail_background(filename)
-                if self._gcode_proxy:
-                    self._request_proxy_filament_background(filename)
+
+        # Fetch proxy filament data independently of total_layer / file details
+        if self._gcode_proxy and not hasattr(self, "_pending_proxy_request"):
+            file_details = self._integration_data.get("_file_details", {})
+            if not file_details.get(filename, {}).get("proxy_filament"):
+                self._pending_proxy_request = filename
+                self._request_proxy_filament_background(filename)
 
         # Get cached thumbnail for this file
         file_thumbnails = self._integration_data.get("_file_thumbnails", {})
@@ -848,6 +852,9 @@ class ElegooCC2Client:
                 filename,
                 exc,
             )
+        finally:
+            if hasattr(self, "_pending_proxy_request"):
+                del self._pending_proxy_request
 
     async def _request_file_detail(self, filename: str) -> None:
         """Request file details from printer."""
