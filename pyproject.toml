@@ -58,7 +58,8 @@ max-complexity = 25
 "tests/*.py" = ["S101"]
 "custom_components/elegoo_printer/sdcp/tests/*.py" = ["S101"]
 "custom_components/elegoo_printer/websocket/tests/*.py" = ["S101"]
-"custom_components/elegoo_printer/tests/*.py" = ["S101"]
+"custom_components/elegoo_printer/tests/*.py" = ["S101", "D102"]
+"custom_components/elegoo_printer/cc2/tests/*.py" = ["S101", "SLF001", "PLC0415"]
 
 [tool.pytest.ini_options]
 pythonpath = [

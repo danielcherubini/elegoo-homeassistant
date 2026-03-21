@@ -15,6 +15,7 @@ from custom_components.elegoo_printer.sdcp.models.enums import (
     ElegooPrintError,
     ElegooPrintStatus,
 )
+from custom_components.elegoo_printer.sdcp.models.printer import FileFilamentData
 from custom_components.elegoo_printer.sdcp.models.status import (
     CurrentFanSpeed,
     LightStatus,
@@ -372,3 +373,59 @@ class CC2StatusMapper:
         }
 
         return PrinterAttributes(attrs_dict)
+
+    @classmethod
+    def map_filament_data(
+        cls,
+        cc2_data: dict[str, Any],
+        filename: str | None,
+    ) -> FileFilamentData | None:
+        """
+        Map cached file detail and proxy filament data to FileFilamentData.
+
+        Merges two sources:
+        - MQTT file detail: total_filament_used, color_map, print_time
+        - Proxy gcode capture: per_slot_grams, per_slot_cost, filament_names, etc.
+
+        Args:
+            cc2_data: The raw CC2 status data containing _file_details.
+            filename: The current print filename to look up.
+
+        Returns:
+            A FileFilamentData if filament data exists, otherwise None.
+
+        """
+        if not filename:
+            return None
+
+        file_details = cc2_data.get("_file_details", {})
+        file_info = file_details.get(filename, {})
+
+        total_filament_used = file_info.get("total_filament_used")
+        color_map = file_info.get("color_map")
+        proxy = file_info.get("proxy_filament", {})
+        proxy_filament = proxy.get("filament", {}) if proxy else {}
+
+        has_mqtt = total_filament_used is not None or color_map
+        has_proxy = bool(proxy_filament)
+
+        if not has_mqtt and not has_proxy:
+            return None
+
+        return FileFilamentData(
+            total_filament_used=total_filament_used,
+            color_map=color_map or [],
+            print_time=file_info.get("print_time"),
+            filename=filename,
+            per_slot_grams=proxy_filament.get("per_slot_grams", []),
+            per_slot_mm=proxy_filament.get("per_slot_mm", []),
+            per_slot_cm3=proxy_filament.get("per_slot_cm3", []),
+            per_slot_cost=proxy_filament.get("per_slot_cost", []),
+            per_slot_density=proxy_filament.get("per_slot_density", []),
+            per_slot_diameter=proxy_filament.get("per_slot_diameter", []),
+            filament_names=proxy_filament.get("filament_names", []),
+            total_cost=proxy_filament.get("total_cost"),
+            total_filament_changes=proxy_filament.get("total_filament_changes"),
+            estimated_time=proxy_filament.get("estimated_time"),
+            slicer_version=proxy.get("slicer_version") if proxy else None,
+        )

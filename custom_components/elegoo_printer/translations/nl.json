@@ -18,7 +18,11 @@
         "description": "Configureer je Centauri Carbon 2 printer-instellingen.",
         "data": {
           "ip_address": "Printer IP-adres",
-          "cc2_access_code": "Toegangscode (optioneel)"
+          "cc2_access_code": "Toegangscode (optioneel)",
+          "gcode_proxy_url": "GCode proxy-URL (optioneel)"
+        },
+        "data_description": {
+          "gcode_proxy_url": "Basis-URL van de cc2-gcode-capture-proxy (host, host:poort of http(s)-URL; http wordt gebruikt als u het schema weglaat). Leeg laten om uit te schakelen."
         }
       },
       "mqtt_options": {
@@ -109,7 +113,9 @@
       "init_no_printer_found": "Initialisatie mislukt: de printer kon niet worden gevonden.",
       "cc2_options_no_printer_found": "CC2 printer kon niet worden gevonden.",
       "cc2_access_code_required": "Deze printer vereist een toegangscade voor authenticatie.",
-      "cc2_authentication_failed": "Authenticatie mislukt. Controleer de toegangscode in de printersetting: Instellingen → Netwerk → Toegangscode."
+      "cc2_authentication_failed": "Authenticatie mislukt. Controleer de toegangscode in de printerinstellingen: Instellingen → Netwerk → Toegangscode.",
+      "gcode_proxy_unreachable": "Kan de GCode-proxyserver niet bereiken. Controleer het adres of de URL en of de proxy actief is.",
+      "gcode_proxy_invalid": "Ongeldig GCode-proxyadres. Gebruik een host of host:poort, of een http(s)-URL zonder dubbele schema's."
     },
     "abort": {
       "already_configured": "Dit item is al geconfigureerd."

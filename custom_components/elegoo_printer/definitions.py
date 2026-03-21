@@ -28,6 +28,7 @@ from homeassistant.helpers.typing import StateType
 
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
+from .sdcp.models.ams import AMSTray
 from .sdcp.models.enums import (
     ElegooErrorStatusReason,
     ElegooMachineStatus,
@@ -112,61 +113,141 @@ def _get_active_filament_attributes(printer_data: PrinterData) -> dict:
     return {}
 
 
-def _get_tray_color(printer_data: PrinterData, ams_id: str, tray_id: str) -> str | None:
-    """Get color for a specific tray."""
+def _get_canvas_tray(printer_data: PrinterData, index: int) -> AMSTray | None:
+    """Get Canvas tray object for a 0-based slot index, or None."""
     if not printer_data or not printer_data.ams_status:
         return None
-
+    tray_id = str(index).zfill(2)
     for box in printer_data.ams_status.ams_boxes:
-        if box.id == ams_id:
+        if box.id == "0":
             for tray in box.tray_list:
                 if tray.id == tray_id:
-                    return tray.filament_color
+                    return tray
     return None
 
 
-def _get_tray_attributes(printer_data: PrinterData, ams_id: str, tray_id: str) -> dict:
-    """Get attributes for a specific tray."""
-    if not printer_data or not printer_data.ams_status:
+def _get_slot_color(printer_data: PrinterData, index: int) -> str | None:
+    """Get hex color for a slot. Proxy color_map first, Canvas fallback."""
+    if not printer_data:
+        return None
+    if printer_data.gcode_filament_data:
+        for entry in printer_data.gcode_filament_data.color_map:
+            if entry.get("t") == index:
+                color = entry.get("color")
+                if color:
+                    return color
+    tray = _get_canvas_tray(printer_data, index)
+    return tray.filament_color if tray else None
+
+
+def _get_slot_name(printer_data: PrinterData, index: int) -> str | None:
+    """Get filament name for a slot. Proxy names -> color_map -> Canvas."""
+    if not printer_data:
+        return None
+    if printer_data.gcode_filament_data:
+        data = printer_data.gcode_filament_data
+        if index < len(data.filament_names):
+            return data.filament_names[index]
+        for entry in data.color_map:
+            if entry.get("t") == index:
+                name = entry.get("name")
+                if name:
+                    return name
+    tray = _get_canvas_tray(printer_data, index)
+    return tray.filament_name if tray and tray.filament_name else None
+
+
+def _get_slot_filament_type(printer_data: PrinterData, index: int) -> str | None:
+    """Get filament type for a slot (e.g. 'PLA'). Canvas is the source."""
+    if not printer_data:
+        return None
+    tray = _get_canvas_tray(printer_data, index)
+    return tray.filament_type if tray and tray.filament_type else None
+
+
+def _normalize_filament_diameter_mm(value: Any) -> float | str | None:
+    """Coerce diameter to float for consistent entity attributes when possible."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return float(stripped)
+        except ValueError:
+            return stripped
+    return None
+
+
+def _get_slot_attributes(printer_data: PrinterData, index: int) -> dict:
+    """Get non-duplicate metadata attributes for A{n} Attributes sensor."""
+    if not printer_data:
         return {}
+    attrs: dict[str, Any] = {}
+    tray = _get_canvas_tray(printer_data, index)
 
-    for box in printer_data.ams_status.ams_boxes:
-        if box.id == ams_id:
-            for tray in box.tray_list:
-                if tray.id == tray_id:
-                    return {
-                        "color": tray.filament_color,
-                        "type": tray.filament_type,
-                        "name": tray.filament_name,
-                        "brand": tray.brand,
-                        "source": tray.from_source,
-                        "diameter": tray.filament_diameter,
-                        "nozzle_temp_range": (
-                            f"{tray.min_nozzle_temp}-{tray.max_nozzle_temp}°C"
-                            if tray.min_nozzle_temp > 0 and tray.max_nozzle_temp > 0
-                            else None
-                        ),
-                        "bed_temp_range": (
-                            f"{tray.min_bed_temp}-{tray.max_bed_temp}°C"
-                            if tray.min_bed_temp > 0 and tray.max_bed_temp > 0
-                            else None
-                        ),
-                        "enabled": tray.enabled,
-                    }
-    return {}
+    if tray:
+        if tray.brand:
+            attrs["brand"] = tray.brand
+        attrs["source"] = tray.from_source
+        tray_diameter = _normalize_filament_diameter_mm(tray.filament_diameter)
+        if tray_diameter is not None:
+            attrs["diameter"] = tray_diameter
+        if tray.min_nozzle_temp > 0 and tray.max_nozzle_temp > 0:
+            attrs["nozzle_temp_range"] = (
+                f"{tray.min_nozzle_temp}-{tray.max_nozzle_temp}°C"
+            )
+        if tray.min_bed_temp > 0 and tray.max_bed_temp > 0:
+            attrs["bed_temp_range"] = f"{tray.min_bed_temp}-{tray.max_bed_temp}°C"
+        attrs["enabled"] = tray.enabled
+
+    if printer_data.gcode_filament_data:
+        data = printer_data.gcode_filament_data
+        if index < len(data.per_slot_density):
+            attrs["density"] = data.per_slot_density[index]
+        if index < len(data.per_slot_diameter):
+            proxy_diameter = _normalize_filament_diameter_mm(
+                data.per_slot_diameter[index]
+            )
+            if proxy_diameter is not None:
+                attrs["diameter"] = proxy_diameter
+        if index < len(data.per_slot_cost):
+            attrs["cost"] = data.per_slot_cost[index]
+
+    return attrs
 
 
-def _has_ams_tray(printer_data: PrinterData, ams_id: str, tray_id: str) -> bool:
-    """Check if a specific tray exists."""
-    if not printer_data or not printer_data.ams_status:
-        return False
+def _get_slot_grams(printer_data: PrinterData, index: int) -> float | None:
+    """Get filament weight in grams for a slot."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return None
+    data = printer_data.gcode_filament_data
+    if index >= len(data.per_slot_grams):
+        return None
+    return data.per_slot_grams[index]
 
-    for box in printer_data.ams_status.ams_boxes:
-        if box.id == ams_id:
-            for tray in box.tray_list:
-                if tray.id == tray_id:
-                    return True
-    return False
+
+def _get_slot_cm3(printer_data: PrinterData, index: int) -> float | None:
+    """Get filament volume in cubic centimeters for a slot."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return None
+    data = printer_data.gcode_filament_data
+    if index >= len(data.per_slot_cm3):
+        return None
+    return data.per_slot_cm3[index]
+
+
+def _get_slot_mm(printer_data: PrinterData, index: int) -> float | None:
+    """Get filament length in millimeters for a slot."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return None
+    data = printer_data.gcode_filament_data
+    if index >= len(data.per_slot_mm):
+        return None
+    return data.per_slot_mm[index]
 
 
 async def _async_noop(*_: Any, **__: Any) -> None:
@@ -927,8 +1008,8 @@ PRINTER_BINARY_STATUS_CANVAS: tuple[ElegooPrinterBinarySensorEntityDescription, 
 
 
 # Canvas/AMS sensors (CC2 with Canvas support)
+# A1-A4 naming matches the slicer UI (1-indexed, "A" prefix for AMS).
 PRINTER_STATUS_CANVAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
-    # Active Filament Color (main sensor)
     ElegooPrinterSensorEntityDescription(
         key="active_filament_color",
         name="Active Filament Color",
@@ -938,48 +1019,169 @@ PRINTER_STATUS_CANVAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
             entity.coordinator.data
         ),
     ),
-    # Individual tray sensors (tray 0-3)
-    ElegooPrinterSensorEntityDescription(
-        key="ams_tray_0_color",
-        name="Tray 0 Filament",
-        icon="mdi:palette",
-        value_fn=lambda printer_data: _get_tray_color(printer_data, "0", "00"),
-        extra_attributes=lambda entity: _get_tray_attributes(
-            entity.coordinator.data, "0", "00"
-        ),
-        exists_fn=lambda printer_data: _has_ams_tray(printer_data, "0", "00"),
+    # --- A1-A4 Color ---
+    *(
+        ElegooPrinterSensorEntityDescription(
+            key=f"a{i + 1}_color",
+            name=f"A{i + 1} Color",
+            icon="mdi:palette",
+            value_fn=(lambda pd, _i=i: _get_slot_color(pd, _i)),
+        )
+        for i in range(4)
     ),
-    ElegooPrinterSensorEntityDescription(
-        key="ams_tray_1_color",
-        name="Tray 1 Filament",
-        icon="mdi:palette",
-        value_fn=lambda printer_data: _get_tray_color(printer_data, "0", "01"),
-        extra_attributes=lambda entity: _get_tray_attributes(
-            entity.coordinator.data, "0", "01"
-        ),
-        exists_fn=lambda printer_data: _has_ams_tray(printer_data, "0", "01"),
+    # --- A1-A4 Name ---
+    *(
+        ElegooPrinterSensorEntityDescription(
+            key=f"a{i + 1}_name",
+            name=f"A{i + 1} Name",
+            icon="mdi:tag",
+            value_fn=(lambda pd, _i=i: _get_slot_name(pd, _i)),
+        )
+        for i in range(4)
     ),
-    ElegooPrinterSensorEntityDescription(
-        key="ams_tray_2_color",
-        name="Tray 2 Filament",
-        icon="mdi:palette",
-        value_fn=lambda printer_data: _get_tray_color(printer_data, "0", "02"),
-        extra_attributes=lambda entity: _get_tray_attributes(
-            entity.coordinator.data, "0", "02"
-        ),
-        exists_fn=lambda printer_data: _has_ams_tray(printer_data, "0", "02"),
-    ),
-    ElegooPrinterSensorEntityDescription(
-        key="ams_tray_3_color",
-        name="Tray 3 Filament",
-        icon="mdi:palette",
-        value_fn=lambda printer_data: _get_tray_color(printer_data, "0", "03"),
-        extra_attributes=lambda entity: _get_tray_attributes(
-            entity.coordinator.data, "0", "03"
-        ),
-        exists_fn=lambda printer_data: _has_ams_tray(printer_data, "0", "03"),
+    # --- A1-A4 Attributes (state = filament type, attrs = metadata) ---
+    *(
+        ElegooPrinterSensorEntityDescription(
+            key=f"a{i + 1}_attributes",
+            name=f"A{i + 1} Attributes",
+            icon="mdi:information-outline",
+            value_fn=(lambda pd, _i=i: _get_slot_filament_type(pd, _i)),
+            extra_attributes=(
+                lambda entity, _i=i: _get_slot_attributes(entity.coordinator.data, _i)
+            ),
+        )
+        for i in range(4)
     ),
 )
+
+
+def _get_total_filament_used(printer_data: PrinterData) -> float | None:
+    """Get total filament used in grams from gcode file detail."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return None
+    return printer_data.gcode_filament_data.total_filament_used
+
+
+def _get_total_filament_used_attributes(printer_data: PrinterData) -> dict:
+    """Get extra attributes for the total filament used sensor."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return {}
+    data = printer_data.gcode_filament_data
+    attrs: dict[str, Any] = {}
+    if data.filename:
+        attrs["filename"] = data.filename
+    if data.print_time is not None:
+        attrs["print_time_sec"] = data.print_time
+    attrs["extruder_count"] = len(data.color_map)
+    if data.color_map:
+        attrs["color_map"] = data.color_map
+    if data.slicer_version:
+        attrs["slicer_version"] = data.slicer_version
+    if data.estimated_time:
+        attrs["estimated_time"] = data.estimated_time
+    return attrs
+
+
+def _get_total_filament_cost(printer_data: PrinterData) -> float | None:
+    """Get total filament cost from proxy data."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return None
+    return printer_data.gcode_filament_data.total_cost
+
+
+def _get_total_filament_cost_attributes(printer_data: PrinterData) -> dict:
+    """Get extra attributes for the total filament cost sensor."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return {}
+    data = printer_data.gcode_filament_data
+    if data.per_slot_cost:
+        return {"per_slot_cost": data.per_slot_cost}
+    return {}
+
+
+def _get_total_filament_changes(printer_data: PrinterData) -> int | None:
+    """Get total filament changes from proxy data."""
+    if not printer_data or not printer_data.gcode_filament_data:
+        return None
+    return printer_data.gcode_filament_data.total_filament_changes
+
+
+PRINTER_STATUS_CC2_GCODE_FILAMENT: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+    ElegooPrinterSensorEntityDescription(
+        key="total_filament_used",
+        name="Total Filament Used",
+        icon="mdi:printer-3d-nozzle",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda printer_data: _get_total_filament_used(printer_data),
+        extra_attributes=lambda entity: _get_total_filament_used_attributes(
+            entity.coordinator.data
+        ),
+    ),
+)
+
+PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT: tuple[
+    ElegooPrinterSensorEntityDescription, ...
+] = (
+    # --- A1-A4 Grams ---
+    *(
+        ElegooPrinterSensorEntityDescription(
+            key=f"a{i + 1}_grams",
+            name=f"A{i + 1} Grams",
+            icon="mdi:weight-gram",
+            state_class=SensorStateClass.MEASUREMENT,
+            native_unit_of_measurement="g",
+            suggested_display_precision=2,
+            value_fn=(lambda pd, _i=i: _get_slot_grams(pd, _i)),
+        )
+        for i in range(4)
+    ),
+    # --- A1-A4 Cubic Centimeters ---
+    *(
+        ElegooPrinterSensorEntityDescription(
+            key=f"a{i + 1}_cubic_centimeters",
+            name=f"A{i + 1} Cubic Centimeters",
+            icon="mdi:cube-outline",
+            state_class=SensorStateClass.MEASUREMENT,
+            native_unit_of_measurement="cm³",
+            suggested_display_precision=2,
+            value_fn=(lambda pd, _i=i: _get_slot_cm3(pd, _i)),
+        )
+        for i in range(4)
+    ),
+    # --- A1-A4 Length Millimeters ---
+    *(
+        ElegooPrinterSensorEntityDescription(
+            key=f"a{i + 1}_length_millimeters",
+            name=f"A{i + 1} Length Millimeters",
+            icon="mdi:ruler",
+            state_class=SensorStateClass.MEASUREMENT,
+            native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+            suggested_display_precision=2,
+            value_fn=(lambda pd, _i=i: _get_slot_mm(pd, _i)),
+        )
+        for i in range(4)
+    ),
+    # --- Totals ---
+    ElegooPrinterSensorEntityDescription(
+        key="total_filament_cost",
+        name="Total Filament Cost",
+        icon="mdi:cash",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda printer_data: _get_total_filament_cost(printer_data),
+        extra_attributes=lambda entity: _get_total_filament_cost_attributes(
+            entity.coordinator.data
+        ),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="total_filament_changes",
+        name="Total Filament Changes",
+        icon="mdi:swap-horizontal",
+        value_fn=lambda printer_data: _get_total_filament_changes(printer_data),
+    ),
+)
+
 
 PRINTER_IMAGES: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(

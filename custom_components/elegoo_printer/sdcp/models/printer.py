@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import socket
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -36,6 +37,29 @@ PRINTERS_WITH_VAT_HEATER = [
     "Saturn 4 Ultra 16K",
     # Add future models here as needed
 ]
+
+
+@dataclass
+class FileFilamentData:
+    """Filament data from MQTT method 1046 file detail and parsed gcode."""
+
+    # From CC2_CMD_GET_FILE_DETAIL (MQTT method 1046)
+    total_filament_used: float | None = None
+    color_map: list[dict[str, Any]] = field(default_factory=list)
+    print_time: int | None = None
+    filename: str | None = None
+    # from parsed gcode, empty when proxy not configured
+    per_slot_grams: list[float] = field(default_factory=list)
+    per_slot_mm: list[float] = field(default_factory=list)
+    per_slot_cm3: list[float] = field(default_factory=list)
+    per_slot_cost: list[float] = field(default_factory=list)
+    per_slot_density: list[float] = field(default_factory=list)
+    per_slot_diameter: list[float] = field(default_factory=list)
+    filament_names: list[str] = field(default_factory=list)
+    total_cost: float | None = None
+    total_filament_changes: int | None = None
+    estimated_time: str | None = None
+    slicer_version: str | None = None
 
 
 class FirmwareUpdateInfo(TypedDict, total=False):
@@ -377,6 +401,7 @@ class PrinterData:
     video: ElegooVideo
     firmware_update_info: FirmwareUpdateInfo
     ams_status: AMSStatus | None
+    gcode_filament_data: FileFilamentData | None
 
     def __init__(
         self,
@@ -400,6 +425,7 @@ class PrinterData:
             "changelog": None,
         }
         self.ams_status: AMSStatus | None = None
+        self.gcode_filament_data: FileFilamentData | None = None
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
         """Round datetime object to minutes."""

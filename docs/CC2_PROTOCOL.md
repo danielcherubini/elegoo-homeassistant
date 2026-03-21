@@ -1,10 +1,25 @@
 # Centauri Carbon 2 (CC2) Protocol Documentation
 
-> **OpenCentauri Project** - Community documentation for Elegoo printer protocols
+> Community documentation for Elegoo CC2 printer protocols
 
 This document is the authoritative reference for the Elegoo Centauri Carbon 2 (CC2) communication protocol. It is intended for developers building integrations, tools, or applications that communicate with CC2-based FDM printers.
 
-**Source**: Derived from analysis of the [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) open-source library and community reverse engineering efforts.
+**Sources**: Derived from analysis of the [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) open-source SDK (v1.3.6), packet captures of ElegooSlicer traffic, port scanning and endpoint probing of stock firmware, and community reverse engineering efforts.
+
+## elegoo-link SDK
+
+Elegoo provides an official open-source C++ SDK — [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) — that implements the full CC2 protocol. This is the same library that ElegooSlicer uses internally.
+
+## ⚠️ Firmware Compatibility
+
+This document covers **two firmware variants** that behave differently. Sections are labeled accordingly:
+
+| Firmware | Description | How to Identify |
+|----------|-------------|-----------------|
+| **Stock** | Factory Elegoo firmware. Limited HTTP surface. | Default on all new printers. No "OC" in firmware version string. |
+| **OpenCentauri** | Community firmware with extended HTTP API. | Firmware version contains "OC" or "O" suffix. |
+
+Where behavior differs, sections are tagged with **[Stock]**, **[OpenCentauri]**, or **[Both]**. Unmarked content applies to both firmwares unless noted otherwise.
 
 ---
 
@@ -35,6 +50,8 @@ This document is the authoritative reference for the Elegoo Centauri Carbon 2 (C
 23. [Troubleshooting](#troubleshooting)
 24. [Glossary](#glossary)
 25. [References](#references)
+26. [G-Code File Structure](#g-code-file-structure)
+27. [Addendum: Implementation Findings](#addendum-implementation-findings)
 
 ---
 
@@ -46,8 +63,8 @@ The Centauri Carbon 2 (CC2) is Elegoo's second-generation FDM printer communicat
 
 | Feature | Description |
 |---------|-------------|
-| Transport | MQTT 3.1.1 over TCP |
-| Broker | Runs on the printer (port 1883) |
+| Transport | MQTT 3.1.1 over TCP (port 1883) and WebSocket (port 9001) |
+| Broker | Runs on the printer |
 | Discovery | UDP broadcast (port 52700) |
 | Authentication | Username/password + optional access code |
 | Status Updates | Delta-based (incremental) |
@@ -65,11 +82,11 @@ The CC2 protocol is used by:
 
 Unlike traditional printer protocols where a central server (like OctoPrint) manages connections:
 
-1. **The printer IS the server** - It runs an MQTT broker
-2. **Clients connect TO the printer** - Not vice versa
-3. **Registration is mandatory** - Must register before sending commands
-4. **Connection health monitoring** - Heartbeat mechanism required
-5. **Bandwidth optimization** - Uses delta status updates
+1. **The printer IS the server** - It runs an MQTT broker that other systems connect to.
+2. **Clients connect TO the printer** - Not vice versa. Slicers, integrations, and web interfaces all connect as MQTT clients.
+3. **Registration is mandatory** - Must register before sending commands.
+4. **Connection health monitoring** - Heartbeat mechanism required.
+5. **Bandwidth optimization** - Uses delta status updates.
 
 ### ⚠️ Important: LAN-Only Mode Required
 
@@ -185,57 +202,71 @@ threading.Thread(target=heartbeat, daemon=True).start()
 
 ## Network Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           Local Network                                  │
-│                                                                          │
-│   ┌─────────────────┐              ┌──────────────────────────────────┐ │
-│   │   Client App    │              │       CC2 Printer                │ │
-│   │   (Slicer,      │              │                                  │ │
-│   │   Home Asst.)   │              │  ┌─────────────────────────────┐ │ │
-│   │                 │   UDP:52700  │  │   Discovery Service         │ │ │
-│   │  ┌───────────┐  │◄────────────►│  │   (responds to broadcasts)  │ │ │
-│   │  │ Discovery │  │              │  └─────────────────────────────┘ │ │
-│   │  └───────────┘  │              │                                  │ │
-│   │                 │              │  ┌─────────────────────────────┐ │ │
-│   │  ┌───────────┐  │  TCP:1883    │  │   MQTT Broker               │ │ │
-│   │  │ MQTT      │  │◄────────────►│  │   (handles subscriptions,   │ │ │
-│   │  │ Client    │  │              │  │    publishes status)        │ │ │
-│   │  └───────────┘  │              │  └─────────────────────────────┘ │ │
-│   │                 │              │                                  │ │
-│   │  ┌───────────┐  │  TCP:8080    │  ┌─────────────────────────────┐ │ │
-│   │  │ HTTP      │  │◄────────────►│  │   HTTP Server               │ │ │
-│   │  │ Client    │  │              │  │   (file upload, video)      │ │ │
-│   │  └───────────┘  │              │  └─────────────────────────────┘ │ │
-│   │                 │              │                                  │ │
-│   └─────────────────┘              └──────────────────────────────────┘ │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+### Port Map by Firmware
+
+| Port | Protocol | Stock Firmware | OpenCentauri Firmware |
+|------|----------|---------------|----------------------|
+| **52700** | UDP | Discovery (broadcast) | Discovery (broadcast) |
+| **80** | TCP/HTTP | `PUT /upload` only (libhv/1.3.4). Returns 404 for all other paths. | Unknown |
+| **1883** | TCP/MQTT | MQTT broker (TCP). Used by the elegoo-link C++ library (ElegooSlicer, HA integrations). | MQTT broker |
+| **9001** | TCP/WS | MQTT broker (WebSocket). Used by the Device page's bundled JavaScript (`lan_service_web`) for real-time status, file lists, and printer control. | MQTT broker (WebSocket) |
+| **8080** | TCP/HTTP | Camera MJPEG stream **only**. Returns `multipart/x-mixed-replace` for every request regardless of path, query, or auth headers. | Full HTTP API server (files, system info, download, camera) |
+
+**Ports confirmed closed on stock firmware:** 21, 22, 23, 3030, 3031, 8888, 34952 (Klipper webhooks), 54780 (SDCP WebSocket).
+
+> **Two MQTT endpoints:** The CC2 exposes MQTT on two ports: **1883** (standard MQTT over TCP) and **9001** (MQTT over WebSocket). The elegoo-link C++ library connects on 1883 for registration, status polling, and commands. The slicer's Device page (`lan_service_web/index.html`) loads as a local `file://` URL and creates its own mqtt.js client connecting to `ws://{printer_ip}:9001` for real-time events, auto-report subscriptions, and heartbeats. Both ports must be accessible for the full Device page to function.
+
+### Stock Firmware Architecture
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                           Local Network                             │
+│                                                                     │
+│  ┌──────────────────┐              ┌───────────────────────────────┐│
+│  │  Client App      │              │      CC2 Printer              ││
+│  │  (Slicer or      │              │      (Stock Firmware)         ││
+│  │   HA Integration)│              │                               ││
+│  │                  │  UDP:52700   │  ┌─────────────────────────┐  ││
+│  │  Discovery       │◄────────────►│  │ Discovery (UDP)         │  ││
+│  │                  │              │  └─────────────────────────┘  ││
+│  │                  │  TCP:1883    │  ┌─────────────────────────┐  ││
+│  │  MQTT (TCP)      │◄────────────►│  │ MQTT Broker (TCP)       │  ││
+│  │  (C++ library:   │              │  │ (status, commands,      │  ││
+│  │   commands,      │              │  │  registration)          │  ││
+│  │   status)        │              │  └─────────────────────────┘  ││
+│  │                  │  TCP:9001    │  ┌─────────────────────────┐  ││
+│  │  MQTT (WebSocket)│◄────────────►│  │ MQTT Broker (WebSocket) │  ││
+│  │  (Device page JS:│              │  │ (real-time events,      │  ││
+│  │   file lists,    │              │  │  auto-report, control)  │  ││
+│  │   live status)   │              │  └─────────────────────────┘  ││
+│  │                  │  TCP:80      │  ┌─────────────────────────┐  ││
+│  │  HTTP PUT        │─────────────►│  │ libhv/1.3.4             │  ││
+│  │  (gcode upload   │              │  │ (PUT /upload ONLY)      │  ││
+│  │   from slicer)   │              │  └─────────────────────────┘  ││
+│  │                  │  TCP:8080    │  ┌─────────────────────────┐  ││
+│  │  MJPEG           │◄─────────────│  │ Camera Stream           │  ││
+│  │  (view only)     │              │  │ (MJPEG, no file ops)    │  ││
+│  └──────────────────┘              │  └─────────────────────────┘  ││
+│                                    └───────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Ports Used
-
-| Port | Protocol | Direction | Purpose |
-|------|----------|-----------|---------|
-| 52700 | UDP | Client → Printer (broadcast) | Discovery |
-| 1883 | TCP | Client → Printer | MQTT commands/status |
-| 8080 | TCP | Client → Printer | HTTP (video, file transfers) |
 
 ### Data Flow
 
-```
+```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        Connection Lifecycle                             │
-│                                                                         │
-│  ┌─────────┐   ┌───────────┐   ┌──────────┐   ┌─────────┐   ┌────────┐│
-│  │Discovery│──►│MQTT       │──►│Register  │──►│Subscribe│──►│Heartbeat│
+│                        Connection Lifecycle                            │
+│                                                                        │
+│  ┌─────────┐   ┌───────────┐   ┌──────────┐   ┌─────────┐   ┌─────────┐│
+│  │Discovery│──►│MQTT       │──►│Register  │──►│Subscribe│──►│Heartbeat││
 │  │(UDP)    │   │Connect    │   │          │   │Topics   │   │Loop     ││
-│  └─────────┘   └───────────┘   └──────────┘   └─────────┘   └────────┘│
-│                                                                         │
-│  After connection established:                                          │
-│                                                                         │
+│  └─────────┘   └───────────┘   └──────────┘   └─────────┘   └─────────┘│
+│                                                                        │
+│  After connection established:                                         │
+│                                                                        │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                     Main Event Loop                              │   │
+│  │                     Main Event Loop                             │   │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────┐ │   │
 │  │  │ Receive      │  │ Send         │  │ Periodic Heartbeat     │ │   │
 │  │  │ Status       │◄─┤ Commands     │  │ (every 10 seconds)     │ │   │
@@ -333,8 +364,21 @@ After discovering the printer, establish an MQTT connection.
 | Protocol | MQTT 3.1.1 |
 | Keep-alive | 60 seconds |
 | Clean Session | true |
-| Username | `elegoo` |
-| Password | `123456` or access code (if `token_status=1`) |
+| Username | `elegoo` (always) |
+| Password | See auth modes below |
+
+#### MQTT Authentication Modes
+
+The elegoo-link SDK supports multiple authentication modes. The username is always `elegoo`.
+
+| Auth Mode | Password Value | When Used |
+|-----------|---------------|-----------|
+| `basic` | `123456` (default) | No access code set (`token_status=0`) |
+| `accessCode` | User-configured access code | Access code set (`token_status=1`, LAN mode) |
+| `token` | Token string | Token-based auth |
+| `pinCode` | PIN code | Cloud mode (`lan_status=0`) |
+
+For LAN-only integrations, you only need to handle `basic` (default password `123456`) and `accessCode` (user-set password). The `pinCode` mode is used when the printer is in cloud mode and typically requires pairing via the Elegoo app.
 
 ### Client ID Format
 
@@ -366,8 +410,11 @@ random_hex = format(random.randint(0, 4095), "x")  # Random 0-fff
 client_id = f"0cli{timestamp_hex}{random_hex}"[:10]  # Truncate to exactly 10
 ```
 
-**Legacy Format** (deprecated, do not use):
-- `1_PC_4521` - This format does NOT work with CC2 printers
+**Alternative Format** (used by official elegoo-link SDK):
+- `1_PC_<number>` — where `<number>` is a random 4-digit integer (1000-9999)
+- This is the format used by the [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) SDK (current v1.3.6) and by extension ElegooSlicer
+- The `0cli` format above is used by the web interface
+- Both formats work. Implementations should support both
 
 ### Request ID Format
 
@@ -395,8 +442,11 @@ timestamp_hex = format(int(time.time() * 1000), "x")
 request_id = f"{uuid_part}{timestamp_hex}"
 ```
 
-**Legacy Format** (deprecated, do not use):
-- `1_PC_4521_req` - This format does NOT work with CC2 printers
+**Alternative Format** (used by official elegoo-link SDK):
+- `1_PC_<number>_req` — the SDK simply appends `_req` to the client ID
+- Example: client ID `1_PC_4521` → request ID `1_PC_4521_req`
+- This is the current format used by the elegoo-link SDK (v1.3.6)
+- Both formats work. The UUID + timestamp format shown above is used by the web interface
 
 ### Connection Error Handling
 
@@ -653,8 +703,8 @@ Commands are JSON messages sent to control the printer.
 | Code | Name | Description | Parameters |
 |------|------|-------------|------------|
 | 1047 | DELETE_FILE | Delete file | `{"storage_media": "local", "filename": "..."}` |
-| 1057 | DOWNLOAD_FILE | Start download | See [File Upload](#file-upload-via-mqtt) |
-| 1058 | CANCEL_DOWNLOAD | Cancel download | `{"filename": "..."}` |
+| 1057 | SET_PRINTER_DOWNLOAD_FILE | Tell printer to download from URL | See [File Operations](#file-operations). Cloud/remote feature. |
+| 1058 | CANCEL_PRINTER_DOWNLOAD_FILE | Cancel printer download | `{"taskID": "..."}` |
 
 ### System Methods
 
@@ -664,7 +714,7 @@ Commands are JSON messages sent to control the printer.
 | 1043 | UPDATE_PRINTER_NAME | Rename printer | `{"name": "New Name"}` |
 | 2004 | SET_AUTO_REFILL | Toggle auto-refill | `{"enable": true}` |
 
-### Event Methods (Printer → Client)
+### Event Methods (Printer → All Connected MQTT Clients)
 
 | Code | Name | Description |
 |------|------|-------------|
@@ -1142,31 +1192,153 @@ class StatusManager:
 
 ## HTTP API
 
-The CC2 provides an HTTP API for operations not suited to MQTT.
+> ⚠️ **Firmware Compatibility:** Most HTTP endpoints in this section are only available on **OpenCentauri firmware**. Stock Elegoo firmware exposes only `PUT /upload` on port 80 and the camera MJPEG stream on port 8080. Use the equivalent MQTT methods for stock firmware operations (file listing, file details, etc.).
 
-### Base URL
+| HTTP Endpoint | Stock Firmware | OpenCentauri | MQTT Alternative |
+|---------------|---------------|--------------|------------------|
+| `GET /system/info` | ❌ 404 (see note) | ✅ Port 8080 | Method 1001 (GET_ATTRIBUTES) |
+| `GET /files` | ❌ 404 | ✅ Port 8080 | Method 1044 (GET_FILE_LIST) |
+| `GET /download` | ❌ 404 | ✅ Port 8080 | N/A (1057 is a different operation — see below) |
+| `PUT /upload` | ✅ Port 80 | ✅ Port 8080 | N/A (always HTTP) |
 
+> **Note on `/system/info`:** The elegoo-link SDK (v1.3.6) attempts `GET /system/info?X-Token=...` to retrieve the printer's serial number when it isn't already known. On current stock firmware this returns 404, and the SDK falls back to using the serial number obtained from UDP discovery. This suggests the endpoint may be added to stock firmware in a future update, or it may only exist on OpenCentauri. The SDK handles the 404 gracefully.
+
+### Stock Firmware Capabilities Summary
+
+Based on port scanning, HTTP endpoint probing, and MQTT protocol testing on stock firmware:
+
+**What IS possible:**
+- Full printer status monitoring (temps, position, progress, fans) via MQTT
+- Query file metadata: name, size, layers, total filament used, print time (MQTT method 1046)
+- Retrieve file thumbnails as base64 PNG (MQTT method 1045)
+- List files on the printer (MQTT method 1044)
+- Upload G-code files (HTTP `PUT /upload` on port 80)
+- Start, pause, resume, stop prints (MQTT)
+- Control temperatures, fans, lights, speed (MQTT)
+- View camera stream (MJPEG on port 8080)
+
+**What IS NOT possible:**
+- Download G-code file content via HTTP (no endpoint exists on any port)
+- Download G-code file content via MQTT (method 1057 is not a download method — see below)
+- HTTP Range requests (not supported on any port)
+- SSH or shell access (port 22 closed)
+- Klipper webhooks access (port 34952 closed)
+
+**Implication for per-extruder filament tracking:** The per-slot filament usage breakdown (needed for multi-material Spoolman integration) only exists inside the G-code file itself. Since file content cannot be retrieved from the printer, it must be captured at upload time — for example, via a [local network proxy](#g-code-file-structure) between the slicer and printer.
+
+### File Upload — Stock Firmware [Stock]
+
+On stock firmware, file uploads go to **port 80** with minimal headers. No authentication is required.
+
+**Endpoint:** `PUT http://<printer_ip>:80/upload`
+
+**Request (from packet capture of ElegooSlicer 1.3.2.9, which uses ElegooLink SDK v1.0.1):**
+```http
+PUT /upload HTTP/1.1
+Host: <printer_ip>
+User-Agent: ElegooLink/1.0.1
+Accept: application/json
+Accept-Encoding:
+Content-Range: bytes 0-85255/85256
+Content-Type: application/octet-stream
+Content-Length: 85256
+
+<raw gcode bytes>
 ```
-http://<printer_ip>:8080
+
+The `User-Agent` header follows the pattern `ElegooLink/<sdk_version>` (defined as `ELEGOO_LINK_USER_AGENT` in the elegoo-link SDK source). Newer slicer versions will show a higher version number here.
+
+| Header | Value | Notes |
+|--------|-------|-------|
+| `Host` | Printer IP | Standard HTTP/1.1 |
+| `User-Agent` | `ElegooLink/1.0.1` | Identifies the slicer's network library (see version note below) |
+| `Accept` | `application/json` | Expects JSON response |
+| `Accept-Encoding` | (empty) | Explicitly empty — no compression |
+| `Content-Range` | `bytes <start>-<end>/<total>` | Supports chunked/resumable uploads |
+| `Content-Type` | `application/octet-stream` | Raw binary body |
+| `Content-Length` | File size in bytes | Standard |
+
+> **ElegooLink SDK version note:** The packet capture above was from ElegooSlicer 1.3.2.9, which bundles **ElegooLink v1.0.1**. This older SDK version does NOT send `X-Token`, `X-File-Name`, or `X-File-MD5` headers.
+>
+> However, the current [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) open-source SDK (**v1.3.6**) **always sends** these headers for CC2 uploads — including `X-File-Name`, `X-File-MD5`, and `X-Token` (defaulting to `123456` if no access code is set). Future slicer versions using the newer SDK will send these headers even to stock firmware.
+>
+> Stock firmware appears to accept uploads regardless of whether these headers are present — older clients omit them and uploads succeed, while newer clients include them and uploads also succeed. The headers are simply ignored when not needed.
+
+**Response:**
+```json
+{
+  "error_code": 0,
+  "offset": 85255
+}
 ```
 
-### Authentication
+| Field | Type | Meaning |
+|-------|------|---------|
+| `error_code` | int | 0 = success |
+| `offset` | int | Last byte offset received (0-indexed). For a complete upload, equals `Content-Length - 1`. |
 
-All HTTP requests require authentication via the `X-Token` header or query parameter:
+**Chunked upload behavior:**
+- Small files may be sent in a single PUT (observed: 85KB file in one request)
+- Large files are sent in multiple PUT requests with sequential `Content-Range` offsets
+- The firmware source code references `?offset=<byte_offset>` query parameter and `.cbdtmp` temp file suffix during transfer
 
+### File Upload — OpenCentauri [OpenCentauri]
+
+On OpenCentauri firmware, uploads go to **port 8080** with additional authentication and verification headers.
+
+**Endpoint:** `PUT http://<printer_ip>:8080/upload`
+
+```http
+PUT /upload HTTP/1.1
+Content-Type: application/octet-stream
+Content-Range: bytes 0-1048575/5242880
+X-File-Name: model.gcode
+X-File-MD5: abc123def456...
+X-Token: <token>
+
+<binary chunk data>
 ```
-X-Token: <access_code>
+
+| Header | Description |
+|--------|-------------|
+| `Content-Range` | Byte range being uploaded |
+| `X-File-Name` | Target filename |
+| `X-File-MD5` | MD5 hash of complete file |
+| `X-Token` | Authentication token |
+
+**Response:**
+```json
+{
+  "error_code": 0,
+  "received": 1048576,
+  "total": 5242880
+}
 ```
 
-Or:
+**Important:**
+- Maximum chunk size: 1 MB (1048576 bytes)
+- Calculate MD5 before starting upload
+- Use persistent HTTP connections for efficiency
+- Last chunk completes the upload
 
-```
-?X-Token=<access_code>
-```
+### Upload Protocol Comparison
 
-If no access code is set, use `123456`.
+| Aspect | Stock Firmware | OpenCentauri |
+|--------|---------------|--------------|
+| Port | 80 | 8080 |
+| Auth header (`X-Token`) | Not required (accepted but ignored) | Required |
+| Filename header (`X-File-Name`) | Not sent by ElegooLink ≤1.0.1; sent by ≥1.3.6 | Sent |
+| MD5 header (`X-File-MD5`) | Not sent by ElegooLink ≤1.0.1; sent by ≥1.3.6 | Sent |
+| Response field | `"offset"` | `"received"` / `"total"` |
+| Max chunk | 1 MB (from elegoo-link SDK) | 1 MB |
 
-### Get System Info
+### OpenCentauri HTTP API [OpenCentauri]
+
+The following endpoints are only available on OpenCentauri firmware. Base URL: `http://<printer_ip>:8080`
+
+**Authentication:** All requests require `X-Token` header or `?X-Token=<access_code>` query parameter. If no access code is set, use `123456`. The elegoo-link SDK sends both the header and query parameter simultaneously.
+
+#### Get System Info
 
 ```
 GET /system/info?X-Token=<token>
@@ -1182,7 +1354,7 @@ Response:
 }
 ```
 
-### List Files
+#### List Files
 
 ```
 GET /files?storage_media=local&path=/&X-Token=<token>
@@ -1207,7 +1379,7 @@ Response:
 }
 ```
 
-### Download File
+#### Download File
 
 ```
 GET /download?file_name=<path>&X-Token=<token>
@@ -1217,43 +1389,9 @@ GET /download/udisk?file_name=<path>&X-Token=<token>
 
 Returns raw file contents.
 
-### Upload File
-
-Chunked upload for large files:
-
-```
-PUT /upload
-Content-Type: application/octet-stream
-Content-Range: bytes 0-1048575/5242880
-X-File-Name: model.gcode
-X-File-MD5: abc123def456...
-X-Token: <token>
-
-<binary chunk data>
-```
-
-| Header | Description |
-|--------|-------------|
-| `Content-Range` | Byte range being uploaded |
-| `X-File-Name` | Target filename |
-| `X-File-MD5` | MD5 hash of complete file |
-| `X-Token` | Authentication |
-
-**Important:**
-- Maximum chunk size: 1 MB (1048576 bytes)
-- Calculate MD5 before starting upload
-- Use persistent HTTP connections for efficiency
-- Last chunk completes the upload
-
-### Upload Response
-
-```json
-{
-  "error_code": 0,
-  "received": 1048576,
-  "total": 5242880
-}
-```
+> ⚠️ **Stock firmware:** These download endpoints do not exist. Port 80 returns 404 for all paths except `/upload`. Port 8080 always returns the camera MJPEG stream. G-code file content **cannot be downloaded** from a CC2 on stock firmware. Only metadata and thumbnails are available via MQTT.
+>
+> For G-code file structure and parsing (e.g. for upload capture), see [G-Code File Structure](#g-code-file-structure).
 
 ---
 
@@ -1267,7 +1405,19 @@ X-Token: <token>
 | `u-disk` | USB drive |
 | `sd-card` | SD card |
 
-### File List via MQTT
+### MQTT File Methods - Stock Firmware Compatibility
+
+| Method | Code | Stock Firmware | Notes |
+|--------|------|---------------|-------|
+| GET_FILE_LIST | 1044 | ✅ Works | Returns file names, sizes |
+| GET_FILE_THUMBNAIL | 1045 | ✅ Works | Returns base64 PNG thumbnail |
+| GET_FILE_DETAIL | 1046 | ✅ Works | Returns metadata: size, layers, filament used, print time, color map |
+| DELETE_FILE | 1047 | Untested | — |
+| GET_DISK_INFO | 1048 | Untested | — |
+| SET_PRINTER_DOWNLOAD_FILE | 1057 | Untested (cloud feature) | Tells printer to download from URL — NOT for retrieving files (see below) |
+| CANCEL_PRINTER_DOWNLOAD_FILE | 1058 | Untested | Cancels a 1057 download task |
+
+### File List via MQTT [Both]
 
 ```json
 {
@@ -1301,24 +1451,106 @@ Response:
 }
 ```
 
-### File Upload via MQTT
+### File Detail via MQTT [Both]
 
-MQTT-based upload initiates transfer, actual data sent via HTTP:
+Returns metadata about a specific file, including filament usage data and color mapping.
+
+```json
+{
+  "id": 1,
+  "method": 1046,
+  "params": {
+    "storage_media": "local",
+    "filename": "CC2_temperature_tower.gcode"
+  }
+}
+```
+
+Response (from stock firmware testing):
+```json
+{
+  "id": 1,
+  "method": 1046,
+  "result": {
+    "error_code": 0,
+    "filename": "CC2_temperature_tower.gcode",
+    "size": 5712759,
+    "layer": 722,
+    "print_time": 4690,
+    "total_filament_used": 24.8,
+    "color_map": [
+      {"color": "#0B6283", "name": "PLA", "t": 3}
+    ],
+    "create_time": 1772820155,
+    "last_print_time": 0,
+    "total_print_times": 0
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `filename` | string | File name |
+| `size` | int | File size in bytes |
+| `layer` | int | Total layers (also reported as `TotalLayers` in some firmware) |
+| `print_time` | int | Estimated print time in seconds |
+| `total_filament_used` | float | Total filament usage for the print |
+| `color_map` | array | Per-extruder/slot filament info (see below) |
+| `create_time` | int | Unix timestamp of file creation |
+| `last_print_time` | int | Unix timestamp of last print (0 = never printed) |
+| `total_print_times` | int | Number of times this file has been printed |
+
+**`color_map` entries:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `color` | string | Hex color code with `#` prefix |
+| `name` | string | Filament type name (e.g., "PLA", "PETG") |
+| `t` | int | Canvas tray index used for this slot |
+
+For multi-material prints, `color_map` contains one entry per extruder/slot used. The `t` field maps to the Canvas tray index (0-based). The `total_filament_used` field is a single total value — per-extruder weight breakdown is not available via this method (it exists only in the G-code file comments).
+
+### Method 1057 - SET_PRINTER_DOWNLOAD_FILE
+
+> **Important:** Method 1057 is NOT for downloading file content FROM the printer to the client. It instructs the **printer** to download a file FROM a given URL to its own storage. This is a cloud/remote feature used when the printer needs to pull a file from cloud storage or a remote server.
+
+The elegoo-link SDK maps this as `SET_PRINTER_DOWNLOAD_FILE` with parameters:
 
 ```json
 {
   "id": 1,
   "method": 1057,
   "params": {
-    "storage_media": "local",
     "filename": "model.gcode",
-    "size": 5242880,
-    "md5": "abc123def456..."
+    "url": "https://cloud.example.com/files/model.gcode",
+    "md5": "abc123def456...",
+    "taskID": "unique-task-id"
   }
 }
 ```
 
-### Delete File
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `filename` | string | Target filename to save as on the printer |
+| `url` | string | URL for the printer to download the file from |
+| `md5` | string | MD5 hash for verification after download |
+| `taskID` | string | Unique task identifier (used for cancellation with method 1058) |
+
+#### How to actually download files FROM the printer
+
+To download a file from the printer to the client, use the **HTTP API** — not MQTT method 1057. The elegoo-link SDK uses `GET /download?file_name=<path>&X-Token=<token>` with storage-specific paths:
+
+| Storage | HTTP Endpoint |
+|---------|---------------|
+| `local` | `GET /download?file_name=<path>` |
+| `sdcard` | `GET /download/sdcard?file_name=<path>` |
+| `udisk` | `GET /download/udisk?file_name=<path>` |
+
+All require `X-Token` authentication (query parameter or header). See [Download File](#download-file) in the OpenCentauri HTTP API section.
+
+> ⚠️ **Stock firmware:** These HTTP download endpoints do not exist. There is no MQTT alternative for downloading file content either. On stock firmware, G-code file content is **not accessible by any method** — only metadata (method 1046) and thumbnails (method 1045) are available.
+
+### Delete File [Both]
 
 ```json
 {
@@ -1331,7 +1563,7 @@ MQTT-based upload initiates transfer, actual data sent via HTTP:
 }
 ```
 
-### Disk Info
+### Disk Info [Both]
 
 ```json
 {
@@ -1361,7 +1593,7 @@ Response:
 
 ## Video Streaming
 
-The CC2 camera provides MJPEG streaming.
+The CC2 camera provides MJPEG streaming on port 8080.
 
 ### Enable Video Stream
 
@@ -1381,9 +1613,11 @@ The CC2 camera provides MJPEG streaming.
 http://<printer_ip>:8080/?action=stream
 ```
 
+> **Note [Stock]:** On stock firmware, port 8080 serves the camera MJPEG stream for **every request** regardless of path, query parameters, or headers. The URL path and `?action=stream` query have no effect — any HTTP request to port 8080 returns the camera stream. There is no `Accept-Ranges` header, `Range` headers are ignored, and `X-Token` has no effect.
+
 ### Stream Characteristics
 
-- Format: MJPEG (Motion JPEG)
+- Format: MJPEG (Motion JPEG), `Content-Type: multipart/x-mixed-replace; boundary=--frame_boundary`
 - Resolution: Varies by camera
 - Max connections: Usually 1 (check `max_video_connections` in attributes)
 - No authentication required for stream itself
@@ -1570,7 +1804,7 @@ When starting a print with Canvas, include slot mapping:
                 │  │    ↓                     │  │
                 │  │  PRINTING ◄──────────┐   │  │
                 │  │    │                 │   │  │
-                │  │    ├── PAUSING ──► PAUSED  │  │
+                │  │    ├── PAUSING ──► PAUSED│  │
                 │  │    │                 │   │  │
                 │  │    │        RESUMING─┘   │  │
                 │  └────┼─────────────────────┘  │
@@ -1589,6 +1823,42 @@ When starting a print with Canvas, include slot mapping:
                  │ STOPPED  │
                  └──────────┘
 ```
+
+### Upload-Then-Print Flow [Stock]
+
+This section documents the complete sequence of events when ElegooSlicer sends a print job to the CC2 on stock firmware. Derived from packet capture of ElegooSlicer 1.3.2.9 and confirmed by the elegoo-link SDK source.
+
+**Participants:**
+- **Slicer**: ElegooSlicer
+- **Printer**: CC2 with stock firmware
+
+| Time | Direction | Protocol | What Happens |
+|------|-----------|----------|-------------|
+| 0-3s | Printer → Slicer | MQTT | Status pushes on `api_status` (~1/sec) |
+| 3.9s | Slicer → Printer | MQTT | api_request (get_status or get_attributes) |
+| 3.9s | Printer → Slicer | MQTT | api_response |
+| 10.6s | Slicer → Printer | MQTT | api_request (get_file_list, larger response ~1KB) |
+| 10.7s | Printer → Slicer | MQTT | api_response (~1KB, file list) |
+| 14.3s | Slicer → Printer | MQTT | api_request (status check) |
+| 14.3s | Printer → Slicer | MQTT | api_response |
+| 20.5s | Slicer → Printer | MQTT | api_request (~155 bytes, pre-upload notification) |
+| 20.5s | Printer → Slicer | MQTT | api_response (~1KB) |
+| **20.5s** | **Slicer → Printer** | **HTTP** | **TCP SYN to port 80, then `PUT /upload` (85KB)** |
+| **20.9s** | **Printer → Slicer** | **HTTP** | **200 OK, `{"error_code": 0, "offset": 85255}`** |
+| 20.9s | Slicer → Printer | HTTP | TCP FIN (connection closes) |
+| 21.9s | Slicer → Printer | MQTT | api_request (file detail query for uploaded file) |
+| 22.0s | Printer → Slicer | MQTT | api_response (~1KB, file metadata) |
+| 22.1s | Slicer → Printer | MQTT | api_request (another query) |
+| 22.2s | Printer → Slicer | MQTT | api_response |
+| 22.2s | Slicer → Printer | MQTT | api_request (365 bytes, start_print command with config) |
+| 22.4s | Printer → Slicer | MQTT | api_response (acknowledgment) |
+| 22.8s+ | Printer → Slicer | MQTT | Status updates shift to printing state |
+
+**Key observations:**
+- The HTTP upload is a single isolated event. TCP connect, PUT, response, TCP close, completing in under half a second. This was a small file, larger files may be sent in chunks.
+- Everything before and after the upload is MQTT
+- The slicer queries file detail (method 1046) for the just-uploaded file before issuing start_print
+- The G-code body starts with `; HEADER_BLOCK_START` and contains the full file structure (header, thumbnail, parameters, executable G-code, filament usage summary, CONFIG_BLOCK)
 
 ### Start Print
 
@@ -1752,11 +2022,13 @@ This indicates both filament runout (109) and missing bed leveling (1026).
 - Recommend keeping printers on isolated IoT network
 - Do not expose ports 1883 or 8080 to the internet
 
-### Client Limits
+### MQTT Connection Limits
 
-- Maximum ~4 concurrent MQTT clients
+- Maximum ~4 concurrent MQTT connections (shared across slicer, HA integration, web interface, and any other connected applications)
+- All connection slots can be exhausted by legitimate use (slicer + HA integration + web interface = 3 slots)
+- A local network proxy's MQTT pass-through counts as one connection per slicer session
 - Malicious clients could DoS by filling all slots
-- Implement clean disconnection on application exit
+- Implement clean disconnection on application exit to free slots
 
 ### Best Practices
 
@@ -1770,6 +2042,34 @@ This indicates both filament runout (109) and missing bed leveling (1026).
 ## Firmware Variations
 
 Different firmware versions may behave slightly differently.
+
+### Firmware Architecture [Stock]
+
+The CC2 stock firmware is built on the following components:
+
+| Component | Details |
+|-----------|---------|
+| Base system | **Klipper** (G-Code command structure, virtual SD card) |
+| CPU | **Allwinner R528** (ARM Cortex-A7) |
+| HTTP server | **libhv/1.3.4** (port 80, minimal endpoints) |
+| Upload handler | **Mongoose HTTP library** (chunked uploads with offset tracking) |
+| Temp file suffix | `.cbdtmp` during upload, renamed on completion |
+
+#### Open Source vs Proprietary Components
+
+The [CentauriCarbon](https://github.com/ELEGOO-3D/CentauriCarbon) open-source repository includes:
+- Klipper core (motion control, G-Code parsing)
+- File management (list, metadata, thumbnails)
+- OTA update mechanism
+- Hardware drivers
+
+The following components are **proprietary** and not in the open-source code:
+- HTTP server (libhv on port 80)
+- Camera streaming (port 8080 MJPEG)
+- MQTT command handlers and broker
+- Web interface
+
+This distinction is important: the open-source Klipper code shows file storage paths and upload handling, but the network-facing services (HTTP endpoints, MQTT protocol, camera) are closed-source. This limits the ability to predict or modify network behavior without packet-level analysis.
 
 ### Known Variations
 
@@ -1817,7 +2117,7 @@ def get_firmware_version(attrs):
 | **Communication** | | |
 | Transport | WebSocket | MQTT |
 | Broker Location | External (HA) | **On Printer** |
-| Client Role | Server | **Client** |
+| Home Assistant Role | MQTT Broker (server) | **MQTT Client (connects to printer)** |
 | **Authentication** | | |
 | Registration | Not required | **Required** |
 | Password | None | `123456` or access code |
@@ -1835,6 +2135,8 @@ def get_firmware_version(attrs):
 ---
 
 ## Implementation Checklist
+
+> **C++ developers:** Consider using the [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) SDK directly instead of implementing the protocol from scratch. The checklist below is for developers building custom implementations in other languages.
 
 Use this checklist when implementing CC2 support:
 
@@ -1880,10 +2182,11 @@ Use this checklist when implementing CC2 support:
 - [ ] Timeout handling
 
 ### File Operations
-- [ ] File listing (MQTT or HTTP)
-- [ ] File upload (chunked HTTP)
-- [ ] File download
-- [ ] MD5 verification
+- [ ] File listing (MQTT method 1044, or HTTP on OpenCentauri)
+- [ ] File upload (stock: `PUT /upload` on port 80; OpenCentauri: port 8080 with auth)
+- [ ] File detail/metadata (MQTT method 1046)
+- [ ] File thumbnail (MQTT method 1045)
+- [ ] File download (OpenCentauri only: HTTP `GET /download`; stock firmware: not available via any method)
 
 ### Peripheral Control
 - [ ] Temperature control
@@ -1988,13 +2291,33 @@ Use this checklist when implementing CC2 support:
 ## References
 
 ### Official Sources
-- [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) - Official Elegoo network library (primary source)
-- [ElegooSlicer](https://github.com/ELEGOO-3D/ElegooSlicer) - Official slicer application
+- [elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) - **Official C++ SDK** (v1.3.6). Primary source for protocol details. Implements discovery, MQTT, HTTP upload/download, and all printer commands. Used internally by ElegooSlicer.
+- [CentauriCarbon](https://github.com/ELEGOO-3D/CentauriCarbon) - Open-source Klipper firmware components (file management, OTA, hardware drivers). Network services (HTTP, MQTT, camera) are proprietary and not included.
+- [ElegooSlicer](https://github.com/ELEGOO-3D/ElegooSlicer) - Official slicer application (uses elegoo-link SDK)
 - [elegoo-fdm-web](https://github.com/ELEGOO-3D/elegoo-fdm-web) - Web interface releases
 
 ### Community Projects
 - [elegoo-homeassistant](https://github.com/danielcherubini/elegoo-homeassistant) - Home Assistant integration
 - [OpenCentauri](https://opencentauri.org) - Community documentation project
+
+### Testing Methodology
+
+Protocol documentation in this document is derived from two complementary approaches:
+
+**Primary source — elegoo-link SDK source code:**
+1. **[elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) v1.3.6** — Elegoo's official C++ SDK. Method codes, message formats, error codes, auth modes, connection flow, upload/download protocol, discovery, and state machine are all from this source.
+2. **[CentauriCarbon](https://github.com/ELEGOO-3D/CentauriCarbon)** — Open-source Klipper firmware (Mongoose HTTP library, file transfer handlers, storage paths)
+
+**Stock firmware validation — manual testing:**
+
+The SDK documents the protocol as designed, but doesn't tell you what actually works on stock firmware vs. OpenCentauri. The following manual testing established stock firmware capabilities:
+
+3. **Packet capture** of ElegooSlicer 1.3.2.9 "Upload and Print" session (confirmed upload flow, header behavior, timing)
+4. **Port scanning** of CC2 stock firmware (15+ ports tested including 21, 22, 23, 80, 1883, 3030, 3031, 8080, 8888, 34952, 54780)
+5. **HTTP endpoint probing** on ports 80 and 8080 (20+ paths tested: `/`, `/download`, `/files`, `/api`, `/system/info`, etc., with and without `X-Token` auth headers)
+6. **MQTT protocol testing** with direct broker connection (methods 1001, 1002, 1044, 1045, 1046)
+
+Manual testing performed on stock Elegoo firmware. The SDK source was cross-referenced to verify findings and fill in gaps (e.g., the SDK always sends auth headers for uploads, but stock firmware used an older SDK version that did not).
 
 ### Related Documentation
 - [MQTT 3.1.1 Specification](https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/mqtt-v3.1.1.html)
@@ -2014,6 +2337,90 @@ When contributing:
 1. Cite your source (firmware version, elegoo-link version, etc.)
 2. Include example data where possible
 3. Note any firmware-specific behavior
+
+---
+
+## G-Code File Structure
+
+ElegooSlicer (based on OrcaSlicer) produces G-code files with a well-defined block structure. Metadata is concentrated at the head and tail of the file, so parsers can extract everything without reading the multi-megabyte body. The filament usage data at the end is particularly relevant for tracking per-spool consumption with multi-material Canvas setups.
+
+### File Layout
+
+```gcode
+; HEADER_BLOCK_START
+; generated by ElegooSlicer 1.3.2.9 on 2026-01-11 at 11:11:11
+; total layer number: 111
+; filament_density: 1.26,1.26,1.26,1.25
+; filament_diameter: 1.75,1.75,1.75,1.75
+; max_z_height: 56.04
+; HEADER_BLOCK_END
+
+; THUMBNAIL_BLOCK_START
+; thumbnail begin 144x144 <byte_count>
+; <base64-encoded PNG, split across comment lines>
+; thumbnail end
+; THUMBNAIL_BLOCK_END
+
+<print parameter comments — extrusion widths, etc.>
+
+; EXECUTABLE_BLOCK_START
+<G-code moves — bulk of the file>
+; EXECUTABLE_BLOCK_END
+
+; filament used [mm] = 0.00, 11111.11, 0.00, 0.00   <--- Per-slot filament usage in millimeters
+; filament used [cm3] = 0.00, 11111.11, 0.00, 0.00  <--- Per-slot filament usage in cubic centimeters
+; filament used [g] = 0.00, 11111.11, 0.00, 0.00    <--- Per-slot filament usage in grams
+; total filament used [g] = 11111.11                <--- Total filament usage in grams
+; total filament cost = 11.11
+; total layers count = 111
+; estimated printing time (normal mode) = 1h 11m 11s
+
+; CONFIG_BLOCK_START
+; <full slicer settings as "; key = value" lines>
+; filename_format = <name>.gcode     <--- Whatever custom name format the user set in the slicer
+; input_filename_base = my_model     <--- May be absent in some versions
+; CONFIG_BLOCK_END
+```
+
+**Key observations:**
+
+- **Per-slot filament data** (4 values for Canvas/AMS slots) appears between
+  `EXECUTABLE_BLOCK_END` and `CONFIG_BLOCK_START`.
+- **CONFIG_BLOCK** contains all slicer settings as `; key = value` comment lines.
+  For multi-material profiles this block has been observed to be around 26 KB.
+
+
+### Filament Usage Comments
+
+The per-slot filament data uses comma-separated values, one per Canvas slot (A1, A2, A3, A4):
+
+```gcode
+; filament used [mm] = 0.00, 0.00, 0.00, 916.48
+; filament used [cm3] = 0.00, 0.00, 0.00, 2.20
+; filament used [g] = 0.00, 0.00, 0.00, 2.76
+; total filament used [g] = 2.76
+; total filament cost = 0.00
+```
+
+The four values correspond to Canvas slots 0-3. Only slots with non-zero values were used for the print.
+
+### CONFIG_BLOCK Filament Settings
+
+The CONFIG_BLOCK at the end contains slicer profile settings with semicolon-separated per-extruder values:
+
+```gcode
+; filament_settings_id = My Custom PLA Profile;My Custom PETG Profile
+; filament_type = PLA;PETG
+; filament_density = 1.24;1.27
+```
+
+> **Note:** This per-slot data is only accessible from the G-code file itself, not from the printer's MQTT status or file detail responses. The MQTT file detail (method 1046) provides `total_filament_used` as a single number and `color_map` with filament types, but not the per-slot weight breakdown.
+>
+> On stock firmware, G-code file content cannot be downloaded from the printer (see [Method 1057](#method-1057---set_printer_download_file)). To access per-slot filament data, the file may be captured at upload time using a local network proxy between the slicer and the printer.
+>
+> **Proxy approach:** A local network proxy intercepts the slicer's `PUT /upload` request on port 80, parses the G-code file, and forwards the request to the printer. The slicer is pointed at the proxy's IP instead of the printer's IP and can query it for per-slot filament data. The proxy also provides TCP pass-through on ports 1883 (MQTT over TCP), 9001 (MQTT over WebSocket), and 8080 (camera) so the slicer's Device page continues to work normally. The Device page's JavaScript creates its own MQTT-over-WebSocket client on port 9001 for file lists, live status, and controls. The HA integration connects directly to the printer and does not need to go through the proxy.
+>
+> **Home Assistant:** CC2 integration options store the capture-proxy **base URL** (`http://` or `https://`, host, optional port). The config flow normalizes input (for example repeated `http://` prefixes) before saving and before calling the proxy health endpoint.
 
 ---
 
@@ -2149,6 +2556,41 @@ Note: `begin_time` and `end_time` ARE provided in historical task data (method 1
 
 ## Changelog
 
+### 2026-03-16 - Port 9001 Discovery
+- Added port 9001 (MQTT over WebSocket) to port map and network architecture
+- The CC2 exposes MQTT on two ports: 1883 (TCP, used by the elegoo-link C++ library)
+  and 9001 (WebSocket, used by the slicer's Device page JavaScript). Discovered via
+  analysis of the bundled `lan_service_web/index.html` which connects `ws://{ip}:9001`
+  using mqtt.js. Port confirmed open on stock firmware via port scan.
+- Updated architecture diagram with MQTT-WS port
+- Updated proxy approach section to include port 9001 relay requirement
+
+### 2026-03-08 - Stock Firmware Documentation Updates
+- Added elegoo-link SDK section to introduction: explains the SDK is available as a usable C++ library, not just a reference
+- Restructured Testing Methodology: separated SDK source analysis (primary) from manual stock firmware validation
+- Updated References: expanded elegoo-link and CentauriCarbon descriptions
+- Added SDK note to Implementation Checklist
+- Added firmware compatibility context throughout document (stock vs OpenCentauri labels)
+- Updated Network Architecture with correct port table (added port 80) and stock firmware diagram
+- Documented stock firmware upload protocol (`PUT /upload` on port 80, `offset` response)
+- Clarified upload header behavior across ElegooLink SDK versions: v1.0.1 omits auth headers, v1.3.6 always sends `X-Token`, `X-File-Name`, `X-File-MD5`. Stock firmware accepts uploads either way.
+- Fixed chunk size: 1 MB for both stock and OpenCentauri (from elegoo-link SDK source)
+- Added firmware compatibility banner to HTTP API section; noted most HTTP endpoints are OpenCentauri-only
+- **Corrected Method 1057**: Renamed from DOWNLOAD_FILE to SET_PRINTER_DOWNLOAD_FILE. This method tells the printer to download a file FROM a URL (cloud feature), not for downloading files from the printer. Added correct params: `filename`, `url`, `md5`, `taskID`.
+- Fixed Client ID section: `1_PC_<1000-9999>` format is the current elegoo-link SDK format (not deprecated). The `0cli` format is from the web interface.
+- Fixed Request ID section: `1_PC_<number>_req` is the current elegoo-link SDK format (not legacy)
+- Added MQTT authentication modes table (basic, accessCode, token, pinCode) from elegoo-link SDK
+- Added note about elegoo-link SDK attempting `GET /system/info` (404 on current stock firmware, handled gracefully)
+- Clarified port 8080 behavior on stock firmware (camera MJPEG only, no file operations)
+- Added Upload-Then-Print flow section with packet-capture-derived timeline
+- Documented full GET_FILE_DETAIL (1046) response including `total_filament_used` and `color_map`
+- Added G-Code File Structure section documenting per-slot filament usage comments and CONFIG_BLOCK
+- Updated Video Streaming section with stock firmware behavior notes
+- Added Firmware Architecture subsection (Klipper base, Allwinner R528, storage paths, open-source vs proprietary component split)
+- Added Stock Firmware Capabilities Summary (what IS and IS NOT possible on stock firmware)
+- Added reference to local network proxy approach for G-code file capture
+- Added Testing Methodology to References section
+
 ### 2026-02-02 - Initial Release
 - Complete protocol documentation based on elegoo-link v1.0.0
 - All method codes from COMMAND_MAPPING_TABLE
@@ -2165,4 +2607,4 @@ Note: `begin_time` and `end_time` ARE provided in historical task data (method 1
 
 ---
 
-*This document is maintained by the OpenCentauri community. Last updated: 2026-02-02*
+*Last updated: 2026-03-16*

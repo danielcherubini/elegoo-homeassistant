@@ -17,6 +17,8 @@ make start      # Start development server
 make debug      # Start debug server
 ```
 
+When checking code quality, validate with make format, make lint, and make test. `format` and `lint` are both considered linting commands, run both.
+
 ## Versioning
 Update `manifest.json` and `pyproject.toml` versions together before releasing.
 

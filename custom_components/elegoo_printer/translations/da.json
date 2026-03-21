@@ -18,7 +18,11 @@
         "description": "Konfigurer dine Centauri Carbon 2 printerindstillinger.",
         "data": {
           "ip_address": "Printer IP-adresse",
-          "cc2_access_code": "Adgangskode (valgfrit)"
+          "cc2_access_code": "Adgangskode (valgfrit)",
+          "gcode_proxy_url": "GCode proxy-URL (valgfrit)"
+        },
+        "data_description": {
+          "gcode_proxy_url": "Basis-URL for cc2-gcode-capture-proxy (vært, vært:port eller http(s)-URL; http bruges hvis du udelader skemaet). Lad det stå tomt for at deaktivere."
         }
       },
       "mqtt_options": {
@@ -109,7 +113,9 @@
       "init_no_printer_found": "Initialisering mislykkedes: Printer kunne ikke findes.",
       "cc2_options_no_printer_found": "CC2 printer kunne ikke findes.",
       "cc2_access_code_required": "Denne printer kræver en adgangskode til autentificering.",
-      "cc2_authentication_failed": "Autentificering mislykkedes. Verificer adgangskode i printerindstillinger: Indstillinger → Netværk → Adgangskode."
+      "cc2_authentication_failed": "Autentificering mislykkedes. Verificer adgangskode i printerindstillinger: Indstillinger → Netværk → Adgangskode.",
+      "gcode_proxy_unreachable": "Kan ikke nå GCode-proxyserveren. Bekræft adressen eller URL'en og at proxyen kører.",
+      "gcode_proxy_invalid": "Ugyldig GCode-proxyadresse. Brug en vært eller vært:port, eller en http(s)-URL uden dobbelte skemaer."
     },
     "abort": {
       "already_configured": "Dette indlæg er allerede konfigureret."
