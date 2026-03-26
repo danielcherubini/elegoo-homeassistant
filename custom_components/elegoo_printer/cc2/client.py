@@ -16,6 +16,7 @@ import contextlib
 import json
 import secrets
 import time
+from collections import deque
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any
 
@@ -60,6 +61,7 @@ from .const import (
     CC2_MQTT_KEEPALIVE,
     CC2_MQTT_PORT,
     CC2_MQTT_USERNAME,
+    CC2_PRINT_STATUS_TRANSITION_QUEUE_MAX,
     CC2_REG_OK,
     CC2_REG_TOO_MANY_CLIENTS,
     CC2_REGISTRATION_TIMEOUT,
@@ -69,7 +71,10 @@ from .models import CC2StatusMapper
 
 if TYPE_CHECKING:
     from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
-    from custom_components.elegoo_printer.sdcp.models.status import LightStatus
+    from custom_components.elegoo_printer.sdcp.models.status import (
+        LightStatus,
+        PrinterStatus,
+    )
 
 
 class ElegooCC2Client:
@@ -152,6 +157,10 @@ class ElegooCC2Client:
         self._cached_status: dict[str, Any] = {}
         self._status_sequence = 0
         self._non_continuous_count = 0
+        # Queued snapshots: each distinct print_info.status between HA polls
+        self._print_status_transition_queue: deque[PrinterStatus] = deque(
+            maxlen=CC2_PRINT_STATUS_TRANSITION_QUEUE_MAX
+        )
 
         # Registration tracking
         self._registration_event: asyncio.Event | None = None
@@ -368,6 +377,23 @@ class ElegooCC2Client:
         self.mqtt_client = None
         self._is_connected = False
         self._is_registered = False
+        self._print_status_transition_queue.clear()
+
+    def consume_print_status_transition_queue(self) -> list[PrinterStatus]:
+        """
+        Drain and return all queued PrinterStatus snapshots for distinct print_info.status changes.
+
+        Each snapshot was captured when the mapped print sub-status changed. The data
+        coordinator replays them so Home Assistant records transient values that would
+        otherwise be overwritten before the next poll (for example COMPLETE before IDLE).
+
+        Returns:
+            list[PrinterStatus]: Snapshots in the order the transitions occurred.
+
+        """  # noqa: E501
+        snapshots = list(self._print_status_transition_queue)
+        self._print_status_transition_queue.clear()
+        return snapshots
 
     async def _subscribe_to_topics(self) -> None:
         """Subscribe to all required MQTT topics."""
@@ -684,10 +710,14 @@ class ElegooCC2Client:
     def _update_printer_status(self) -> None:
         """Update printer_data.status from cached status."""
         try:
+            previous_print_status = self.printer_data.status.print_info.status
             # Map CC2 status format to PrinterStatus
             mapped_status = CC2StatusMapper.map_status(
                 self._cached_status, self.printer.printer_type
             )
+            new_print_status = mapped_status.print_info.status
+            if new_print_status != previous_print_status:
+                self._print_status_transition_queue.append(deepcopy(mapped_status))
             self.printer_data.status = mapped_status
             self.logger.debug(
                 "Updated printer status: %s",
