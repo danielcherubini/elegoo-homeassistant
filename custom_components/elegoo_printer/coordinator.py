@@ -153,10 +153,11 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         pending = api.client.consume_print_status_transition_queue()
         if not pending:
             return
+        original_status = api.printer_data.status
         for status_snapshot in pending:
             api.printer_data.status = status_snapshot
             self.async_set_updated_data(api.printer_data)
-        api.printer_data.status = api.client.printer_data.status
+        api.printer_data.status = original_status
 
     def generate_unique_id(self, key: str) -> str:
         """
