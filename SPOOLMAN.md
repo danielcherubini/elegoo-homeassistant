@@ -177,13 +177,13 @@ actions:
         {% set n4 = states('sensor.centauri_carbon_2_a4_name') %}
         {{ {
           'a1': {'name': '' if n1 in ['unknown','unavailable'] else n1,
-                 'grams': states('sensor.centauri_carbon_2_a1_grams') | float(0)},
+                 'grams': states('sensor.centauri_carbon_2_a1_grams') | float(0) | round(2)},
           'a2': {'name': '' if n2 in ['unknown','unavailable'] else n2,
-                 'grams': states('sensor.centauri_carbon_2_a2_grams') | float(0)},
+                 'grams': states('sensor.centauri_carbon_2_a2_grams') | float(0) | round(2)},
           'a3': {'name': '' if n3 in ['unknown','unavailable'] else n3,
-                 'grams': states('sensor.centauri_carbon_2_a3_grams') | float(0)},
+                 'grams': states('sensor.centauri_carbon_2_a3_grams') | float(0) | round(2)},
           'a4': {'name': '' if n4 in ['unknown','unavailable'] else n4,
-                 'grams': states('sensor.centauri_carbon_2_a4_grams') | float(0)}
+                 'grams': states('sensor.centauri_carbon_2_a4_grams') | float(0) | round(2)}
         } | to_json }}
 ```
 
@@ -229,7 +229,7 @@ actions:
                         - action: script.update_spoolman_from_filament_name
                           data:
                             filament_name: "{{ slot_data[repeat.item].name }}"
-                            use_weight: "{{ slot_data[repeat.item].grams | float }}"
+                            use_weight: "{{ slot_data[repeat.item].grams | float | round(2) }}"
     default:
       - action: persistent_notification.create
         data:
@@ -295,7 +295,7 @@ actions:
           - action: script.update_spoolman_from_filament_name
             data:
               filament_name: "{{ filament_name }}"
-              use_weight: "{{ weight_grams }}"
+              use_weight: "{{ weight_grams | float | round(2) }}"
     default:
       - action: persistent_notification.create
         data:
@@ -586,7 +586,8 @@ filter:
     - integration: "*spoolman*"
       sort:
         method: attribute
-        attribute: filament_material
+        attribute: remaining_weight
+        numeric: true
         reverse: false
       attributes:
         archived: false
@@ -609,19 +610,7 @@ filter:
           {% else %}
             default_color
           {% endif %}
-        name: |
-          {% set vendor = state_attr(entity, 'filament_vendor_name') %}
-          {% set name = state_attr(entity, 'filament_name') %}
-          {% set material = state_attr(entity, 'filament_material') %}
-          {% if vendor and name and material %}
-            {{ material }} {{ vendor }} {{ name }}
-          {% elif name and material %}
-            {{ name }} ({{ material }})
-          {% elif name %}
-            {{ name }}
-          {% else %}
-            Unknown Spool
-          {% endif %}
+        name: "{{ state_attr(entity, 'filament_name') or 'Unknown Spool' }}"
         secondary: |
           {% set location = state_attr(entity, 'location') %} {% if location %}
             {{ (state_attr(entity, 'remaining_weight') | float)  | round(2) }} g ({{ location }})
@@ -642,7 +631,8 @@ filter:
           action: more-info
 sort:
   method: attribute
-  attribute: last_used
+  attribute: filament_name
+  ignore_case: true
   reverse: false
 card:
   type: grid
