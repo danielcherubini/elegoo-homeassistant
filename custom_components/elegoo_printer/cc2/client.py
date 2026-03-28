@@ -905,8 +905,12 @@ class ElegooCC2Client:
                 filename,
                 exc,
             )
-            # Set retry timestamp for later retry attempt
-            file_info.setdefault("proxy_filament_status", "retry")
+            # Only set retry status if we have _file_details initialized
+            if "_file_details" in self._integration_data:
+                file_info = self._integration_data["_file_details"].setdefault(
+                    filename, {}
+                )
+                file_info.setdefault("proxy_filament_status", "retry")
         finally:
             # Clear pending request flag only if we're not retrying
             if (
