@@ -1,6 +1,6 @@
 # Spoolman Integration
 
-Track filament usage per spool by pushing data from this integration into [Spoolman](https://github.com/Donkie/Spoolman) via the [Spoolman Home Assistant](https://github.com/Disane87/spoolman-homeassistant) integration.
+Track filament usage per spool by pushing data from this integration into [Spoolman](https://github.com/Donkie/Spoolman) via its REST API and the [Spoolman Home Assistant](https://github.com/Disane87/spoolman-homeassistant) integration.
 
 There are three approaches depending on your printer and firmware:
 
@@ -14,6 +14,7 @@ All approaches require:
 
 * [Spoolman Home Assistant](https://github.com/Disane87/spoolman-homeassistant) integration installed and configured
 * Spoolman filament `name` and `ext_id` values that match the filament preset names in ElegooSlicer
+* A `rest_command` in `configuration.yaml` for the CC2/CC1 automations to query the Spoolman API (see [prerequisites](#prerequisites) below)
 
 ---
 
@@ -37,9 +38,13 @@ flowchart LR
     HAElegoo1 -->|"filename cached by existing automation"| Auto1[Spoolman Push Automation]
   end
 
-  Auto2 -->|"match filament name"| SpoolmanHA[Spoolman HA Integration]
-  Auto1 -->|"match filament name"| SpoolmanHA
-  SpoolmanHA -->|"spoolman.use_spool_filament"| SpoolmanServer["Spoolman Server (192.168.50.49:7912)"]
+  SpoolmanServer["Spoolman Server"]
+
+  Auto2 -->|"rest_command: find spool by name"| SpoolmanServer
+  Auto1 -->|"rest_command: find spool by name"| SpoolmanServer
+  Auto2 -->|"spoolman.use_spool_filament"| SpoolmanHA[Spoolman HA Integration]
+  Auto1 -->|"spoolman.use_spool_filament"| SpoolmanHA
+  SpoolmanHA --> SpoolmanServer
 ```
 
 Uses the [cc2-gcode-capture-proxy](https://github.com/lantern-eight/cc2-gcode-capture-proxy) to capture per-slot filament data from each uploaded gcode file. The proxy parses `; filament used [g]` and `; filament_settings_id` from the gcode to determine how much each Canvas slot uses and what filament is loaded.
@@ -61,6 +66,16 @@ The integration exposes this data as sensors when the proxy URL is configured (S
 * [cc2-gcode-capture-proxy](https://github.com/lantern-eight/cc2-gcode-capture-proxy) running and configured
 * Proxy URL configured in the integration options
 * Spoolman filament names matching ElegooSlicer filament preset names
+* The following `rest_command` added to your `configuration.yaml` (reload or restart HA after adding):
+    - The automations query the Spoolman server directly via rest_command for spool lookup, then use the HA service for deduction
+
+```yaml
+rest_command:
+  spoolman_find_spools_by_name:
+    url: "http://YOUR_SPOOLMAN_HOST:7912/api/v1/spool?filament.name={{ filament_name | urlencode }}&allow_archived=false"
+    method: GET
+    content_type: "application/json"
+```
 
 ### Required helper
 
@@ -70,7 +85,9 @@ Create in Settings → Devices & Services → Helpers:
 
 ### Shared script: Update Spoolman From Filament Name
 
-Both the CC2 and CC1 automations use this reusable script. It finds a non-archived Spoolman spool matching the filament name and deducts usage. When multiple spools share the same filament name, the spool with the lowest remaining weight is chosen.
+Both the CC2 and CC1 automations use this reusable script. It queries the Spoolman REST API directly for non-archived spools matching the filament name, picks the spool with the lowest remaining weight, and deducts usage via `spoolman.use_spool_filament`.
+
+> **Why REST instead of HA entities?** The Spoolman HA integration may not reliably populate Spools, there may only be Filaments. Querying the API makes sure we get spools and supports the "use emptiest spool first" logic across duplicate spools.
 
 ```yaml
 update_spoolman_from_filament_name:
@@ -81,6 +98,7 @@ update_spoolman_from_filament_name:
     filament_name:
       required: true
       name: Filament Name
+      description: Must match the Spoolman filament name exactly.
       selector:
         text:
     use_weight:
@@ -93,19 +111,22 @@ update_spoolman_from_filament_name:
           step: 0.01
           unit_of_measurement: g
   sequence:
+    - action: rest_command.spoolman_find_spools_by_name
+      data:
+        filament_name: "{{ filament_name }}"
+      response_variable: spool_response
     - variables:
         matched_spool_id: >
-          {% set spools = integration_entities('spoolman')
-             | select('match', 'sensor.spoolman_spool_[0-9]+$') | list %}
+          {% set raw = spool_response.content if spool_response.status == 200
+              else '[]' %}
+          {% set spools = raw if raw is list
+              else raw | from_json(default=[]) %}
           {% set ns = namespace(best_id=none, best_weight=none) %}
           {% for spool in spools %}
-            {% if state_attr(spool, 'filament_name') == filament_name
-               and not state_attr(spool, 'archived') %}
-              {% set w = state_attr(spool, 'remaining_weight') | float(99999) %}
-              {% if ns.best_id is none or w < ns.best_weight %}
-                {% set ns.best_id = state_attr(spool, 'id') %}
-                {% set ns.best_weight = w %}
-              {% endif %}
+            {% set w = spool.remaining_weight | float(99999) %}
+            {% if ns.best_id is none or w < ns.best_weight %}
+              {% set ns.best_id = spool.id %}
+              {% set ns.best_weight = w %}
             {% endif %}
           {% endfor %}
           {{ ns.best_id }}
@@ -189,7 +210,7 @@ actions:
               {{ raw_data not in ['unknown', 'unavailable', '', 'None'] }}
         sequence:
           - variables:
-              slot_data: "{{ raw_data | from_json }}"
+              slot_data: "{{ raw_data if raw_data is mapping else raw_data | from_json }}"
           - repeat:
               for_each:
                 - a1
