@@ -771,21 +771,43 @@ class ElegooCC2Client:
 
         # Get total_layer from print_status or cached file details
         total_layer = print_status.get("total_layer")
+        file_details = self._integration_data.get("_file_details", {})
+        file_info = file_details.get(filename, {})
+
+        # Check enrichment data (TotalLayers, total_filament_used,
+        # color_map, print_time)
         if total_layer is None:
-            # Try to get from cached file details
-            file_details = self._integration_data.get("_file_details", {})
-            if filename in file_details:
-                total_layer = file_details[filename].get("TotalLayers")
-            elif not hasattr(self, "_pending_file_detail_request"):
+            # Check if file_info has any enrichment markers (not just any cached data)
+            has_enrichment = (
+                file_info.get("TotalLayers")
+                or file_info.get("total_filament_used")
+                or file_info.get("color_map")
+                or file_info.get("print_time")
+            )
+            if not has_enrichment and not hasattr(self, "_pending_file_detail_request"):
                 self._pending_file_detail_request = filename
                 self._request_file_detail_background(filename)
 
         # Fetch proxy filament data independently of total_layer / file details
-        if self._gcode_proxy and not hasattr(self, "_pending_proxy_request"):
-            file_details = self._integration_data.get("_file_details", {})
-            if not file_details.get(filename, {}).get("proxy_filament"):
+        if self._gcode_proxy:
+            proxy_filament_status = file_info.get("proxy_filament_status", "none")
+            needs_proxy_update = (
+                (
+                    proxy_filament_status == "none"
+                    and not hasattr(self, "_pending_proxy_request")
+                )
+                or proxy_filament_status == "retry"
+                or not file_info.get("proxy_filament")
+            )
+            if needs_proxy_update:
                 self._pending_proxy_request = filename
                 self._request_proxy_filament_background(filename)
+            if (
+                file_info.get("proxy_filament")
+                and hasattr(self, "_pending_proxy_request")
+                and self._pending_proxy_request == filename
+            ):
+                del self._pending_proxy_request
 
         # Get cached thumbnail for this file
         file_thumbnails = self._integration_data.get("_file_thumbnails", {})
@@ -874,6 +896,7 @@ class ElegooCC2Client:
                     filename, {}
                 )
                 file_info["proxy_filament"] = data
+                file_info["proxy_filament_status"] = "success"
                 self.logger.debug("Proxy filament data cached for %s", filename)
                 self._update_printer_status()
         except (TimeoutError, OSError) as exc:
@@ -882,8 +905,14 @@ class ElegooCC2Client:
                 filename,
                 exc,
             )
+            # Set retry timestamp for later retry attempt
+            file_info.setdefault("proxy_filament_status", "retry")
         finally:
-            if hasattr(self, "_pending_proxy_request"):
+            # Clear pending request flag only if we're not retrying
+            if (
+                hasattr(self, "_pending_proxy_request")
+                and self._pending_proxy_request == filename
+            ):
                 del self._pending_proxy_request
 
     async def _request_file_detail(self, filename: str) -> None:
@@ -905,7 +934,11 @@ class ElegooCC2Client:
         ):
             self.logger.debug("Failed to get file details for %s", filename)
         finally:
-            if hasattr(self, "_pending_file_detail_request"):
+            # Clear pending request flag after handling response
+            if (
+                hasattr(self, "_pending_file_detail_request")
+                and self._pending_file_detail_request == filename
+            ):
                 del self._pending_file_detail_request
 
     def _handle_file_detail_response(
@@ -925,16 +958,17 @@ class ElegooCC2Client:
         color_map = result.get("color_map")
         print_time = result.get("print_time")
 
-        has_data = (
-            total_layers
+        # Check for enrichment markers (the actual 1046-enrichment fields)
+        has_enrichment_markers = (
+            total_layers is not None
             or total_filament_used is not None
             or color_map
             or print_time is not None
         )
 
-        if has_data:
+        if has_enrichment_markers:
             detail = self._integration_data["_file_details"].get(filename, {})
-            if total_layers:
+            if total_layers is not None:
                 detail["TotalLayers"] = total_layers
             if total_filament_used is not None:
                 detail["total_filament_used"] = total_filament_used
@@ -955,7 +989,7 @@ class ElegooCC2Client:
             self._update_printer_status()
         else:
             self.logger.debug(
-                "File detail response for %s had no usable data. Keys: %s",
+                "File detail response for %s had no enrichment markers. Keys: %s",
                 filename,
                 list(result.keys()),
             )

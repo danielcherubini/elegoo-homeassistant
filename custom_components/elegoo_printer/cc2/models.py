@@ -406,7 +406,12 @@ class CC2StatusMapper:
         proxy = file_info.get("proxy_filament", {})
         proxy_filament = proxy.get("filament", {}) if proxy else {}
 
-        has_mqtt = total_filament_used is not None or color_map
+        # Treat print_time-only payloads as usable (CC2 returns only print_time)
+        has_mqtt = (
+            total_filament_used is not None
+            or color_map
+            or file_info.get("print_time") is not None
+        )
         has_proxy = bool(proxy_filament)
 
         if not has_mqtt and not has_proxy:
