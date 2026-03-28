@@ -33,14 +33,14 @@ def test_queue_records_printing_complete_idle_sequence() -> None:
     base = {"print_status": {}}
 
     def apply_delta(sub_status: int, machine_status: int) -> None:
-        client._cached_status = {  # noqa: SLF001
+        client._cached_status = {
             **base,
             "machine_status": {
                 "status": machine_status,
                 "sub_status": sub_status,
             },
         }
-        client._update_printer_status()  # noqa: SLF001
+        client._update_printer_status()
 
     apply_delta(CC2_SUBSTATUS_PRINTING, CC2_STATUS_PRINTING)
     apply_delta(CC2_SUBSTATUS_PRINTING_COMPLETED, CC2_STATUS_PRINTING)
@@ -59,14 +59,14 @@ def test_no_queue_when_print_status_unchanged() -> None:
     client = _client()
 
     def apply_delta(sub_status: int, machine_status: int) -> None:
-        client._cached_status = {  # noqa: SLF001
+        client._cached_status = {
             "print_status": {},
             "machine_status": {
                 "status": machine_status,
                 "sub_status": sub_status,
             },
         }
-        client._update_printer_status()  # noqa: SLF001
+        client._update_printer_status()
 
     apply_delta(CC2_SUBSTATUS_PRINTING, CC2_STATUS_PRINTING)
     client.consume_print_status_transition_queue()
@@ -77,13 +77,13 @@ def test_no_queue_when_print_status_unchanged() -> None:
 def test_consume_clears_queue() -> None:
     """consume_print_status_transition_queue must return items once then yield empty."""
     client = _client()
-    client._cached_status = {  # noqa: SLF001
+    client._cached_status = {
         "print_status": {},
         "machine_status": {
             "status": CC2_STATUS_PRINTING,
             "sub_status": CC2_SUBSTATUS_PRINTING,
         },
     }
-    client._update_printer_status()  # noqa: SLF001
+    client._update_printer_status()
     assert len(client.consume_print_status_transition_queue()) == 1
     assert client.consume_print_status_transition_queue() == []
