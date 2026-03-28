@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.const import LOGGER
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
@@ -98,6 +99,8 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                     # Rate-limit even on failure to avoid hammering the endpoint
                     self._last_canvas_check = now
 
+            self._replay_cc2_print_status_transitions()
+
             self.online = True
             if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
@@ -130,6 +133,31 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             )
             msg = f"Unexpected Error: {e.strerror}"
             raise UpdateFailed(msg) from e
+
+    def _replay_cc2_print_status_transitions(self) -> None:
+        """
+        Replay queued CC2 print status snapshots so Home Assistant sees each transition.
+
+        CC2 MQTT can deliver several status deltas within seconds; the client keeps only the
+        latest merged state. After a normal data fetch, this drains the client's transition
+        queue, calls async_set_updated_data for each snapshot, then restores the live status
+        from the client so printer_data stays authoritative.
+
+        Returns:
+            None
+
+        """  # noqa: E501
+        api = self.config_entry.runtime_data.api
+        if not isinstance(api.client, ElegooCC2Client):
+            return
+        pending = api.client.consume_print_status_transition_queue()
+        if not pending:
+            return
+        original_status = api.printer_data.status
+        for status_snapshot in pending:
+            api.printer_data.status = status_snapshot
+            self.async_set_updated_data(api.printer_data)
+        api.printer_data.status = original_status
 
     def generate_unique_id(self, key: str) -> str:
         """

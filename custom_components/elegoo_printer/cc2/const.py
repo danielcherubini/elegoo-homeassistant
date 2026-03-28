@@ -28,6 +28,8 @@ CC2_COMMAND_TIMEOUT = 10  # seconds
 
 # Delta status settings
 CC2_MAX_NON_CONTINUOUS_EVENTS = 5  # Re-request full status after this many gaps
+# Max distinct print-status snapshots queued for HA replay (MQTT bursts)
+CC2_PRINT_STATUS_TRANSITION_QUEUE_MAX = 32
 
 # Topic patterns
 # elegoo/<sn>/api_register - Registration request
