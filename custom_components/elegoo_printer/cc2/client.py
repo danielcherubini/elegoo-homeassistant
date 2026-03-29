@@ -759,6 +759,19 @@ class ElegooCC2Client:
         except Exception:
             self.logger.exception("Failed to map CC2 status to PrinterStatus")
 
+    @staticmethod
+    def _clear_stale_file_detail_keys(file_info: dict[str, Any]) -> None:
+        """Drop proxy + MQTT file-detail cache so a new job refetches."""
+        for key in (
+            "proxy_filament",
+            "proxy_filament_status",
+            "total_filament_used",
+            "color_map",
+            "print_time",
+            "TotalLayers",
+        ):
+            file_info.pop(key, None)
+
     def _update_current_job(self) -> None:
         """Update current job from print status data."""
         print_status = self._cached_status.get("print_status", {})
@@ -773,6 +786,13 @@ class ElegooCC2Client:
         total_layer = print_status.get("total_layer")
         file_details = self._integration_data.get("_file_details", {})
         file_info = file_details.get(filename, {})
+
+        # Same filename can be re-uploaded with new content; drop cached details
+        # for this file so proxy + MQTT file-detail enrichment refetch for the
+        # new print (task_id is unique per job).
+        is_new_task = self.printer_data.print_history.get(task_id) is None
+        if is_new_task and file_info:
+            self._clear_stale_file_detail_keys(file_info)
 
         # Check enrichment data (TotalLayers, total_filament_used,
         # color_map, print_time)
