@@ -93,6 +93,15 @@ CC2 printers **MUST** be configured for LAN-Only mode:
 - For containerized Home Assistant (Docker/Kubernetes): Use host networking or proper network bridging
 - Port 1883 (MQTT) must be accessible between HA and printer
 
+**Optional GCode capture proxy:** 
+
+As of early 2026, Elegoo has not yet added per-slot filament data to the printer's MQTT status response.
+For Centauri Carbon 2 printers, you can use the [cc2-gcode-capture-proxy](https://github.com/lantern-eight/cc2-gcode-capture-proxy) which will capture the GCode file and provide the per-slot filament data to the integration.
+
+In integration options you can set the cc2-gcode-capture-proxy URL that you set up on your local network.
+
+With the proxy configured, additional sensors are created: per-slot A1–A4 grams, volume, and length, plus total filament cost and change count when the slicer provides them.
+
 See [CC2 Protocol Documentation](docs/CC2_PROTOCOL.md) for technical details.
 
 ---
@@ -121,6 +130,8 @@ Elegoo firmware **v1.1.29** contains a bug preventing remote control of lights a
 
 ## 📊 Entities
 The integration provides a comprehensive set of entities including **Live Camera**, **Print Thumbnails**, **Control Buttons** (Stop/Pause/Resume), and a full suite of **Sensors** (Progress, Temps, Layers, Z-Height, etc.).
+
+**CC2 filament / Canvas A1–A4 sensors:** Gcode file-detail and optional proxy sensors are created at setup time (proxy extras are only added when a proxy URL is configured). They stay **available** between prints; when there is no current job data they report **unknown** rather than becoming **unavailable**, so automations and history are not disrupted each time a print ends.
 
 ## 🤖 Automation Blueprints
 Includes a blueprint for mobile notifications. [Import it here.](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/danielcherubini/elegoo-homeassistant/blob/main/blueprints/automation/elegoo_printer/elegoo_printer_progress.yaml)

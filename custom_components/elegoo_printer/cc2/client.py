@@ -76,6 +76,8 @@ if TYPE_CHECKING:
         PrinterStatus,
     )
 
+    from .gcode_proxy import GCodeProxyClient
+
 
 class ElegooCC2Client:
     """
@@ -84,13 +86,14 @@ class ElegooCC2Client:
     Connects TO the printer's MQTT broker (inverted architecture).
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         printer_ip: str,
         serial_number: str,
         access_code: str | None = None,
         logger: Any = LOGGER,
         printer: Printer | None = None,
+        gcode_proxy: GCodeProxyClient | None = None,
     ) -> None:
         """
         Initialize an ElegooCC2Client.
@@ -101,6 +104,7 @@ class ElegooCC2Client:
             access_code: Optional access code for authentication.
             logger: The logger to use.
             printer: Optional Printer object with existing configuration.
+            gcode_proxy: Optional proxy client for per-extruder filament data.
 
         """
         self.printer_ip = printer_ip
@@ -108,6 +112,7 @@ class ElegooCC2Client:
         self.access_code = access_code  # Can be None - will try fallbacks
         self.logger = logger
         self.printer: Printer = printer or Printer()
+        self._gcode_proxy = gcode_proxy
         self.printer_data = PrinterData(printer=self.printer)
 
         # MQTT client state
@@ -153,8 +158,10 @@ class ElegooCC2Client:
             self._request_id,
         )
 
-        # Status caching for delta updates
+        # Status caching for delta updates (printer-reported keys only)
         self._cached_status: dict[str, Any] = {}
+        # Enrichment not present in MQTT status (file details, thumbnails, etc.)
+        self._integration_data: dict[str, Any] = {}
         self._status_sequence = 0
         self._non_continuous_count = 0
         # Queued snapshots: each distinct print_info.status between HA polls
@@ -707,13 +714,28 @@ class ElegooCC2Client:
             else:
                 base[key] = value
 
+    def _cc2_status_view(self) -> dict[str, Any]:
+        """Printer cache plus integration-only keys for status mappers."""
+        if not self._integration_data:
+            return self._cached_status
+        return self._cached_status | self._integration_data
+
     def _update_printer_status(self) -> None:
-        """Update printer_data.status from cached status."""
+        """
+        Update printer_data.status from cached status.
+
+        Concurrency note: all callers run on the same asyncio event loop and
+        never ``await`` between mutating ``_cached_status`` /
+        ``_integration_data`` and calling this method, so no lock is needed.
+        Keep this method synchronous and do not insert awaits in callers
+        before this call to preserve that guarantee.
+        """
         try:
+            cc2_view = self._cc2_status_view()
             previous_print_status = self.printer_data.status.print_info.status
             # Map CC2 status format to PrinterStatus
             mapped_status = CC2StatusMapper.map_status(
-                self._cached_status, self.printer.printer_type
+                cc2_view, self.printer.printer_type
             )
             new_print_status = mapped_status.print_info.status
             if new_print_status != previous_print_status:
@@ -723,10 +745,32 @@ class ElegooCC2Client:
                 "Updated printer status: %s",
                 self.printer_data.status.current_status,
             )
+
+            # Map filament data from cached file details
+            current_filename = self._cached_status.get("print_status", {}).get(
+                "filename"
+            )
+            self.printer_data.gcode_filament_data = CC2StatusMapper.map_filament_data(
+                cc2_view, current_filename
+            )
+
             # Update current job for begin_time/end_time sensors
             self._update_current_job()
         except Exception:
             self.logger.exception("Failed to map CC2 status to PrinterStatus")
+
+    @staticmethod
+    def _clear_stale_file_detail_keys(file_info: dict[str, Any]) -> None:
+        """Drop proxy + MQTT file-detail cache so a new job refetches."""
+        for key in (
+            "proxy_filament",
+            "proxy_filament_status",
+            "total_filament_used",
+            "color_map",
+            "print_time",
+            "TotalLayers",
+        ):
+            file_info.pop(key, None)
 
     def _update_current_job(self) -> None:
         """Update current job from print status data."""
@@ -740,18 +784,53 @@ class ElegooCC2Client:
 
         # Get total_layer from print_status or cached file details
         total_layer = print_status.get("total_layer")
+        file_details = self._integration_data.get("_file_details", {})
+        file_info = file_details.get(filename, {})
+
+        # Same filename can be re-uploaded with new content; drop cached details
+        # for this file so proxy + MQTT file-detail enrichment refetch for the
+        # new print (task_id is unique per job).
+        is_new_task = self.printer_data.print_history.get(task_id) is None
+        if is_new_task and file_info:
+            self._clear_stale_file_detail_keys(file_info)
+
+        # Check enrichment data (TotalLayers, total_filament_used,
+        # color_map, print_time)
         if total_layer is None:
-            # Try to get from cached file details
-            file_details = self._cached_status.get("_file_details", {})
-            if filename in file_details:
-                total_layer = file_details[filename].get("TotalLayers")
-            elif not hasattr(self, "_pending_file_detail_request"):
-                # Request file details in background (only once per filename)
+            # Check if file_info has any enrichment markers (not just any cached data)
+            has_enrichment = (
+                file_info.get("TotalLayers")
+                or file_info.get("total_filament_used")
+                or file_info.get("color_map")
+                or file_info.get("print_time")
+            )
+            if not has_enrichment and not hasattr(self, "_pending_file_detail_request"):
                 self._pending_file_detail_request = filename
                 self._request_file_detail_background(filename)
 
+        # Fetch proxy filament data independently of total_layer / file details
+        if self._gcode_proxy:
+            proxy_filament_status = file_info.get("proxy_filament_status", "none")
+            needs_proxy_update = (
+                (
+                    proxy_filament_status == "none"
+                    and not hasattr(self, "_pending_proxy_request")
+                )
+                or proxy_filament_status == "retry"
+                or not file_info.get("proxy_filament")
+            )
+            if needs_proxy_update:
+                self._pending_proxy_request = filename
+                self._request_proxy_filament_background(filename)
+            if (
+                file_info.get("proxy_filament")
+                and hasattr(self, "_pending_proxy_request")
+                and self._pending_proxy_request == filename
+            ):
+                del self._pending_proxy_request
+
         # Get cached thumbnail for this file
-        file_thumbnails = self._cached_status.get("_file_thumbnails", {})
+        file_thumbnails = self._integration_data.get("_file_thumbnails", {})
         thumbnail = file_thumbnails.get(filename)
         if not thumbnail and not hasattr(self, "_pending_thumbnail_request"):
             # Request thumbnail in background (only once per filename)
@@ -806,6 +885,60 @@ class ElegooCC2Client:
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
 
+    def _request_proxy_filament_background(self, filename: str) -> None:
+        """
+        Fetch per-extruder filament data from the gcode proxy in the background.
+
+        Args:
+            filename: The G-code filename to fetch proxy filament data for.
+
+        """
+        task = asyncio.create_task(self._request_proxy_filament(filename))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _request_proxy_filament(self, filename: str) -> None:
+        """
+        Query the gcode capture proxy for filament metadata.
+
+        Args:
+            filename: The G-code filename to fetch proxy filament data for.
+
+        """
+        if not self._gcode_proxy:
+            return
+        try:
+            data = await self._gcode_proxy.fetch_filament_data(filename)
+            if data:
+                if "_file_details" not in self._integration_data:
+                    self._integration_data["_file_details"] = {}
+                file_info = self._integration_data["_file_details"].setdefault(
+                    filename, {}
+                )
+                file_info["proxy_filament"] = data
+                file_info["proxy_filament_status"] = "success"
+                self.logger.debug("Proxy filament data cached for %s", filename)
+                self._update_printer_status()
+        except (TimeoutError, OSError) as exc:
+            self.logger.debug(
+                "Failed to fetch proxy filament data for %s: %s",
+                filename,
+                exc,
+            )
+            # Only set retry status if we have _file_details initialized
+            if "_file_details" in self._integration_data:
+                file_info = self._integration_data["_file_details"].setdefault(
+                    filename, {}
+                )
+                file_info.setdefault("proxy_filament_status", "retry")
+        finally:
+            # Clear pending request flag only if we're not retrying
+            if (
+                hasattr(self, "_pending_proxy_request")
+                and self._pending_proxy_request == filename
+            ):
+                del self._pending_proxy_request
+
     async def _request_file_detail(self, filename: str) -> None:
         """Request file details from printer."""
         try:
@@ -825,33 +958,62 @@ class ElegooCC2Client:
         ):
             self.logger.debug("Failed to get file details for %s", filename)
         finally:
-            if hasattr(self, "_pending_file_detail_request"):
+            # Clear pending request flag after handling response
+            if (
+                hasattr(self, "_pending_file_detail_request")
+                and self._pending_file_detail_request == filename
+            ):
                 del self._pending_file_detail_request
 
     def _handle_file_detail_response(
         self, filename: str, result: dict[str, Any]
     ) -> None:
-        """Handle file detail response and cache TotalLayers."""
-        if "_file_details" not in self._cached_status:
-            self._cached_status["_file_details"] = {}
+        """Handle file detail response and cache TotalLayers + filament data."""
+        if "_file_details" not in self._integration_data:
+            self._integration_data["_file_details"] = {}
 
         total_layers = (
             result.get("TotalLayers")
             or result.get("layer")
             or result.get("total_layer")
         )
-        if total_layers:
-            self._cached_status["_file_details"][filename] = {
-                "TotalLayers": total_layers,
-            }
+
+        total_filament_used = result.get("total_filament_used")
+        color_map = result.get("color_map")
+        print_time = result.get("print_time")
+
+        # Check for enrichment markers (the actual 1046-enrichment fields)
+        has_enrichment_markers = (
+            total_layers is not None
+            or total_filament_used is not None
+            or color_map
+            or print_time is not None
+        )
+
+        if has_enrichment_markers:
+            detail = self._integration_data["_file_details"].get(filename, {})
+            if total_layers is not None:
+                detail["TotalLayers"] = total_layers
+            if total_filament_used is not None:
+                detail["total_filament_used"] = total_filament_used
+            if color_map:
+                detail["color_map"] = color_map
+            if print_time is not None:
+                detail["print_time"] = print_time
+
+            self._integration_data["_file_details"][filename] = detail
             self.logger.debug(
-                "Cached file details for %s: TotalLayers=%s", filename, total_layers
+                "Cached file details for %s: TotalLayers=%s, "
+                "total_filament_used=%s, color_map_entries=%s",
+                filename,
+                total_layers,
+                total_filament_used,
+                len(color_map) if color_map else 0,
             )
-            # Update printer status with new info
             self._update_printer_status()
         else:
             self.logger.debug(
-                "File detail response for %s had no TotalLayers. Keys: %s",
+                "File detail response for %s had no enrichment markers. Keys: %s",
                 filename,
                 list(result.keys()),
             )
@@ -886,15 +1048,15 @@ class ElegooCC2Client:
         self, filename: str, result: dict[str, Any]
     ) -> None:
         """Handle file thumbnail response and cache thumbnail data."""
-        if "_file_thumbnails" not in self._cached_status:
-            self._cached_status["_file_thumbnails"] = {}
+        if "_file_thumbnails" not in self._integration_data:
+            self._integration_data["_file_thumbnails"] = {}
 
         thumbnail = result.get("thumbnail")
         if thumbnail:
             # Store as data URI for use by the image entity
             if not thumbnail.startswith("data:"):
                 thumbnail = f"data:image/png;base64,{thumbnail}"
-            self._cached_status["_file_thumbnails"][filename] = thumbnail
+            self._integration_data["_file_thumbnails"][filename] = thumbnail
             self.logger.debug("Cached file thumbnail for %s", filename)
             # Update printer status so the thumbnail propagates to the job
             self._update_printer_status()

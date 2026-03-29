@@ -18,7 +18,11 @@
         "description": "Konfigurieren Sie die Einstellungen Ihres Centauri Carbon 2 Druckers.",
         "data": {
           "ip_address": "Drucker-IP-Adresse",
-          "cc2_access_code": "Zugangscode (optional)"
+          "cc2_access_code": "Zugangscode (optional)",
+          "gcode_proxy_url": "GCode-Proxy-URL (optional)"
+        },
+        "data_description": {
+          "gcode_proxy_url": "Basis-URL des cc2-gcode-capture-proxy (Host, Host:Port oder http(s)-URL; ohne Schema wird http verwendet). Leer lassen, um zu deaktivieren."
         }
       },
       "mqtt_options": {
@@ -109,7 +113,9 @@
       "init_no_printer_found": "Initialisierung fehlgeschlagen: Der Drucker konnte nicht gefunden werden.",
       "cc2_options_no_printer_found": "Der CC2-Drucker konnte nicht gefunden werden.",
       "cc2_access_code_required": "Dieser Drucker erfordert einen Zugangscode für die Authentifizierung.",
-      "cc2_authentication_failed": "Authentifizierung fehlgeschlagen. Überprüfen Sie den Zugangscode in den Druckereinstellungen: Einstellungen → Netzwerk → Zugangscode."
+      "cc2_authentication_failed": "Authentifizierung fehlgeschlagen. Überprüfen Sie den Zugangscode in den Druckereinstellungen: Einstellungen → Netzwerk → Zugangscode.",
+      "gcode_proxy_unreachable": "GCode-Proxy-Server ist nicht erreichbar. Überprüfen Sie die Adresse oder URL und ob der Proxy läuft.",
+      "gcode_proxy_invalid": "Ungültige GCode-Proxy-Adresse. Verwenden Sie einen Host oder Host:Port, oder eine http(s)-URL ohne doppelte Schemata."
     },
     "abort": {
       "already_configured": "Dieser Eintrag ist bereits konfiguriert."
