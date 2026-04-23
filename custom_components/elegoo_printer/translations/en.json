@@ -89,14 +89,14 @@
       },
       "cc2_auth_check": {
         "title": "Centauri Carbon 2 Authentication",
-        "description": "**IMPORTANT:** Check your printer's access code setting before continuing.\n\nOn your printer, go to: **Settings → Network → Access Code**\n\n• If the setting shows 'Off' or is blank/empty, select **No**\n• If you have set a custom access code, select **Yes**\n\nMost printers ship with no access code by default.",
+        "description": "**IMPORTANT:** Check your printer's settings before continuing.\n\nOn your printer, go to: **Settings → Network**\n\n1. Enable **LAN Only Mode** (required for connection)\n2. Then check the access code setting at **Settings → Network → Access Code**\n\n• If the access code shows 'Off' or is blank/empty, select **No**\n• If you have set a custom access code, select **Yes**\n\nMost printers ship with no access code by default.",
         "data": {
           "requires_access_code": "Does your printer require an access code?"
         }
       },
       "cc2_access_code_input": {
         "title": "Enter Access Code",
-        "description": "Find your printer's access code at: Settings → Network → Access Code",
+        "description": "Find your printer's access code at: Settings → Network → Access Code\n\n**Note:** Make sure **LAN Only Mode** is enabled on your printer (Settings → Network → LAN Only Mode) before continuing.",
         "data": {
           "cc2_access_code": "Access Code"
         }
@@ -113,7 +113,7 @@
       "init_no_printer_found": "Failed to initialize: The printer could not be found.",
       "cc2_options_no_printer_found": "The CC2 printer could not be found.",
       "cc2_access_code_required": "This printer requires an access code for authentication.",
-      "cc2_authentication_failed": "Failed to authenticate. Verify access code in printer settings: Settings → Network → Access Code.",
+      "cc2_authentication_failed": "Failed to authenticate. Make sure LAN Only Mode is enabled on your printer (Settings → Network → LAN Only Mode), then verify the access code in Settings → Network → Access Code.",
       "gcode_proxy_unreachable": "Cannot reach the GCode proxy server. Verify the address or URL and that the proxy is running.",
       "gcode_proxy_invalid": "Invalid GCode proxy address. Use a host or host:port, or an http(s) URL without duplicate schemes."
     },
