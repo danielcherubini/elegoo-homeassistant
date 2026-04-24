@@ -121,7 +121,9 @@ The recommended way to install this integration is through the [Home Assistant C
 1. Go to **Settings** > **Devices & Services**.
 2. Click **"Add Integration"** and search for **"Elegoo Printers"**.
 3. The integration will attempt to **auto-discover** printers on your network.
-4. If no printer is found, select **"Configure manually"** and enter your printer's IP address.
+4. If no printer is found, select **"Configure manually"** and enter your printer's IP address. 
+
+**Note:** If **auto-discovery** didn't work, you may need some [advanced network setup](https://github.com/danielcherubini/elegoo-homeassistant/wiki/Connecting-Elegoo-Printers-to-Home-Assistant-Across-Different-Networks).
 
 ### ⚠️ Firmware v1.1.29 Bug Notice
 Elegoo firmware **v1.1.29** contains a bug preventing remote control of lights and temperatures **while a print is in progress**. This is a firmware limitation; if you require these features during prints, consider using v1.1.25 if available for your model.
