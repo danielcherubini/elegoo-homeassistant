@@ -886,6 +886,8 @@ class ElegooMqttClient:
             self.logger.debug("PrinterAttributes.from_json() succeeded")
             self.printer_data.attributes = printer_attributes
             self.logger.debug("Assigned printer_data.attributes successfully")
+            if self.printer:
+                self.printer.sync_from_attributes(printer_attributes)
         except Exception:
             self.logger.exception("Exception in _attributes_handler")
 

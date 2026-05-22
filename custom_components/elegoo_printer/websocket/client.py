@@ -711,6 +711,8 @@ class ElegooPrinterClient:
             self.logger.info(msg)
         printer_attributes = PrinterAttributes.from_json(json.dumps(data))
         self.printer_data.attributes = printer_attributes
+        if self.printer:
+            self.printer.sync_from_attributes(printer_attributes)
 
     def _print_history_handler(self, data_data: dict[str, Any]) -> None:
         """Parse and updates the printer's print history details from the data."""
