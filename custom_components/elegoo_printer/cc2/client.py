@@ -1091,6 +1091,8 @@ class ElegooCC2Client:
             # Map CC2 attributes to PrinterAttributes
             mapped_attrs = CC2StatusMapper.map_attributes(attrs_data)
             self.printer_data.attributes = mapped_attrs
+            if self.printer:
+                self.printer.sync_from_attributes(mapped_attrs)
         except Exception:
             self.logger.exception("Failed to map CC2 attributes")
 
