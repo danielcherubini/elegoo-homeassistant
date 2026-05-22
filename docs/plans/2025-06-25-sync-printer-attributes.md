@@ -8,7 +8,7 @@
 
 ---
 
-### Task 1: Add `Printer.sync_from_attributes()` method
+## Task 1: Add `Printer.sync_from_attributes()` method
 
 **Context:**
 `Printer.firmware` (and `model`, `name`, `brand`) is set once from the stored config entry via `Printer.from_dict()` and never refreshed. After the user updates printer firmware, the integration reads the stale value, causing incorrect firmware update checks and stale device info in Home Assistant. This task adds a method to sync live attributes with guards and dependent flag re-derivation.
@@ -64,7 +64,7 @@
 
 ---
 
-### Task 2: Call sync from CC2 attribute handler
+## Task 2: Call sync from CC2 attribute handler
 
 **Context:**
 The CC2 client receives attributes via MQTT in `_handle_attributes()`. Currently it maps the CC2 nested format to `PrinterAttributes` and stores in `printer_data.attributes`, but never syncs to `self.printer`. This means `self.printer.firmware` remains stale. Adding a one-line call to `sync_from_attributes()` fixes this.
@@ -96,7 +96,7 @@ The CC2 client receives attributes via MQTT in `_handle_attributes()`. Currently
 
 ---
 
-### Task 3: Call sync from WebSocket attribute handler
+## Task 3: Call sync from WebSocket attribute handler
 
 **Context:**
 The WebSocket client (for non-CC2 printers) receives attributes in `_attributes_handler()`. Same bug — it creates `PrinterAttributes` and stores in `printer_data.attributes` but never syncs to `self.printer`. Adding the same one-line call fixes this for WebSocket printers too.
@@ -128,7 +128,7 @@ The WebSocket client (for non-CC2 printers) receives attributes in `_attributes_
 
 ---
 
-### Task 4: Call sync from legacy MQTT attribute handler
+## Task 4: Call sync from legacy MQTT attribute handler
 
 **Context:**
 The legacy `ElegooMqttClient` (for non-CC2 MQTT printers) has the identical bug in `mqtt/client.py:_attributes_handler()`. It creates `PrinterAttributes` and stores to `printer_data.attributes` but never syncs to `self.printer`. This task fixes the same gap for legacy MQTT printers.
@@ -159,7 +159,7 @@ The legacy `ElegooMqttClient` (for non-CC2 MQTT printers) has the identical bug 
 
 ---
 
-### Task 5: Verify end-to-end and close issue
+## Task 5: Verify end-to-end and close issue
 
 **Context:**
 After Tasks 1-4, the full data flow works at runtime: live attributes → `PrinterAttributes` → `Printer.sync_from_attributes()` → `self.printer.firmware` updated → firmware update check uses correct version. Note: `_update_config_entry_if_needed()` is only called at connect/reconnect time, so the config entry won't be persisted to disk until the next HA restart or reconnection. This is acceptable for MVP — runtime behavior is correct immediately.
