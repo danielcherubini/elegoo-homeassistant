@@ -305,6 +305,59 @@ class Printer:
         data.pop("cc2_access_code", None)
         return data
 
+    def sync_from_attributes(self, attrs: PrinterAttributes) -> bool:
+        """
+        Sync live attributes from PrinterAttributes to this Printer instance.
+
+        Copies firmware, model, name, and brand from attrs if the source value
+        is truthy (non-empty string) and differs from the current value.
+        After syncing, re-derives dependent flags if model or firmware changed.
+
+        Args:
+            attrs: PrinterAttributes instance containing live attribute values.
+
+        Returns:
+            True if any field was updated, False otherwise.
+
+        """
+        updated = False
+
+        # Track which fields changed for re-derivation
+        model_changed = False
+        firmware_changed = False
+
+        # Sync firmware
+        if attrs.firmware_version and attrs.firmware_version != self.firmware:
+            self.firmware = attrs.firmware_version
+            firmware_changed = True
+            updated = True
+
+        # Sync model
+        if attrs.machine_name and attrs.machine_name != self.model:
+            self.model = attrs.machine_name
+            model_changed = True
+            updated = True
+
+        # Sync name
+        if attrs.name and attrs.name != self.name:
+            self.name = attrs.name
+            updated = True
+
+        # Sync brand
+        if attrs.brand_name and attrs.brand_name != self.brand:
+            self.brand = attrs.brand_name
+            updated = True
+
+        # Re-derive dependent flags if model or firmware changed
+        if model_changed or firmware_changed:
+            self.printer_type = PrinterType.from_model(self.model)
+            self.open_centauri = self._is_open_centauri(self.model, self.firmware)
+
+        if model_changed:
+            self.has_vat_heater = self._has_vat_heater(self.model)
+
+        return updated
+
     @classmethod
     def from_dict(
         cls,
