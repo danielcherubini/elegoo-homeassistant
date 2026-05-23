@@ -100,6 +100,64 @@ class TestUpdateCurrentJobCacheInvalidation:
         assert details["proxy_filament_status"] == "success"
         client._request_proxy_filament_background.assert_not_called()
 
+    def test_new_task_clears_stale_thumbnail(self) -> None:
+        """New task_id with same filename drops cached thumbnail."""
+        client = _client_with_proxy()
+        fn = "CC2_Model.gcode"
+        client._integration_data["_file_thumbnails"] = {
+            fn: "data:image/png;base64,oldThumbnailData",
+        }
+        client._integration_data["_file_details"] = {
+            fn: {"TotalLayers": 500},
+        }
+        client._cached_status = {
+            "print_status": {
+                "uuid": "task-new-thumb-001",
+                "filename": fn,
+                "total_layer": 100,
+            },
+        }
+        client._request_proxy_filament_background = MagicMock()
+        client._request_file_detail_background = MagicMock()
+        client._request_file_thumbnail_background = MagicMock()
+
+        client._update_current_job()
+
+        assert fn not in client._integration_data["_file_thumbnails"]
+        client._request_file_thumbnail_background.assert_called_once_with(fn)
+
+    def test_same_task_keeps_cached_thumbnail(self) -> None:
+        """Same task_id must not clear thumbnail between MQTT updates."""
+        client = _client_with_proxy()
+        fn = "CC2_Model.gcode"
+        tid = "task-same-thumb-001"
+        old_thumb = "data:image/png;base64,existingThumb"
+        client.printer_data.print_history[tid] = PrintHistoryDetail(
+            {"TaskId": tid, "TaskName": fn},
+        )
+        client._integration_data["_file_thumbnails"] = {fn: old_thumb}
+        client._integration_data["_file_details"] = {
+            fn: {
+                "proxy_filament": OLD_PROXY,
+                "proxy_filament_status": "success",
+            },
+        }
+        client._cached_status = {
+            "print_status": {
+                "uuid": tid,
+                "filename": fn,
+                "total_layer": 50,
+            },
+        }
+        client._request_proxy_filament_background = MagicMock()
+        client._request_file_detail_background = MagicMock()
+        client._request_file_thumbnail_background = MagicMock()
+
+        client._update_current_job()
+
+        assert client._integration_data["_file_thumbnails"][fn] == old_thumb
+        client._request_file_thumbnail_background.assert_not_called()
+
     def test_new_task_empty_file_info_still_schedules_proxy_fetch(self) -> None:
         """New task with no prior file_info should request proxy data once."""
         client = _client_with_proxy()
