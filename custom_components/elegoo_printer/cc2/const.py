@@ -9,6 +9,10 @@ CC2_DISCOVERY_PORT = 52700
 CC2_DISCOVERY_MESSAGE = {"id": 0, "method": 7000}
 CC2_DISCOVERY_TIMEOUT = 10  # Increased for slower networks/printers
 CC2_DISCOVERY_RETRIES = 2  # Number of broadcast attempts
+# Bounded discovery for interactive use (the config flow). A printer that does not
+# speak CC2 never answers, so the default timeout x (retries + 1) would block the
+# config-flow step long enough for the frontend to abort with "Unknown error".
+CC2_CONFIG_FLOW_DISCOVERY_TIMEOUT = 3  # seconds, single attempt (retries=0)
 
 # MQTT settings (printer runs broker)
 CC2_MQTT_PORT = 1883
