@@ -156,6 +156,8 @@ class CC2Discovery:
     @staticmethod
     def discover(
         broadcast_address: str = DEFAULT_BROADCAST_ADDRESS,
+        timeout: float | None = None,
+        retries: int | None = None,
     ) -> list[CC2DiscoveredPrinter]:
         """
         Broadcast a UDP discovery message to locate CC2 printers.
@@ -166,6 +168,12 @@ class CC2Discovery:
         Arguments:
             broadcast_address: The network address to send the discovery message to.
                 Can be a broadcast address (255.255.255.255) or a specific IP.
+            timeout: Per-attempt socket timeout in seconds. Defaults to
+                ``CC2_DISCOVERY_TIMEOUT``. Callers that must not block (e.g. the
+                config flow) can pass a small value.
+            retries: Number of additional broadcast attempts. Defaults to
+                ``CC2_DISCOVERY_RETRIES`` for broadcast, else 0. Pass 0 to avoid
+                stacking multiple full-timeout waits.
 
         Returns:
             A list of discovered CC2 printers, or an empty list if none are found.
@@ -174,17 +182,22 @@ class CC2Discovery:
         discovered_printers: list[CC2DiscoveredPrinter] = []
         seen_serial_numbers: set[str] = set()
         is_broadcast = broadcast_address == DEFAULT_BROADCAST_ADDRESS
+        discovery_timeout = CC2_DISCOVERY_TIMEOUT if timeout is None else timeout
+        retries = (
+            (CC2_DISCOVERY_RETRIES if is_broadcast else 0)
+            if retries is None
+            else retries
+        )
 
         LOGGER.info(
             "CC2 discovery on port %s (address: %s, timeout: %ss, retries: %d)...",
             CC2_DISCOVERY_PORT,
             broadcast_address,
-            CC2_DISCOVERY_TIMEOUT,
-            CC2_DISCOVERY_RETRIES if is_broadcast else 0,
+            discovery_timeout,
+            retries,
         )
 
         msg = json.dumps(CC2_DISCOVERY_MESSAGE).encode("utf-8")
-        retries = CC2_DISCOVERY_RETRIES if is_broadcast else 0
 
         with socket.socket(
             socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
@@ -192,7 +205,7 @@ class CC2Discovery:
             # Allow reuse of address/port for multiple discovery attempts
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            sock.settimeout(CC2_DISCOVERY_TIMEOUT)
+            sock.settimeout(discovery_timeout)
 
             # Bind to the discovery port to receive responses on the same port
             # This can be more reliable than using ephemeral ports in some networks
@@ -250,7 +263,7 @@ class CC2Discovery:
                                     "CC2 discovery timeout after %ss"
                                     " (attempt %d, received %d responses)"
                                 ),
-                                CC2_DISCOVERY_TIMEOUT,
+                                discovery_timeout,
                                 attempt + 1,
                                 responses_this_attempt,
                             )
@@ -293,6 +306,8 @@ class CC2Discovery:
     @staticmethod
     def discover_as_printers(
         broadcast_address: str = DEFAULT_BROADCAST_ADDRESS,
+        timeout: float | None = None,
+        retries: int | None = None,
     ) -> list[Printer]:
         """
         Discover CC2 printers and return them as Printer objects.
@@ -302,10 +317,14 @@ class CC2Discovery:
 
         Arguments:
             broadcast_address: The network address to send the discovery message to.
+            timeout: Per-attempt socket timeout in seconds (see ``discover``).
+            retries: Number of additional broadcast attempts (see ``discover``).
 
         Returns:
             A list of Printer objects configured for CC2 protocol.
 
         """
-        cc2_printers = CC2Discovery.discover(broadcast_address)
+        cc2_printers = CC2Discovery.discover(
+            broadcast_address, timeout=timeout, retries=retries
+        )
         return [p.to_printer() for p in cc2_printers]

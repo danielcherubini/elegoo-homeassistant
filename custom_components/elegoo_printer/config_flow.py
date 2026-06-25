@@ -7,6 +7,7 @@ MIT License
 
 from __future__ import annotations
 
+from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -18,6 +19,7 @@ from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .cc2.const import CC2_CONFIG_FLOW_DISCOVERY_TIMEOUT
 from .cc2.discovery import CC2Discovery
 from .cc2.gcode_proxy import GCodeProxyClient
 from .const import (
@@ -412,9 +414,17 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             elegoo_printer_client.discover_printer
         )
 
-        # Also discover CC2 printers
+        # Also discover CC2 printers. Bound this to a short, single-attempt
+        # timeout: a printer that doesn't speak CC2 never answers, so the default
+        # CC2_DISCOVERY_TIMEOUT x (CC2_DISCOVERY_RETRIES + 1) would block this
+        # config-flow step long enough for the frontend to abort with the generic
+        # "Config flow could not be loaded: Unknown error".
         cc2_discovered = await self.hass.async_add_executor_job(
-            CC2Discovery.discover_as_printers
+            partial(
+                CC2Discovery.discover_as_printers,
+                timeout=CC2_CONFIG_FLOW_DISCOVERY_TIMEOUT,
+                retries=0,
+            )
         )
         LOGGER.debug("Discovered %d CC2 printer(s)", len(cc2_discovered))
 
