@@ -120,6 +120,16 @@ class ElegooCC2Client:
         self._is_connected: bool = False
         self._is_registered: bool = False
 
+        # Connection generation for stale callback guard
+        self._connection_generation: int = 0
+        self._listener_generation: int = 0
+
+        # Auth failure tracking
+        self._last_auth_failure: bool = False
+
+        # Delayed disconnect
+        self._disconnect_delay_task: asyncio.Task | None = None
+
         # Task management
         self._listener_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
@@ -183,6 +193,33 @@ class ElegooCC2Client:
             self._is_connected and self._is_registered and self.mqtt_client is not None
         )
 
+    @property
+    def last_auth_failure(self) -> bool:
+        """Return True if the last connection failure was due to auth."""
+        return self._last_auth_failure
+
+    @staticmethod
+    def _is_auth_failure(exc: Exception) -> bool:
+        """
+        Check if an MQTT exception indicates an authentication failure.
+
+        aiomqtt raises MqttCodeError with rc=4 (bad username/password)
+        or rc=5 (not authorised) for MQTT 3.1.1, or ReasonCode objects
+        with value 134/135 for MQTT 5.
+        """
+        # Local import to avoid circular dependency at module level
+        from paho.mqtt.reasoncodes import ReasonCode  # noqa: PLC0415
+
+        if isinstance(exc, aiomqtt.MqttCodeError):
+            rc = exc.rc
+            # MQTT 3.1.1 integer codes: 4 = bad username/password, 5 = not authorised
+            if isinstance(rc, int) and rc in (4, 5):
+                return True
+            # MQTT 5 ReasonCode: 134 = bad username/password, 135 = not authorized
+            if isinstance(rc, ReasonCode) and rc.value in (134, 135):
+                return True
+        return False
+
     async def connect_printer(self, printer: Printer) -> bool:
         """
         Connect to the CC2 printer's MQTT broker.
@@ -199,6 +236,9 @@ class ElegooCC2Client:
             True if connection was successful, False otherwise.
 
         """
+        # Reset auth failure flag for fresh connection attempt
+        self._last_auth_failure = False
+
         if self.is_connected:
             self.logger.debug("Already connected to CC2 printer")
             return True
@@ -267,6 +307,9 @@ class ElegooCC2Client:
                 len(passwords_to_try),
                 auth_desc,
             )
+            # Stop trying if this was an auth failure (wrong credentials)
+            if self._last_auth_failure:
+                break
             await self.disconnect()
 
         # All attempts failed
@@ -344,6 +387,9 @@ class ElegooCC2Client:
                 "Connection attempt failed: %s",
                 e,
             )
+            # Check for auth failure to skip remaining passwords
+            if ElegooCC2Client._is_auth_failure(e):
+                self._last_auth_failure = True
         else:
             return True
 
