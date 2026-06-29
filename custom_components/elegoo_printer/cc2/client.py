@@ -52,6 +52,7 @@ from .const import (
     CC2_CMD_SET_VIDEO_STREAM,
     CC2_CMD_STOP_PRINT,
     CC2_COMMAND_TIMEOUT,
+    CC2_DISCONNECT_DELAY,
     CC2_EVENT_ATTRIBUTES,
     CC2_EVENT_STATUS,
     CC2_HEARTBEAT_INTERVAL,
@@ -120,6 +121,16 @@ class ElegooCC2Client:
         self._is_connected: bool = False
         self._is_registered: bool = False
 
+        # Connection generation for stale callback guard
+        self._connection_generation: int = 0
+        self._listener_generation: int = 0
+
+        # Auth failure tracking
+        self._last_auth_failure: bool = False
+
+        # Delayed disconnect
+        self._disconnect_delay_task: asyncio.Task | None = None
+
         # Task management
         self._listener_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
@@ -183,6 +194,33 @@ class ElegooCC2Client:
             self._is_connected and self._is_registered and self.mqtt_client is not None
         )
 
+    @property
+    def last_auth_failure(self) -> bool:
+        """Return True if the last connection failure was due to auth."""
+        return self._last_auth_failure
+
+    @staticmethod
+    def _is_auth_failure(exc: Exception) -> bool:
+        """
+        Check if an MQTT exception indicates an authentication failure.
+
+        aiomqtt raises MqttCodeError with rc=4 (bad username/password)
+        or rc=5 (not authorised) for MQTT 3.1.1, or ReasonCode objects
+        with value 134/135 for MQTT 5.
+        """
+        # Local import to avoid circular dependency at module level
+        from paho.mqtt.reasoncodes import ReasonCode  # noqa: PLC0415
+
+        if isinstance(exc, aiomqtt.MqttCodeError):
+            rc = exc.rc
+            # MQTT 3.1.1 integer codes: 4 = bad username/password, 5 = not authorised
+            if isinstance(rc, int) and rc in (4, 5):
+                return True
+            # MQTT 5 ReasonCode: 134 = bad username/password, 135 = not authorized
+            if isinstance(rc, ReasonCode) and rc.value in (134, 135):
+                return True
+        return False
+
     async def connect_printer(self, printer: Printer) -> bool:
         """
         Connect to the CC2 printer's MQTT broker.
@@ -199,6 +237,9 @@ class ElegooCC2Client:
             True if connection was successful, False otherwise.
 
         """
+        # Reset auth failure flag for fresh connection attempt
+        self._last_auth_failure = False
+
         if self.is_connected:
             self.logger.debug("Already connected to CC2 printer")
             return True
@@ -267,6 +308,9 @@ class ElegooCC2Client:
                 len(passwords_to_try),
                 auth_desc,
             )
+            # Stop trying if this was an auth failure (wrong credentials)
+            if self._last_auth_failure:
+                break
             await self.disconnect()
 
         # All attempts failed
@@ -290,6 +334,9 @@ class ElegooCC2Client:
             True if connection and registration succeeded, False otherwise.
 
         """
+        # Increment generation for this connection attempt
+        self._connection_generation += 1
+
         try:
             # Build MQTT client configuration
             client_kwargs = {
@@ -333,6 +380,12 @@ class ElegooCC2Client:
 
             self._is_registered = True
 
+            # Cancel any pending disconnect delay (reconnect succeeded)
+            if self._disconnect_delay_task is not None:
+                self._disconnect_delay_task.cancel()
+                self._disconnect_delay_task = None
+                self.logger.debug("Cancelled pending disconnect delay")
+
             # Start heartbeat task
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
@@ -344,6 +397,9 @@ class ElegooCC2Client:
                 "Connection attempt failed: %s",
                 e,
             )
+            # Check for auth failure to skip remaining passwords
+            if ElegooCC2Client._is_auth_failure(e):
+                self._last_auth_failure = True
         else:
             return True
 
@@ -351,7 +407,15 @@ class ElegooCC2Client:
 
     async def disconnect(self) -> None:
         """Disconnect from the CC2 printer."""
+        # Increment generation to invalidate any in-flight callbacks
+        self._connection_generation += 1
+
         self.logger.info("Closing CC2 connection to printer")
+
+        # Cancel any pending disconnect delay
+        if self._disconnect_delay_task is not None:
+            self._disconnect_delay_task.cancel()
+            self._disconnect_delay_task = None
 
         # Cancel heartbeat task
         if self._heartbeat_task:
@@ -366,6 +430,10 @@ class ElegooCC2Client:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._listener_task
             self._listener_task = None
+            # The listener's finally may have created a new delay task — cancel it
+            if self._disconnect_delay_task is not None:
+                self._disconnect_delay_task.cancel()
+                self._disconnect_delay_task = None
 
         # Unblock any waiters
         async with self._response_lock:
@@ -564,13 +632,52 @@ class ElegooCC2Client:
         except (ElegooPrinterTimeoutError, ElegooPrinterConnectionError):
             self.logger.warning("Failed to get initial data from CC2 printer")
 
+    async def _delayed_disconnect(self) -> None:
+        """
+        Wait before finalizing disconnect to allow quick reconnects.
+
+        If reconnect succeeds during the delay, the cleanup is skipped.
+        This prevents losing transient state (e.g., COMPLETE->IDLE transitions)
+        during brief network interruptions.
+        """
+        try:
+            await asyncio.sleep(CC2_DISCONNECT_DELAY)
+        except asyncio.CancelledError:
+            # Reconnect succeeded during delay — task was cancelled
+            return
+        # Re-check after sleep (handles cancel arriving after sleep resumes)
+        if self._is_connected and self._is_registered:
+            self.logger.debug(
+                "CC2 reconnect succeeded during disconnect delay, skipping cleanup"
+            )
+            return
+        # Finalize disconnect cleanup
+        self._print_status_transition_queue.clear()
+        self.logger.debug("CC2 disconnect delay expired, cleanup complete")
+
+    def _on_disconnect_delay_done(self, task: asyncio.Task) -> None:
+        """Handle disconnect delay task completion."""
+        self._background_tasks.discard(task)
+        # Only clear if this is still the current task (avoid dropping newer tasks)
+        if self._disconnect_delay_task is task:
+            self._disconnect_delay_task = None
+
     async def _mqtt_listener(self) -> None:
         """Listen for messages on MQTT and handle them."""
         if not self.mqtt_client:
             return
 
+        # Capture generation for stale callback detection (local var, not shared)
+        listener_generation = self._connection_generation
+
         try:
             async for message in self.mqtt_client.messages:
+                # Stale callback guard: if disconnect() incremented the generation,
+                # stop processing messages from the old connection.
+                if self._connection_generation != listener_generation:
+                    self.logger.debug("CC2 MQTT listener: generation changed, stopping")
+                    break
+
                 try:
                     payload = message.payload.decode("utf-8")
                     topic = str(message.topic)
@@ -584,7 +691,17 @@ class ElegooCC2Client:
         except (asyncio.TimeoutError, OSError, aiomqtt.MqttError):
             self.logger.debug("CC2 MQTT listener exception")
         finally:
-            self._is_connected = False
+            # Only tear down state for the same generation (stale listener check)
+            if self._connection_generation == listener_generation:
+                self._is_connected = False
+                if self._disconnect_delay_task is None:
+                    self._disconnect_delay_task = asyncio.create_task(
+                        self._delayed_disconnect()
+                    )
+                    self._background_tasks.add(self._disconnect_delay_task)
+                    self._disconnect_delay_task.add_done_callback(
+                        self._on_disconnect_delay_done
+                    )
             self.logger.info("CC2 MQTT listener stopped")
 
     async def _handle_message(self, topic: str, payload: str) -> None:
@@ -1280,10 +1397,18 @@ class ElegooCC2Client:
 
     async def set_light_status(self, light_status: LightStatus) -> None:
         """Set the printer's light status."""
-        # CC2 uses "power" field for LED control (0=off, 1=on)
-        # Based on web interface: LightSwitch,params:{power:Se?1:0}
+        # Send both brightness and power for firmware compatibility.
+        # Some firmware expect "power" (0/1), others "brightness" (0-255).
+        # OctoEverywhere sends both — follow that pattern.
+        # Assumes binary on/off only; dimming needs a separate field.
         power = 1 if light_status.second_light else 0
-        await self._send_command(CC2_CMD_SET_LIGHT, {"power": power})
+        await self._send_command(
+            CC2_CMD_SET_LIGHT,
+            {
+                "brightness": 255 if power else 0,
+                "power": power,
+            },
+        )
 
     async def print_pause(self) -> None:
         """Pause the current print."""
