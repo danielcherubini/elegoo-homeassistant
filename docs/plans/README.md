@@ -4,13 +4,15 @@ Implementation plans for features and fixes.
 
 ## Quick Stats
 
-- **Total Plans:** 1
-- **In Progress:** 0
+- **Total Plans:** 2
+- **In Progress:** 1
 - **Completed:** 1
 
 ## Active Plans
 
-_(none)_
+| Plan | Status | Date | PR |
+|------|--------|------|----|
+| [CC2 Client Improvements](2026-06-29-cc2-improvements.md) | 🚧 IN PROGRESS | 2026-06-29 | - |
 
 ## Completed Plans
 

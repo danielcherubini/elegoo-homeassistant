@@ -1280,10 +1280,18 @@ class ElegooCC2Client:
 
     async def set_light_status(self, light_status: LightStatus) -> None:
         """Set the printer's light status."""
-        # CC2 uses "power" field for LED control (0=off, 1=on)
-        # Based on web interface: LightSwitch,params:{power:Se?1:0}
+        # Send both brightness and power for firmware compatibility.
+        # Some firmware expect "power" (0/1), others "brightness" (0-255).
+        # OctoEverywhere sends both — follow that pattern.
+        # Assumes binary on/off only; dimming needs a separate field.
         power = 1 if light_status.second_light else 0
-        await self._send_command(CC2_CMD_SET_LIGHT, {"power": power})
+        await self._send_command(
+            CC2_CMD_SET_LIGHT,
+            {
+                "brightness": 255 if power else 0,
+                "power": power,
+            },
+        )
 
     async def print_pause(self) -> None:
         """Pause the current print."""
