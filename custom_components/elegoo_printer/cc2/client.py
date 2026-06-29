@@ -658,21 +658,23 @@ class ElegooCC2Client:
     def _on_disconnect_delay_done(self, task: asyncio.Task) -> None:
         """Handle disconnect delay task completion."""
         self._background_tasks.discard(task)
-        self._disconnect_delay_task = None
+        # Only clear if this is still the current task (avoid dropping newer tasks)
+        if self._disconnect_delay_task is task:
+            self._disconnect_delay_task = None
 
     async def _mqtt_listener(self) -> None:
         """Listen for messages on MQTT and handle them."""
         if not self.mqtt_client:
             return
 
-        # Capture generation for stale callback detection
-        self._listener_generation = self._connection_generation
+        # Capture generation for stale callback detection (local var, not shared)
+        listener_generation = self._connection_generation
 
         try:
             async for message in self.mqtt_client.messages:
                 # Stale callback guard: if disconnect() incremented the generation,
                 # stop processing messages from the old connection.
-                if self._connection_generation != self._listener_generation:
+                if self._connection_generation != listener_generation:
                     self.logger.debug("CC2 MQTT listener: generation changed, stopping")
                     break
 
@@ -689,17 +691,17 @@ class ElegooCC2Client:
         except (asyncio.TimeoutError, OSError, aiomqtt.MqttError):
             self.logger.debug("CC2 MQTT listener exception")
         finally:
-            # Mark disconnected immediately so is_connected is accurate
-            self._is_connected = False
-            # Schedule delayed cleanup to allow quick reconnects
-            if self._disconnect_delay_task is None:
-                self._disconnect_delay_task = asyncio.create_task(
-                    self._delayed_disconnect()
-                )
-                self._background_tasks.add(self._disconnect_delay_task)
-                self._disconnect_delay_task.add_done_callback(
-                    self._on_disconnect_delay_done
-                )
+            # Only tear down state for the same generation (stale listener check)
+            if self._connection_generation == listener_generation:
+                self._is_connected = False
+                if self._disconnect_delay_task is None:
+                    self._disconnect_delay_task = asyncio.create_task(
+                        self._delayed_disconnect()
+                    )
+                    self._background_tasks.add(self._disconnect_delay_task)
+                    self._disconnect_delay_task.add_done_callback(
+                        self._on_disconnect_delay_done
+                    )
             self.logger.info("CC2 MQTT listener stopped")
 
     async def _handle_message(self, topic: str, payload: str) -> None:
