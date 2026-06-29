@@ -430,6 +430,10 @@ class ElegooCC2Client:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._listener_task
             self._listener_task = None
+            # The listener's finally may have created a new delay task — cancel it
+            if self._disconnect_delay_task is not None:
+                self._disconnect_delay_task.cancel()
+                self._disconnect_delay_task = None
 
         # Unblock any waiters
         async with self._response_lock:
