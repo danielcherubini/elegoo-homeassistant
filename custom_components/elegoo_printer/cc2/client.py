@@ -333,6 +333,9 @@ class ElegooCC2Client:
             True if connection and registration succeeded, False otherwise.
 
         """
+        # Increment generation for this connection attempt
+        self._connection_generation += 1
+
         try:
             # Build MQTT client configuration
             client_kwargs = {
@@ -397,6 +400,9 @@ class ElegooCC2Client:
 
     async def disconnect(self) -> None:
         """Disconnect from the CC2 printer."""
+        # Increment generation to invalidate any in-flight callbacks
+        self._connection_generation += 1
+
         self.logger.info("Closing CC2 connection to printer")
 
         # Cancel heartbeat task
@@ -615,8 +621,17 @@ class ElegooCC2Client:
         if not self.mqtt_client:
             return
 
+        # Capture generation for stale callback detection
+        self._listener_generation = self._connection_generation
+
         try:
             async for message in self.mqtt_client.messages:
+                # Stale callback guard: if disconnect() incremented the generation,
+                # stop processing messages from the old connection.
+                if self._connection_generation != self._listener_generation:
+                    self.logger.debug("CC2 MQTT listener: generation changed, stopping")
+                    break
+
                 try:
                     payload = message.payload.decode("utf-8")
                     topic = str(message.topic)
