@@ -52,6 +52,7 @@ from .const import (
     CC2_CMD_SET_VIDEO_STREAM,
     CC2_CMD_STOP_PRINT,
     CC2_COMMAND_TIMEOUT,
+    CC2_DISCONNECT_DELAY,
     CC2_EVENT_ATTRIBUTES,
     CC2_EVENT_STATUS,
     CC2_HEARTBEAT_INTERVAL,
@@ -379,6 +380,12 @@ class ElegooCC2Client:
 
             self._is_registered = True
 
+            # Cancel any pending disconnect delay (reconnect succeeded)
+            if self._disconnect_delay_task is not None:
+                self._disconnect_delay_task.cancel()
+                self._disconnect_delay_task = None
+                self.logger.debug("Cancelled pending disconnect delay")
+
             # Start heartbeat task
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
@@ -404,6 +411,11 @@ class ElegooCC2Client:
         self._connection_generation += 1
 
         self.logger.info("Closing CC2 connection to printer")
+
+        # Cancel any pending disconnect delay
+        if self._disconnect_delay_task is not None:
+            self._disconnect_delay_task.cancel()
+            self._disconnect_delay_task = None
 
         # Cancel heartbeat task
         if self._heartbeat_task:
@@ -616,6 +628,34 @@ class ElegooCC2Client:
         except (ElegooPrinterTimeoutError, ElegooPrinterConnectionError):
             self.logger.warning("Failed to get initial data from CC2 printer")
 
+    async def _delayed_disconnect(self) -> None:
+        """
+        Wait before finalizing disconnect to allow quick reconnects.
+
+        If reconnect succeeds during the delay, the cleanup is skipped.
+        This prevents losing transient state (e.g., COMPLETE->IDLE transitions)
+        during brief network interruptions.
+        """
+        try:
+            await asyncio.sleep(CC2_DISCONNECT_DELAY)
+        except asyncio.CancelledError:
+            # Reconnect succeeded during delay — task was cancelled
+            return
+        # Re-check after sleep (handles cancel arriving after sleep resumes)
+        if self._is_connected and self._is_registered:
+            self.logger.debug(
+                "CC2 reconnect succeeded during disconnect delay, skipping cleanup"
+            )
+            return
+        # Finalize disconnect cleanup
+        self._print_status_transition_queue.clear()
+        self.logger.debug("CC2 disconnect delay expired, cleanup complete")
+
+    def _on_disconnect_delay_done(self, task: asyncio.Task) -> None:
+        """Handle disconnect delay task completion."""
+        self._background_tasks.discard(task)
+        self._disconnect_delay_task = None
+
     async def _mqtt_listener(self) -> None:
         """Listen for messages on MQTT and handle them."""
         if not self.mqtt_client:
@@ -645,7 +685,17 @@ class ElegooCC2Client:
         except (asyncio.TimeoutError, OSError, aiomqtt.MqttError):
             self.logger.debug("CC2 MQTT listener exception")
         finally:
+            # Mark disconnected immediately so is_connected is accurate
             self._is_connected = False
+            # Schedule delayed cleanup to allow quick reconnects
+            if self._disconnect_delay_task is None:
+                self._disconnect_delay_task = asyncio.create_task(
+                    self._delayed_disconnect()
+                )
+                self._background_tasks.add(self._disconnect_delay_task)
+                self._disconnect_delay_task.add_done_callback(
+                    self._on_disconnect_delay_done
+                )
             self.logger.info("CC2 MQTT listener stopped")
 
     async def _handle_message(self, topic: str, payload: str) -> None:
