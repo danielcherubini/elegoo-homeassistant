@@ -308,9 +308,13 @@ class ElegooCC2Client:
                 len(passwords_to_try),
                 auth_desc,
             )
-            # Stop trying if this was an auth failure (wrong credentials)
-            if self._last_auth_failure:
+            # Stop trying only if a user-provided code failed auth — no
+            # point falling back to defaults when the explicit code is wrong.
+            # When cycling fallback passwords, keep going: the first may fail
+            # while a later one succeeds (e.g. empty→rejected, "123456"→ok).
+            if self._last_auth_failure and self.access_code is not None:
                 break
+            self._last_auth_failure = False
             await self.disconnect()
 
         # All attempts failed
@@ -319,7 +323,7 @@ class ElegooCC2Client:
             "Please verify the access code in printer settings: "
             "Settings → Network → Access Code",
             self.printer.name,
-            len(passwords_to_try),
+            attempt_num,
         )
         return False
 
