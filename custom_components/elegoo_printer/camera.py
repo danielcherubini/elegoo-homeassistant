@@ -1,5 +1,6 @@
 """Camera platform for Elegoo printer."""
 
+import asyncio
 from http import HTTPStatus
 from typing import TYPE_CHECKING
 
@@ -39,6 +40,70 @@ from .coordinator import ElegooDataUpdateCoordinator
 
 if TYPE_CHECKING:
     from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
+
+
+# Graceful ffmpeg shutdown timeouts
+FFMPEG_QUIT_TIMEOUT = 10  # seconds to wait after sending 'q' to ffmpeg
+FFMPEG_TERMINATE_TIMEOUT = 5  # seconds to wait after SIGTERM before SIGKILL
+NATIVE_STREAM_IDLE_TIMEOUT = 600  # 10 minutes — clear native stream flag after idle
+IDLE_WATCHDOG_INTERVAL = 60  # seconds between idle checks
+
+
+class ElegooCameraMjpeg(CameraMjpeg):
+    """
+    CameraMjpeg with graceful shutdown: quit -> SIGTERM -> SIGKILL.
+
+    ffmpeg's RTSP demuxer sends RTSP TEARDOWN on SIGTERM, which tells the
+    printer to decrement its session counter. SIGKILL bypasses this entirely.
+    """
+
+    async def close(self, close_timeout: int = FFMPEG_QUIT_TIMEOUT) -> None:
+        """
+        Stop ffmpeg with graceful shutdown sequence.
+
+        Arguments:
+            close_timeout: Seconds to wait after sending 'q' before SIGTERM.
+
+        """
+        if not self.is_running:
+            return
+
+        # Step 1: Send 'q' to ffmpeg stdin (ffmpeg's interactive quit)
+        quit_timed_out = False
+        try:
+            self._proc.stdin.write(b"q")
+            async with asyncio.timeout(close_timeout):
+                await self._proc.wait()
+        except (BrokenPipeError, RuntimeError, OSError):
+            # stdin is closed or process already died — skip to SIGTERM
+            LOGGER.debug("FFmpeg stdin unavailable, skipping to SIGTERM")
+        except asyncio.TimeoutError:
+            quit_timed_out = True
+        else:
+            LOGGER.debug("Closed FFmpeg process gracefully (quit)")
+            self._clear()
+            return
+
+        if not quit_timed_out and not self.is_running:
+            # Process may have already exited after stdin error
+            self._clear()
+            return
+
+        # Step 2: SIGTERM — ffmpeg sends RTSP TEARDOWN on SIGTERM
+        try:
+            self._proc.terminate()  # SIGTERM
+            async with asyncio.timeout(FFMPEG_TERMINATE_TIMEOUT):
+                await self._proc.wait()
+            LOGGER.debug("Closed FFmpeg process (SIGTERM)")
+        except ProcessLookupError:
+            # Process already exited — treat as success
+            LOGGER.debug("FFmpeg process already exited during SIGTERM")
+        except asyncio.TimeoutError:
+            # Step 3: SIGKILL as absolute last resort
+            LOGGER.warning("SIGTERM timed out, escalating to SIGKILL")
+            self.kill()  # reuse base class SIGKILL + background communicate task
+
+        self._clear()
 
 
 async def async_setup_entry(
