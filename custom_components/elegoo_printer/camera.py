@@ -158,6 +158,15 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
             "-rtsp_transport udp -fflags nobuffer -err_detect ignore_err"
         )
 
+        # Stream lifecycle tracking
+        self._active_mjpeg_streams: int = 0
+        self._active_mjpeg_processes: set[ElegooCameraMjpeg] = set()
+        self._transient_viewers: int = 0  # async_camera_image grabs
+        self._native_stream_active: bool = False
+        self._stream_enabled: bool = False
+        self._last_activity: float = 0.0  # monotonic time of last stream activity
+        self._idle_watchdog_task: asyncio.Task | None = None
+
     def _is_over_capacity(self) -> bool:
         """Check if the printer is over capacity."""
         attrs = self._printer_client.printer_data.attributes
@@ -170,19 +179,79 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         """Return supported features."""
         return self._attr_supported_features
 
+    def _has_active_viewers(self) -> bool:
+        """Check if any viewer type is currently active."""
+        return (
+            self._active_mjpeg_streams > 0
+            or self._transient_viewers > 0
+            or self._native_stream_active
+        )
+
+    async def _ensure_stream_enabled(self) -> None:
+        """
+        Enable printer video if not already enabled.
+
+        Idempotent — safe to call when already enabled.
+        On failure, _stream_enabled is NOT set (may retry later).
+        """
+        if self._stream_enabled:
+            return
+        try:
+            video = await self._printer_client.get_printer_video(enable=True)
+            if video.status == ElegooVideoStatus.SUCCESS:
+                self._stream_enabled = True
+                LOGGER.debug("Enabled printer video for %s", self.entity_id)
+            else:
+                LOGGER.warning(
+                    "Failed to enable printer video for %s: %s",
+                    self.entity_id,
+                    video.status,
+                )
+        except Exception as e:  # noqa: BLE001
+            LOGGER.warning(
+                "Exception enabling printer video for %s: %s",
+                self.entity_id,
+                e,
+            )
+
+    async def _disable_stream(self) -> None:
+        """
+        Disable printer video.
+
+        On failure, _stream_enabled stays True (video may still be on printer).
+        The idle watchdog will re-attempt on subsequent intervals.
+        """
+        if not self._stream_enabled:
+            return
+        try:
+            await self._printer_client.set_printer_video_stream(enable=False)
+            self._stream_enabled = False
+            LOGGER.debug("Disabled printer video for %s", self.entity_id)
+        except Exception as e:  # noqa: BLE001
+            LOGGER.warning(
+                "Failed to disable printer video for %s (may be over capacity): %s",
+                self.entity_id,
+                e,
+            )
+            # Don't clear flag — video may still be enabled on printer
+
     async def _get_stream_url(self) -> str | None:
-        """Get the stream URL, from cache if recent."""
+        """
+        Get the stream URL from cached printer data.
+
+        Does NOT toggle the printer video — reads the URL cached by the
+        last call to get_printer_video(). Callers must ensure the video
+        is enabled via _ensure_stream_enabled() before calling this method.
+        """
         if (not self._printer_client.is_connected) or self._is_over_capacity():
             return None
-        video = await self._printer_client.get_printer_video(enable=True)
-        if video.status and video.status == ElegooVideoStatus.SUCCESS:
-            # Resin printers use RTSP feeds - bypass proxy and use direct URL
+        video_url = self._printer_client.printer_data.video.video_url
+        if video_url:
             LOGGER.debug(
                 "stream_source: Resin printer video (RTSP), using direct URL: %s",
-                video.video_url,
+                video_url,
             )
-            return video.video_url
-
+            return video_url
         return None
 
     async def handle_async_mjpeg_stream(
