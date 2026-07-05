@@ -30,7 +30,7 @@ GCODE_PROXY_FILAMENT_KEYS = {
 class _FakeSensor:
     """Stand-in for ElegooPrinterSensor that skips HA entity initialisation."""
 
-    def __init__(self, coordinator: object, entity_description: object) -> None:  # noqa: ARG002
+    def __init__(self, coordinator: object, entity_description: object) -> None:
         self.entity_description = entity_description
 
 

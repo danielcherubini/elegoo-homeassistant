@@ -54,11 +54,11 @@ class TestCc2OptionsSuggestedGcodeProxy:
     """Options suggested values show a single canonical base URL."""
 
     def test_canonicalizes_double_scheme(self) -> None:
-        suggested = ElegooOptionsFlowHandler._cc2_options_suggested(  # noqa: SLF001
+        suggested = ElegooOptionsFlowHandler._cc2_options_suggested(
             {CONF_GCODE_PROXY_URL: f"http://http://{_DOC_HOST_PORT}"},
         )
         assert suggested[CONF_GCODE_PROXY_URL] == f"http://{_DOC_HOST_PORT}"
 
     def test_empty_when_missing(self) -> None:
-        suggested = ElegooOptionsFlowHandler._cc2_options_suggested({})  # noqa: SLF001
+        suggested = ElegooOptionsFlowHandler._cc2_options_suggested({})
         assert suggested[CONF_GCODE_PROXY_URL] == ""
