@@ -1,6 +1,7 @@
 """Camera platform for Elegoo printer."""
 
 import asyncio
+import contextlib
 from http import HTTPStatus
 from typing import TYPE_CHECKING
 
@@ -257,7 +258,16 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
     async def handle_async_mjpeg_stream(
         self, request: web.Request
     ) -> web.StreamResponse:
-        """Generate an HTTP MJPEG stream from the camera."""
+        """
+        Generate an HTTP MJPEG stream from the camera.
+
+        Ref-counted: enables video on first viewer, disables on last.
+        Uses ElegooCameraMjpeg for graceful SIGTERM shutdown.
+        """
+        # Enable stream if first viewer
+        if not self._has_active_viewers():
+            await self._ensure_stream_enabled()
+
         stream_url = await self._get_stream_url()
         if not stream_url:
             return web.Response(
@@ -266,10 +276,14 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
             )
 
         ffmpeg_manager = self.hass.data[DOMAIN]
-        mjpeg_stream = CameraMjpeg(ffmpeg_manager.binary)
+        mjpeg_stream = ElegooCameraMjpeg(ffmpeg_manager.binary)
         await mjpeg_stream.open_camera(
             stream_url, extra_cmd=self._extra_ffmpeg_arguments
         )
+
+        self._active_mjpeg_streams += 1
+        self._active_mjpeg_processes.add(mjpeg_stream)
+        self._last_activity = asyncio.get_running_loop().time()
 
         try:
             stream_reader = await mjpeg_stream.get_reader()
@@ -280,23 +294,54 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
                 ffmpeg_manager.ffmpeg_stream_content_type,
             )
         finally:
-            await mjpeg_stream.close()
+            self._active_mjpeg_streams -= 1
+            self._active_mjpeg_processes.discard(mjpeg_stream)
+            await mjpeg_stream.close(close_timeout=FFMPEG_QUIT_TIMEOUT)
+            # Disable stream if last viewer
+            if not self._has_active_viewers():
+                await self._disable_stream()
 
     async def stream_source(self) -> str | None:
-        """Return the source of the stream."""
-        return await self._get_stream_url()
+        """
+        Return the source of the stream.
+
+        Enables video for native HA streaming. Uses idle watchdog to
+        disable after NATIVE_STREAM_IDLE_TIMEOUT of no activity.
+        """
+        stream_url = await self._get_stream_url()
+        if not stream_url:
+            return None
+
+        if not self._native_stream_active:
+            await self._ensure_stream_enabled()
+            self._native_stream_active = True
+        self._last_activity = asyncio.get_running_loop().time()
+        return stream_url
 
     async def async_camera_image(
         self,
         width: int | None = None,  # noqa: ARG002
         height: int | None = None,  # noqa: ARG002
     ) -> bytes | None:
-        """Return a still image response from the camera."""
-        stream_url = await self._get_stream_url()
-        if not stream_url:
-            return None
+        """
+        Return a still image from the camera.
+
+        Treats the image grab as a transient viewer — enables video if needed,
+        but only disables if no other viewers are active.
+
+        Note: This path uses HA's async_get_image() which spawns its own
+        ffmpeg process. That process does NOT get graceful SIGTERM shutdown,
+        so individual image grabs may leak RTSP sessions. The _transient_viewers
+        counter prevents this path from disabling an active MJPEG stream.
+        """
+        self._transient_viewers += 1
+        if not self._has_active_viewers():
+            await self._ensure_stream_enabled()
 
         try:
+            stream_url = await self._get_stream_url()
+            if not stream_url:
+                return None
             return await async_get_image(
                 self.hass,
                 input_source=stream_url,
@@ -306,6 +351,77 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
                 "Failed to get camera image via ffmpeg (ffmpeg may be missing): %s", e
             )
             return None
+        finally:
+            self._transient_viewers -= 1
+            # Only disable if no other viewers are active
+            if not self._has_active_viewers():
+                await self._disable_stream()
+
+    async def async_added_to_hass(self) -> None:
+        """Start the idle watchdog when the entity is added."""
+        await super().async_added_to_hass()
+        self._idle_watchdog_task = asyncio.create_task(self._idle_watchdog())
+
+    async def _idle_watchdog(self) -> None:
+        """
+        Periodically check for idle conditions and clean up.
+
+        Runs every IDLE_WATCHDOG_INTERVAL seconds. Two responsibilities:
+        1. If no viewers are active and video is enabled, attempt to disable
+           (handles failed disables from normal disconnect path).
+        2. If native stream has been idle for NATIVE_STREAM_IDLE_TIMEOUT,
+           clear the native stream flag (allows future disable attempts).
+        """
+        loop = asyncio.get_running_loop()
+        while True:
+            try:
+                await asyncio.sleep(IDLE_WATCHDOG_INTERVAL)
+                # Always attempt disable if video is on but no viewers
+                if self._stream_enabled and not self._has_active_viewers():
+                    await self._disable_stream()
+                # Clear native stream flag if idle
+                if (
+                    self._native_stream_active
+                    and self._last_activity > 0
+                    and loop.time() - self._last_activity > NATIVE_STREAM_IDLE_TIMEOUT
+                ):
+                    LOGGER.debug(
+                        "Native stream idle for %.0fs, clearing flag for %s",
+                        NATIVE_STREAM_IDLE_TIMEOUT,
+                        self.entity_id,
+                    )
+                    self._native_stream_active = False
+            except asyncio.CancelledError:
+                break
+            except Exception:  # noqa: BLE001
+                LOGGER.exception("Idle watchdog error for %s", self.entity_id)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """
+        Clean up when the entity is removed from Home Assistant.
+
+        Cancels the idle watchdog, closes any in-flight MJPEG processes,
+        and disables the printer video.
+        """
+        # Cancel idle watchdog
+        if self._idle_watchdog_task:
+            self._idle_watchdog_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._idle_watchdog_task
+            self._idle_watchdog_task = None
+
+        # Close any in-flight MJPEG processes
+        for proc in self._active_mjpeg_processes.copy():
+            await proc.close(close_timeout=FFMPEG_QUIT_TIMEOUT)
+        self._active_mjpeg_processes.clear()
+        self._active_mjpeg_streams = 0
+        self._transient_viewers = 0
+
+        # Disable native stream tracking
+        self._native_stream_active = False
+
+        # Disable printer video
+        await self._disable_stream()
 
 
 class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
