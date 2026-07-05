@@ -312,13 +312,17 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         Enables video for native HA streaming. Uses idle watchdog to
         disable after NATIVE_STREAM_IDLE_TIMEOUT of no activity.
         """
+        if not self._native_stream_active:
+            await self._ensure_stream_enabled()
+            # Only set flag if video was actually enabled
+            if not self._stream_enabled:
+                return None
+            self._native_stream_active = True
+
         stream_url = await self._get_stream_url()
         if not stream_url:
             return None
 
-        if not self._native_stream_active:
-            await self._ensure_stream_enabled()
-            self._native_stream_active = True
         self._last_activity = asyncio.get_running_loop().time()
         return stream_url
 
