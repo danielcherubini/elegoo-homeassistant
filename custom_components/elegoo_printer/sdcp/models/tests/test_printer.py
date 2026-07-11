@@ -49,7 +49,7 @@ class TestOpenCentauriDetection:
     ) -> None:
         """Test Open Centauri detection with various firmware patterns."""
         result = Printer._is_open_centauri(model, firmware)  # noqa: SLF001
-        assert result == expected, (  # noqa: S101
+        assert result == expected, (
             f"Expected {expected} for model='{model}' firmware='{firmware}', "
             f"got {result}"
         )
@@ -66,8 +66,8 @@ class TestSyncFromAttributes:
         attrs = PrinterAttributes({"Attributes": {"FirmwareVersion": "V2.0.0"}})
         result = printer.sync_from_attributes(attrs)
 
-        assert result is True  # noqa: S101
-        assert printer.firmware == "V2.0.0"  # noqa: S101
+        assert result is True
+        assert printer.firmware == "V2.0.0"
 
     def test_sync_from_attributes_skips_empty_values(self) -> None:
         """Verify empty strings don't overwrite existing values."""
@@ -82,11 +82,11 @@ class TestSyncFromAttributes:
         )
         result = printer.sync_from_attributes(attrs)
 
-        assert result is False  # noqa: S101
-        assert printer.firmware == "V1.0.0"  # noqa: S101
-        assert printer.model == "Saturn 3"  # noqa: S101
-        assert printer.name == "My Printer"  # noqa: S101
-        assert printer.brand == "Elegoo"  # noqa: S101
+        assert result is False
+        assert printer.firmware == "V1.0.0"
+        assert printer.model == "Saturn 3"
+        assert printer.name == "My Printer"
+        assert printer.brand == "Elegoo"
 
     def test_sync_from_attributes_skips_unchanged_values(self) -> None:
         """Verify returning False when nothing changed."""
@@ -108,7 +108,7 @@ class TestSyncFromAttributes:
         )
         result = printer.sync_from_attributes(attrs)
 
-        assert result is False  # noqa: S101
+        assert result is False
 
     def test_sync_from_attributes_rederives_printer_type(self) -> None:
         """Verify printer_type updates when model changes."""
@@ -119,9 +119,9 @@ class TestSyncFromAttributes:
         attrs = PrinterAttributes({"Attributes": {"MachineName": "Saturn 4 Ultra 16K"}})
         result = printer.sync_from_attributes(attrs)
 
-        assert result is True  # noqa: S101
-        assert printer.model == "Saturn 4 Ultra 16K"  # noqa: S101
-        assert printer.printer_type == PrinterType.RESIN  # noqa: S101
+        assert result is True
+        assert printer.model == "Saturn 4 Ultra 16K"
+        assert printer.printer_type == PrinterType.RESIN
 
     def test_sync_from_attributes_rederives_open_centauri(self) -> None:
         """Verify open_centauri flag updates when firmware changes."""
@@ -133,9 +133,9 @@ class TestSyncFromAttributes:
         attrs = PrinterAttributes({"Attributes": {"FirmwareVersion": "V0.1.0 O"}})
         result = printer.sync_from_attributes(attrs)
 
-        assert result is True  # noqa: S101
-        assert printer.firmware == "V0.1.0 O"  # noqa: S101
-        assert printer.open_centauri is True  # noqa: S101
+        assert result is True
+        assert printer.firmware == "V0.1.0 O"
+        assert printer.open_centauri is True
 
     def test_sync_from_attributes_rederives_has_vat_heater(self) -> None:
         """Verify has_vat_heater flag updates when model changes."""
@@ -146,9 +146,9 @@ class TestSyncFromAttributes:
         attrs = PrinterAttributes({"Attributes": {"MachineName": "Saturn 4 Ultra 16K"}})
         result = printer.sync_from_attributes(attrs)
 
-        assert result is True  # noqa: S101
-        assert printer.model == "Saturn 4 Ultra 16K"  # noqa: S101
-        assert printer.has_vat_heater is True  # noqa: S101
+        assert result is True
+        assert printer.model == "Saturn 4 Ultra 16K"
+        assert printer.has_vat_heater is True
 
     def test_sync_from_attributes_syncs_all_fields(self) -> None:
         """Verify model, name, brand are also synced."""
@@ -170,11 +170,11 @@ class TestSyncFromAttributes:
         )
         result = printer.sync_from_attributes(attrs)
 
-        assert result is True  # noqa: S101
-        assert printer.firmware == "V2.0.0"  # noqa: S101
-        assert printer.model == "New Model"  # noqa: S101
-        assert printer.name == "New Name"  # noqa: S101
-        assert printer.brand == "New Brand"  # noqa: S101
+        assert result is True
+        assert printer.firmware == "V2.0.0"
+        assert printer.model == "New Model"
+        assert printer.name == "New Name"
+        assert printer.brand == "New Brand"
 
     def test_sync_from_attributes_skips_all_empty_attrs(self) -> None:
         """Verify PrinterAttributes({}) with no Attributes key skips everything."""
@@ -187,8 +187,8 @@ class TestSyncFromAttributes:
         attrs = PrinterAttributes({})
         result = printer.sync_from_attributes(attrs)
 
-        assert result is False  # noqa: S101
-        assert printer.firmware == "V1.0.0"  # noqa: S101
-        assert printer.model == "Saturn 3"  # noqa: S101
-        assert printer.name == "My Printer"  # noqa: S101
-        assert printer.brand == "Elegoo"  # noqa: S101
+        assert result is False
+        assert printer.firmware == "V1.0.0"
+        assert printer.model == "Saturn 3"
+        assert printer.name == "My Printer"
+        assert printer.brand == "Elegoo"
