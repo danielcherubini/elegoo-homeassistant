@@ -373,6 +373,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 5
     MINOR_VERSION = 0
+    _detected_canvas: bool | None = None
 
     def _cleanup_user_input(self, raw_ip: str) -> str | None:
         """
@@ -770,7 +771,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if (
             user_input is None
             and self.selected_printer
-            and not hasattr(self, "_detected_canvas")
+            and self._detected_canvas is None
         ):
             self._detected_canvas = await self._async_detect_canvas(
                 self.selected_printer
@@ -832,7 +833,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                     vol.Required(
                         CONF_HAS_CANVAS,
-                        default=getattr(self, "_detected_canvas", False),
+                        default=self._detected_canvas or False,
                     ): selector.BooleanSelector(
                         selector.BooleanSelectorConfig(),
                     ),
@@ -1292,7 +1293,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Required(CONF_PROXY_ENABLED): selector.BooleanSelector(
                 selector.BooleanSelectorConfig(),
             ),
-            vol.Required(CONF_HAS_CANVAS): selector.BooleanSelector(
+            vol.Required(CONF_HAS_CANVAS, default=False): selector.BooleanSelector(
                 selector.BooleanSelectorConfig(),
             ),
             vol.Optional(CONF_EXTERNAL_IP): selector.TextSelector(

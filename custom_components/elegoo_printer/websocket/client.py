@@ -67,6 +67,18 @@ logging.getLogger("websocket").setLevel(logging.CRITICAL)
 DEFAULT_PORT = 54780
 
 
+def normalize_cc1_canvas_data(data: dict[str, Any]) -> None:
+  """Normalize CC1 Canvas tray placeholders in-place."""
+  for canvas in data.get("canvas_list", []):
+    for tray in canvas.get("tray_list", []):
+      if tray.get("brand", "").startswith("—"):
+        tray["brand"] = ""
+      if tray.get("filament_type") == "?":
+        tray["filament_type"] = ""
+      if tray.get("filament_name", "").startswith("—"):
+        tray["filament_name"] = ""
+
+
 class ElegooPrinterClient:
     """
     Client for interacting with an Elegoo printer.
@@ -767,16 +779,7 @@ class ElegooPrinterClient:
                 self.logger.debug("Canvas status request returned Ack=%s", ack)
                 return
 
-            canvas_list = data.get("canvas_list", [])
-            for canvas in canvas_list:
-                for tray in canvas.get("tray_list", []):
-                    if tray.get("brand", "").startswith("—"):
-                        tray["brand"] = ""
-                    if tray.get("filament_type") == "?":
-                        tray["filament_type"] = ""
-                    if tray.get("filament_name", "").startswith("—"):
-                        tray["filament_name"] = ""
-
+            normalize_cc1_canvas_data(data)
             ams_status = AMSStatus(data)
             self.printer_data.ams_status = ams_status
             self.logger.debug("Canvas status updated: %s", ams_status)

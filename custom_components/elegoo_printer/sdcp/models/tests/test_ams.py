@@ -108,7 +108,10 @@ def test_ams_tray_id_padding() -> None:
 
 
 def test_ams_active_tray_negative_one() -> None:
-  """Test AMSStatus handles active_tray_id=-1 (idle, no active tray)."""
+  # CC1 sends active_tray_id=-1 when idle. The model treats any non-None
+  # pair as "present", producing TrayId="-1". This documents existing
+  # behavior — downstream sensors handle -1 via their own value_fn logic.
+  """Test AMSStatus handles active_tray_id=-1 without crashing."""
   data = {
     "active_canvas_id": 0,
     "active_tray_id": -1,

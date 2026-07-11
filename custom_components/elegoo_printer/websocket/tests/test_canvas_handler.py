@@ -1,18 +1,8 @@
 """Tests for CC1 Canvas handler normalization."""
 
-
-def _normalize_cc1_canvas_data(data: dict) -> dict:
-  """Replicate the normalization logic from _canvas_handler."""
-  canvas_list = data.get("canvas_list", [])
-  for canvas in canvas_list:
-    for tray in canvas.get("tray_list", []):
-      if tray.get("brand", "").startswith("—"):
-        tray["brand"] = ""
-      if tray.get("filament_type") == "?":
-        tray["filament_type"] = ""
-      if tray.get("filament_name", "").startswith("—"):
-        tray["filament_name"] = ""
-  return data
+from custom_components.elegoo_printer.websocket.client import (
+  normalize_cc1_canvas_data,
+)
 
 
 def test_normalize_cc1_empty_tray_placeholders() -> None:
@@ -31,8 +21,8 @@ def test_normalize_cc1_empty_tray_placeholders() -> None:
       }],
     }],
   }
-  normalized = _normalize_cc1_canvas_data(data)
-  tray = normalized["canvas_list"][0]["tray_list"][0]
+  normalize_cc1_canvas_data(data)
+  tray = data["canvas_list"][0]["tray_list"][0]
   assert tray["brand"] == ""
   assert tray["filament_type"] == ""
   assert tray["filament_name"] == ""
@@ -54,8 +44,8 @@ def test_normalize_leaves_populated_trays_unchanged() -> None:
       }],
     }],
   }
-  normalized = _normalize_cc1_canvas_data(data)
-  tray = normalized["canvas_list"][0]["tray_list"][0]
+  normalize_cc1_canvas_data(data)
+  tray = data["canvas_list"][0]["tray_list"][0]
   assert tray["brand"] == "ELEGOO"
   assert tray["filament_type"] == "PLA"
   assert tray["filament_name"] == "PLA"
@@ -63,5 +53,10 @@ def test_normalize_leaves_populated_trays_unchanged() -> None:
 
 def test_normalize_handles_empty_canvas_list() -> None:
   """Test normalization handles missing/empty canvas_list."""
-  assert _normalize_cc1_canvas_data({}) == {}
-  assert _normalize_cc1_canvas_data({"canvas_list": []}) == {"canvas_list": []}
+  data_empty: dict = {}
+  normalize_cc1_canvas_data(data_empty)
+  assert data_empty == {}
+
+  data_list: dict = {"canvas_list": []}
+  normalize_cc1_canvas_data(data_list)
+  assert data_list == {"canvas_list": []}
