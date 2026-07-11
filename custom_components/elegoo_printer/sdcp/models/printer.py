@@ -15,6 +15,7 @@ from custom_components.elegoo_printer.const import (
     CONF_CC2_ACCESS_CODE,
     CONF_CC2_TOKEN_STATUS,
     CONF_EXTERNAL_IP,
+    CONF_HAS_CANVAS,
     CONF_MQTT_BROKER_ENABLED,
     CONF_PROXY_ENABLED,
     DEFAULT_FALLBACK_IP,
@@ -130,6 +131,7 @@ class Printer:
     external_ip: str | None
     open_centauri: bool
     has_vat_heater: bool
+    has_canvas: bool
     cc2_access_code: str | None
     cc2_token_status: int
 
@@ -154,6 +156,7 @@ class Printer:
             self.is_proxy = False
             self.open_centauri = False
             self.has_vat_heater = False
+            self.has_canvas = False
         else:
             try:
                 j: dict[str, Any] = json.loads(json_string)  # Decode the JSON string
@@ -183,6 +186,7 @@ class Printer:
 
                 # Check if this printer has vat heating capability
                 self.has_vat_heater = self._has_vat_heater(self.model)
+                self.has_canvas = False
             except json.JSONDecodeError:
                 # Handle the error appropriately (e.g., log it, raise an exception)
                 self.connection = None
@@ -199,6 +203,7 @@ class Printer:
                 self.is_proxy = False
                 self.open_centauri = False
                 self.has_vat_heater = False
+                self.has_canvas = False
 
         # Initialize config-based attributes for all instances
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
@@ -288,6 +293,7 @@ class Printer:
             "external_ip": self.external_ip,
             "open_centauri": self.open_centauri,
             "has_vat_heater": self.has_vat_heater,
+            "has_canvas": self.has_canvas,
             "cc2_access_code": self.cc2_access_code,
             "cc2_token_status": self.cc2_token_status,
         }
@@ -418,6 +424,10 @@ class Printer:
 
         # Check if this printer has vat heating capability
         printer.has_vat_heater = Printer._has_vat_heater(printer.model)
+
+        printer.has_canvas = attrs.get(
+            CONF_HAS_CANVAS, attrs.get("has_canvas", False)
+        )
 
         # CC2-specific settings
         printer.cc2_access_code = attrs.get(

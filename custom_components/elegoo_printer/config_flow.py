@@ -7,6 +7,8 @@ MIT License
 
 from __future__ import annotations
 
+import asyncio
+import json
 from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -27,6 +29,7 @@ from .const import (
     CONF_CC2_ACCESS_CODE,
     CONF_EXTERNAL_IP,
     CONF_GCODE_PROXY_URL,
+    CONF_HAS_CANVAS,
     CONF_PROXY_ENABLED,
     DOMAIN,
     LOGGER,
@@ -368,7 +371,7 @@ async def _async_validate_input(  # noqa: PLR0912
 class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Elegoo."""
 
-    VERSION = 4
+    VERSION = 5
     MINOR_VERSION = 0
 
     def _cleanup_user_input(self, raw_ip: str) -> str | None:
@@ -386,6 +389,35 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         """
         return _sanitize_ip_address(raw_ip)
+
+    async def _async_detect_canvas(self, printer: Printer) -> bool:
+        """Detect if a printer has Canvas/AMS hardware connected."""
+        if printer.transport_type == TransportType.WEBSOCKET:
+            return await self._async_detect_canvas_ws(printer)
+        return printer.transport_type == TransportType.CC2_MQTT
+
+    async def _async_detect_canvas_ws(self, printer: Printer) -> bool:
+        """Detect Canvas on CC1 by reading AmsConnectStatus from status push."""
+        import websockets  # noqa: PLC0415
+
+        ws_url = f"ws://{printer.ip_address}:3030/websocket"
+        try:
+            async with websockets.connect(ws_url, open_timeout=3) as ws:
+                data = await asyncio.wait_for(ws.recv(), timeout=3)
+                parsed = json.loads(data)
+                topic = parsed.get("Topic", "")
+                if "status" in topic:
+                    status_data = (
+                        parsed.get("Data", {}).get("Data", {}).get("Status", {})
+                    )
+                    ams_connect = status_data.get("AmsConnectStatus", 0)
+                    LOGGER.debug(
+                        "CC1 Canvas detection: AmsConnectStatus=%s", ams_connect
+                    )
+                    return bool(ams_connect)
+        except (TimeoutError, OSError, json.JSONDecodeError, ImportError):
+            LOGGER.debug("CC1 Canvas detection failed — assuming no Canvas")
+        return False
 
     async def async_step_user(
         self,
@@ -734,9 +766,20 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.ConfigFlowResult:
         """Handle the configuration of additional options for a discovered Elegoo printer."""  # noqa: E501
         _errors = {}
+
+        if (
+            user_input is None
+            and self.selected_printer
+            and not hasattr(self, "_detected_canvas")
+        ):
+            self._detected_canvas = await self._async_detect_canvas(
+                self.selected_printer
+            )
+
         if user_input is not None and self.selected_printer:
             printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
             printer_to_validate.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+            printer_to_validate.has_canvas = user_input.get(CONF_HAS_CANVAS, False)
             # Preserve external_ip from manual IP entry if set
             if self.selected_printer.external_ip:
                 printer_to_validate.external_ip = self.selected_printer.external_ip
@@ -751,7 +794,6 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
             try:
-                # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled  # noqa: E501
                 validated_printer = await _async_test_connection(
                     self.hass, printer_to_validate, user_input
                 )
@@ -785,6 +827,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                             if self.selected_printer
                             else False
                         ),
+                    ): selector.BooleanSelector(
+                        selector.BooleanSelectorConfig(),
+                    ),
+                    vol.Required(
+                        CONF_HAS_CANVAS,
+                        default=getattr(self, "_detected_canvas", False),
                     ): selector.BooleanSelector(
                         selector.BooleanSelectorConfig(),
                     ),
@@ -906,6 +954,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         printer = Printer.from_dict(self.selected_printer.to_dict())
         printer.mqtt_broker_enabled = False
         printer.proxy_enabled = False
+        printer.has_canvas = True
         # Preserve external_ip from manual IP entry if set
         if self.selected_printer.external_ip:
             printer.external_ip = self.selected_printer.external_ip
@@ -1216,6 +1265,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                     self.hass, printer, user_input
                 )
                 tested_printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+                tested_printer.has_canvas = user_input.get(CONF_HAS_CANVAS, False)
                 tested_printer.external_ip = user_input.get(CONF_EXTERNAL_IP)
                 LOGGER.debug("Tested printer: %s", tested_printer.to_dict_safe())
                 return self.async_create_entry(
@@ -1240,6 +1290,9 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
             ),
             vol.Required(CONF_PROXY_ENABLED): selector.BooleanSelector(
+                selector.BooleanSelectorConfig(),
+            ),
+            vol.Required(CONF_HAS_CANVAS): selector.BooleanSelector(
                 selector.BooleanSelectorConfig(),
             ),
             vol.Optional(CONF_EXTERNAL_IP): selector.TextSelector(

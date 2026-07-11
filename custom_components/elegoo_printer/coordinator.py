@@ -9,13 +9,12 @@ import httpx
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
-from custom_components.elegoo_printer.const import LOGGER
+from custom_components.elegoo_printer.const import CONF_HAS_CANVAS, LOGGER
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
     ElegooPrinterTimeoutError,
 )
-from custom_components.elegoo_printer.sdcp.models.enums import TransportType
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -33,6 +32,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         """Initialize."""
         self.online = False
         self.config_entry = entry
+        self._has_canvas = entry.data.get(CONF_HAS_CANVAS, False)
         self._last_firmware_check: datetime | None = None
         self._firmware_check_interval = timedelta(hours=12)  # Check every 12 hours
         self._last_canvas_check: datetime | None = None
@@ -82,10 +82,13 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                     # Rate-limit even on failure to avoid hammering the endpoint
                     self._last_firmware_check = now
 
-            # Check Canvas status periodically (CC2 only)
-            if api.printer.transport_type == TransportType.CC2_MQTT and (
-                self._last_canvas_check is None
-                or now - self._last_canvas_check >= self._canvas_check_interval
+            if (
+                self._has_canvas
+                and hasattr(api.client, "get_canvas_status")
+                and (
+                    self._last_canvas_check is None
+                    or now - self._last_canvas_check >= self._canvas_check_interval
+                )
             ):
                 LOGGER.debug("Checking Canvas/AMS status")
                 try:

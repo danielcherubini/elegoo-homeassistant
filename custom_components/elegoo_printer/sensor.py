@@ -68,8 +68,7 @@ async def async_setup_entry(
     if printer_type == PrinterType.FDM:
         sensors.extend(PRINTER_STATUS_FDM)
 
-        # Canvas/AMS sensors (CC2 with Canvas support)
-        if protocol_version == ProtocolVersion.CC2:
+        if printer.has_canvas:
             sensors.extend(PRINTER_STATUS_CANVAS)
 
         # Gcode filament data sensors (CC2 only, uses CC2_CMD_GET_FILE_DETAIL)

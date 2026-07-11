@@ -38,6 +38,7 @@
         "data": {
           "ip_address": "Printer IP Address",
           "proxy_enabled": "Enable the proxy server",
+          "has_canvas": "Canvas/AMS installed",
           "external_ip": "External Address (optional, for advanced network setups)"
         },
         "data_description": {
@@ -70,7 +71,8 @@
         "title": "FDM Printer Options",
         "description": "Configure additional options for your selected printer. See the project's GitHub page for more information about the proxy server.",
         "data": {
-          "proxy_enabled": "Enable the proxy server"
+          "proxy_enabled": "Enable the proxy server",
+          "has_canvas": "Canvas/AMS installed"
         }
       },
       "resin_options": {

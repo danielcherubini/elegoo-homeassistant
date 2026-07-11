@@ -26,6 +26,7 @@ from custom_components.elegoo_printer.const import (
 from custom_components.elegoo_printer.sdcp.const import (
     CMD_CONTINUE_PRINT,
     CMD_CONTROL_DEVICE,
+    CMD_GET_CANVAS_STATUS,
     CMD_PAUSE_PRINT,
     CMD_REQUEST_ATTRIBUTES,
     CMD_REQUEST_STATUS_REFRESH,
@@ -43,6 +44,7 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterNotConnectedError,
     ElegooPrinterTimeoutError,
 )
+from custom_components.elegoo_printer.sdcp.models.ams import AMSStatus
 from custom_components.elegoo_printer.sdcp.models.attributes import PrinterAttributes
 from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
@@ -373,6 +375,11 @@ class ElegooPrinterClient:
         data = {"TempTargetHotbed": clamped_temperature}
         await self._send_printer_cmd(CMD_CONTROL_DEVICE, data)
 
+    async def get_canvas_status(self) -> dict[str, Any] | None:
+        """Get Canvas/AMS status including filament colors and active tray."""
+        await self._send_printer_cmd(CMD_GET_CANVAS_STATUS, {})
+        return None
+
     async def _send_printer_cmd(
         self, cmd: int, data: dict[str, Any] | None = None
     ) -> None:
@@ -679,6 +686,8 @@ class ElegooPrinterClient:
                     self._print_history_detail_handler(data_data)
                 elif cmd == CMD_SET_VIDEO_STREAM:
                     self._print_video_handler(data_data)
+                elif cmd == CMD_GET_CANVAS_STATUS:
+                    self._canvas_handler(data_data)
         except json.JSONDecodeError:
             self.logger.exception("Invalid JSON")
 
@@ -749,6 +758,30 @@ class ElegooPrinterClient:
 
         """
         self.printer_data.video = ElegooVideo(data_data)
+
+    def _canvas_handler(self, data: dict[str, Any]) -> None:
+        """Parse Canvas/AMS status response and update printer_data."""
+        try:
+            ack = data.get("Ack", -1)
+            if ack != 0:
+                self.logger.debug("Canvas status request returned Ack=%s", ack)
+                return
+
+            canvas_list = data.get("canvas_list", [])
+            for canvas in canvas_list:
+                for tray in canvas.get("tray_list", []):
+                    if tray.get("brand", "").startswith("—"):
+                        tray["brand"] = ""
+                    if tray.get("filament_type") == "?":
+                        tray["filament_type"] = ""
+                    if tray.get("filament_name", "").startswith("—"):
+                        tray["filament_name"] = ""
+
+            ams_status = AMSStatus(data)
+            self.printer_data.ams_status = ams_status
+            self.logger.debug("Canvas status updated: %s", ams_status)
+        except (KeyError, ValueError, TypeError):
+            self.logger.exception("Failed to parse Canvas status")
 
     async def _set_response_event(self, request_id: str) -> asyncio.Event:
         """Set the event for a given request ID."""
