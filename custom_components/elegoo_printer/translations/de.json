@@ -22,7 +22,7 @@
           "gcode_proxy_url": "GCode-Proxy-URL (optional)"
         },
         "data_description": {
-          "gcode_proxy_url": "Basis-URL des cc2-gcode-capture-proxy (Host, Host:Port oder http(s)-URL; ohne Schema wird http verwendet). Leer lassen, um zu deaktivieren."
+          "gcode_proxy_url": "Basis-URL des elegoo-printer-proxy (Host, Host:Port oder http(s)-URL; ohne Schema wird http verwendet). Leer lassen, um zu deaktivieren."
         }
       },
       "mqtt_options": {

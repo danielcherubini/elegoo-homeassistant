@@ -22,7 +22,7 @@
           "gcode_proxy_url": "URL proxy GCode (voliteľné)"
         },
         "data_description": {
-          "gcode_proxy_url": "Základná URL cc2-gcode-capture-proxy (hostiteľ, hostiteľ:port alebo http(s) URL; bez schémy sa použije http). Nechajte prázdne na deaktivovanie."
+          "gcode_proxy_url": "Základná URL elegoo-printer-proxy (hostiteľ, hostiteľ:port alebo http(s) URL; bez schémy sa použije http). Nechajte prázdne na deaktivovanie."
         }
       },
       "mqtt_options": {

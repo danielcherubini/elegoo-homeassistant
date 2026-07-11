@@ -22,7 +22,7 @@
           "gcode_proxy_url": "GCode プロキシ URL（オプション）"
         },
         "data_description": {
-          "gcode_proxy_url": "cc2-gcode-capture-proxy のベース URL（ホスト、ホスト:ポート、または http(s) URL。スキームを省略すると http が使用されます）。無効にするには空白のままにしてください。"
+          "gcode_proxy_url": "elegoo-printer-proxy のベース URL（ホスト、ホスト:ポート、または http(s) URL。スキームを省略すると http が使用されます）。無効にするには空白のままにしてください。"
         }
       },
       "mqtt_options": {

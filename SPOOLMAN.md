@@ -47,7 +47,7 @@ flowchart LR
   SpoolmanHA --> SpoolmanServer
 ```
 
-Uses the [cc2-gcode-capture-proxy](https://github.com/lantern-eight/cc2-gcode-capture-proxy) to capture per-slot filament data from each uploaded gcode file. The proxy parses `; filament used [g]` and `; filament_settings_id` from the gcode to determine how much each Canvas slot uses and what filament is loaded.
+Uses the [elegoo-printer-proxy](https://github.com/lantern-eight/elegoo-printer-proxy) to capture per-slot filament data from each uploaded gcode file. The proxy parses `; filament used [g]` and `; filament_settings_id` from the gcode to determine how much each Canvas slot uses and what filament is loaded.
 
 The integration exposes this data as sensors when the proxy URL is configured (Settings → Integrations → Elegoo → Configure):
 
@@ -77,7 +77,7 @@ The integration exposes this data as sensors when the proxy URL is configured (S
 
 ### Prerequisites
 
-* [cc2-gcode-capture-proxy](https://github.com/lantern-eight/cc2-gcode-capture-proxy) running and configured
+* [elegoo-printer-proxy](https://github.com/lantern-eight/elegoo-printer-proxy) running and configured
 * Proxy URL configured in the integration options
 * Spoolman filament names matching ElegooSlicer filament preset names
 * The following `rest_command` added to your `configuration.yaml` (reload or restart HA after adding):

@@ -100,7 +100,7 @@ per-slot breakdown (how much each Canvas spool contributed) exists
 only inside the G-code file, and there is no way to retrieve a file
 from the printer after it has been sent.
 
-The [cc2-gcode-capture-proxy](https://github.com/lantern-eight/cc2-gcode-capture-proxy)
+The [elegoo-printer-proxy](https://github.com/lantern-eight/elegoo-printer-proxy)
 sits between ElegooSlicer and the printer, transparently capturing
 every G-code file at upload time and parsing out per-slot filament
 data. Configure the proxy URL in the integration options

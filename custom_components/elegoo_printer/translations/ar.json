@@ -22,7 +22,7 @@
           "gcode_proxy_url": "عنوان URL وكيل GCode (اختياري)"
         },
         "data_description": {
-          "gcode_proxy_url": "عنوان URL الأساسي لـ cc2-gcode-capture-proxy (مضيف، مضيف:منفذ، أو عنوان http(s)؛ يُستخدم http إذا لم يُحدد البروتوكول). اتركه فارغًا لتعطيله."
+          "gcode_proxy_url": "عنوان URL الأساسي لـ elegoo-printer-proxy (مضيف، مضيف:منفذ، أو عنوان http(s)؛ يُستخدم http إذا لم يُحدد البروتوكول). اتركه فارغًا لتعطيله."
         }
       },
       "mqtt_options": {

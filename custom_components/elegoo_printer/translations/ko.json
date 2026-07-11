@@ -22,7 +22,7 @@
           "gcode_proxy_url": "GCode 프록시 URL (선택 사항)"
         },
         "data_description": {
-          "gcode_proxy_url": "cc2-gcode-capture-proxy의 기본 URL (호스트, 호스트:포트 또는 http(s) URL; 스킴을 생략하면 http가 사용됩니다). 비활성화하려면 비워 두세요."
+          "gcode_proxy_url": "elegoo-printer-proxy의 기본 URL (호스트, 호스트:포트 또는 http(s) URL; 스킴을 생략하면 http가 사용됩니다). 비활성화하려면 비워 두세요."
         }
       },
       "mqtt_options": {

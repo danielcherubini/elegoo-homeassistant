@@ -22,7 +22,7 @@
           "gcode_proxy_url": "URL พร็อกซี GCode (ไม่บังคับ)"
         },
         "data_description": {
-          "gcode_proxy_url": "URL พื้นฐานของ cc2-gcode-capture-proxy (โฮสต์, โฮสต์:พอร์ต หรือ URL http(s); ใช้ http หากไม่ระบุ scheme) ปล่อยว่างไว้เพื่อปิดใช้งาน"
+          "gcode_proxy_url": "URL พื้นฐานของ elegoo-printer-proxy (โฮสต์, โฮสต์:พอร์ต หรือ URL http(s); ใช้ http หากไม่ระบุ scheme) ปล่อยว่างไว้เพื่อปิดใช้งาน"
         }
       },
       "mqtt_options": {

@@ -1,5 +1,5 @@
 """
-HTTP client for the cc2-gcode-capture-proxy REST API.
+HTTP client for the elegoo-printer-proxy REST API.
 
 Queries per-extruder filament data parsed from G-code files that were
 captured by the proxy as they were uploaded from the slicer to the printer.
@@ -20,14 +20,14 @@ REQUEST_TIMEOUT = 5
 
 
 class GCodeProxyClient:
-    """Client for the cc2-gcode-capture-proxy filament API."""
+    """Client for the elegoo-printer-proxy filament API."""
 
     def __init__(self, base_url: str, session: aiohttp.ClientSession) -> None:
         """
         Initialize with base URL and aiohttp session.
 
         Args:
-            base_url: The base URL of the cc2-gcode-capture-proxy service.
+            base_url: The base URL of the elegoo-printer-proxy service.
             session: The aiohttp client session to use for requests.
 
         """
