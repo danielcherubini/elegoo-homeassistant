@@ -329,9 +329,7 @@ async def async_migrate_entry(  # noqa: PLR0911, PLR0912, PLR0915
         new_data = {**config_entry.data}
         transport = new_data.get("transport_type")
         new_data["has_canvas"] = transport == "cc2_mqtt"
-        hass.config_entries.async_update_entry(
-            config_entry, data=new_data, version=5
-        )
+        hass.config_entries.async_update_entry(config_entry, data=new_data, version=5)
         LOGGER.debug(
             "Migration to version 5 successful: has_canvas=%s",
             new_data["has_canvas"],
