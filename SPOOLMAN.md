@@ -13,7 +13,7 @@ There are three approaches depending on your printer and firmware:
 All approaches require:
 
 * [Spoolman Home Assistant](https://github.com/Disane87/spoolman-homeassistant) integration installed and configured
-* Spoolman filament `name` and `ext_id` values that match the filament preset names in ElegooSlicer
+* Spoolman filament `name` values that match the filament preset names in ElegooSlicer
 * A `rest_command` in `configuration.yaml` for the CC2/CC1 automations to query the Spoolman API (see [prerequisites](#prerequisites) below)
 
 ---
@@ -51,8 +51,22 @@ Uses the [cc2-gcode-capture-proxy](https://github.com/lantern-eight/cc2-gcode-ca
 
 The integration exposes this data as sensors when the proxy URL is configured (Settings → Integrations → Elegoo → Configure):
 
+**Proxy-only sensors** (created only when a proxy URL is configured):
 * `sensor.centauri_carbon_2_a1_grams` through `a4_grams` — per-slot planned weight
-* `sensor.centauri_carbon_2_a1_name` through `a4_name` — filament preset name per slot
+* `sensor.centauri_carbon_2_a1_cubic_centimeters` through
+  `a4_cubic_centimeters` — per-slot volume
+* `sensor.centauri_carbon_2_a1_length_millimeters` through
+  `a4_length_millimeters` — per-slot filament length
+* `sensor.centauri_carbon_2_total_filament_cost` — total cost from slicer settings
+* `sensor.centauri_carbon_2_total_filament_changes` — number of
+  filament changes in the print
+
+**Canvas sensors** (always created for CC2, enhanced by proxy data when available):
+* `sensor.centauri_carbon_2_a1_name` through `a4_name` — filament
+  preset name (proxy names take priority, falls back to MQTT file
+  detail, then Canvas tray data)
+* `sensor.centauri_carbon_2_a1_color` through `a4_color` — filament
+  hex color (from MQTT file detail or Canvas tray)
 
 ### How it works
 
@@ -83,11 +97,64 @@ Create in Settings → Devices & Services → Helpers:
 
 * **Cached CC2 Slot Data** — Input Text (`input_text.centauri_carbon_2_cached_slot_data`) with max length 255
 
+### Optional: Per-slot Spoolman remaining weight sensors
+
+These template sensors cross-reference each Canvas slot's filament
+name against Spoolman to show how much filament remains on the
+matching spool. Useful for dashboards — you can see at a glance
+whether any loaded spool is running low before starting a print.
+
+```yaml
+template:
+  - sensor:
+      - name: "Centauri Carbon 2 A1 Spoolman Grams"
+        unique_id: centauri_carbon_2_a1_spoolman_grams
+        unit_of_measurement: "g"
+        state: >
+          {% set slot_name = states('sensor.centauri_carbon_2_a1_name') %}
+          {% if slot_name in ['unknown','unavailable',''] %}
+            unknown
+          {% else %}
+            {% set match = states.sensor
+              | selectattr('entity_id', 'search', 'spoolman')
+              | selectattr('attributes.filament_name', 'defined')
+              | selectattr('attributes.filament_name', 'eq', slot_name)
+              | rejectattr('attributes.archived', 'eq', true)
+              | sort(attribute='attributes.remaining_weight', reverse=true)
+              | list %}
+            {{ match[0].attributes.remaining_weight | float(0) | round(1)
+               if match | length > 0 else 'unknown' }}
+          {% endif %}
+        attributes:
+          slot_name: "{{ states('sensor.centauri_carbon_2_a1_name') }}"
+          slot_color: "{{ states('sensor.centauri_carbon_2_a1_color') }}"
+```
+
+Repeat for A2–A4 (change `a1` to `a2`, `a3`, `a4` in each
+sensor). These sensors pick the spool with the highest remaining
+weight when multiple spools share the same filament name.
+
 ### Shared script: Update Spoolman From Filament Name
 
-Both the CC2 and CC1 automations use this reusable script. It queries the Spoolman REST API directly for non-archived spools matching the filament name, picks the spool with the lowest remaining weight, and deducts usage via `spoolman.use_spool_filament`.
+Both the CC2 and CC1 automations use this reusable script. It
+queries the Spoolman REST API directly for non-archived spools
+matching the filament name, then **cascades** the deduction across
+them: lowest remaining weight first (random tie-break for equal
+weights), draining each spool to 0 before moving to the next,
+until the full usage is exhausted.
 
-> **Why REST instead of HA entities?** The Spoolman HA integration may not reliably populate Spools, there may only be Filaments. Querying the API makes sure we get spools and supports the "use emptiest spool first" logic across duplicate spools.
+If no spool matches, a persistent notification is created. If the
+total available across all matching spools is less than the usage,
+every matching spool is drained to 0 and an "insufficient spool
+weight" notification fires with the unaccounted gram count.
+
+> **Why REST instead of HA entities?** The Spoolman HA integration
+> (as of v1.3.0) creates filament-level entities
+> (`sensor.spoolman_filament_N`), and may not create spool-level
+> entities. The filament entity's `id` attribute is a filament ID,
+> not a spool ID — passing it to `use_spool_filament` would deduct
+> from the wrong spool. Querying the REST API returns actual spool
+> objects with correct spool IDs.
 
 ```yaml
 update_spoolman_from_filament_name:
@@ -115,39 +182,101 @@ update_spoolman_from_filament_name:
       data:
         filament_name: "{{ filament_name }}"
       response_variable: spool_response
+
+    # Build the cascade list: keep spools with positive remaining_weight,
+    # attach a random _jitter, sort by jitter then by remaining_weight.
+    # Jinja's sort is stable, so the second sort preserves random order
+    # within each weight tier (e.g. five 1000g spools end up in random
+    # order).
     - variables:
-        matched_spool_id: >
+        sorted_spools: >
           {% set raw = spool_response.content if spool_response.status == 200
               else '[]' %}
-          {% set spools = raw if raw is list
-              else raw | from_json(default=[]) %}
-          {% set ns = namespace(best_id=none, best_weight=none) %}
-          {% for spool in spools %}
-            {% set w = spool.remaining_weight | float(99999) %}
-            {% if ns.best_id is none or w < ns.best_weight %}
-              {% set ns.best_id = spool.id %}
-              {% set ns.best_weight = w %}
+          {% set spools = raw if (raw is iterable and raw is not string)
+              else (raw | from_json(default=[])) %}
+          {% set ns = namespace(items=[]) %}
+          {% for s in spools %}
+            {% set w = s.remaining_weight | float(0) %}
+            {% if w > 0 %}
+              {% set ns.items = ns.items
+                  + [dict(s, _jitter=range(0, 99999) | random)] %}
             {% endif %}
           {% endfor %}
-          {{ ns.best_id }}
+          {{ (ns.items | sort(attribute='_jitter'))
+                | sort(attribute='remaining_weight') }}
+        total_available: >
+          {% set raw = spool_response.content if spool_response.status == 200
+              else '[]' %}
+          {% set spools = raw if (raw is iterable and raw is not string)
+              else (raw | from_json(default=[])) %}
+          {{ spools | map(attribute='remaining_weight')
+                   | map('float', 0) | sum | round(4) }}
+        remaining_use: "{{ use_weight | float(0) | round(4) }}"
+
     - choose:
+        # No candidate spools: warn and bail.
         - conditions:
             - condition: template
-              value_template: >
-                {{ matched_spool_id not in [none, 'None', 'null', ''] }}
+              value_template: "{{ sorted_spools | length == 0 }}"
           sequence:
-            - action: spoolman.use_spool_filament
+            - action: persistent_notification.create
               data:
-                id: "{{ matched_spool_id | int }}"
-                use_weight: "{{ use_weight | float }}"
-      default:
-        - action: persistent_notification.create
-          data:
-            title: "Spoolman: No matching spool"
-            message: >
-              Could not find a non-archived Spoolman spool with filament name
-              "{{ filament_name }}". The print used {{ use_weight }}g that was
-              not tracked.
+                title: "Spoolman: No matching spool"
+                message: >
+                  Could not find a non-archived Spoolman spool with filament
+                  name "{{ filament_name }}". The print used {{ use_weight }}g
+                  that was not tracked.
+
+        # Cascade: walk sorted spools, draining each to 0 before moving on
+        # until remaining_use is exhausted.
+        - conditions:
+            - condition: template
+              value_template: "{{ sorted_spools | length > 0 }}"
+          sequence:
+            - repeat:
+                for_each: "{{ sorted_spools }}"
+                sequence:
+                  - variables:
+                      spool_remaining: >-
+                        {{ repeat.item.remaining_weight
+                           | float(0) | round(4) }}
+                      to_deduct: >-
+                        {{ 0 if (remaining_use | float(0)) <= 0
+                              else ([remaining_use | float(0),
+                                     spool_remaining | float(0)] | min) }}
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ to_deduct | float(0) > 0 }}"
+                        sequence:
+                          - action: spoolman.use_spool_filament
+                            data:
+                              id: "{{ repeat.item.id | int }}"
+                              use_weight: "{{ to_deduct | float(0) | round(2) }}"
+                          - variables:
+                              remaining_use: >-
+                                {{ ((remaining_use | float(0))
+                                    - (to_deduct | float(0)))
+                                   | round(4) }}
+
+            # Insufficient total: every matching spool was drained to 0 but
+            # there's still unaccounted usage.
+            - choose:
+                - conditions:
+                    - condition: template
+                      value_template: "{{ (remaining_use | float(0)) > 0.01 }}"
+                  sequence:
+                    - action: persistent_notification.create
+                      data:
+                        title: "Spoolman: Insufficient spool weight"
+                        message: >
+                          Print used {{ use_weight }}g of "{{ filament_name }}"
+                          but only {{ total_available }}g was available across
+                          {{ sorted_spools | length }} spool(s). All matching
+                          spools drained to 0;
+                          {{ (remaining_use | float(0)) | round(2) }}g
+                          unaccounted. Verify physical spools and adjust
+                          Spoolman manually.
 ```
 
 ### Automation: Cache CC2 Slot Data
@@ -263,8 +392,50 @@ The `{total_weight}` and `{filament_preset[0]}` variables are available in Elego
 
 ### Prerequisites
 
-* The existing "Cache 3D Print Filename" automation that saves the filename to `input_text.centauri_carbon_last_file` (the filename sensor clears on print complete)
 * The shared `script.update_spoolman_from_filament_name` from the [CC2 section above](#shared-script-update-spoolman-from-filament-name)
+* An `input_text` helper: `input_text.centauri_carbon_last_file` (max length 255)
+* The "Cache 3D Print Filename" automation below — the printer's
+  `file_name` sensor clears on print complete, so the filename
+  must be cached when it first appears
+
+### Automation: Cache 3D Print Filename
+
+Caches the filename from the printer's `file_name` sensor into an
+`input_text` helper when a new job is loaded. Both the CC1 Spoolman
+automation and notification automations read this helper after the
+print completes (by which time the printer's own sensor has
+cleared).
+
+```yaml
+alias: Cache 3D Print Filename
+mode: parallel
+triggers:
+  - entity_id:
+      - sensor.centauri_carbon_file_name
+    trigger: state
+conditions:
+  - condition: template
+    value_template: >
+      {{ trigger.to_state.state
+            not in ['unknown', 'Unknown', 'unavailable', 'Unavailable', ''] }}
+actions:
+  - action: input_text.set_value
+    target:
+      entity_id: input_text.centauri_carbon_last_file
+    data:
+      value: "{{ trigger.to_state.state }}"
+```
+
+> **Tip:** If you have multiple printers, add all `file_name`
+> sensor entities to the trigger list and use a template for the
+> target entity ID:
+> ```yaml
+> target:
+>   entity_id: >
+>     input_text.{{ trigger.entity_id
+>       | replace('sensor.','')
+>       | replace('_file_name','_last_file') }}
+> ```
 
 ### Automation: CC1 Spoolman Update
 

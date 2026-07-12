@@ -95,12 +95,22 @@ CC2 printers **MUST** be configured for LAN-Only mode:
 
 **Optional GCode capture proxy:** 
 
-As of early 2026, Elegoo has not yet added per-slot filament data to the printer's MQTT status response.
-For Centauri Carbon 2 printers, you can use the [cc2-gcode-capture-proxy](https://github.com/lantern-eight/cc2-gcode-capture-proxy) which will capture the GCode file and provide the per-slot filament data to the integration.
+The CC2 reports only a total filament usage value over MQTT — the
+per-slot breakdown (how much each Canvas spool contributed) exists
+only inside the G-code file, and there is no way to retrieve a file
+from the printer after it has been sent.
 
-In integration options you can set the cc2-gcode-capture-proxy URL that you set up on your local network.
+The [cc2-gcode-capture-proxy](https://github.com/lantern-eight/cc2-gcode-capture-proxy)
+sits between ElegooSlicer and the printer, transparently capturing
+every G-code file at upload time and parsing out per-slot filament
+data. Configure the proxy URL in the integration options
+(Settings → Integrations → Elegoo → Configure).
 
-With the proxy configured, additional sensors are created: per-slot A1–A4 grams, volume, and length, plus total filament cost and change count when the slicer provides them.
+With the proxy configured, additional sensors are created: per-slot
+A1–A4 grams, volume, length, and color, plus total filament cost
+and change count when the slicer provides them. See
+[SPOOLMAN.md](SPOOLMAN.md) for automations that push this data to
+Spoolman for spool weight tracking.
 
 See [CC2 Protocol Documentation](docs/CC2_PROTOCOL.md) for technical details.
 
@@ -139,7 +149,13 @@ The integration provides a comprehensive set of entities including **Live Camera
 Includes a blueprint for mobile notifications. [Import it here.](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/danielcherubini/elegoo-homeassistant/blob/main/blueprints/automation/elegoo_printer/elegoo_printer_progress.yaml)
 
 ## 🧵 Spoolman Integration
-Compatible with [Spoolman Home Assistant](https://github.com/Disane87/spoolman-homeassistant). See [SPOOLMAN.md](SPOOLMAN.md) for setup.
+Compatible with
+[Spoolman Home Assistant](https://github.com/Disane87/spoolman-homeassistant).
+Some approaches are available depending on your printer and
+firmware: automated per-slot tracking for CC2 via the gcode capture
+proxy, live extrusion tracking for CC1 with OpenCentauri firmware,
+or a filename-template workaround for CC1 on stock firmware. See
+[SPOOLMAN.md](SPOOLMAN.md) for setup and example automations.
 
 ---
 

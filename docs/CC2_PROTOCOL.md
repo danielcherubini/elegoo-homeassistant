@@ -979,6 +979,27 @@ This is the complete status structure returned by method 1002 or event 6000 (fir
 | `total_duration` | int | Estimated total time in seconds |
 | `remaining_time_sec` | int | Estimated remaining time in seconds |
 | `progress` | int | Progress percentage 0-100 |
+| `filament_used` | float | Cumulative filament extruded (mm) during this print |
+| `state` | string | Internal Klipper state: `standby`, `printing`, `paused`, `complete`, `cancelled`, `error` |
+| `message` | string | Error message when state is `error` |
+| `bed_mesh_detect` | bool | Whether a valid bed mesh exists from auto-leveling. Klipper source uses `bed_mesh_detected` (int bitmask) but the middleware renames to `bed_mesh_detect` and converts to boolean. |
+| `print_duration_before_power_loss` | float | Print time accumulated before a power outage (for recovery) |
+
+> **Canvas/AMS safety fields** (firmware-internal only — **NOT published over MQTT**):
+>
+> | Field (Klipper internal) | Type | Source module | Description |
+> |--------------------------|------|---------------|-------------|
+> | `canvas_nozzle_fan_off` | bool | `cover_switch_sensor` → `front_cover_detected` | Front cover opened — nozzle fan auto-off for safety |
+> | `canvas_wrap_filament` | bool | `tangling_switch_sensor` → `tangling_detected` | Filament tangling detected |
+> | `canvas_locked_rotor` | bool | `encoder_sensor` → `filament_detected` | Filament motion encoder stall (locked rotor) |
+> | `cavity_temperature_mode` | int | `servo` → `mode` | Enclosure temperature control mode |
+>
+> These fields are populated by Klipper's
+> `print_stats.get_status()` but the proprietary MQTT middleware
+> **strips them** before publishing. Verified, live capture with
+> Canvas connected (4 trays) showed zero hits for these fields
+> across all MQTT topics. The middleware consumes these safety
+> signals internally.
 
 #### extruder
 
@@ -1041,6 +1062,22 @@ percentage = round(speed / 255 * 100)
 | `e` | float | Extruder position (mm of filament) |
 | `speed` | int | Current move speed (mm/min) |
 | `speed_mode` | int | Speed mode 0-3 (see [Speed Modes](#speed-modes)) |
+
+> **Middleware transformation:** The `gcode_move_inf` object in
+> MQTT status is *not* a direct pass-through of the internal
+> Klipper `gcode_move` status. The proprietary middleware
+> transforms it:
+>
+> | MQTT field (`gcode_move_inf`) | Internal Klipper field (`gcode_move.get_status()`) | Transformation |
+> |------|------|------|
+> | `x`, `y`, `z`, `e` | `position` (array `[x, y, z, e]`) | Array elements split into named fields |
+> | `speed_mode` (int 0-3) | `speed_factor` (float, e.g. 0.0167 = 1/60) | Converted to discrete mode: 0=Silent/50%, 1=Balanced/100%, 2=Sport/150%, 3=Ludicrous/200% |
+> | `speed` | `speed` (float, internal units) | Units may differ (mm/s internally vs mm/min over MQTT) |
+>
+> The internal `gcode_move.get_status()` also exposes
+> `extrude_factor`, `absolute_coordinates`, `absolute_extrude`,
+> `homing_origin`, and `gcode_position` — these are not currently
+> surfaced in MQTT status.
 
 #### toolhead
 
@@ -1280,7 +1317,12 @@ The `User-Agent` header follows the pattern `ElegooLink/<sdk_version>` (defined 
 **Chunked upload behavior:**
 - Small files may be sent in a single PUT (observed: 85KB file in one request)
 - Large files are sent in multiple PUT requests with sequential `Content-Range` offsets
-- The firmware source code references `?offset=<byte_offset>` query parameter and `.cbdtmp` temp file suffix during transfer
+- The `?offset=<byte_offset>` query parameter and `.cbdtmp` temp
+  file suffix are from the proprietary HTTP upload handler
+  (observed via network capture and referenced in elegoo-link
+  SDK) — they do not appear in the open-source CentauriCarbon
+  firmware code, which only contains the Klipper side of file
+  management
 
 ### File Upload — OpenCentauri [OpenCentauri]
 
@@ -2051,25 +2093,162 @@ The CC2 stock firmware is built on the following components:
 |-----------|---------|
 | Base system | **Klipper** (G-Code command structure, virtual SD card) |
 | CPU | **Allwinner R528** (ARM Cortex-A7) |
-| HTTP server | **libhv/1.3.4** (port 80, minimal endpoints) |
-| Upload handler | **Mongoose HTTP library** (chunked uploads with offset tracking) |
-| Temp file suffix | `.cbdtmp` during upload, renamed on completion |
+| HTTP server | **libhv/1.3.4** (port 80, minimal endpoints) — proprietary, not in open source |
+| Upload handler | Proprietary (chunked uploads with offset tracking). Possible, Mongoose HTTP library, but this is unverified — only libhv headers are present in the open-source repo. |
+| Temp file suffix | `.cbdtmp` during upload, renamed on completion — observed via network capture, not verifiable from open source (upload handling is proprietary) |
+| G-code storage path | `/opt/usr/gcode` (from `[virtual_sdcard]` in `printer.cfg`) |
+| Power outage record | `/opt/usr/record/power_outage.json` (from `virtual_sdcard.cpp`) |
+| Elegoo home dir | `/home/eeb001/elegoo` (from `printer.h`) |
+| Printer config | `/home/eeb001/printer_data/config/printer.cfg` |
 
 #### Open Source vs Proprietary Components
 
-The [CentauriCarbon](https://github.com/ELEGOO-3D/CentauriCarbon) open-source repository includes:
-- Klipper core (motion control, G-Code parsing)
-- File management (list, metadata, thumbnails)
-- OTA update mechanism
-- Hardware drivers
+The [CentauriCarbon2](https://github.com/elegooofficial/CentauriCarbon2) open-source repository includes:
+- Klipper core (motion control, G-Code parsing, `gcode_move`, `gcode_arcs`)
+- Status tracking (`print_stats`, `QueryStatusHelper` with 0.5s delta polling)
+- File management (`virtual_sdcard` — print/pause/resume, file
+  listing, power outage recovery)
+- Hardware drivers (GPIO via `/sys/class/gpio` for Allwinner R528 SoC)
+- Extras modules (fans, heaters, bed mesh, input shaper,
+  Canvas/MMU, sensors)
+- Internal IPC (`webhooks.cpp` — Unix domain socket server with
+  `\x03` delimiter)
+- libhv headers (included but only as a dependency — the HTTP
+  server itself is proprietary)
 
 The following components are **proprietary** and not in the open-source code:
-- HTTP server (libhv on port 80)
+- MQTT broker and command translation layer (translates internal
+  Klipper status to MQTT format)
+- HTTP server (libhv on port 80 — `PUT /upload` handler, file download endpoints)
 - Camera streaming (port 8080 MJPEG)
-- MQTT command handlers and broker
+- UDP discovery service (port 52700)
 - Web interface
 
-This distinction is important: the open-source Klipper code shows file storage paths and upload handling, but the network-facing services (HTTP endpoints, MQTT protocol, camera) are closed-source. This limits the ability to predict or modify network behavior without packet-level analysis.
+This distinction is important: the open-source Klipper code (the
+open-source CentauriCarbon2 repository at:
+https://github.com/elegooofficial/CentauriCarbon2) communicates
+with the proprietary network layer via Unix domain sockets. The
+proprietary middleware subscribes to Klipper status objects,
+transforms them (e.g., flattening `gcode_move.position[]` array
+into separate `gcode_move_inf.x/y/z/e` fields, converting
+`speed_factor` float into `speed_mode` integer 0-3), and publishes
+the result over MQTT. It also handles all HTTP upload/download
+operations, camera streaming, and UDP discovery. The network-facing
+behavior can only be fully understood through packet-level analysis
+combined with the internal status structures revealed by the open
+source.
+
+#### Klipper Status Object Pipeline
+
+The CC2 has a three-layer pipeline for status data. Understanding
+which layer controls what explains why some Klipper data reaches
+MQTT and some doesn't.
+
+**Layer 1 — `extras_factory.cpp`**: All loadable modules. These
+are instantiated from `printer.cfg` at boot. Every module listed
+here *exists* in the firmware and runs internally.
+
+**Layer 2 — `handle_list` in `webhooks.cpp`**: The allow list of
+modules whose `get_status()` can be called via the Unix domain
+socket IPC. If a module isn't in this list, its status is **not
+directly queryable** — its data can only reach the outside world
+indirectly (e.g., aggregated into `print_stats.get_status()`).
+
+**Layer 3 — `getDefaultSubscribeStatus` in
+`extras_factory.cpp`**: The specific object instances the
+proprietary middleware subscribes to. Only these objects' status
+gets published over MQTT. MQTT clients (like the HA integration)
+receive whatever this function returns — they cannot request
+additional objects.
+
+##### handle_list — Queryable Status Objects
+
+These modules have `get_status()` and are in the IPC allow list
+(`webhooks.cpp:928-968`).
+
+Objects marked "No" in the default subscription column are
+available in Klipper but the proprietary middleware does not
+subscribe to them. Their status never reaches MQTT unless Elegoo
+adds them in a firmware update.
+
+| Object | In default subscription? | Used by HA integration? |
+|--------|--------------------------|-------------------------|
+| `toolhead` | Yes | Yes (position, homing) |
+| `extruder` | Yes | Yes (temp, target) |
+| `heater_bed` | Yes | Yes (temp, target) |
+| `fan` | Yes | Yes (part cooling fan) |
+| `heater_fan` | Yes | Yes (heatbreak fan) |
+| `controller_fan` | Yes | Yes (board fan) |
+| `fan_generic` | Yes (cavity_fan) | Yes (enclosure fan) |
+| `print_stats` | Yes | Yes (state, progress, filament) |
+| `virtual_sdcard` | Yes | Yes (print progress) |
+| `gcode_move` | Yes | Yes (via gcode_move_inf) |
+| `output_pin` | Yes (led_pin) | Yes (LED control) |
+| `temperature_sensor` | Yes (ztemperature_sensor box) | Yes (enclosure temp) |
+| `configfile` | No | No |
+| `gcode` | No | No |
+| `mcu` | No | No |
+| `webhooks` | No | No |
+| `bed_mesh` | No | No — mesh profile data |
+| `input_shaper` | No | No — shaper frequency/type |
+| `system_stats` | No | No — printer CPU/memory |
+| `motion_report` | No | No — live motion data |
+| `query_endstops` | No | No — endstop states |
+| `save_variables` | No | No — persistent variables |
+| `stepper_enable` | No | No — stepper on/off states |
+| `idle_timeout` | No | No — idle state/timeout |
+| `exclude_object` | No | No — object exclusion state |
+| `probe` | No | No — probe data |
+| `tmc` | No | No — TMC stepper driver data |
+| `pause_resume` | No | No — pause/resume state |
+| `led` | No | No |
+| `corexy` | No | No |
+| `pwm_cycle_time` | No | No |
+| `pwm_tool` | No | No |
+| `filament_switch_sensor` | No | No |
+| `gcode_button` | No | No |
+
+##### Modules NOT in handle_list
+
+These modules are loaded by `extras_factory.cpp` and run
+internally, but are **not** in the `handle_list` allow list. Their
+data cannot be queried via IPC. They reach MQTT through different
+mechanisms depending on the module.
+
+**Via `print_stats` aggregation:** These modules' data surfaces
+only through `print_stats.get_status()`:
+
+| Module | Field in `print_stats` |
+|--------|------------------------|
+| `cover_switch_sensor` | `canvas_nozzle_fan_off` (front cover detection) |
+| `tangling_switch_sensor` | `canvas_wrap_filament` (filament tangling) |
+| `z_filament_motion_sensor` (encoder) | `canvas_locked_rotor` (filament stall) |
+| `servo` | `cavity_temperature_mode` (enclosure heating mode) |
+| `por` (power outage recovery) | `print_duration_before_power_loss` |
+
+**Via direct subscription (bypassing handle_list):** These modules
+are not in `handle_list` but still reach MQTT because the
+proprietary middleware subscribes to them directly:
+
+| Module | How it reaches MQTT |
+|--------|---------------------|
+| `canvas_dev` | Has its own `get_status()` via the `Canvas` class; subscribed directly in `getDefaultSubscribeStatus` |
+| `cavity_fan` | Subscribed as `fan_generic cavity_fan` in the default subscription |
+
+**No known MQTT exposure:** These modules run internally but have
+no known path to MQTT:
+
+| Module | Purpose |
+|--------|---------|
+| `z_compensation` | Internal Z offset |
+| `filament_load_unload` | Internal filament load/unload |
+| `rfauto_detect` | Auto-detection |
+| `zproduct_test` | Factory testing |
+
+This architecture explains why Canvas safety fields
+(`canvas_nozzle_fan_off`, etc.) aren't directly queryable —
+they're piped through `print_stats` as an aggregation layer,
+bypassing the normal status subscription mechanism.
 
 ### Known Variations
 
@@ -2306,16 +2485,25 @@ Protocol documentation in this document is derived from two complementary approa
 
 **Primary source — elegoo-link SDK source code:**
 1. **[elegoo-link](https://github.com/ELEGOO-3D/elegoo-link) v1.3.6** — Elegoo's official C++ SDK. Method codes, message formats, error codes, auth modes, connection flow, upload/download protocol, discovery, and state machine are all from this source.
-2. **[CentauriCarbon](https://github.com/ELEGOO-3D/CentauriCarbon)** — Open-source Klipper firmware (Mongoose HTTP library, file transfer handlers, storage paths)
+2. **[CentauriCarbon](https://github.com/ELEGOO-3D/CentauriCarbon)**
+   — Open-source Klipper firmware (internal status objects, IPC
+   protocol, G-code storage at `/opt/usr/gcode`, hardware
+   drivers). Network-facing code (HTTP upload handler, MQTT
+   broker) is proprietary.
+3. **[CentauriCarbon2](https://github.com/elegooofficial/CentauriCarbon2)**
+   — Expanded open-source Klipper firmware for CC2. Adds
+   `extras_factory.cpp` (module loading, `getDefaultSubscribeStatus`),
+   `printer.h`, libhv dependency headers, and a more complete
+   `webhooks.cpp` with the `handle_list` status object whitelist.
 
 **Stock firmware validation — manual testing:**
 
 The SDK documents the protocol as designed, but doesn't tell you what actually works on stock firmware vs. OpenCentauri. The following manual testing established stock firmware capabilities:
 
-3. **Packet capture** of ElegooSlicer 1.3.2.9 "Upload and Print" session (confirmed upload flow, header behavior, timing)
-4. **Port scanning** of CC2 stock firmware (15+ ports tested including 21, 22, 23, 80, 1883, 3030, 3031, 8080, 8888, 34952, 54780)
-5. **HTTP endpoint probing** on ports 80 and 8080 (20+ paths tested: `/`, `/download`, `/files`, `/api`, `/system/info`, etc., with and without `X-Token` auth headers)
-6. **MQTT protocol testing** with direct broker connection (methods 1001, 1002, 1044, 1045, 1046)
+1. **Packet capture** of ElegooSlicer 1.3.2.9 "Upload and Print" session (confirmed upload flow, header behavior, timing)
+2. **Port scanning** of CC2 stock firmware (15+ ports tested including 21, 22, 23, 80, 1883, 3030, 3031, 8080, 8888, 34952, 54780)
+3. **HTTP endpoint probing** on ports 80 and 8080 (20+ paths tested: `/`, `/download`, `/files`, `/api`, `/system/info`, etc., with and without `X-Token` auth headers)
+4. **MQTT protocol testing** with direct broker connection (methods 1001, 1002, 1044, 1045, 1046)
 
 Manual testing performed on stock Elegoo firmware. The SDK source was cross-referenced to verify findings and fill in gaps (e.g., the SDK always sends auth headers for uploads, but stock firmware used an older SDK version that did not).
 
@@ -2552,9 +2740,100 @@ Method 1045 (`GET_FILE_THUMBNAIL`) retrieves a thumbnail image for a print file.
 
 Note: `begin_time` and `end_time` ARE provided in historical task data (method 1036/1037) but not in live status.
 
+### Power Outage Recovery
+
+The firmware has built-in power outage recovery support, shown in the open-source
+`virtual_sdcard.cpp`:
+
+| Component | Details |
+|-----------|---------|
+| Recovery file | `/opt/usr/record/power_outage.json` — stores print state on power loss |
+| Config option | `power_outage_enable` in `[virtual_sdcard]` section (default: `1`) |
+| Resume command | `POWER_OUTAGE_RESUME` G-code command |
+| Signal | `por:power_off` — firmware signal that triggers state save |
+| Status code | Machine status `15` (POWER_LOSS_RECOVERY) when actively recovering |
+
+The recovery mechanism is firmware-initiated and automatic. When
+power is restored, the firmware reads the recovery file and can
+resume from where it left off. The
+`print_duration_before_power_loss` field in
+`print_stats.get_status()` tracks accumulated print time from
+before the outage so total duration calculations remain accurate.
+
+Canvas/AMS prints also support power outage recovery — the
+`virtual_sdcard.h` header declares `POWER_OUTAGE_RESUME` alongside
+Canvas-aware print control.
+
+### Canvas Abnormal Retry
+
+The firmware's `GCodeHelper::handle_script` in `webhooks.cpp` has
+special handling for the `CANVAS_ABNORMAL_RETRY PRINTING=1` G-code
+command. Unlike normal G-code that runs through `run_script`, this
+command uses `run_script_from_command` — bypassing the normal
+G-code queue to execute immediately. This is the Canvas/AMS retry
+mechanism for print failures (e.g., filament runout during
+multi-material printing).
+
+Similarly, `SET_PIN PIN=led_pin` is also routed through
+`run_script_from_command` for immediate LED control, bypassing any
+queued G-code.
+
 ---
 
 ## Changelog
+
+### 2026-07-04 - Open Source Cross-Reference Validation
+
+Systematic cross-reference of CC2_PROTOCOL.md against the
+[CentauriCarbon2](https://github.com/elegooofficial/CentauriCarbon2)
+open-source firmware source code. Key changes:
+
+- **Fixed storage path**: Internal G-code storage is
+  `/opt/usr/gcode` (from `printer.cfg`), not `/mnt/exUDISK/` as
+  previously stated. Added firmware file paths table (power
+  outage record, elegoo home dir, printer config).
+- **Corrected Mongoose claim**: Upload handler attribution to
+  "Mongoose HTTP library" is unverified — only libhv headers are
+  present in the open-source repo. Reworded to note the upload
+  handler is proprietary.
+- **Annotated `.cbdtmp` and `?offset=` claims**: These are from
+  the proprietary HTTP upload handler, observed via network
+  capture / elegoo-link SDK — not verifiable from open source.
+- **Documented `gcode_move` → `gcode_move_inf` transformation**:
+  The proprietary middleware flattens internal `position[]` array
+  into `x/y/z/e` fields and converts `speed_factor` float to
+  `speed_mode` integer (0-3). Added transformation table.
+- **Added undocumented `print_stats` fields**: `filament_used`,
+  `state`, `message`, `bed_mesh_detected`,
+  `print_duration_before_power_loss` — confirmed from open-source
+  `print_stats.cpp`.
+- **Added Canvas/AMS safety fields**: `canvas_nozzle_fan_off`,
+  `canvas_wrap_filament`, `canvas_locked_rotor`,
+  `cavity_temperature_mode` — generated by firmware's
+  `print_stats.get_status()` from cover, tangling, and encoder
+  sensors. **Verified: NOT published over MQTT** —
+  middleware strips them. Captured live traffic with Canvas
+  connected (4 trays); zero hits across all topics.
+- **Confirmed `bed_mesh_detect`**: MQTT field is
+  `bed_mesh_detect` (boolean), not `bed_mesh_detected` (int
+  bitmask) as in the Klipper source — middleware renames and
+  type-converts.
+- **Added Power Outage Recovery section**: Recovery file path,
+  config option, resume command, signal mechanism.
+- **Added Canvas Abnormal Retry section**:
+  `CANVAS_ABNORMAL_RETRY` and `SET_PIN PIN=led_pin` bypass normal
+  G-code queue via `run_script_from_command`.
+- **Expanded open-source vs proprietary component lists**: More
+  precise breakdown of what's in the open-source repo vs
+  proprietary middleware.
+- **Added Klipper Status Object Pipeline section**: Documented
+  the three-layer architecture (`extras_factory` → `handle_list`
+  → `getDefaultSubscribeStatus`), full table of 34 queryable
+  status objects with subscription and HA usage status, and 11
+  factory-loaded modules that bypass `handle_list` and expose
+  data only via `print_stats` aggregation.
+- **Updated CentauriCarbon reference** in Testing Methodology:
+  removed Mongoose attribution, added accurate description.
 
 ### 2026-03-16 - Port 9001 Discovery
 - Added port 9001 (MQTT over WebSocket) to port map and network architecture
@@ -2607,4 +2886,4 @@ Note: `begin_time` and `end_time` ARE provided in historical task data (method 1
 
 ---
 
-*Last updated: 2026-03-16*
+*Last updated: 2026-07-04*
