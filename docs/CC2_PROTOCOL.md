@@ -2775,7 +2775,7 @@ queued G-code.
 ### 2026-07-04 - Open Source Cross-Reference Validation
 
 Systematic cross-reference of CC2_PROTOCOL.md against the
-[CentauriCarbon2](https://github.com/ELEGOO-3D/CentauriCarbon2)
+[CentauriCarbon2](https://github.com/elegooofficial/CentauriCarbon2)
 open-source firmware source code. Key changes:
 
 - **Fixed storage path**: Internal G-code storage is
