@@ -2208,32 +2208,42 @@ adds them in a firmware update.
 | `filament_switch_sensor` | No | No |
 | `gcode_button` | No | No |
 
-> **Note:** `canvas_dev` is in `getDefaultSubscribeStatus` but
-> NOT in `handle_list`. It has its own `get_status()`
-> implementation via the `Canvas` class and is queried directly
-> by the middleware. This is the only object that bypasses the
-> `handle_list` allow list.
-
-##### Modules NOT in handle_list — Indirect Data Only
+##### Modules NOT in handle_list
 
 These modules are loaded by `extras_factory.cpp` and run
 internally, but are **not** in the `handle_list` allow list. Their
-data cannot be queried via IPC — it reaches MQTT only through
-aggregation in `print_stats.get_status()`:
+data cannot be queried via IPC. They reach MQTT through different
+mechanisms depending on the module.
 
-| Module | Data exposed via `print_stats` |
-|--------|-------------------------------|
+**Via `print_stats` aggregation:** These modules' data surfaces
+only through `print_stats.get_status()`:
+
+| Module | Field in `print_stats` |
+|--------|------------------------|
 | `cover_switch_sensor` | `canvas_nozzle_fan_off` (front cover detection) |
 | `tangling_switch_sensor` | `canvas_wrap_filament` (filament tangling) |
 | `z_filament_motion_sensor` (encoder) | `canvas_locked_rotor` (filament stall) |
 | `servo` | `cavity_temperature_mode` (enclosure heating mode) |
-| `canvas_dev` | Canvas/AMS status (via direct subscription, not handle_list) |
-| `cavity_fan` | Subscribed directly as `fan_generic` in default subscription |
 | `por` (power outage recovery) | `print_duration_before_power_loss` |
-| `z_compensation` | Internal Z offset — no known MQTT exposure |
-| `filament_load_unload` | Internal filament load/unload — no known MQTT exposure |
-| `rfauto_detect` | Auto-detection — no known MQTT exposure |
-| `zproduct_test` | Factory testing — no known MQTT exposure |
+
+**Via direct subscription (bypassing handle_list):** These modules
+are not in `handle_list` but still reach MQTT because the
+proprietary middleware subscribes to them directly:
+
+| Module | How it reaches MQTT |
+|--------|---------------------|
+| `canvas_dev` | Has its own `get_status()` via the `Canvas` class; subscribed directly in `getDefaultSubscribeStatus` |
+| `cavity_fan` | Subscribed as `fan_generic cavity_fan` in the default subscription |
+
+**No known MQTT exposure:** These modules run internally but have
+no known path to MQTT:
+
+| Module | Purpose |
+|--------|---------|
+| `z_compensation` | Internal Z offset |
+| `filament_load_unload` | Internal filament load/unload |
+| `rfauto_detect` | Auto-detection |
+| `zproduct_test` | Factory testing |
 
 This architecture explains why Canvas safety fields
 (`canvas_nozzle_fan_off`, etc.) aren't directly queryable —
