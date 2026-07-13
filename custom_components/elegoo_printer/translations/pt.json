@@ -33,15 +33,20 @@
         }
       },
       "websocket_options": {
-        "title": "Opções de Impressora",
-        "description": "Para ajuda na configuração, por favor veja a página GitHub do projeto.",
+        "title": "Opções {printer_model}",
+        "description": "Configure as configurações da sua impressora {printer_model}.",
         "data": {
           "ip_address": "Endereço IP da Impressora",
           "proxy_enabled": "Ativar servidor proxy",
+          "has_canvas": "Canvas/AMS instalado",
+          "gcode_proxy_url": "URL do proxy GCode (opcional)",
           "external_ip": "Endereço externo (opcional, para configurações de rede avançadas)"
         },
         "data_description": {
-          "external_ip": "Substituir o endereço detectado automaticamente com um endereço IP ou nome de host. Deixe em branco para detecção automática. Use para configurações Kubernetes/Docker ou quando estiver atrás de um proxy reverso. As portas 3030 e 3031 serão adicionadas automaticamente."
+          "proxy_enabled": "Roteia comandos da impressora e o stream de câmera através de uma única conexão no Home Assistant, contornando o limite de conexões simultâneas da impressora.",
+          "has_canvas": "Ativa entidades de filamento por slot para uma unidade Canvas (AMS) multimaterial conectada.",
+          "gcode_proxy_url": "URL base do elegoo-printer-proxy (host, host:porta ou URL http(s). HTTP é usado se o esquema for omitido). Deixe em branco para desativar.",
+          "external_ip": "Usado apenas pelo servidor proxy integrado: o endereço que outros dispositivos devem usar para acessá-lo. Deixe em branco para detectar automaticamente o endereço do Home Assistant. Para configurações Kubernetes/Docker ou proxy reverso. As portas 3030 e 3031 são adicionadas automaticamente."
         }
       }
     }
@@ -70,7 +75,8 @@
         "title": "Opções Impressora FDM",
         "description": "Configure opções adicionais para sua impressora selecionada. Veja a página GitHub do projeto para mais informações sobre o servidor proxy.",
         "data": {
-          "proxy_enabled": "Ativar servidor proxy"
+          "proxy_enabled": "Ativar servidor proxy",
+          "has_canvas": "Canvas/AMS instalado"
         }
       },
       "resin_options": {

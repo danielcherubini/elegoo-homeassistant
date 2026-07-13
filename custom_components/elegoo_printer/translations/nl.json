@@ -33,15 +33,20 @@
         }
       },
       "websocket_options": {
-        "title": "Printer Opties",
-        "description": "Voor hulp bij configuratie, zie de GitHub-pagina van het project.",
+        "title": "{printer_model} Opties",
+        "description": "Configureer je {printer_model} printer-instellingen.",
         "data": {
           "ip_address": "Printer IP-adres",
           "proxy_enabled": "Proxyserver activeren",
+          "has_canvas": "Canvas/AMS geïnstalleerd",
+          "gcode_proxy_url": "GCode proxy-URL (optioneel)",
           "external_ip": "Extern adres (optioneel, voor geavanceerde netwerkopstellingen)"
         },
         "data_description": {
-          "external_ip": "Overschrijf automatisch gedetecteerd adres met een IP-adres of hostnaam. Laat leeg voor automatische detectie. Gebruik voor Kubernetes/Docker-opstellingen of achter een omgekeerde proxy. Poorten 3030 en 3031 worden automatisch toegevoegd."
+          "proxy_enabled": "Routeert printeropdrachten en de camerastream via een enkele verbinding in Home Assistant, om de limiet op gelijktijdige verbindingen van de printer te omzeilen.",
+          "has_canvas": "Activeert filament-entiteiten per slot voor een aangesloten Canvas (AMS) multi-materiaal eenheid.",
+          "gcode_proxy_url": "Basis-URL van de elegoo-printer-proxy (host, host:poort of http(s)-URL. HTTP wordt gebruikt als u het schema weglaat). Leeg laten om uit te schakelen.",
+          "external_ip": "Wordt alleen gebruikt door de ingebouwde proxyserver: het adres dat andere apparaten moeten gebruiken om deze te bereiken. Laat leeg om het adres van Home Assistant automatisch te detecteren. Voor Kubernetes/Docker of reverse-proxy opstellingen. Poorten 3030 en 3031 worden automatisch toegevoegd."
         }
       }
     }
@@ -70,7 +75,8 @@
         "title": "FDM Printer Opties",
         "description": "Configureer extra opties voor je geselecteerde printer. Zie de GitHub-pagina van het project voor meer informatie over de proxyserver.",
         "data": {
-          "proxy_enabled": "Proxyserver activeren"
+          "proxy_enabled": "Proxyserver activeren",
+          "has_canvas": "Canvas/AMS geïnstalleerd"
         }
       },
       "resin_options": {

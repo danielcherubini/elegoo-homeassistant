@@ -33,15 +33,20 @@
         }
       },
       "websocket_options": {
-        "title": "Možnosti tiskárny",
-        "description": "Pro pomoc s konfigurací, prosím navštivte stránku GitHub projektu.",
+        "title": "Možnosti {printer_model}",
+        "description": "Konfigurujte nastavení tiskárny {printer_model}.",
         "data": {
           "ip_address": "IP adresa tiskárny",
           "proxy_enabled": "Povolit proxy server",
+          "has_canvas": "Canvas/AMS nainstalováno",
+          "gcode_proxy_url": "URL proxy GCode (volitelné)",
           "external_ip": "Externí adresa (volitelné, pro pokročilé sítě)"
         },
         "data_description": {
-          "external_ip": "Přepsat automaticky detekovanou adresu IP nebo názvem hostitele. Nechat prázdné pro automatickou detekci. Použít pro Kubernetes/Docker nastavení nebo za reverzním proxy. Porty 3030 a 3031 budou přidány automaticky."
+          "proxy_enabled": "Směruje příkazy tiskárny a stream kamery přes jedno připojení v Home Assistant, čímž obchází limit tiskárny na současná připojení.",
+          "has_canvas": "Povolí entity filamentů pro každý slot připojené jednotky Canvas (AMS) pro více materiálů.",
+          "gcode_proxy_url": "Základní URL elegoo-printer-proxy (hostitel, hostitel:port nebo http(s) URL. Bez schématu se použije HTTP). Nechte prázdné pro deaktivaci.",
+          "external_ip": "Používá se pouze vestavěným proxy serverem: adresa, kterou by ostatní zařízení měla použít pro přístup. Nechte prázdné pro automatickou detekci adresy Home Assistant. Pro Kubernetes/Docker nebo reverzní proxy nastavení. Porty 3030 a 3031 budou přidány automaticky."
         }
       }
     }
@@ -70,7 +75,8 @@
         "title": "Možnosti FDM tiskárny",
         "description": "Konfigurujte další možnosti pro vybranou tiskárnu. Navštivte stránku GitHub projektu pro více informací o proxy serveru.",
         "data": {
-          "proxy_enabled": "Povolit proxy server"
+          "proxy_enabled": "Povolit proxy server",
+          "has_canvas": "Canvas/AMS nainstalováno"
         }
       },
       "resin_options": {

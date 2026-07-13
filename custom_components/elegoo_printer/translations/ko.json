@@ -33,15 +33,20 @@
         }
       },
       "websocket_options": {
-        "title": "프린터 옵션",
-        "description": "구성을 위한 도움말은 프로젝트의 GitHub 페이지를 참조하세요.",
+        "title": "{printer_model} 옵션",
+        "description": "{printer_model} 프린터 설정을 구성합니다.",
         "data": {
           "ip_address": "프린터 IP 주소",
           "proxy_enabled": "프록시 서버 활성화",
+          "has_canvas": "Canvas/AMS 설치됨",
+          "gcode_proxy_url": "GCode 프록시 URL (선택 사항)",
           "external_ip": "외부 주소 (선택사항, 고급 네트워크 구성용)"
         },
         "data_description": {
-          "external_ip": "자동 감지된 주소를 IP 주소 또는 호스트 이름으로 덮어쓰세요. 자동 감지를 위해 비워두세요. Kubernetes/Docker 설정이나 리버스 프록시 뒤에 사용할 때 사용하세요. 포트 3030 과 3031 이 자동으로 추가됩니다."
+          "proxy_enabled": "프린터 명령과 카메라 스트림을 Home Assistant 내 단일 연결을 통해 라우팅하여 프린터의 동시 연결 제한을 우회합니다.",
+          "has_canvas": "연결된 Canvas (AMS) 멀티 소재 장치의 슬롯별 필라멘트 엔티티를 활성화합니다.",
+          "gcode_proxy_url": "elegoo-printer-proxy의 기본 URL (호스트, 호스트:포트 또는 http(s) URL. 스킴을 생략하면 HTTP가 사용됩니다). 비활성화하려면 비워 두세요.",
+          "external_ip": "내장 프록시 서버에서만 사용: 다른 장치가 액세스할 때 사용해야 하는 주소. Home Assistant 주소 자동 감지를 위해 비워두세요. Kubernetes/Docker 또는 리버스 프록시 설정용. 포트 3030과 3031이 자동으로 추가됩니다."
         }
       }
     }
@@ -70,7 +75,8 @@
         "title": "FDM 프린터 옵션",
         "description": "선택한 프린터에 대한 추가 옵션을 구성합니다. 프록시 서버에 대한 자세한 내용은 프로젝트의 GitHub 페이지를 참조하세요.",
         "data": {
-          "proxy_enabled": "프록시 서버 활성화"
+          "proxy_enabled": "프록시 서버 활성화",
+          "has_canvas": "Canvas/AMS 설치됨"
         }
       },
       "resin_options": {
