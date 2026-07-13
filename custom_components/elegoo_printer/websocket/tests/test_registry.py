@@ -46,8 +46,8 @@ class TestPrinterRegistry:
 
     def test_initialization(self, printer_registry: PrinterRegistry) -> None:
         """Test that PrinterRegistry initializes correctly."""
-        assert printer_registry._printers == {}  # noqa: SLF001
-        assert printer_registry._printer_ports == {}  # noqa: SLF001
+        assert printer_registry._printers == {}
+        assert printer_registry._printer_ports == {}
 
     def test_add_printer(
         self, printer_registry: PrinterRegistry, sample_printer: Printer
@@ -62,12 +62,12 @@ class TestPrinterRegistry:
         assert video_port == expected_video_port
 
         # Check that printer is stored
-        assert sample_printer.ip_address in printer_registry._printers  # noqa: SLF001
-        assert printer_registry._printers[sample_printer.ip_address] == sample_printer  # noqa: SLF001
+        assert sample_printer.ip_address in printer_registry._printers
+        assert printer_registry._printers[sample_printer.ip_address] == sample_printer
 
         # Check that ports are stored
-        assert sample_printer.ip_address in printer_registry._printer_ports  # noqa: SLF001
-        assert printer_registry._printer_ports[sample_printer.ip_address] == (  # noqa: SLF001
+        assert sample_printer.ip_address in printer_registry._printer_ports
+        assert printer_registry._printer_ports[sample_printer.ip_address] == (
             ws_port,
             video_port,
         )
@@ -78,15 +78,15 @@ class TestPrinterRegistry:
         """Test removing a printer from the registry."""
         # Add printer first
         printer_registry.add_printer(sample_printer)
-        assert sample_printer.ip_address in printer_registry._printers  # noqa: SLF001
+        assert sample_printer.ip_address in printer_registry._printers
 
         # Remove printer
         result = printer_registry.remove_printer(sample_printer.ip_address)
 
         # Check that printer is removed
         assert result is True
-        assert sample_printer.ip_address not in printer_registry._printers  # noqa: SLF001
-        assert sample_printer.ip_address not in printer_registry._printer_ports  # noqa: SLF001
+        assert sample_printer.ip_address not in printer_registry._printers
+        assert sample_printer.ip_address not in printer_registry._printer_ports
 
     def test_remove_nonexistent_printer(
         self, printer_registry: PrinterRegistry
@@ -225,7 +225,7 @@ class TestPrinterRegistry:
 
         # Check that all printers are removed
         assert len(printer_registry.get_all_printers()) == 0
-        assert len(printer_registry._printer_ports) == 0  # noqa: SLF001
+        assert len(printer_registry._printer_ports) == 0
 
     def test_count_printers(
         self, printer_registry: PrinterRegistry, sample_printer: Printer

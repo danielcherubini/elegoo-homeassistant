@@ -9,9 +9,9 @@ import pytest
 
 from custom_components.elegoo_printer.definitions import (
     PRINTER_STATUS_CC2_GCODE_FILAMENT,
-    PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT,
     PRINTER_STATUS_FDM_CURRENT_EXTRUSION,
     PRINTER_STATUS_FDM_TOTAL_EXTRUSION,
+    PRINTER_STATUS_GCODE_PROXY_FILAMENT,
 )
 from custom_components.elegoo_printer.sdcp.models.enums import (
     PrinterType,
@@ -22,9 +22,7 @@ from custom_components.elegoo_printer.sensor import async_setup_entry
 CURRENT_EXTRUSION_KEYS = {desc.key for desc in PRINTER_STATUS_FDM_CURRENT_EXTRUSION}
 TOTAL_EXTRUSION_KEYS = {desc.key for desc in PRINTER_STATUS_FDM_TOTAL_EXTRUSION}
 GCODE_FILAMENT_KEYS = {desc.key for desc in PRINTER_STATUS_CC2_GCODE_FILAMENT}
-GCODE_PROXY_FILAMENT_KEYS = {
-    desc.key for desc in PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT
-}
+GCODE_PROXY_FILAMENT_KEYS = {desc.key for desc in PRINTER_STATUS_GCODE_PROXY_FILAMENT}
 
 
 class _FakeSensor:
@@ -202,7 +200,7 @@ class TestGcodeProxyFilamentGating:
             PrinterType.FDM,
             ProtocolVersion.CC2,
             open_centauri=False,
-            config_data={"gcode_proxy_url": "http://192.168.50.49"},
+            config_data={"gcode_proxy_url": "http://192.168.1.100"},
         )
         assert GCODE_PROXY_FILAMENT_KEYS.issubset(keys)
 
@@ -215,13 +213,23 @@ class TestGcodeProxyFilamentGating:
         )
         assert not GCODE_PROXY_FILAMENT_KEYS.issubset(keys)
 
-    def test_proxy_sensors_absent_for_non_cc2(self) -> None:
-        """Non-CC2 with proxy URL should not include proxy sensors."""
+    def test_proxy_sensors_present_for_v3_fdm(self) -> None:
+        """V3/WebSocket FDM (CC1) with proxy URL includes proxy sensors."""
         keys = _registered_keys(
             PrinterType.FDM,
             ProtocolVersion.V3,
             open_centauri=False,
-            config_data={"gcode_proxy_url": "http://192.168.50.49"},
+            config_data={"gcode_proxy_url": "http://192.168.1.100"},
+        )
+        assert GCODE_PROXY_FILAMENT_KEYS.issubset(keys)
+
+    def test_proxy_sensors_absent_for_resin(self) -> None:
+        """Resin printers never include proxy filament sensors."""
+        keys = _registered_keys(
+            PrinterType.RESIN,
+            ProtocolVersion.V3,
+            open_centauri=False,
+            config_data={"gcode_proxy_url": "http://192.168.1.100"},
         )
         assert not GCODE_PROXY_FILAMENT_KEYS.issubset(keys)
 

@@ -84,7 +84,7 @@ class TestElegooPrinterServerUtilities:
         mock_request.path = "/api/test"
         mock_request.headers = {}
 
-        result = proxy_server._get_target_printer_from_request(mock_request)  # noqa: SLF001
+        result = proxy_server._get_target_printer_from_request(mock_request)
 
         assert result == sample_printer
         proxy_server.printer_registry.get_printer_by_mainboard_id.assert_called_with(
@@ -106,7 +106,7 @@ class TestElegooPrinterServerUtilities:
         mock_request.path = "/api/test_mainboard_id_12345/status"
         mock_request.headers = {}
 
-        result = proxy_server._get_target_printer_from_request(mock_request)  # noqa: SLF001
+        result = proxy_server._get_target_printer_from_request(mock_request)
 
         assert result == sample_printer
 
@@ -128,7 +128,7 @@ class TestElegooPrinterServerUtilities:
             "Referer": "http://10.0.0.114:3030/?id=test_mainboard_id_12345"
         }
 
-        result = proxy_server._get_target_printer_from_request(mock_request)  # noqa: SLF001
+        result = proxy_server._get_target_printer_from_request(mock_request)
 
         # Should fall back to first available printer
         assert result == sample_printer
@@ -148,7 +148,7 @@ class TestElegooPrinterServerUtilities:
         mock_request.path = "/status"
         mock_request.headers = {}
 
-        result = proxy_server._get_target_printer_from_request(mock_request)  # noqa: SLF001
+        result = proxy_server._get_target_printer_from_request(mock_request)
 
         assert result == sample_printer
 
@@ -164,7 +164,7 @@ class TestElegooPrinterServerUtilities:
         mock_request.path = "/status"
         mock_request.headers = {}
 
-        result = proxy_server._get_target_printer_from_request(mock_request)  # noqa: SLF001
+        result = proxy_server._get_target_printer_from_request(mock_request)
 
         assert result is None
 
@@ -176,7 +176,7 @@ class TestElegooPrinterServerUtilities:
             sample_printer
         )
 
-        result = proxy_server._get_cleaned_path_for_printer(  # noqa: SLF001
+        result = proxy_server._get_cleaned_path_for_printer(
             "/api/test_mainboard_id_12345/status"
         )
 
@@ -190,7 +190,7 @@ class TestElegooPrinterServerUtilities:
             sample_printer
         )
 
-        result = proxy_server._get_cleaned_path_for_printer(  # noqa: SLF001
+        result = proxy_server._get_cleaned_path_for_printer(
             "/video/test_mainboard_id_12345"
         )
 
@@ -203,7 +203,7 @@ class TestElegooPrinterServerUtilities:
         proxy_server.printer_registry.get_printer_by_mainboard_id.return_value = None
 
         original_path = "/status/check"
-        result = proxy_server._get_cleaned_path_for_printer(original_path)  # noqa: SLF001
+        result = proxy_server._get_cleaned_path_for_printer(original_path)
 
         assert result == original_path
 
@@ -220,7 +220,7 @@ class TestElegooPrinterServerUtilities:
             "custom_components.elegoo_printer.websocket.server.utils.get_local_ip",
             return_value="10.0.0.100",
         ):
-            result = proxy_server._process_replacements(content, sample_printer)  # noqa: SLF001  # noqa: SLF001
+            result = proxy_server._process_replacements(content, sample_printer)
 
         # Should replace printer IP with proxy IP (actual IP might be different)
         # Just check that the printer IP was replaced with something else
@@ -237,7 +237,7 @@ class TestElegooPrinterServerUtilities:
         """Test _process_replacements with localhost patterns."""
         content = 'var ws = new WebSocket("ws://localhost:3030/websocket");'
 
-        result = proxy_server._process_replacements(content, sample_printer)  # noqa: SLF001
+        result = proxy_server._process_replacements(content, sample_printer)
 
         assert f"websocket?id={sample_printer.id}" in result
 
@@ -247,7 +247,7 @@ class TestElegooPrinterServerUtilities:
         """Test _process_replacements with template literal syntax."""
         content = "ws://${this.hostName}:3030/websocket"
 
-        result = proxy_server._process_replacements(content, sample_printer)  # noqa: SLF001
+        result = proxy_server._process_replacements(content, sample_printer)
 
         assert f"websocket?id={sample_printer.id}" in result
 
@@ -265,7 +265,7 @@ class TestElegooPrinterServerUtilities:
             "custom_components.elegoo_printer.websocket.server.utils.get_local_ip",
             return_value="10.0.0.100",
         ):
-            result = proxy_server._process_replacements(content, printer_without_id)  # noqa: SLF001
+            result = proxy_server._process_replacements(content, printer_without_id)
 
         # Should not inject ID parameter if printer has no ID
         assert "websocket?id=" not in result
@@ -277,7 +277,7 @@ class TestElegooPrinterServerUtilities:
         with patch("socket.socket") as mock_socket:
             mock_socket.return_value.__enter__.return_value.bind.return_value = None
 
-            result = proxy_server._check_ports_are_available()  # noqa: SLF001
+            result = proxy_server._check_ports_are_available()
 
             assert result is True
 
@@ -290,7 +290,7 @@ class TestElegooPrinterServerUtilities:
                 "Address already in use"
             )
 
-            result = proxy_server._check_ports_are_available()  # noqa: SLF001
+            result = proxy_server._check_ports_are_available()
 
             assert result is False
 
@@ -299,7 +299,7 @@ class TestElegooPrinterServerUtilities:
         with pytest.raises(
             OSError, match="Ports 3030 or 3031 are already in use"
         ) as exc_info:
-            proxy_server._raise_port_unavailable_error()  # noqa: SLF001
+            proxy_server._raise_port_unavailable_error()
 
         assert "Ports 3030 or 3031 are already in use" in str(exc_info.value)
 
@@ -314,7 +314,7 @@ class TestElegooPrinterServerUtilities:
         mock_request = Mock()
         mock_request.query_string = "id=test_mainboard_id_12345&other=param"
 
-        result = proxy_server._try_query_param_routing(mock_request)  # noqa: SLF001
+        result = proxy_server._try_query_param_routing(mock_request)
 
         assert result == sample_printer
 
@@ -329,7 +329,7 @@ class TestElegooPrinterServerUtilities:
         mock_request = Mock()
         mock_request.query_string = "mainboard_id=test_mainboard_id_12345"
 
-        result = proxy_server._try_query_param_routing(mock_request)  # noqa: SLF001
+        result = proxy_server._try_query_param_routing(mock_request)
 
         assert result == sample_printer
 
@@ -340,7 +340,7 @@ class TestElegooPrinterServerUtilities:
         mock_request = Mock()
         mock_request.query_string = "id=short"
 
-        result = proxy_server._try_query_param_routing(mock_request)  # noqa: SLF001
+        result = proxy_server._try_query_param_routing(mock_request)
 
         assert result is None
 
@@ -353,7 +353,7 @@ class TestElegooPrinterServerUtilities:
         )
 
         path_parts = ["api", "test_mainboard_id_12345", "status"]
-        result = proxy_server._try_path_routing(path_parts)  # noqa: SLF001
+        result = proxy_server._try_path_routing(path_parts)
 
         assert result == sample_printer
 
@@ -366,7 +366,7 @@ class TestElegooPrinterServerUtilities:
         )
 
         path_parts = ["video", "test_mainboard_id_12345"]
-        result = proxy_server._try_path_routing(path_parts)  # noqa: SLF001
+        result = proxy_server._try_path_routing(path_parts)
 
         assert result == sample_printer
 
@@ -383,7 +383,7 @@ class TestElegooPrinterServerUtilities:
             "Referer": "http://10.0.0.114:3030/?id=test_mainboard_id_12345"
         }
 
-        result = proxy_server._try_referer_routing(mock_request)  # noqa: SLF001
+        result = proxy_server._try_referer_routing(mock_request)
 
         assert result == sample_printer
 
@@ -394,7 +394,7 @@ class TestElegooPrinterServerUtilities:
         mock_request = Mock()
         mock_request.headers = {}
 
-        result = proxy_server._try_referer_routing(mock_request)  # noqa: SLF001
+        result = proxy_server._try_referer_routing(mock_request)
 
         assert result is None
 
@@ -406,7 +406,7 @@ class TestElegooPrinterServerUtilities:
             "192.168.1.100": sample_printer
         }
 
-        result = proxy_server._get_first_available_printer()  # noqa: SLF001
+        result = proxy_server._get_first_available_printer()
 
         assert result == sample_printer
 
@@ -416,7 +416,7 @@ class TestElegooPrinterServerUtilities:
         """Test _get_first_available_printer when no printers are available."""
         proxy_server.printer_registry.get_all_printers.return_value = {}
 
-        result = proxy_server._get_first_available_printer()  # noqa: SLF001
+        result = proxy_server._get_first_available_printer()
 
         assert result is None
 
@@ -426,7 +426,7 @@ class TestElegooPrinterServerUtilities:
         """Test _find_video_url_in_data with nested Data.Data.VideoUrl structure."""
         data = {"Data": {"Data": {"VideoUrl": "http://192.168.1.100:3031/video"}}}
 
-        video_url, target = proxy_server._find_video_url_in_data(data)  # noqa: SLF001
+        video_url, target = proxy_server._find_video_url_in_data(data)
 
         assert video_url == "http://192.168.1.100:3031/video"
         assert target == data["Data"]["Data"]
@@ -437,7 +437,7 @@ class TestElegooPrinterServerUtilities:
         """Test _find_video_url_in_data with direct Data.VideoUrl structure."""
         data = {"Data": {"VideoUrl": "http://192.168.1.100:3031/video"}}
 
-        video_url, target = proxy_server._find_video_url_in_data(data)  # noqa: SLF001
+        video_url, target = proxy_server._find_video_url_in_data(data)
 
         assert video_url == "http://192.168.1.100:3031/video"
         assert target == data["Data"]
@@ -448,7 +448,7 @@ class TestElegooPrinterServerUtilities:
         """Test _find_video_url_in_data when VideoUrl is not found."""
         data = {"Data": {"OtherField": "value"}}
 
-        video_url, target = proxy_server._find_video_url_in_data(data)  # noqa: SLF001
+        video_url, target = proxy_server._find_video_url_in_data(data)
 
         assert video_url is None
         assert target is None

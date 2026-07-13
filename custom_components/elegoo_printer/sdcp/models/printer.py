@@ -62,6 +62,34 @@ class FileFilamentData:
     estimated_time: str | None = None
     slicer_version: str | None = None
 
+    @classmethod
+    def from_proxy_payload(cls, payload: dict[str, Any]) -> FileFilamentData | None:
+        """
+        Build from a gcode capture proxy /api/filament response.
+
+        The payload nests per-slot data under a "filament" key with
+        "slicer_version" and "filename" at the top level. Returns None when
+        the payload carries no filament data.
+        """
+        filament = payload.get("filament") or {}
+        if not filament:
+            return None
+        return cls(
+            total_filament_used=filament.get("total_grams"),
+            filename=payload.get("filename"),
+            per_slot_grams=filament.get("per_slot_grams", []),
+            per_slot_mm=filament.get("per_slot_mm", []),
+            per_slot_cm3=filament.get("per_slot_cm3", []),
+            per_slot_cost=filament.get("per_slot_cost", []),
+            per_slot_density=filament.get("per_slot_density", []),
+            per_slot_diameter=filament.get("per_slot_diameter", []),
+            filament_names=filament.get("filament_names", []),
+            total_cost=filament.get("total_cost"),
+            total_filament_changes=filament.get("total_filament_changes"),
+            estimated_time=filament.get("estimated_time"),
+            slicer_version=payload.get("slicer_version"),
+        )
+
 
 class FirmwareUpdateInfo(TypedDict, total=False):
     """Represent a Firmware Update Object."""

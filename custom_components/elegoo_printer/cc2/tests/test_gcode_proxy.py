@@ -35,7 +35,7 @@ SAMPLE_RESPONSE = {
 def _make_client() -> tuple[GCodeProxyClient, MagicMock]:
     """Create a proxy client with a mock session."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    client = GCodeProxyClient("http://192.168.50.49", session)
+    client = GCodeProxyClient("http://192.168.1.100", session)
     return client, session
 
 

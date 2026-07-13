@@ -1120,7 +1120,7 @@ PRINTER_STATUS_CC2_GCODE_FILAMENT: tuple[ElegooPrinterSensorEntityDescription, .
     ),
 )
 
-PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT: tuple[
+PRINTER_STATUS_GCODE_PROXY_FILAMENT: tuple[
     ElegooPrinterSensorEntityDescription, ...
 ] = (
     # --- A1-A4 Grams ---

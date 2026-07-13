@@ -32,7 +32,10 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         """Initialize."""
         self.online = False
         self.config_entry = entry
-        self._has_canvas = entry.data.get(CONF_HAS_CANVAS, False)
+        # Options-flow updates land in entry.options, not entry.data — merge
+        # so a Canvas toggle set after initial setup is honored.
+        merged_config = {**entry.data, **(entry.options or {})}
+        self._has_canvas = merged_config.get(CONF_HAS_CANVAS, False)
         self._last_firmware_check: datetime | None = None
         self._firmware_check_interval = timedelta(hours=12)  # Check every 12 hours
         self._last_canvas_check: datetime | None = None

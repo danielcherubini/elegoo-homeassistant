@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 from custom_components.elegoo_printer.definitions import (
     PRINTER_STATUS_CANVAS,
     PRINTER_STATUS_CC2_GCODE_FILAMENT,
-    PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT,
+    PRINTER_STATUS_GCODE_PROXY_FILAMENT,
     _get_slot_attributes,
     _get_slot_cm3,
     _get_slot_color,
@@ -335,7 +335,7 @@ class TestFilamentSensorAvailability:
         for group in (
             PRINTER_STATUS_CANVAS,
             PRINTER_STATUS_CC2_GCODE_FILAMENT,
-            PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT,
+            PRINTER_STATUS_GCODE_PROXY_FILAMENT,
         ):
             for desc in group:
                 assert desc.exists_fn(empty_pd) is True

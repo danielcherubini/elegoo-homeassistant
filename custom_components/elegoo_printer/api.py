@@ -255,11 +255,21 @@ class ElegooPrinterApiClient:
             self._mqtt_port = mqtt_port
         else:
             logger.info("Using WebSocket/SDCP protocol for printer %s", printer.name)
+            gcode_proxy_url = config.get(CONF_GCODE_PROXY_URL)
+            gcode_proxy = None
+            if gcode_proxy_url:
+                gcode_proxy = GCodeProxyClient(gcode_proxy_url, session)
+                logger.info(
+                    "GCode proxy configured at %s for printer %s",
+                    _sanitize_url_for_log(gcode_proxy_url),
+                    printer.name,
+                )
             self.client = ElegooPrinterClient(
                 printer.ip_address,
                 config=config,
                 logger=logger,
                 session=session,
+                gcode_proxy=gcode_proxy,
             )
 
         # Test connectivity: for MQTT/CC2 test broker, for WebSocket test printer
