@@ -1173,6 +1173,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
 
         if user_input is not None:
             printer.ip_address = user_input.get(CONF_IP_ADDRESS, printer.ip_address)
+            printer.external_ip = user_input.get(CONF_EXTERNAL_IP)
             return self.async_create_entry(
                 title=printer.name,
                 data=printer.to_dict(),
@@ -1180,6 +1181,9 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
 
         data_schema = {
             vol.Required(CONF_IP_ADDRESS): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
+            ),
+            vol.Optional(CONF_EXTERNAL_IP): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
             ),
         }

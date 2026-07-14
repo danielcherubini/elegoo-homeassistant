@@ -242,9 +242,16 @@ class ElegooPrinterApiClient:
             mqtt_host = "localhost"
             mqtt_port = self.mqtt_broker.port if self.mqtt_broker else MQTT_BROKER_PORT
 
+            # The printer always needs a LAN-reachable address for the M66666
+            # redirect command -- "localhost" on its own firmware means its own
+            # loopback, not Home Assistant.
+            external_ip = getattr(printer, "external_ip", None)
+            advertise_host = PrinterData.get_local_ip(printer.ip_address, external_ip)
+
             self.client = ElegooMqttClient(
                 mqtt_host=mqtt_host,
                 mqtt_port=mqtt_port,
+                advertise_host=advertise_host,
                 logger=logger,
                 printer=printer,
             )

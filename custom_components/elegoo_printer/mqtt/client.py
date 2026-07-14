@@ -86,6 +86,7 @@ class ElegooMqttClient:
         self,
         mqtt_host: str = "localhost",
         mqtt_port: int = MQTT_PORT,
+        advertise_host: str | None = None,
         logger: Any = LOGGER,
         printer: Printer | None = None,
     ) -> None:
@@ -97,12 +98,17 @@ class ElegooMqttClient:
         Arguments:
             mqtt_host: The MQTT broker hostname.
             mqtt_port: The MQTT broker port.
+            advertise_host: The host to tell the printer to connect to via the
+                M66666 command, if different from mqtt_host (e.g. when this
+                client reaches the broker over a different path than the
+                printer does).
             logger: The logger to use.
             printer: Optional Printer object with existing configuration.
 
         """
         self.mqtt_host = mqtt_host
         self.mqtt_port = mqtt_port
+        self.advertise_host = advertise_host or mqtt_host
         self.mqtt_client: aiomqtt.Client | None = None
         self.printer: Printer = printer or Printer()
         self.printer_data = PrinterData(printer=self.printer)
@@ -174,7 +180,7 @@ class ElegooMqttClient:
             # Construct M66666 command with MQTT broker host and port
             # Format: M66666 <host> <port>
             # No authentication - embedded broker doesn't require credentials
-            message_parts = ["M66666", str(self.mqtt_host), str(self.mqtt_port)]
+            message_parts = ["M66666", str(self.advertise_host), str(self.mqtt_port)]
             message = " ".join(message_parts).encode()
 
             # Send to printer's discovery port
@@ -184,7 +190,7 @@ class ElegooMqttClient:
             self.logger.info(
                 "Sent M66666 command to printer %s to connect to MQTT broker %s:%s",
                 printer_ip,
-                self.mqtt_host,
+                self.advertise_host,
                 self.mqtt_port,
             )
         except OSError:
