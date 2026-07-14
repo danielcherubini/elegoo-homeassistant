@@ -1,6 +1,7 @@
 """Tests for CC1 per-slot filament fetching from the gcode capture proxy."""
 
 import asyncio
+import time
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -149,7 +150,7 @@ def test_failed_fetch_does_not_mark_fetched() -> None:
         client._maybe_fetch_gcode_filament("missing.gcode", "task-1")
         assert proxy.calls == ["missing.gcode"]
         # After the window expires it retries
-        client._gcode_filament_attempt_at = 0.0
+        client._gcode_filament_attempt_at = time.monotonic() - 120
         client._maybe_fetch_gcode_filament("missing.gcode", "task-1")
         await asyncio.gather(*client._background_tasks)
         assert proxy.calls == ["missing.gcode", "missing.gcode"]
