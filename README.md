@@ -95,15 +95,17 @@ CC2 printers **MUST** be configured for LAN-Only mode:
 
 **Optional GCode capture proxy:** 
 
-The CC2 reports only a total filament usage value over MQTT — the
-per-slot breakdown (how much each Canvas spool contributed) exists
-only inside the G-code file, and there is no way to retrieve a file
-from the printer after it has been sent.
+The printers report only a total filament usage value over their normal
+telemetry (MQTT for CC2, SDCP for CC1) — the per-slot breakdown (how
+much each Canvas spool contributed) exists only inside the G-code file,
+and there is no way to retrieve a file from the printer after it has
+been sent.
 
 The [elegoo-printer-proxy](https://github.com/lantern-eight/elegoo-printer-proxy)
 sits between ElegooSlicer and the printer, transparently capturing
 every G-code file at upload time and parsing out per-slot filament
-data. Configure the proxy URL in the integration options
+data. It supports both the CC2 and the CC1 (Centauri Carbon). Configure
+the proxy URL in the integration options
 (Settings → Integrations → Elegoo → Configure).
 
 With the proxy configured, additional sensors are created: per-slot
@@ -143,7 +145,7 @@ Elegoo firmware **v1.1.29** contains a bug preventing remote control of lights a
 ## 📊 Entities
 The integration provides a comprehensive set of entities including **Live Camera**, **Print Thumbnails**, **Control Buttons** (Stop/Pause/Resume), and a full suite of **Sensors** (Progress, Temps, Layers, Z-Height, etc.).
 
-**CC2 filament / Canvas A1–A4 sensors:** Gcode file-detail and optional proxy sensors are created at setup time (proxy extras are only added when a proxy URL is configured). They stay **available** between prints; when there is no current job data they report **unknown** rather than becoming **unavailable**, so automations and history are not disrupted each time a print ends.
+**Filament / Canvas A1–A4 sensors (CC1 and CC2):** Gcode file-detail and optional proxy sensors are created at setup time (proxy extras are only added when a proxy URL is configured). They stay **available** between prints; when there is no current job data they report **unknown** rather than becoming **unavailable**, so automations and history are not disrupted each time a print ends.
 
 ## 🤖 Automation Blueprints
 Includes a blueprint for mobile notifications. [Import it here.](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/danielcherubini/elegoo-homeassistant/blob/main/blueprints/automation/elegoo_printer/elegoo_printer_progress.yaml)
