@@ -399,13 +399,16 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _async_detect_canvas_ws(self, printer: Printer) -> bool:
         """Detect Canvas on CC1 by reading AmsConnectStatus from status push."""
-        import websockets  # noqa: PLC0415
+        import aiohttp  # noqa: PLC0415
 
         ws_url = f"ws://{printer.ip_address}:3030/websocket"
+        session = async_get_clientsession(self.hass)
         try:
-            async with websockets.connect(ws_url, open_timeout=3) as ws:
-                data = await asyncio.wait_for(ws.recv(), timeout=3)
-                parsed = json.loads(data)
+            async with session.ws_connect(ws_url) as ws:
+                msg = await asyncio.wait_for(ws.receive(), timeout=3)
+                if msg.type != aiohttp.WSMsgType.TEXT:
+                    return False
+                parsed = json.loads(msg.data)
                 topic = parsed.get("Topic", "")
                 if "status" in topic:
                     status_data = (
@@ -416,7 +419,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         "CC1 Canvas detection: AmsConnectStatus=%s", ams_connect
                     )
                     return bool(ams_connect)
-        except (TimeoutError, OSError, json.JSONDecodeError, ImportError):
+        except (TimeoutError, aiohttp.ClientError, json.JSONDecodeError):
             LOGGER.debug("CC1 Canvas detection failed — assuming no Canvas")
         return False
 
