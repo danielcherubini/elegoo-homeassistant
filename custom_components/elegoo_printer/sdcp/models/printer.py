@@ -453,7 +453,7 @@ class Printer:
         # Check if this printer has vat heating capability
         printer.has_vat_heater = Printer._has_vat_heater(printer.model)
 
-        printer.has_canvas = attrs.get(CONF_HAS_CANVAS, attrs.get("has_canvas", False))
+        printer.has_canvas = attrs.get(CONF_HAS_CANVAS, False)
 
         # CC2-specific settings
         printer.cc2_access_code = attrs.get(
