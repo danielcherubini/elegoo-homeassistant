@@ -232,19 +232,20 @@ class ElegooPrinterApiClient:
         elif printer.transport_type == TransportType.MQTT:
             logger.info("Using MQTT transport for printer %s", printer.name)
 
-            # The printer always needs a LAN-reachable address for the M66666
-            # redirect command -- "localhost" on its own firmware means its own
-            # loopback, not Home Assistant, regardless of which broker is used.
             external_ip = getattr(printer, "external_ip", None)
-            advertise_host = PrinterData.get_local_ip(printer.ip_address, external_ip)
-
             mqtt_external_host = getattr(printer, "mqtt_external_host", None)
+
             if mqtt_external_host:
                 # Use an external broker (e.g. Mosquitto) instead of starting
                 # the embedded one.
                 mqtt_host = mqtt_external_host
                 mqtt_external_port = getattr(printer, "mqtt_external_port", None)
                 mqtt_port = int(mqtt_external_port) if mqtt_external_port else MQTT_PORT
+                # The printer should dial the external broker's own address by
+                # default; external_ip remains an explicit override for setups
+                # where mqtt_external_host (e.g. a Docker-internal name) isn't
+                # what the printer can reach on the LAN.
+                advertise_host = external_ip or mqtt_external_host
                 logger.info(
                     "Using external MQTT broker %s:%s for printer %s",
                     mqtt_host,
@@ -260,6 +261,12 @@ class ElegooPrinterApiClient:
                 mqtt_host = "localhost"
                 mqtt_port = (
                     self.mqtt_broker.port if self.mqtt_broker else MQTT_BROKER_PORT
+                )
+                # The printer always needs a LAN-reachable address for the M66666
+                # redirect command -- "localhost" on its own firmware means its own
+                # loopback, not Home Assistant.
+                advertise_host = PrinterData.get_local_ip(
+                    printer.ip_address, external_ip
                 )
 
             self.client = ElegooMqttClient(
