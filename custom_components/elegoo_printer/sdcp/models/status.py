@@ -61,6 +61,64 @@ class LightStatus:
         return f"Secondary Light: {'On' if self.second_light else 'Off'}, RGB: {self.rgb_light}"  # noqa: E501
 
 
+def _percent_complete(
+    status: "ElegooPrintStatus | None",
+    printer_type: "PrinterType | None",
+    progress: int | None,
+    current_layer: int | None,
+    total_layers: int | None,
+) -> float | None:
+    """
+    Percent complete clamped to [0, 100], or None outside an active job.
+
+    Reported only during job-active statuses to avoid leaking stale values.
+    """
+    active_statuses = {
+        ElegooPrintStatus.PRINTING,
+        ElegooPrintStatus.PAUSED,
+        ElegooPrintStatus.PAUSING,
+        ElegooPrintStatus.LIFTING,
+        ElegooPrintStatus.DROPPING,
+        ElegooPrintStatus.RECOVERY,
+        ElegooPrintStatus.PRINTING_RECOVERY,
+        ElegooPrintStatus.PREHEATING,
+        ElegooPrintStatus.LEVELING,
+    }
+    if printer_type == PrinterType.FDM:
+        # FDM firmware parks on lifecycle milestones for the duration of a
+        # job and cycles through filament-swap states mid-print; progress
+        # must keep flowing through all of them. UNRECOGNIZED is included
+        # so a future firmware code cannot blank progress.
+        active_statuses.update(
+            {
+                ElegooPrintStatus.LOADING,
+                ElegooPrintStatus.RESUMING,
+                ElegooPrintStatus.RESONANCE_TESTING,
+                ElegooPrintStatus.PRINT_STARTED,
+                ElegooPrintStatus.AUTO_LEVELING_COMPLETED,
+                ElegooPrintStatus.PREHEATING_COMPLETED,
+                ElegooPrintStatus.HOMING_COMPLETED,
+                ElegooPrintStatus.RESONANCE_TESTING_COMPLETED,
+                ElegooPrintStatus.AUTO_FEEDING,
+                ElegooPrintStatus.FILAMENT_UNLOADING,
+                ElegooPrintStatus.FILAMENT_UNLOAD_ABNORMAL,
+                ElegooPrintStatus.FILAMENT_UNLOAD_PAUSED,
+                ElegooPrintStatus.UNRECOGNIZED,
+            }
+        )
+    if status not in active_statuses:
+        return None
+
+    percent: float | None = None
+    if progress is not None:
+        percent = round(float(progress), 2)
+    elif current_layer is not None and total_layers is not None and total_layers > 0:
+        percent = round(current_layer / total_layers * 100, 2)
+    if percent is None:
+        return None
+    return max(0, min(100, percent))
+
+
 class PrintInfo:
     """
     Represents information about a print job.
@@ -104,7 +162,13 @@ class PrintInfo:
         if data is None:
             data = {}
         status_int: int = data.get("Status", 0)
-        self.status: ElegooPrintStatus | None = ElegooPrintStatus.from_int(status_int)
+        # FDM firmware uses a different sub-status code table than resin SDCP.
+        if printer_type == PrinterType.FDM:
+            self.status: ElegooPrintStatus | None = ElegooPrintStatus.from_fdm_int(
+                status_int
+            )
+        else:
+            self.status = ElegooPrintStatus.from_int(status_int)
         self.current_layer: int | None = data.get("CurrentLayer")
         self.total_layers: int | None = data.get("TotalLayer")
         self.remaining_layers: int | None = None
@@ -125,38 +189,13 @@ class PrintInfo:
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
         self.end_time = None
         # percent_complete is optional when printer is idle/unknown
-        self.percent_complete: float | None = None
-
-        percent_complete = None
-        # Report progress only during an active job to avoid leaking stale values.
-        active_statuses = {
-            ElegooPrintStatus.PRINTING,
-            ElegooPrintStatus.PAUSED,
-            ElegooPrintStatus.PAUSING,
-            ElegooPrintStatus.LIFTING,
-            ElegooPrintStatus.DROPPING,
-            ElegooPrintStatus.RECOVERY,
-            ElegooPrintStatus.PRINTING_RECOVERY,
-            ElegooPrintStatus.PREHEATING,
-            ElegooPrintStatus.LEVELING,
-        }
-        if self.status in active_statuses:
-            if self.progress is not None:
-                percent_complete = round(float(self.progress), 2)
-            elif (
-                self.current_layer is not None
-                and self.total_layers is not None
-                and self.total_layers > 0
-            ):
-                ratio = self.current_layer / self.total_layers
-                percent_complete = round(ratio * 100, 2)
-        else:
-            percent_complete = None
-
-        if percent_complete is not None:
-            self.percent_complete = max(0, min(100, percent_complete))
-        else:
-            self.percent_complete = None
+        self.percent_complete: float | None = _percent_complete(
+            self.status,
+            printer_type,
+            self.progress,
+            self.current_layer,
+            self.total_layers,
+        )
 
         self.filename = data.get("Filename")
         error_number_int = data.get("ErrorNumber", 0)

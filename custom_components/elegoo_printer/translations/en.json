@@ -144,9 +144,24 @@
           "complete": "Complete",
           "file_checking": "Checking File",
           "recovery": "Recovery",
+          "printing_recovery": "Printing Recovery",
           "loading": "Loading",
           "preheating": "Preheating",
-          "leveling": "Leveling"
+          "leveling": "Leveling",
+          "printers_checking": "Printer Checking",
+          "resuming": "Resuming",
+          "error": "Error",
+          "resonance_testing": "Resonance Testing",
+          "print_started": "Print Started",
+          "auto_leveling_completed": "Auto Leveling Completed",
+          "preheating_completed": "Preheating Completed",
+          "homing_completed": "Homing Completed",
+          "resonance_testing_completed": "Resonance Testing Completed",
+          "auto_feeding": "Auto Feeding",
+          "filament_unloading": "Filament Unloading",
+          "filament_unload_abnormal": "Filament Unload Abnormal",
+          "filament_unload_paused": "Filament Unload Paused",
+          "unrecognized": "Unrecognized"
         }
       },
       "current_status": {

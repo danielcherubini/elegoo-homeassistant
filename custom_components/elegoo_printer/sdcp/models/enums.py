@@ -207,6 +207,28 @@ class ElegooPrintStatus(Enum):
     PREHEATING = 16
     LEVELING = 20
 
+    # FDM-only print sub-status states, reported by Centauri Carbon firmware
+    # (source: Elegoo's elegoo-link CC adapter). Values are offset by +100
+    # from the wire code so they can never collide with — and never change —
+    # the resin table lookups in from_int(); the FDM path resolves wire codes
+    # through _FDM_PRINT_STATUS_CODES instead of member values.
+    PRINTERS_CHECKING = 111
+    RESUMING = 112
+    ERROR = 114
+    RESONANCE_TESTING = 117
+    PRINT_STARTED = 118
+    AUTO_LEVELING_COMPLETED = 119
+    PREHEATING_COMPLETED = 120
+    HOMING_COMPLETED = 121
+    RESONANCE_TESTING_COMPLETED = 122
+    AUTO_FEEDING = 123
+    FILAMENT_UNLOADING = 124
+    FILAMENT_UNLOAD_ABNORMAL = 125
+    FILAMENT_UNLOAD_PAUSED = 126
+    # A code this integration does not know yet (new firmware). Surfaced as
+    # its own state so it is visible instead of silently absorbed.
+    UNRECOGNIZED = 199
+
     @classmethod
     def from_int(cls, status_int: int) -> "ElegooPrintStatus | None":
         """
@@ -228,6 +250,63 @@ class ElegooPrintStatus(Enum):
             return cls(status_int)
         except ValueError:
             return None
+
+    @classmethod
+    def from_fdm_int(cls, status_int: int) -> "ElegooPrintStatus":
+        """
+        Convert an FDM (Centauri Carbon) print status code to an enum member.
+
+        FDM firmware reports print sub-status from a different code table
+        than resin SDCP — the authoritative source is Elegoo's open-source
+        elegoo-link adapter (elegoo_fdm_cc_message_adapter.cpp). Every wire
+        code maps 1:1 to its own state so nothing the firmware reports is
+        hidden from the user; note the firmware parks on lifecycle
+        milestones ("preheating completed") for the duration of a job, and
+        the machine-level status is the place to look for plain "printing".
+
+        Arguments:
+            status_int: The integer print status code from the printer.
+
+        Returns:
+            The corresponding ElegooPrintStatus member; codes this table
+            does not know yet return UNRECOGNIZED (never None, so the
+            sensor can never freeze on a stale state).
+
+        """
+        return _FDM_PRINT_STATUS_CODES.get(status_int, cls.UNRECOGNIZED)
+
+
+# FDM print status code table, mirroring Elegoo's elegoo-link CC adapter
+# 1:1. Code 3 ("Exposuring", marked resin-only by Elegoo) has no FDM
+# meaning and deliberately surfaces as UNRECOGNIZED if ever sent.
+_FDM_PRINT_STATUS_CODES: dict[int, ElegooPrintStatus] = {
+    0: ElegooPrintStatus.IDLE,
+    1: ElegooPrintStatus.HOMING,
+    2: ElegooPrintStatus.DROPPING,  # resin-only per Elegoo
+    4: ElegooPrintStatus.LIFTING,  # resin-only per Elegoo
+    5: ElegooPrintStatus.PAUSING,
+    6: ElegooPrintStatus.PAUSED,
+    7: ElegooPrintStatus.STOPPING,
+    8: ElegooPrintStatus.STOPPED,
+    9: ElegooPrintStatus.COMPLETE,
+    10: ElegooPrintStatus.FILE_CHECKING,
+    11: ElegooPrintStatus.PRINTERS_CHECKING,
+    12: ElegooPrintStatus.RESUMING,
+    13: ElegooPrintStatus.PRINTING,
+    14: ElegooPrintStatus.ERROR,
+    15: ElegooPrintStatus.LEVELING,  # Elegoo: "auto leveling"
+    16: ElegooPrintStatus.PREHEATING,
+    17: ElegooPrintStatus.RESONANCE_TESTING,
+    18: ElegooPrintStatus.PRINT_STARTED,
+    19: ElegooPrintStatus.AUTO_LEVELING_COMPLETED,
+    20: ElegooPrintStatus.PREHEATING_COMPLETED,
+    21: ElegooPrintStatus.HOMING_COMPLETED,
+    22: ElegooPrintStatus.RESONANCE_TESTING_COMPLETED,
+    23: ElegooPrintStatus.AUTO_FEEDING,
+    24: ElegooPrintStatus.FILAMENT_UNLOADING,
+    25: ElegooPrintStatus.FILAMENT_UNLOAD_ABNORMAL,
+    26: ElegooPrintStatus.FILAMENT_UNLOAD_PAUSED,
+}
 
 
 class ElegooPrintError(Enum):
