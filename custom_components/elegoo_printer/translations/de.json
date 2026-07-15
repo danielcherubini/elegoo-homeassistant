@@ -144,9 +144,24 @@
           "complete": "Abgeschlossen",
           "file_checking": "Dateiüberprüfung",
           "recovery": "Wiederherstellung",
+          "printing_recovery": "Druck-Wiederherstellung",
           "loading": "Laden",
           "preheating": "Vorwärmen",
-          "leveling": "Ausrichten"
+          "leveling": "Ausrichten",
+          "printers_checking": "Druckerüberprüfung",
+          "resuming": "Fortsetzen",
+          "error": "Fehler",
+          "resonance_testing": "Resonanztest",
+          "print_started": "Druck gestartet",
+          "auto_leveling_completed": "Automatische Nivellierung abgeschlossen",
+          "preheating_completed": "Vorwärmen abgeschlossen",
+          "homing_completed": "Referenzfahrt abgeschlossen",
+          "resonance_testing_completed": "Resonanztest abgeschlossen",
+          "auto_feeding": "Automatische Zuführung",
+          "filament_unloading": "Filament entladen",
+          "filament_unload_abnormal": "Abnormales Filament-Entladen",
+          "filament_unload_paused": "Filament-Entladen pausiert",
+          "unrecognized": "Nicht erkannt"
         }
       },
       "current_status": {

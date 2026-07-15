@@ -144,9 +144,24 @@
           "complete": "Ολοκληρωμένο",
           "file_checking": "Έλεγχος Αρχείου",
           "recovery": "Ανάκτηση",
+          "printing_recovery": "Ανάκτηση εκτύπωσης",
           "loading": "Φόρτωση",
           "preheating": "Προθέρμανση",
-          "leveling": "Επίπεδωση"
+          "leveling": "Επίπεδωση",
+          "printers_checking": "Έλεγχος εκτυπωτή",
+          "resuming": "Συνέχιση",
+          "error": "Σφάλμα",
+          "resonance_testing": "Δοκιμή συντονισμού",
+          "print_started": "Η εκτύπωση ξεκίνησε",
+          "auto_leveling_completed": "Αυτόματη ευθυγράμμιση ολοκληρώθηκε",
+          "preheating_completed": "Προθέρμανση ολοκληρώθηκε",
+          "homing_completed": "Επιστροφή στο μηδέν ολοκληρώθηκε",
+          "resonance_testing_completed": "Δοκιμή συντονισμού ολοκληρώθηκε",
+          "auto_feeding": "Αυτόματη τροφοδοσία",
+          "filament_unloading": "Εκφόρτωση νήματος",
+          "filament_unload_abnormal": "Ανώμαλη εκφόρτωση νήματος",
+          "filament_unload_paused": "Εκφόρτωση νήματος σε παύση",
+          "unrecognized": "Μη αναγνωρισμένο"
         }
       },
       "current_status": {

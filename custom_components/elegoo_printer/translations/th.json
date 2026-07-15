@@ -144,9 +144,24 @@
           "complete": "เสร็จสมบูรณ์",
           "file_checking": "ตรวจสอบไฟล์",
           "recovery": "กู้คืน",
+          "printing_recovery": "กู้คืนการพิมพ์",
           "loading": "กำลังโหลด",
           "preheating": "อุ่นล่วงหน้า",
-          "leveling": "ปรับระดับ"
+          "leveling": "ปรับระดับ",
+          "printers_checking": "ตรวจสอบเครื่องพิมพ์",
+          "resuming": "กำลังดำเนินการต่อ",
+          "error": "ข้อผิดพลาด",
+          "resonance_testing": "ทดสอบการสั่นพ้อง",
+          "print_started": "เริ่มพิมพ์แล้ว",
+          "auto_leveling_completed": "ปรับระดับอัตโนมัติเสร็จสิ้น",
+          "preheating_completed": "อุ่นเครื่องเสร็จสิ้น",
+          "homing_completed": "กลับตำแหน่งเริ่มต้นเสร็จสิ้น",
+          "resonance_testing_completed": "ทดสอบการสั่นพ้องเสร็จสิ้น",
+          "auto_feeding": "ป้อนอัตโนมัติ",
+          "filament_unloading": "ถอดเส้นพลาสติก",
+          "filament_unload_abnormal": "ถอดเส้นพลาสติกผิดปกติ",
+          "filament_unload_paused": "ถอดเส้นพลาสติกหยุดชั่วคราว",
+          "unrecognized": "ไม่รู้จัก"
         }
       },
       "current_status": {

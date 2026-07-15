@@ -144,9 +144,24 @@
           "complete": "Завершен",
           "file_checking": "Проверка файла",
           "recovery": "Восстановление",
+          "printing_recovery": "Восстановление печати",
           "loading": "Загрузка",
           "preheating": "Предварительный нагрев",
-          "leveling": "Выравнивание"
+          "leveling": "Выравнивание",
+          "printers_checking": "Проверка принтера",
+          "resuming": "Возобновление",
+          "error": "Ошибка",
+          "resonance_testing": "Тест резонанса",
+          "print_started": "Печать начата",
+          "auto_leveling_completed": "Автоматическое выравнивание завершено",
+          "preheating_completed": "Предварительный нагрев завершён",
+          "homing_completed": "Возврат в исходное положение завершён",
+          "resonance_testing_completed": "Тест резонанса завершён",
+          "auto_feeding": "Автоматическая подача",
+          "filament_unloading": "Выгрузка филамента",
+          "filament_unload_abnormal": "Аномальная выгрузка филамента",
+          "filament_unload_paused": "Выгрузка филамента приостановлена",
+          "unrecognized": "Не распознано"
         }
       },
       "current_status": {

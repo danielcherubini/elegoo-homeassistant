@@ -144,9 +144,24 @@
           "complete": "Voltooid",
           "file_checking": "Bestand Controleren",
           "recovery": "Herstel",
+          "printing_recovery": "Afdrukherstel",
           "loading": "Laden",
           "preheating": "Voorverwarmen",
-          "leveling": "Nivelleren"
+          "leveling": "Nivelleren",
+          "printers_checking": "Printercontrole",
+          "resuming": "Hervatten",
+          "error": "Fout",
+          "resonance_testing": "Resonantietest",
+          "print_started": "Afdruk gestart",
+          "auto_leveling_completed": "Automatisch nivelleren voltooid",
+          "preheating_completed": "Voorverwarming voltooid",
+          "homing_completed": "Thuispositie bereikt",
+          "resonance_testing_completed": "Resonantietest voltooid",
+          "auto_feeding": "Automatisch invoeren",
+          "filament_unloading": "Filament verwijderen",
+          "filament_unload_abnormal": "Afwijkend filament verwijderen",
+          "filament_unload_paused": "Filament verwijderen gepauzeerd",
+          "unrecognized": "Niet herkend"
         }
       },
       "current_status": {

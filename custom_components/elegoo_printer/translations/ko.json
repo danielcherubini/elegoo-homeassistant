@@ -144,9 +144,24 @@
           "complete": "완료",
           "file_checking": "파일 확인 중",
           "recovery": "복구",
+          "printing_recovery": "인쇄 복구",
           "loading": "로딩 중",
           "preheating": "예열 중",
-          "leveling": "레벨링"
+          "leveling": "레벨링",
+          "printers_checking": "프린터 확인 중",
+          "resuming": "재개 중",
+          "error": "오류",
+          "resonance_testing": "공진 테스트",
+          "print_started": "인쇄 시작됨",
+          "auto_leveling_completed": "자동 레벨링 완료",
+          "preheating_completed": "예열 완료",
+          "homing_completed": "원점 복귀 완료",
+          "resonance_testing_completed": "공진 테스트 완료",
+          "auto_feeding": "자동 공급",
+          "filament_unloading": "필라멘트 언로딩",
+          "filament_unload_abnormal": "필라멘트 언로딩 이상",
+          "filament_unload_paused": "필라멘트 언로딩 일시정지",
+          "unrecognized": "인식 불가"
         }
       },
       "current_status": {

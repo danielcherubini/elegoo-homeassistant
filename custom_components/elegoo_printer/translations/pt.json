@@ -144,9 +144,24 @@
           "complete": "Completado",
           "file_checking": "Verificando Arquivo",
           "recovery": "Recuperação",
+          "printing_recovery": "Recuperação de impressão",
           "loading": "Carregando",
           "preheating": "Pré-aquecendo",
-          "leveling": "Nivelando"
+          "leveling": "Nivelando",
+          "printers_checking": "Verificação da impressora",
+          "resuming": "Retomando",
+          "error": "Erro",
+          "resonance_testing": "Teste de ressonância",
+          "print_started": "Impressão iniciada",
+          "auto_leveling_completed": "Nivelamento automático concluído",
+          "preheating_completed": "Pré-aquecimento concluído",
+          "homing_completed": "Posicionamento inicial concluído",
+          "resonance_testing_completed": "Teste de ressonância concluído",
+          "auto_feeding": "Alimentação automática",
+          "filament_unloading": "Descarregamento de filamento",
+          "filament_unload_abnormal": "Descarregamento de filamento anormal",
+          "filament_unload_paused": "Descarregamento de filamento em pausa",
+          "unrecognized": "Não reconhecido"
         }
       },
       "current_status": {

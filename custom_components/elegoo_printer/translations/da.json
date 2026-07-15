@@ -144,9 +144,24 @@
           "complete": "Færdig",
           "file_checking": "Tjekker Fil",
           "recovery": "Genvinding",
+          "printing_recovery": "Udskriftsgendannelse",
           "loading": "Indlæser",
           "preheating": "Forvarmer",
-          "leveling": "Nivellerer"
+          "leveling": "Nivellerer",
+          "printers_checking": "Printerkontrol",
+          "resuming": "Genoptager",
+          "error": "Fejl",
+          "resonance_testing": "Resonanstest",
+          "print_started": "Udskrift startet",
+          "auto_leveling_completed": "Autonivellering fuldført",
+          "preheating_completed": "Forvarmning fuldført",
+          "homing_completed": "Nulstilling fuldført",
+          "resonance_testing_completed": "Resonanstest fuldført",
+          "auto_feeding": "Automatisk fremføring",
+          "filament_unloading": "Filamentaflæsning",
+          "filament_unload_abnormal": "Unormal filamentaflæsning",
+          "filament_unload_paused": "Filamentaflæsning sat på pause",
+          "unrecognized": "Ukendt"
         }
       },
       "current_status": {

@@ -144,9 +144,24 @@
           "complete": "كامل",
           "file_checking": "فحص الملف",
           "recovery": "استعادة",
+          "printing_recovery": "استعادة الطباعة",
           "loading": "تحميل",
           "preheating": "التسخين المسبق",
-          "leveling": "المستوي"
+          "leveling": "المستوي",
+          "printers_checking": "فحص الطابعة",
+          "resuming": "استئناف",
+          "error": "خطأ",
+          "resonance_testing": "اختبار الرنين",
+          "print_started": "بدأت الطباعة",
+          "auto_leveling_completed": "اكتمل التسوية التلقائية",
+          "preheating_completed": "اكتمل التسخين المسبق",
+          "homing_completed": "اكتمل التوجيه",
+          "resonance_testing_completed": "اكتمل اختبار الرنين",
+          "auto_feeding": "تغذية تلقائية",
+          "filament_unloading": "تفريغ الخيط",
+          "filament_unload_abnormal": "خلل في تفريغ الخيط",
+          "filament_unload_paused": "تفريغ الخيط متوقف مؤقتاً",
+          "unrecognized": "غير معروف"
         }
       },
       "current_status": {

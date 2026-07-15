@@ -144,9 +144,24 @@
           "complete": "完了",
           "file_checking": "ファイルチェック中",
           "recovery": "回復",
+          "printing_recovery": "印刷復旧",
           "loading": "読み込み中",
           "preheating": "予熱中",
-          "leveling": "レベルリング"
+          "leveling": "レベルリング",
+          "printers_checking": "プリンター確認中",
+          "resuming": "再開中",
+          "error": "エラー",
+          "resonance_testing": "共振テスト",
+          "print_started": "印刷開始",
+          "auto_leveling_completed": "オートレベリング完了",
+          "preheating_completed": "予熱完了",
+          "homing_completed": "ホーミング完了",
+          "resonance_testing_completed": "共振テスト完了",
+          "auto_feeding": "自動フィード",
+          "filament_unloading": "フィラメント取り出し中",
+          "filament_unload_abnormal": "フィラメント取り出し異常",
+          "filament_unload_paused": "フィラメント取り出し一時停止",
+          "unrecognized": "未認識"
         }
       },
       "current_status": {

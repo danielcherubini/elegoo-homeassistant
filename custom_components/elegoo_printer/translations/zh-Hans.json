@@ -144,9 +144,24 @@
           "complete": "完成",
           "file_checking": "检查文件",
           "recovery": "恢复",
+          "printing_recovery": "打印恢复",
           "loading": "加载中",
           "preheating": "预热中",
-          "leveling": "调平"
+          "leveling": "调平",
+          "printers_checking": "打印机检查",
+          "resuming": "正在恢复",
+          "error": "错误",
+          "resonance_testing": "共振测试",
+          "print_started": "打印已开始",
+          "auto_leveling_completed": "自动调平完成",
+          "preheating_completed": "预热完成",
+          "homing_completed": "归位完成",
+          "resonance_testing_completed": "共振测试完成",
+          "auto_feeding": "自动进料",
+          "filament_unloading": "耗材卸载中",
+          "filament_unload_abnormal": "耗材卸载异常",
+          "filament_unload_paused": "耗材卸载已暂停",
+          "unrecognized": "未识别"
         }
       },
       "current_status": {

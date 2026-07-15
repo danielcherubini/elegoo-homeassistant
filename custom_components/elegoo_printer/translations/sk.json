@@ -144,9 +144,24 @@
           "complete": "Hotovo",
           "file_checking": "Kontrola súboru",
           "recovery": "Obnova",
+          "printing_recovery": "Obnova tlače",
           "loading": "Načítanie",
           "preheating": "Predohrievanie",
-          "leveling": "Vyrovnávanie"
+          "leveling": "Vyrovnávanie",
+          "printers_checking": "Kontrola tlačiarne",
+          "resuming": "Obnovenie",
+          "error": "Chyba",
+          "resonance_testing": "Testovanie rezonancie",
+          "print_started": "Tlač spustená",
+          "auto_leveling_completed": "Automatické vyrovnanie dokončené",
+          "preheating_completed": "Predhrievanie dokončené",
+          "homing_completed": "Návrat do východiskovej pozície dokončený",
+          "resonance_testing_completed": "Testovanie rezonancie dokončené",
+          "auto_feeding": "Automatické podávanie",
+          "filament_unloading": "Vykladanie filamentu",
+          "filament_unload_abnormal": "Abnormálne vyloženie filamentu",
+          "filament_unload_paused": "Vykladanie filamentu pozastavené",
+          "unrecognized": "Nerozpoznané"
         }
       },
       "current_status": {
