@@ -405,20 +405,26 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         session = async_get_clientsession(self.hass)
         try:
             async with session.ws_connect(ws_url) as ws:
-                msg = await asyncio.wait_for(ws.receive(), timeout=3)
-                if msg.type != aiohttp.WSMsgType.TEXT:
-                    return False
-                parsed = json.loads(msg.data)
-                topic = parsed.get("Topic", "")
-                if "status" in topic:
-                    status_data = (
-                        parsed.get("Data", {}).get("Data", {}).get("Status", {})
-                    )
-                    ams_connect = status_data.get("AmsConnectStatus", 0)
-                    LOGGER.debug(
-                        "CC1 Canvas detection: AmsConnectStatus=%s", ams_connect
-                    )
-                    return bool(ams_connect)
+                async with asyncio.timeout(3):
+                    async for msg in ws:
+                        if msg.type != aiohttp.WSMsgType.TEXT:
+                            break
+                        parsed = json.loads(msg.data)
+                        topic = parsed.get("Topic", "")
+                        if "status" in topic:
+                            status_data = (
+                                parsed.get("Data", {})
+                                .get("Data", {})
+                                .get("Status", {})
+                            )
+                            ams_connect = status_data.get(
+                                "AmsConnectStatus", 0
+                            )
+                            LOGGER.debug(
+                                "CC1 Canvas detection: AmsConnectStatus=%s",
+                                ams_connect,
+                            )
+                            return bool(ams_connect)
         except (TimeoutError, aiohttp.ClientError, json.JSONDecodeError):
             LOGGER.debug("CC1 Canvas detection failed — assuming no Canvas")
         return False
