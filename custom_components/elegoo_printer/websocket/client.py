@@ -78,11 +78,11 @@ def normalize_cc1_canvas_data(data: dict[str, Any]) -> None:
     """Normalize CC1 Canvas tray placeholders in-place."""
     for canvas in data.get("canvas_list", []):
         for tray in canvas.get("tray_list", []):
-            if tray.get("brand", "").startswith("—"):
+            if (tray.get("brand") or "").startswith("—"):
                 tray["brand"] = ""
             if tray.get("filament_type") == "?":
                 tray["filament_type"] = ""
-            if tray.get("filament_name", "").startswith("—"):
+            if (tray.get("filament_name") or "").startswith("—"):
                 tray["filament_name"] = ""
 
 
