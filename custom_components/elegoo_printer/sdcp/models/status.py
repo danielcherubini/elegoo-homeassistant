@@ -91,7 +91,7 @@ def _percent_complete(
         # so a future firmware code cannot blank progress.
         active_statuses.update(
             {
-                ElegooPrintStatus.LOADING,
+                ElegooPrintStatus.ERROR,
                 ElegooPrintStatus.RESUMING,
                 ElegooPrintStatus.RESONANCE_TESTING,
                 ElegooPrintStatus.PRINT_STARTED,
