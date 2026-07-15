@@ -16,6 +16,8 @@ from custom_components.elegoo_printer.const import (
     CONF_CC2_TOKEN_STATUS,
     CONF_EXTERNAL_IP,
     CONF_MQTT_BROKER_ENABLED,
+    CONF_MQTT_EXTERNAL_HOST,
+    CONF_MQTT_EXTERNAL_PORT,
     CONF_PROXY_ENABLED,
     DEFAULT_FALLBACK_IP,
     WEBSOCKET_PORT,
@@ -205,6 +207,8 @@ class Printer:
         self.camera_enabled = config.get(CONF_CAMERA_ENABLED, False)
         self.mqtt_broker_enabled = config.get(CONF_MQTT_BROKER_ENABLED, False)
         self.external_ip = config.get(CONF_EXTERNAL_IP)
+        self.mqtt_external_host = config.get(CONF_MQTT_EXTERNAL_HOST)
+        self.mqtt_external_port = config.get(CONF_MQTT_EXTERNAL_PORT)
         self.proxy_websocket_port = None
         self.proxy_video_port = None
         # CC2-specific settings
@@ -286,6 +290,8 @@ class Printer:
             "is_proxy": self.is_proxy,
             "mqtt_broker_enabled": self.mqtt_broker_enabled,
             "external_ip": self.external_ip,
+            "mqtt_external_host": self.mqtt_external_host,
+            "mqtt_external_port": self.mqtt_external_port,
             "open_centauri": self.open_centauri,
             "has_vat_heater": self.has_vat_heater,
             "cc2_access_code": self.cc2_access_code,
@@ -410,6 +416,12 @@ class Printer:
         printer.proxy_video_port = attrs.get("proxy_video_port")
         printer.is_proxy = attrs.get("Proxy", attrs.get("is_proxy", False))
         printer.external_ip = attrs.get(CONF_EXTERNAL_IP, attrs.get("external_ip"))
+        printer.mqtt_external_host = attrs.get(
+            CONF_MQTT_EXTERNAL_HOST, attrs.get("mqtt_external_host")
+        )
+        printer.mqtt_external_port = attrs.get(
+            CONF_MQTT_EXTERNAL_PORT, attrs.get("mqtt_external_port")
+        )
 
         # Calculate open_centauri based on model and firmware
         printer.open_centauri = Printer._is_open_centauri(

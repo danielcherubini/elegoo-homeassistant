@@ -23,8 +23,10 @@ CONF_PROXY_ENABLED = "proxy_enabled"
 CONF_PROXY_WEBSOCKET_PORT = "proxy_websocket_port"
 CONF_PROXY_VIDEO_PORT = "proxy_video_port"
 
-# MQTT settings (always uses embedded broker)
+# MQTT settings
 CONF_MQTT_BROKER_ENABLED = "mqtt_broker_enabled"
+CONF_MQTT_EXTERNAL_HOST = "mqtt_external_host"
+CONF_MQTT_EXTERNAL_PORT = "mqtt_external_port"
 
 # CC2-specific settings
 CONF_CC2_ACCESS_CODE = "cc2_access_code"
