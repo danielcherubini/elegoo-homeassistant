@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from types import SimpleNamespace
+from typing import Self
 from unittest.mock import MagicMock, patch
 
 import aiohttp
@@ -20,20 +21,20 @@ class _FakeWS:
   def __init__(self, messages: list) -> None:
     self._messages = iter(messages)
 
-  async def __aenter__(self):
+  async def __aenter__(self) -> Self:
     return self
 
-  async def __aexit__(self, *args):
+  async def __aexit__(self, *args: object) -> None:
     pass
 
-  def __aiter__(self):
+  def __aiter__(self) -> Self:
     return self
 
-  async def __anext__(self):
+  async def __anext__(self) -> object:
     try:
       return next(self._messages)
     except StopIteration:
-      raise StopAsyncIteration
+      raise StopAsyncIteration from None
 
 
 def _text_msg(payload: dict) -> SimpleNamespace:
