@@ -559,20 +559,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         ),
                         errors=_errors,
                     )
-                return self.async_show_form(
-                    step_id="fdm_options",
-                    data_schema=vol.Schema(
-                        {
-                            vol.Required(
-                                CONF_PROXY_ENABLED,
-                                default=self.selected_printer.proxy_enabled,
-                            ): selector.BooleanSelector(
-                                selector.BooleanSelectorConfig(),
-                            ),
-                        }
-                    ),
-                    errors=_errors,
-                )
+                return await self.async_step_fdm_options()
             _errors["base"] = "invalid_printer_selection"
 
         # Filter out printers without an IP address
