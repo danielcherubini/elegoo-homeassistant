@@ -33,6 +33,7 @@ from .const import (
     CONF_MQTT_EXTERNAL_HOST,
     CONF_MQTT_EXTERNAL_PORT,
     CONF_PROXY_ENABLED,
+    CONFIG_VERSION_5,
     DOMAIN,
     LOGGER,
     WEBSOCKET_PORT,
@@ -377,7 +378,7 @@ async def _async_validate_input(  # noqa: PLR0912
 class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Elegoo."""
 
-    VERSION = 5
+    VERSION = CONFIG_VERSION_5
     MINOR_VERSION = 0
     _detected_canvas: bool | None = None
 
