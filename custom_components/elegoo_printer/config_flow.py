@@ -392,12 +392,6 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return _sanitize_ip_address(raw_ip)
 
     async def _async_detect_canvas(self, printer: Printer) -> bool:
-        """Detect if a printer has Canvas/AMS hardware connected."""
-        if printer.transport_type == TransportType.WEBSOCKET:
-            return await self._async_detect_canvas_ws(printer)
-        return printer.transport_type == TransportType.CC2_MQTT
-
-    async def _async_detect_canvas_ws(self, printer: Printer) -> bool:
         """Detect Canvas on CC1 by reading AmsConnectStatus from status push."""
         import aiohttp  # noqa: PLC0415
 

@@ -1,4 +1,4 @@
-"""Tests for CC1 Canvas detection via websocket (_async_detect_canvas_ws)."""
+"""Tests for CC1 Canvas detection via websocket (_async_detect_canvas)."""
 
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ def _make_printer() -> MagicMock:
 
 
 class TestCanvasDetectionWs:
-  """_async_detect_canvas_ws returns correct result for various frames."""
+  """_async_detect_canvas returns correct result for various frames."""
 
   def test_status_with_canvas_returns_true(self) -> None:
     async def _run() -> None:
@@ -78,7 +78,7 @@ class TestCanvasDetectionWs:
         "custom_components.elegoo_printer.config_flow.async_get_clientsession",
         return_value=MagicMock(ws_connect=MagicMock(return_value=ws)),
       ):
-        result = await flow._async_detect_canvas_ws(_make_printer())
+        result = await flow._async_detect_canvas(_make_printer())
       assert result is True
 
     asyncio.run(_run())
@@ -91,7 +91,7 @@ class TestCanvasDetectionWs:
         "custom_components.elegoo_printer.config_flow.async_get_clientsession",
         return_value=MagicMock(ws_connect=MagicMock(return_value=ws)),
       ):
-        result = await flow._async_detect_canvas_ws(_make_printer())
+        result = await flow._async_detect_canvas(_make_printer())
       assert result is False
 
     asyncio.run(_run())
@@ -109,7 +109,7 @@ class TestCanvasDetectionWs:
         "custom_components.elegoo_printer.config_flow.async_get_clientsession",
         return_value=MagicMock(ws_connect=MagicMock(return_value=ws)),
       ):
-        result = await flow._async_detect_canvas_ws(_make_printer())
+        result = await flow._async_detect_canvas(_make_printer())
       assert result is True
 
     asyncio.run(_run())
@@ -125,7 +125,7 @@ class TestCanvasDetectionWs:
         "custom_components.elegoo_printer.config_flow.async_get_clientsession",
         return_value=mock_session,
       ):
-        result = await flow._async_detect_canvas_ws(_make_printer())
+        result = await flow._async_detect_canvas(_make_printer())
       assert result is False
 
     asyncio.run(_run())
@@ -139,7 +139,7 @@ class TestCanvasDetectionWs:
         "custom_components.elegoo_printer.config_flow.async_get_clientsession",
         return_value=MagicMock(ws_connect=MagicMock(return_value=ws)),
       ):
-        result = await flow._async_detect_canvas_ws(_make_printer())
+        result = await flow._async_detect_canvas(_make_printer())
       assert result is False
 
     asyncio.run(_run())
