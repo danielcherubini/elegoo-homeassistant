@@ -10,6 +10,7 @@ lifecycle milestones ("preheating completed") for the duration of a
 job, so progress reporting must stay active through all of them.
 """
 
+from custom_components.elegoo_printer.cc2.models import CC2StatusMapper
 from custom_components.elegoo_printer.sdcp.models.enums import (
     _FDM_PRINT_STATUS_CODES,
     ElegooPrintStatus,
@@ -162,3 +163,47 @@ class TestPrinterStatusIntegration:
         """A resin printer parsing the same code 20 still reads leveling."""
         status = PrinterStatus(_cc1_status_payload(20), PrinterType.RESIN)
         assert status.print_info.status == ElegooPrintStatus.LEVELING
+
+    def test_resin_idle_blanks_progress(self) -> None:
+        """Resin IDLE must not report stale progress."""
+        status = PrinterStatus(_cc1_status_payload(0), PrinterType.RESIN)
+        assert status.print_info.percent_complete is None
+
+
+class TestCC2PercentComplete:
+    """CC2 path delegates to the shared _percent_complete function."""
+
+    @staticmethod
+    def _cc2_payload(
+        sub_status: int, progress: int | None = None
+    ) -> dict:
+        payload: dict = {"machine_status": {"sub_status": sub_status}}
+        if progress is not None:
+            payload["print_status"] = {"progress": progress}
+        return payload
+
+    def test_printing_reports_progress(self) -> None:
+        """CC2 PRINTING state with progress reports percent_complete."""
+        from custom_components.elegoo_printer.cc2.const import (  # noqa: PLC0415
+            CC2_SUBSTATUS_PRINTING,
+        )
+
+        data = self._cc2_payload(CC2_SUBSTATUS_PRINTING, progress=42)
+        info = CC2StatusMapper._map_print_info(data, PrinterType.FDM)
+        assert info.percent_complete == 42.0
+
+    def test_preheating_reports_progress(self) -> None:
+        """CC2 PREHEATING state keeps progress flowing."""
+        from custom_components.elegoo_printer.cc2.const import (  # noqa: PLC0415
+            CC2_SUBSTATUS_EXTRUDER_PREHEATING,
+        )
+
+        data = self._cc2_payload(CC2_SUBSTATUS_EXTRUDER_PREHEATING, progress=10)
+        info = CC2StatusMapper._map_print_info(data, PrinterType.FDM)
+        assert info.percent_complete == 10.0
+
+    def test_idle_blanks_progress(self) -> None:
+        """CC2 IDLE must not report stale progress."""
+        data = self._cc2_payload(0, progress=50)
+        info = CC2StatusMapper._map_print_info(data, PrinterType.FDM)
+        assert info.percent_complete is None

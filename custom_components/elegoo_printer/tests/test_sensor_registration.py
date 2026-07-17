@@ -8,10 +8,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from custom_components.elegoo_printer.definitions import (
+    _FDM_PRINT_STATUS_OPTIONS,
+    _RESIN_PRINT_STATUS_OPTIONS,
     PRINTER_STATUS_CC2_GCODE_FILAMENT,
+    PRINTER_STATUS_FDM,
     PRINTER_STATUS_FDM_CURRENT_EXTRUSION,
     PRINTER_STATUS_FDM_TOTAL_EXTRUSION,
     PRINTER_STATUS_GCODE_PROXY_FILAMENT,
+    PRINTER_STATUS_RESIN,
 )
 from custom_components.elegoo_printer.sdcp.models.enums import (
     PrinterType,
@@ -242,3 +246,25 @@ class TestGcodeProxyFilamentGating:
             config_data={"gcode_proxy_url": ""},
         )
         assert not GCODE_PROXY_FILAMENT_KEYS.issubset(keys)
+
+
+class TestPrintStatusOptionsScoping:
+    """Verify print_status sensor has per-type options."""
+
+    def test_fdm_has_all_states(self) -> None:
+        """FDM print_status options include FDM-only states."""
+        fdm_sensor = next(d for d in PRINTER_STATUS_FDM if d.key == "print_status")
+        assert "resonance_testing" in fdm_sensor.options
+        assert "auto_feeding" in fdm_sensor.options
+        assert fdm_sensor.options == _FDM_PRINT_STATUS_OPTIONS
+
+    def test_resin_excludes_fdm_states(self) -> None:
+        """Resin print_status options exclude FDM-only states."""
+        resin_sensor = next(d for d in PRINTER_STATUS_RESIN if d.key == "print_status")
+        assert "resonance_testing" not in resin_sensor.options
+        assert "auto_feeding" not in resin_sensor.options
+        assert resin_sensor.options == _RESIN_PRINT_STATUS_OPTIONS
+
+    def test_resin_options_subset_of_fdm(self) -> None:
+        """Every resin option is also a valid FDM option."""
+        assert set(_RESIN_PRINT_STATUS_OPTIONS).issubset(_FDM_PRINT_STATUS_OPTIONS)
