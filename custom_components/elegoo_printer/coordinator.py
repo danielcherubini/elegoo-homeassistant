@@ -85,12 +85,9 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                     # Rate-limit even on failure to avoid hammering the endpoint
                     self._last_firmware_check = now
 
-            if (
-                self._has_canvas
-                and (
-                    self._last_canvas_check is None
-                    or now - self._last_canvas_check >= self._canvas_check_interval
-                )
+            if self._has_canvas and (
+                self._last_canvas_check is None
+                or now - self._last_canvas_check >= self._canvas_check_interval
             ):
                 LOGGER.debug("Checking Canvas/AMS status")
                 try:

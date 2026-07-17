@@ -40,9 +40,7 @@ _FDM_STATUS_THRESHOLD = 100
 _RESIN_PRINT_STATUS_OPTIONS: list[str] = [
     s.name.lower() for s in ElegooPrintStatus if s.value < _FDM_STATUS_THRESHOLD
 ]
-_FDM_PRINT_STATUS_OPTIONS: list[str] = [
-    s.name.lower() for s in ElegooPrintStatus
-]
+_FDM_PRINT_STATUS_OPTIONS: list[str] = [s.name.lower() for s in ElegooPrintStatus]
 
 
 def _has_valid_current_coords(printer_data: PrinterData) -> bool:

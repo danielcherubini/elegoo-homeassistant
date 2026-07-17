@@ -408,13 +408,9 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         topic = parsed.get("Topic", "")
                         if "status" in topic:
                             status_data = (
-                                parsed.get("Data", {})
-                                .get("Data", {})
-                                .get("Status", {})
+                                parsed.get("Data", {}).get("Data", {}).get("Status", {})
                             )
-                            ams_connect = status_data.get(
-                                "AmsConnectStatus", 0
-                            )
+                            ams_connect = status_data.get("AmsConnectStatus", 0)
                             LOGGER.debug(
                                 "CC1 Canvas detection: AmsConnectStatus=%s",
                                 ams_connect,

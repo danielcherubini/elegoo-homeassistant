@@ -174,9 +174,7 @@ class TestCC2PercentComplete:
     """CC2 path delegates to the shared _percent_complete function."""
 
     @staticmethod
-    def _cc2_payload(
-        sub_status: int, progress: int | None = None
-    ) -> dict:
+    def _cc2_payload(sub_status: int, progress: int | None = None) -> dict:
         payload: dict = {"machine_status": {"sub_status": sub_status}}
         if progress is not None:
             payload["print_status"] = {"progress": progress}

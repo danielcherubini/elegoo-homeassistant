@@ -61,17 +61,19 @@ class LightStatus:
         return f"Secondary Light: {'On' if self.second_light else 'Off'}, RGB: {self.rgb_light}"  # noqa: E501
 
 
-_RESIN_ACTIVE_STATUSES: frozenset[ElegooPrintStatus] = frozenset({
-    ElegooPrintStatus.PRINTING,
-    ElegooPrintStatus.PAUSED,
-    ElegooPrintStatus.PAUSING,
-    ElegooPrintStatus.LIFTING,
-    ElegooPrintStatus.DROPPING,
-    ElegooPrintStatus.RECOVERY,
-    ElegooPrintStatus.PRINTING_RECOVERY,
-    ElegooPrintStatus.PREHEATING,
-    ElegooPrintStatus.LEVELING,
-})
+_RESIN_ACTIVE_STATUSES: frozenset[ElegooPrintStatus] = frozenset(
+    {
+        ElegooPrintStatus.PRINTING,
+        ElegooPrintStatus.PAUSED,
+        ElegooPrintStatus.PAUSING,
+        ElegooPrintStatus.LIFTING,
+        ElegooPrintStatus.DROPPING,
+        ElegooPrintStatus.RECOVERY,
+        ElegooPrintStatus.PRINTING_RECOVERY,
+        ElegooPrintStatus.PREHEATING,
+        ElegooPrintStatus.LEVELING,
+    }
+)
 
 _FDM_ACTIVE_STATUSES: frozenset[ElegooPrintStatus] = _RESIN_ACTIVE_STATUSES | {
     ElegooPrintStatus.ERROR,
