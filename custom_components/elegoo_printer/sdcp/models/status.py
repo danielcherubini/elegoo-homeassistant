@@ -61,6 +61,35 @@ class LightStatus:
         return f"Secondary Light: {'On' if self.second_light else 'Off'}, RGB: {self.rgb_light}"  # noqa: E501
 
 
+_RESIN_ACTIVE_STATUSES: frozenset[ElegooPrintStatus] = frozenset({
+    ElegooPrintStatus.PRINTING,
+    ElegooPrintStatus.PAUSED,
+    ElegooPrintStatus.PAUSING,
+    ElegooPrintStatus.LIFTING,
+    ElegooPrintStatus.DROPPING,
+    ElegooPrintStatus.RECOVERY,
+    ElegooPrintStatus.PRINTING_RECOVERY,
+    ElegooPrintStatus.PREHEATING,
+    ElegooPrintStatus.LEVELING,
+})
+
+_FDM_ACTIVE_STATUSES: frozenset[ElegooPrintStatus] = _RESIN_ACTIVE_STATUSES | {
+    ElegooPrintStatus.ERROR,
+    ElegooPrintStatus.RESUMING,
+    ElegooPrintStatus.RESONANCE_TESTING,
+    ElegooPrintStatus.PRINT_STARTED,
+    ElegooPrintStatus.AUTO_LEVELING_COMPLETED,
+    ElegooPrintStatus.PREHEATING_COMPLETED,
+    ElegooPrintStatus.HOMING_COMPLETED,
+    ElegooPrintStatus.RESONANCE_TESTING_COMPLETED,
+    ElegooPrintStatus.AUTO_FEEDING,
+    ElegooPrintStatus.FILAMENT_UNLOADING,
+    ElegooPrintStatus.FILAMENT_UNLOAD_ABNORMAL,
+    ElegooPrintStatus.FILAMENT_UNLOAD_PAUSED,
+    ElegooPrintStatus.UNRECOGNIZED,
+}
+
+
 def _percent_complete(
     status: "ElegooPrintStatus | None",
     printer_type: "PrinterType | None",
@@ -73,39 +102,11 @@ def _percent_complete(
 
     Reported only during job-active statuses to avoid leaking stale values.
     """
-    active_statuses = {
-        ElegooPrintStatus.PRINTING,
-        ElegooPrintStatus.PAUSED,
-        ElegooPrintStatus.PAUSING,
-        ElegooPrintStatus.LIFTING,
-        ElegooPrintStatus.DROPPING,
-        ElegooPrintStatus.RECOVERY,
-        ElegooPrintStatus.PRINTING_RECOVERY,
-        ElegooPrintStatus.PREHEATING,
-        ElegooPrintStatus.LEVELING,
-    }
-    if printer_type == PrinterType.FDM:
-        # FDM firmware parks on lifecycle milestones for the duration of a
-        # job and cycles through filament-swap states mid-print; progress
-        # must keep flowing through all of them. UNRECOGNIZED is included
-        # so a future firmware code cannot blank progress.
-        active_statuses.update(
-            {
-                ElegooPrintStatus.ERROR,
-                ElegooPrintStatus.RESUMING,
-                ElegooPrintStatus.RESONANCE_TESTING,
-                ElegooPrintStatus.PRINT_STARTED,
-                ElegooPrintStatus.AUTO_LEVELING_COMPLETED,
-                ElegooPrintStatus.PREHEATING_COMPLETED,
-                ElegooPrintStatus.HOMING_COMPLETED,
-                ElegooPrintStatus.RESONANCE_TESTING_COMPLETED,
-                ElegooPrintStatus.AUTO_FEEDING,
-                ElegooPrintStatus.FILAMENT_UNLOADING,
-                ElegooPrintStatus.FILAMENT_UNLOAD_ABNORMAL,
-                ElegooPrintStatus.FILAMENT_UNLOAD_PAUSED,
-                ElegooPrintStatus.UNRECOGNIZED,
-            }
-        )
+    active_statuses = (
+        _FDM_ACTIVE_STATUSES
+        if printer_type == PrinterType.FDM
+        else _RESIN_ACTIVE_STATUSES
+    )
     if status not in active_statuses:
         return None
 
