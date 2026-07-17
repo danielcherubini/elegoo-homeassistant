@@ -29,7 +29,7 @@ from .const import (
     WEBSOCKET_PORT,
 )
 from .mqtt.client import ElegooMqttClient
-from .mqtt.const import MQTT_BROKER_PORT
+from .mqtt.const import MQTT_BROKER_PORT, MQTT_PORT
 from .mqtt.server import ElegooMQTTBroker
 from .sdcp.exceptions import ElegooPrinterConnectionError
 from .sdcp.models.elegoo_image import ElegooImage
@@ -241,19 +241,47 @@ class ElegooPrinterApiClient:
         elif printer.transport_type == TransportType.MQTT:
             logger.info("Using MQTT transport for printer %s", printer.name)
 
-            # Start embedded MQTT broker (always enabled for MQTT printers)
-            printer = await self._setup_mqtt_broker_if_enabled(printer)
-            if printer is None:
-                # Broker failed to start
-                return None
+            external_ip = getattr(printer, "external_ip", None)
+            mqtt_external_host = getattr(printer, "mqtt_external_host", None)
 
-            # Always use embedded broker on localhost
-            mqtt_host = "localhost"
-            mqtt_port = self.mqtt_broker.port if self.mqtt_broker else MQTT_BROKER_PORT
+            if mqtt_external_host:
+                # Use an external broker (e.g. Mosquitto) instead of starting
+                # the embedded one.
+                mqtt_host = mqtt_external_host
+                mqtt_external_port = getattr(printer, "mqtt_external_port", None)
+                mqtt_port = int(mqtt_external_port) if mqtt_external_port else MQTT_PORT
+                # The printer should dial the external broker's own address by
+                # default; external_ip remains an explicit override for setups
+                # where mqtt_external_host (e.g. a Docker-internal name) isn't
+                # what the printer can reach on the LAN.
+                advertise_host = external_ip or mqtt_external_host
+                logger.info(
+                    "Using external MQTT broker %s:%s for printer %s",
+                    mqtt_host,
+                    mqtt_port,
+                    printer.name,
+                )
+            else:
+                # Start embedded MQTT broker (always enabled for MQTT printers)
+                printer = await self._setup_mqtt_broker_if_enabled(printer)
+                if printer is None:
+                    # Broker failed to start
+                    return None
+                mqtt_host = "localhost"
+                mqtt_port = (
+                    self.mqtt_broker.port if self.mqtt_broker else MQTT_BROKER_PORT
+                )
+                # The printer always needs a LAN-reachable address for the M66666
+                # redirect command -- "localhost" on its own firmware means its own
+                # loopback, not Home Assistant.
+                advertise_host = PrinterData.get_local_ip(
+                    printer.ip_address, external_ip
+                )
 
             self.client = ElegooMqttClient(
                 mqtt_host=mqtt_host,
                 mqtt_port=mqtt_port,
+                advertise_host=advertise_host,
                 logger=logger,
                 printer=printer,
             )
