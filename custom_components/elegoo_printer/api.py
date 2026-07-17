@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from logging import Logger
     from types import MappingProxyType
 
+    import aiohttp
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
@@ -57,6 +58,24 @@ def _sanitize_url_for_log(url: str) -> str:
     if "@" in netloc:
         netloc = netloc.rpartition("@")[-1]
     return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
+def _create_gcode_proxy(
+    config: MappingProxyType[str, Any],
+    session: aiohttp.ClientSession,
+    printer_name: str,
+    logger: Logger,
+) -> GCodeProxyClient | None:
+    """Create a GCode proxy client if configured, otherwise return None."""
+    gcode_proxy_url = config.get(CONF_GCODE_PROXY_URL)
+    if not gcode_proxy_url:
+        return None
+    logger.info(
+        "GCode proxy configured at %s for printer %s",
+        _sanitize_url_for_log(gcode_proxy_url),
+        printer_name,
+    )
+    return GCodeProxyClient(gcode_proxy_url, session)
 
 
 class ElegooPrinterApiClient:
@@ -202,18 +221,7 @@ class ElegooPrinterApiClient:
 
             # CC2 printers run their own MQTT broker - no embedded broker needed
             access_code = config.get(CONF_CC2_ACCESS_CODE)
-            gcode_proxy_url = config.get(CONF_GCODE_PROXY_URL)
-            gcode_proxy = None
-            if gcode_proxy_url and hass:
-                gcode_proxy = GCodeProxyClient(
-                    gcode_proxy_url,
-                    async_get_clientsession(hass),
-                )
-                logger.info(
-                    "GCode proxy configured at %s for printer %s",
-                    _sanitize_url_for_log(gcode_proxy_url),
-                    printer.name,
-                )
+            gcode_proxy = _create_gcode_proxy(config, session, printer.name, logger)
             self.client = ElegooCC2Client(
                 printer_ip=printer.ip_address or "",
                 serial_number=printer.id or "",
@@ -255,15 +263,7 @@ class ElegooPrinterApiClient:
             self._mqtt_port = mqtt_port
         else:
             logger.info("Using WebSocket/SDCP protocol for printer %s", printer.name)
-            gcode_proxy_url = config.get(CONF_GCODE_PROXY_URL)
-            gcode_proxy = None
-            if gcode_proxy_url:
-                gcode_proxy = GCodeProxyClient(gcode_proxy_url, session)
-                logger.info(
-                    "GCode proxy configured at %s for printer %s",
-                    _sanitize_url_for_log(gcode_proxy_url),
-                    printer.name,
-                )
+            gcode_proxy = _create_gcode_proxy(config, session, printer.name, logger)
             self.client = ElegooPrinterClient(
                 printer.ip_address,
                 config=config,
