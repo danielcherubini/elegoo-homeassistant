@@ -25,9 +25,20 @@ class AMSTray:
         # Pad to 2 digits for sensor compatibility (00, 01, 02, 03)
         tray_id = data.get("tray_id", -1)
         self.id: str = str(tray_id).zfill(2) if tray_id >= 0 else ""
-        self.brand: str = data.get("brand", "")
-        self.filament_type: str = data.get("filament_type", "")
-        self.filament_name: str = data.get("filament_name", "")
+        brand = data.get("brand") or ""
+        if brand.startswith("—"):
+            brand = ""
+        self.brand: str = brand
+
+        filament_type = data.get("filament_type") or ""
+        if filament_type == "?":
+            filament_type = ""
+        self.filament_type: str = filament_type
+
+        filament_name = data.get("filament_name") or ""
+        if filament_name.startswith("—"):
+            filament_name = ""
+        self.filament_name: str = filament_name
 
         # Add # prefix to color if not present
         color = data.get("filament_color", "")

@@ -74,18 +74,6 @@ DEFAULT_PORT = 54780
 GCODE_PROXY_RETRY_SECONDS = 60
 
 
-def normalize_cc1_canvas_data(data: dict[str, Any]) -> None:
-    """Normalize CC1 Canvas tray placeholders in-place."""
-    for canvas in data.get("canvas_list", []):
-        for tray in canvas.get("tray_list", []):
-            if (tray.get("brand") or "").startswith("—"):
-                tray["brand"] = ""
-            if tray.get("filament_type") == "?":
-                tray["filament_type"] = ""
-            if (tray.get("filament_name") or "").startswith("—"):
-                tray["filament_name"] = ""
-
-
 class ElegooPrinterClient:
     """
     Client for interacting with an Elegoo printer.
@@ -856,7 +844,6 @@ class ElegooPrinterClient:
                 self.logger.debug("Canvas status request returned Ack=%s", ack)
                 return
 
-            normalize_cc1_canvas_data(data)
             ams_status = AMSStatus(data)
             self.printer_data.ams_status = ams_status
             self.logger.debug("Canvas status updated: %s", ams_status)
