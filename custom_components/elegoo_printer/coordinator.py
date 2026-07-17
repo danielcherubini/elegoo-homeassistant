@@ -87,7 +87,6 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
 
             if (
                 self._has_canvas
-                and hasattr(api.client, "get_canvas_status")
                 and (
                     self._last_canvas_check is None
                     or now - self._last_canvas_check >= self._canvas_check_interval
