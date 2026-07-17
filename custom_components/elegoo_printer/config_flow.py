@@ -30,6 +30,8 @@ from .const import (
     CONF_EXTERNAL_IP,
     CONF_GCODE_PROXY_URL,
     CONF_HAS_CANVAS,
+    CONF_MQTT_EXTERNAL_HOST,
+    CONF_MQTT_EXTERNAL_PORT,
     CONF_PROXY_ENABLED,
     DOMAIN,
     LOGGER,
@@ -1223,18 +1225,48 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         }
         printer = Printer.from_dict(current_settings)
 
-        if user_input is not None:
-            printer.ip_address = user_input.get(CONF_IP_ADDRESS, printer.ip_address)
-            return self.async_create_entry(
-                title=printer.name,
-                data=printer.to_dict(),
-            )
-
         data_schema = {
             vol.Required(CONF_IP_ADDRESS): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
             ),
+            vol.Optional(CONF_EXTERNAL_IP): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
+            ),
+            vol.Optional(CONF_MQTT_EXTERNAL_HOST): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
+            ),
+            vol.Optional(CONF_MQTT_EXTERNAL_PORT): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
+            ),
         }
+
+        if user_input is not None:
+            printer.ip_address = user_input.get(CONF_IP_ADDRESS, printer.ip_address)
+            printer.external_ip = user_input.get(CONF_EXTERNAL_IP)
+            printer.mqtt_external_host = user_input.get(CONF_MQTT_EXTERNAL_HOST)
+
+            port_raw = (user_input.get(CONF_MQTT_EXTERNAL_PORT) or "").strip()
+            if port_raw:
+                if not port_raw.isdigit() or not (
+                    1 <= int(port_raw) <= 65535  # noqa: PLR2004
+                ):
+                    _errors[CONF_MQTT_EXTERNAL_PORT] = "mqtt_external_port_invalid"
+                    return self.async_show_form(
+                        step_id="mqtt_options",
+                        data_schema=self.add_suggested_values_to_schema(
+                            vol.Schema(data_schema),
+                            suggested_values=user_input,
+                        ),
+                        errors=_errors,
+                    )
+                printer.mqtt_external_port = port_raw
+            else:
+                printer.mqtt_external_port = None
+
+            return self.async_create_entry(
+                title=printer.name,
+                data=printer.to_dict(),
+            )
 
         return self.async_show_form(
             step_id="mqtt_options",
