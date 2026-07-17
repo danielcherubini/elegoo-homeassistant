@@ -26,8 +26,6 @@ from homeassistant.const import (
 )
 from homeassistant.helpers.typing import StateType
 
-from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
-
 from .sdcp.models.ams import AMSTray
 from .sdcp.models.enums import (
     ElegooErrorStatusReason,
@@ -36,6 +34,15 @@ from .sdcp.models.enums import (
     ElegooPrintStatus,
 )
 from .sdcp.models.printer import PrinterData
+from .websocket.client import ElegooPrinterClient
+
+_FDM_STATUS_THRESHOLD = 100
+_RESIN_PRINT_STATUS_OPTIONS: list[str] = [
+    s.name.lower() for s in ElegooPrintStatus if s.value < _FDM_STATUS_THRESHOLD
+]
+_FDM_PRINT_STATUS_OPTIONS: list[str] = [
+    s.name.lower() for s in ElegooPrintStatus
+]
 
 
 def _has_valid_current_coords(printer_data: PrinterData) -> bool:
@@ -391,6 +398,28 @@ def _get_closest_print_speed_preset(
     return closest_name
 
 
+def _print_status_sensor(
+    options: list[str],
+) -> ElegooPrinterSensorEntityDescription:
+    """Build a print_status sensor with the given options list."""
+    return ElegooPrinterSensorEntityDescription(
+        key="print_status",
+        translation_key="print_status",
+        name="Print Status",
+        icon="mdi:file",
+        device_class=SensorDeviceClass.ENUM,
+        options=options,
+        value_fn=lambda printer_data: (
+            printer_data.status.print_info.status.name.lower()
+            if printer_data
+            and printer_data.status
+            and printer_data.status.print_info
+            and printer_data.status.print_info.status
+            else None
+        ),
+    )
+
+
 # Attributes common to both V1 (MQTT) and V3 (WebSocket/SDCP) printers
 PRINTER_ATTRIBUTES_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
     ElegooPrinterSensorEntityDescription(
@@ -696,22 +725,6 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         ),
     ),
     ElegooPrinterSensorEntityDescription(
-        key="print_status",
-        translation_key="print_status",
-        name="Print Status",
-        icon="mdi:file",
-        device_class=SensorDeviceClass.ENUM,
-        options=[status.name.lower() for status in ElegooPrintStatus],
-        value_fn=lambda printer_data: (
-            printer_data.status.print_info.status.name.lower()
-            if printer_data
-            and printer_data.status
-            and printer_data.status.print_info
-            and printer_data.status.print_info.status
-            else None
-        ),
-    ),
-    ElegooPrinterSensorEntityDescription(
         key="print_error",
         translation_key="print_error",
         name="Print Error",
@@ -747,6 +760,7 @@ PRINTER_STATUS_COMMON: tuple[ElegooPrinterSensorEntityDescription, ...] = (
 )
 
 PRINTER_STATUS_RESIN: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+    _print_status_sensor(_RESIN_PRINT_STATUS_OPTIONS),
     ElegooPrinterSensorEntityDescription(
         key="temp_of_uvled",
         name="UV LED Temp",
@@ -800,6 +814,7 @@ PRINTER_STATUS_RESIN_VAT_HEATER: tuple[ElegooPrinterSensorEntityDescription, ...
 
 
 PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
+    _print_status_sensor(_FDM_PRINT_STATUS_OPTIONS),
     # --- Enclosure/Box Temperature Sensor ---
     ElegooPrinterSensorEntityDescription(
         key="temp_of_box",
