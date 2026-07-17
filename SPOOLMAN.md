@@ -18,21 +18,21 @@ All approaches require:
 
 ---
 
-## Centauri Carbon 2 — Automated Per-Slot Tracking
+## Centauri Carbon & Centauri Carbon 2 — Automated Per-Slot Tracking
 
 ### Architecture
 
 ```mermaid
 flowchart LR
-  subgraph cc2Flow [CC2 - Per-Slot via Proxy]
+  subgraph cc2Flow [CC1 & CC2 - Per-Slot via Proxy]
     Slicer2[ElegooSlicer] -->|upload| Proxy[GCode Capture Proxy]
     Proxy -->|JSON metadata| HAElegoo2[HA Elegoo Integration]
-    CC2Printer[CC2 Printer] -->|MQTT| HAElegoo2
+    CC2Printer[Printer] -->|"MQTT / WebSocket"| HAElegoo2
     HAElegoo2 -->|"A1-A4 sensors"| Cache2["Cache Automation (input_text JSON)"]
     Cache2 -->|"on complete"| Auto2[Spoolman Push Automation]
   end
 
-  subgraph cc1Flow [CC1 - Filename Workaround]
+  subgraph cc1Flow [CC1 without proxy - Filename Workaround]
     Slicer1["ElegooSlicer (custom filename)"] -->|upload| CC1Printer[CC1 Printer]
     CC1Printer -->|MQTT| HAElegoo1[HA Elegoo Integration]
     HAElegoo1 -->|"filename cached by existing automation"| Auto1[Spoolman Push Automation]
@@ -50,6 +50,12 @@ flowchart LR
 Uses the [elegoo-printer-proxy](https://github.com/lantern-eight/elegoo-printer-proxy) to capture per-slot filament data from each uploaded gcode file. The proxy parses `; filament used [g]` and `; filament_settings_id` from the gcode to determine how much each Canvas slot uses and what filament is loaded.
 
 The integration exposes this data as sensors when the proxy URL is configured (Settings → Integrations → Elegoo → Configure):
+
+> **This chain applies to both printers.** Examples below use the CC2's
+> entity ids; for a Centauri Carbon (CC1), substitute `centauri_carbon_`
+> for `centauri_carbon_2_` in every entity id and create the matching
+> `input_text.centauri_carbon_cached_slot_data` helper. Duplicate the
+> cache, reset, and push automations once per printer.
 
 **Proxy-only sensors** (created only when a proxy URL is configured):
 * `sensor.centauri_carbon_2_a1_grams` through `a4_grams` — per-slot planned weight
@@ -283,18 +289,30 @@ update_spoolman_from_filament_name:
 
 Caches the per-slot filament names and grams as JSON into the `input_text` helper whenever the proxy sensors populate. Required because the sensors clear to "unknown" on print complete.
 
+**Trigger on all four slot sensors, with `mode: restart` and a settle
+delay.** The integration writes the four slot sensors one after another
+through the state machine, so an automation that triggers on slot 1
+alone and reads immediately can snapshot slots 2–4 at their *previous*
+print's values — a multi-color print then caches one real slot and
+zeros for the rest, and Spoolman gets under-deducted. Any slot updating
+restarts the delay, so the final write always sees a complete set.
+
 ```yaml
 alias: Cache CC2 Slot Data
-mode: single
+mode: restart
 triggers:
   - entity_id:
       - sensor.centauri_carbon_2_a1_grams
+      - sensor.centauri_carbon_2_a2_grams
+      - sensor.centauri_carbon_2_a3_grams
+      - sensor.centauri_carbon_2_a4_grams
     trigger: state
 conditions:
   - condition: template
     value_template: >
       {{ trigger.to_state.state not in ['unknown', 'unavailable'] }}
 actions:
+  - delay: "00:00:02"
   - action: input_text.set_value
     target:
       entity_id: input_text.centauri_carbon_2_cached_slot_data
@@ -314,6 +332,44 @@ actions:
           'a4': {'name': '' if n4 in ['unknown','unavailable'] else n4,
                  'grams': states('sensor.centauri_carbon_2_a4_grams') | float(0) | round(2)}
         } | to_json }}
+```
+
+### Automation: Reset CC2 Slot Cache on New Job
+
+Zeroes the cache whenever a new task id appears. Without this, a print
+whose upload never reached the capture proxy (for example, the slicer
+was re-added via auto-discovery and uploaded directly to the printer)
+leaves the *previous* print's cache in place — and the completion push
+silently deducts the old print's filament from Spoolman a second time.
+With the reset, an uncaptured print pushes nothing.
+
+Task id is the trigger rather than filename because re-printing the
+same file (multi-plate projects) keeps the filename but always issues
+a fresh task id.
+
+```yaml
+alias: Reset CC2 Slot Cache on New Job
+mode: single
+triggers:
+  - entity_id:
+      - sensor.centauri_carbon_2_task_id
+    trigger: state
+conditions:
+  - condition: template
+    value_template: >
+      {{ trigger.to_state.state not in ['unknown', 'unavailable', '']
+         and trigger.from_state is not none
+         and trigger.to_state.state != trigger.from_state.state }}
+actions:
+  - action: input_text.set_value
+    target:
+      entity_id: input_text.centauri_carbon_2_cached_slot_data
+    data:
+      value: >
+        {{ {'a1': {'name': '', 'grams': 0},
+            'a2': {'name': '', 'grams': 0},
+            'a3': {'name': '', 'grams': 0},
+            'a4': {'name': '', 'grams': 0}} | to_json }}
 ```
 
 ### Automation: CC2 Spoolman Update
@@ -372,9 +428,13 @@ actions:
 
 ---
 
-## Centauri Carbon — Stock Firmware Filename Workaround
+## Centauri Carbon — Stock Firmware Filename Workaround (no proxy, single filament print)
 
-For the Centauri Carbon on stock firmware (no OpenCentauri), there is no Total Extrusion sensor. This workaround embeds the filament name and planned weight into the filename using ElegooSlicer template variables, then parses them on print complete.
+> **If you run the gcode capture proxy, skip this section** — the CC1
+> gets full per-slot tracking through the same chain as the CC2, [documented
+> above](#centauri-carbon--centauri-carbon-2--automated-per-slot-tracking).
+
+For the Centauri Carbon on stock firmware without the capture proxy, there is no per-slot data source and no Total Extrusion sensor. This workaround embeds the filament name and planned weight into the filename using ElegooSlicer template variables, then parses them on print complete. It tracks a single filament per print (no per-slot breakdown). Works for CC1's without a canvas, or single filament print.
 
 ### ElegooSlicer setup
 
