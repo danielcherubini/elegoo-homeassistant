@@ -118,6 +118,9 @@ def _normalize_gcode_proxy_base_url(raw: str) -> str | None:
     return f"{scheme}://{cleaned}"
 
 
+# Total budget for CC1 Canvas detection (WS handshake + first status push).
+_CANVAS_DETECT_TIMEOUT: float = 5
+
 MANUAL_IP_SCHEMA = vol.Schema(
     {
         vol.Required(
@@ -401,23 +404,28 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         ws_url = f"ws://{printer.ip_address}:{WEBSOCKET_PORT}/websocket"
         session = async_get_clientsession(self.hass)
         try:
-            async with session.ws_connect(ws_url) as ws:
-                async with asyncio.timeout(3):
-                    async for msg in ws:
-                        if msg.type != aiohttp.WSMsgType.TEXT:
-                            break
-                        parsed = json.loads(msg.data)
-                        topic = parsed.get("Topic", "")
-                        if "status" in topic:
-                            status_data = (
-                                parsed.get("Data", {}).get("Data", {}).get("Status", {})
-                            )
-                            ams_connect = status_data.get("AmsConnectStatus", 0)
-                            LOGGER.debug(
-                                "CC1 Canvas detection: AmsConnectStatus=%s",
-                                ams_connect,
-                            )
-                            return bool(ams_connect)
+            # The timeout must cover ws_connect too: a device that accepts TCP
+            # but never completes the WS handshake would otherwise hang the
+            # config flow on HA's shared session (no handshake timeout).
+            async with (
+                asyncio.timeout(_CANVAS_DETECT_TIMEOUT),
+                session.ws_connect(ws_url) as ws,
+            ):
+                async for msg in ws:
+                    if msg.type != aiohttp.WSMsgType.TEXT:
+                        break
+                    parsed = json.loads(msg.data)
+                    topic = parsed.get("Topic", "")
+                    if "status" in topic:
+                        status_data = (
+                            parsed.get("Data", {}).get("Data", {}).get("Status", {})
+                        )
+                        ams_connect = status_data.get("AmsConnectStatus", 0)
+                        LOGGER.debug(
+                            "CC1 Canvas detection: AmsConnectStatus=%s",
+                            ams_connect,
+                        )
+                        return bool(ams_connect)
         except (TimeoutError, aiohttp.ClientError, json.JSONDecodeError):
             LOGGER.debug("CC1 Canvas detection failed — assuming no Canvas")
         return False

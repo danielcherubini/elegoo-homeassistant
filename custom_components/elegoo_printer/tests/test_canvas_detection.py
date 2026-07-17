@@ -145,3 +145,33 @@ class TestCanvasDetectionWs:
             assert result is False
 
         asyncio.run(_run())
+
+    def test_hanging_handshake_returns_false(self) -> None:
+        """A ws_connect that never completes is bounded by the outer timeout."""
+
+        class _HangingWS:
+            async def __aenter__(self) -> Self:
+                await asyncio.Event().wait()  # never set — hangs forever
+                return self
+
+            async def __aexit__(self, *args: object) -> None:
+                pass
+
+        async def _run() -> None:
+            flow = _make_flow()
+            with (
+                patch(
+                    "custom_components.elegoo_printer.config_flow.async_get_clientsession",
+                    return_value=MagicMock(
+                        ws_connect=MagicMock(return_value=_HangingWS())
+                    ),
+                ),
+                patch(
+                    "custom_components.elegoo_printer.config_flow._CANVAS_DETECT_TIMEOUT",
+                    0.05,
+                ),
+            ):
+                result = await flow._async_detect_canvas(_make_printer())
+            assert result is False
+
+        asyncio.run(_run())
