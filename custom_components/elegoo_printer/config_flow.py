@@ -33,6 +33,7 @@ from .const import (
     CONF_PROXY_ENABLED,
     DOMAIN,
     LOGGER,
+    WEBSOCKET_PORT,
 )
 from .sdcp.exceptions import (
     ElegooConfigFlowConnectionError,
@@ -395,7 +396,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Detect Canvas on CC1 by reading AmsConnectStatus from status push."""
         import aiohttp  # noqa: PLC0415
 
-        ws_url = f"ws://{printer.ip_address}:3030/websocket"
+        ws_url = f"ws://{printer.ip_address}:{WEBSOCKET_PORT}/websocket"
         session = async_get_clientsession(self.hass)
         try:
             async with session.ws_connect(ws_url) as ws:

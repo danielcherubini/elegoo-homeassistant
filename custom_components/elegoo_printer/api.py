@@ -26,6 +26,7 @@ from .const import (
     FIRMWARE_SERVICE_BASE_URL,
     FIRMWARE_UPDATE_ENDPOINT,
     LOGGER,
+    WEBSOCKET_PORT,
 )
 from .mqtt.client import ElegooMqttClient
 from .mqtt.const import MQTT_BROKER_PORT
@@ -664,7 +665,7 @@ class ElegooPrinterApiClient:
                 # Only rewrite if the URL points to our printer
                 if self.printer.ip_address in netloc:
                     # Force proxy host:port
-                    new_netloc = f"{proxy_ip}:3030"
+                    new_netloc = f"{proxy_ip}:{WEBSOCKET_PORT}"
                     # Merge/replace query id
                     q = dict(parse_qsl(parts.query, keep_blank_values=True))
                     q["id"] = self.printer.id
