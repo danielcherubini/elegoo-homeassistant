@@ -21,7 +21,7 @@ from custom_components.elegoo_printer.sdcp.models.status import (
     LightStatus,
     PrinterStatus,
     PrintInfo,
-    _percent_complete,
+    compute_percent_complete,
 )
 
 from .const import (
@@ -274,7 +274,7 @@ class CC2StatusMapper:
         print_info.progress = int(progress) if progress is not None else None
 
         # Calculate percent complete
-        print_info.percent_complete = _percent_complete(
+        print_info.percent_complete = compute_percent_complete(
             print_info.status,
             printer_type,
             print_info.progress,

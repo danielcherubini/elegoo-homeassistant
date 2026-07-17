@@ -171,7 +171,7 @@ class TestPrinterStatusIntegration:
 
 
 class TestCC2PercentComplete:
-    """CC2 path delegates to the shared _percent_complete function."""
+    """CC2 path delegates to the shared compute_percent_complete function."""
 
     @staticmethod
     def _cc2_payload(sub_status: int, progress: int | None = None) -> dict:

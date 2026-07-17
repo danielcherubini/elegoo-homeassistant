@@ -92,7 +92,7 @@ _FDM_ACTIVE_STATUSES: frozenset[ElegooPrintStatus] = _RESIN_ACTIVE_STATUSES | {
 }
 
 
-def _percent_complete(
+def compute_percent_complete(
     status: "ElegooPrintStatus | None",
     printer_type: "PrinterType | None",
     progress: int | None,
@@ -103,6 +103,7 @@ def _percent_complete(
     Percent complete clamped to [0, 100], or None outside an active job.
 
     Reported only during job-active statuses to avoid leaking stale values.
+    Shared by PrintInfo (CC1/resin) and the CC2 status mapper.
     """
     active_statuses = (
         _FDM_ACTIVE_STATUSES
@@ -192,7 +193,7 @@ class PrintInfo:
         self.print_speed_pct: int = data.get("PrintSpeedPct", 100)
         self.end_time = None
         # percent_complete is optional when printer is idle/unknown
-        self.percent_complete: float | None = _percent_complete(
+        self.percent_complete: float | None = compute_percent_complete(
             self.status,
             printer_type,
             self.progress,
