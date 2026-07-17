@@ -403,7 +403,7 @@ class ElegooPrinterClient:
     async def get_canvas_status(self) -> dict[str, Any] | None:
         """Get Canvas/AMS status including filament colors and active tray."""
         await self._send_printer_cmd(CMD_GET_CANVAS_STATUS, {})
-        return None
+        return self.printer_data.ams_status
 
     async def _send_printer_cmd(
         self, cmd: int, data: dict[str, Any] | None = None
