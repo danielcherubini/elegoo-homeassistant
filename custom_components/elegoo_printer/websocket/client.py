@@ -388,10 +388,15 @@ class ElegooPrinterClient:
         data = {"TempTargetHotbed": clamped_temperature}
         await self._send_printer_cmd(CMD_CONTROL_DEVICE, data)
 
-    async def get_canvas_status(self) -> dict[str, Any] | None:
-        """Get Canvas/AMS status including filament colors and active tray."""
+    async def get_canvas_status(self) -> None:
+        """
+        Request Canvas/AMS status (filament colors, active tray).
+
+        SDCP replies asynchronously: the response arrives as a push frame
+        handled by _canvas_handler, which stores the parsed result in
+        printer_data.ams_status. Nothing useful is available to return here.
+        """
         await self._send_printer_cmd(CMD_GET_CANVAS_STATUS, {})
-        return self.printer_data.ams_status
 
     async def _send_printer_cmd(
         self, cmd: int, data: dict[str, Any] | None = None
