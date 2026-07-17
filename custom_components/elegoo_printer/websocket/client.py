@@ -766,13 +766,7 @@ class ElegooPrinterClient:
         # SDCP status may report a storage path (e.g. /local/file.gcode);
         # the proxy archives by the bare upload filename.
         query_name = filename.rsplit("/", 1)[-1]
-        try:
-            payload = await self._gcode_proxy.fetch_filament_data(query_name)
-        except (TimeoutError, OSError, aiohttp.ClientError) as exc:
-            self.logger.debug(
-                "Gcode proxy fetch failed for %s: %s (will retry)", filename, exc
-            )
-            return
+        payload = await self._gcode_proxy.fetch_filament_data(query_name)
         if not payload:
             self.logger.debug("No gcode proxy data for %s (will retry)", filename)
             return
