@@ -1301,6 +1301,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         placeholders = {"printer_model": printer.model or printer.name or "Printer"}
 
         if user_input is not None:
+            printer.ip_address = user_input[CONF_IP_ADDRESS]
             proxy_url, proxy_error = await self._async_validate_gcode_proxy(
                 user_input.get(CONF_GCODE_PROXY_URL)
             )

@@ -133,7 +133,7 @@ The recommended way to install this integration is through the [Home Assistant C
 1. Go to **Settings** > **Devices & Services**.
 2. Click **"Add Integration"** and search for **"Elegoo Printers"**.
 3. The integration will attempt to **auto-discover** printers on your network.
-4. If no printer is found, select **"Configure manually"** and enter your printer's IP address. 
+4. If no printer is found, select **"Configure manually"** and enter your printer's IP address or hostname.
 
 **Note:** If **auto-discovery** didn't work, you may need some [advanced network setup](https://github.com/danielcherubini/elegoo-homeassistant/wiki/Connecting-Elegoo-Printers-to-Home-Assistant-Across-Different-Networks).
 
