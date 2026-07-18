@@ -22,7 +22,7 @@
           "gcode_proxy_url": "GCode 代理 URL（可选）"
         },
         "data_description": {
-          "gcode_proxy_url": "cc2-gcode-capture-proxy 的基础 URL（主机、主机:端口或 http(s) URL；省略协议时默认使用 http）。留空则禁用。"
+          "gcode_proxy_url": "elegoo-printer-proxy 的基础 URL（主机、主机:端口或 http(s) URL；省略协议时默认使用 http）。留空则禁用。"
         }
       },
       "mqtt_options": {
@@ -33,15 +33,20 @@
         }
       },
       "websocket_options": {
-        "title": "打印机选项",
-        "description": "如需配置帮助，请查看项目 GitHub 页面。",
+        "title": "{printer_model} 选项",
+        "description": "配置您的 {printer_model} 打印机设置。",
         "data": {
           "ip_address": "打印机 IP 地址",
           "proxy_enabled": "启用代理服务器",
+          "has_canvas": "已安装 Canvas/AMS",
+          "gcode_proxy_url": "GCode 代理 URL（可选）",
           "external_ip": "外部地址（可选，用于高级网络设置）"
         },
         "data_description": {
-          "external_ip": "用 IP 地址或主机名覆盖自动检测到的地址。留空以进行自动检测。用于 Kubernetes/Docker 设置或在反向代理后面。端口 3030 和 3031 将自动添加。"
+          "proxy_enabled": "通过 Home Assistant 内的单一连接路由打印机命令和摄像头流，绕过打印机的同时连接限制。",
+          "has_canvas": "为已连接的 Canvas (AMS) 多材料单元启用每个插槽的耗材实体。",
+          "gcode_proxy_url": "elegoo-printer-proxy 的基础 URL（主机、主机:端口或 http(s) URL。省略协议时默认使用 HTTP）。留空则禁用。",
+          "external_ip": "仅由内置代理服务器使用：其他设备访问它时应使用的地址。留空以自动检测 Home Assistant 的地址。用于 Kubernetes/Docker 或反向代理设置。端口 3030 和 3031 会自动添加。"
         }
       }
     }
@@ -70,7 +75,8 @@
         "title": "FDM 打印机选项",
         "description": "为选定的打印机配置额外的选项。查看项目 GitHub 页面以获取有关代理服务器的更多信息。",
         "data": {
-          "proxy_enabled": "启用代理服务器"
+          "proxy_enabled": "启用代理服务器",
+          "has_canvas": "已安装 Canvas/AMS"
         }
       },
       "resin_options": {
@@ -138,9 +144,24 @@
           "complete": "完成",
           "file_checking": "检查文件",
           "recovery": "恢复",
+          "printing_recovery": "打印恢复",
           "loading": "加载中",
           "preheating": "预热中",
-          "leveling": "调平"
+          "leveling": "调平",
+          "printers_checking": "打印机检查",
+          "resuming": "正在恢复",
+          "error": "错误",
+          "resonance_testing": "共振测试",
+          "print_started": "打印已开始",
+          "auto_leveling_completed": "自动调平完成",
+          "preheating_completed": "预热完成",
+          "homing_completed": "归位完成",
+          "resonance_testing_completed": "共振测试完成",
+          "auto_feeding": "自动进料",
+          "filament_unloading": "耗材卸载中",
+          "filament_unload_abnormal": "耗材卸载异常",
+          "filament_unload_paused": "耗材卸载已暂停",
+          "unrecognized": "未识别"
         }
       },
       "current_status": {

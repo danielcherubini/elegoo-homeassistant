@@ -35,6 +35,7 @@ CMD_RETRIEVE_HISTORICAL_TASKS = 320
 CMD_RETRIEVE_TASK_DETAILS = 321
 CMD_DELETE_HISTORY = 322  # Centauri Carbon 2
 CMD_EXPORT_TIME_LAPSE = 323  # Centauri Carbon 2
+CMD_GET_CANVAS_STATUS = 324  # Canvas/AMS status (Centauri Carbon 1 with Canvas)
 
 # Video Stream Commands
 CMD_SET_VIDEO_STREAM = 386

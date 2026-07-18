@@ -22,7 +22,7 @@
           "gcode_proxy_url": "URL du proxy GCode (optionnel)"
         },
         "data_description": {
-          "gcode_proxy_url": "URL de base du cc2-gcode-capture-proxy (hôte, hôte:port ou URL http(s) ; http est utilisé si vous omettez le schéma). Laisser vide pour désactiver."
+          "gcode_proxy_url": "URL de base du elegoo-printer-proxy (hôte, hôte:port ou URL http(s) ; http est utilisé si vous omettez le schéma). Laisser vide pour désactiver."
         }
       },
       "mqtt_options": {
@@ -33,15 +33,20 @@
         }
       },
       "websocket_options": {
-        "title": "Options d'imprimante",
-        "description": "Pour de l'aide sur la configuration, veuillez consulter la page GitHub du projet.",
+        "title": "Options {printer_model}",
+        "description": "Configurez les paramètres de votre imprimante {printer_model}.",
         "data": {
           "ip_address": "Adresse IP de l'imprimante",
           "proxy_enabled": "Activer le serveur proxy",
+          "has_canvas": "Canvas/AMS installé",
+          "gcode_proxy_url": "URL du proxy GCode (optionnel)",
           "external_ip": "Adresse externe (optionnel, pour des configurations réseau avancées)"
         },
         "data_description": {
-          "external_ip": "Remplacer l'adresse détectée automatiquement par une adresse IP ou un nom d'hôte. Laisser vide pour la détection automatique. À utiliser pour les configurations Kubernetes/Docker ou derrière un proxy inverse. Les ports 3030 et 3031 seront ajoutés automatiquement."
+          "proxy_enabled": "Achemine les commandes de l'imprimante et le flux caméra via une connexion unique dans Home Assistant, contournant la limite de connexions simultanées de l'imprimante.",
+          "has_canvas": "Active les entités de filament par emplacement pour une unité Canvas (AMS) multi-matériaux connectée.",
+          "gcode_proxy_url": "URL de base du elegoo-printer-proxy (hôte, hôte:port ou URL http(s). HTTP est utilisé si vous omettez le schéma). Laisser vide pour désactiver.",
+          "external_ip": "Utilisé uniquement par le serveur proxy intégré : l'adresse que les autres appareils doivent utiliser pour l'atteindre. Laisser vide pour détecter automatiquement l'adresse de Home Assistant. Pour les configurations Kubernetes/Docker ou proxy inverse. Les ports 3030 et 3031 sont ajoutés automatiquement."
         }
       }
     }
@@ -70,7 +75,8 @@
         "title": "Options Imprimante FDM",
         "description": "Configurez des options supplémentaires pour votre imprimante sélectionnée. Consultez la page GitHub du projet pour plus d'informations sur le serveur proxy.",
         "data": {
-          "proxy_enabled": "Activer le serveur proxy"
+          "proxy_enabled": "Activer le serveur proxy",
+          "has_canvas": "Canvas/AMS installé"
         }
       },
       "resin_options": {
@@ -138,9 +144,24 @@
           "complete": "Complet",
           "file_checking": "Vérification du fichier",
           "recovery": "Récupération",
+          "printing_recovery": "Récupération d'impression",
           "loading": "Chargement",
           "preheating": "Préchauffage",
-          "leveling": "Nivellement"
+          "leveling": "Nivellement",
+          "printers_checking": "Vérification de l'imprimante",
+          "resuming": "Reprise",
+          "error": "Erreur",
+          "resonance_testing": "Test de résonance",
+          "print_started": "Impression démarrée",
+          "auto_leveling_completed": "Nivellement automatique terminé",
+          "preheating_completed": "Préchauffage terminé",
+          "homing_completed": "Retour à l'origine terminé",
+          "resonance_testing_completed": "Test de résonance terminé",
+          "auto_feeding": "Alimentation automatique",
+          "filament_unloading": "Déchargement du filament",
+          "filament_unload_abnormal": "Déchargement du filament anormal",
+          "filament_unload_paused": "Déchargement du filament en pause",
+          "unrecognized": "Non reconnu"
         }
       },
       "current_status": {

@@ -21,6 +21,7 @@ from custom_components.elegoo_printer.sdcp.models.status import (
     LightStatus,
     PrinterStatus,
     PrintInfo,
+    compute_percent_complete,
 )
 
 from .const import (
@@ -202,7 +203,7 @@ class CC2StatusMapper:
     def _map_print_info(
         cls,
         cc2_data: dict[str, Any],
-        printer_type: PrinterType | None = None,  # noqa: ARG003
+        printer_type: PrinterType | None = None,
     ) -> PrintInfo:
         """
         Map CC2 print info to PrintInfo.
@@ -273,30 +274,13 @@ class CC2StatusMapper:
         print_info.progress = int(progress) if progress is not None else None
 
         # Calculate percent complete
-        active_statuses = {
-            ElegooPrintStatus.PRINTING,
-            ElegooPrintStatus.PAUSED,
-            ElegooPrintStatus.PAUSING,
-            ElegooPrintStatus.PREHEATING,
-            ElegooPrintStatus.LEVELING,
-        }
-        if print_info.status in active_statuses:
-            if print_info.progress is not None:
-                print_info.percent_complete = max(0, min(100, int(print_info.progress)))
-            elif (
-                print_info.current_layer is not None
-                and print_info.total_layers is not None
-                and print_info.total_layers > 0
-            ):
-                print_info.percent_complete = max(
-                    0,
-                    min(
-                        100,
-                        round(print_info.current_layer / print_info.total_layers * 100),
-                    ),
-                )
-        else:
-            print_info.percent_complete = None
+        print_info.percent_complete = compute_percent_complete(
+            print_info.status,
+            printer_type,
+            print_info.progress,
+            print_info.current_layer,
+            print_info.total_layers,
+        )
 
         # Map print speed from gcode_move/gcode_move_inf speed_mode
         gcode_move = cc2_data.get("gcode_move_inf", {})

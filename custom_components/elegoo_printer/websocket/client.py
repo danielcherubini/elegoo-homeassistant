@@ -26,6 +26,7 @@ from custom_components.elegoo_printer.const import (
 from custom_components.elegoo_printer.sdcp.const import (
     CMD_CONTINUE_PRINT,
     CMD_CONTROL_DEVICE,
+    CMD_GET_CANVAS_STATUS,
     CMD_PAUSE_PRINT,
     CMD_REQUEST_ATTRIBUTES,
     CMD_REQUEST_STATUS_REFRESH,
@@ -43,11 +44,13 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterNotConnectedError,
     ElegooPrinterTimeoutError,
 )
+from custom_components.elegoo_printer.sdcp.models.ams import AMSStatus
 from custom_components.elegoo_printer.sdcp.models.attributes import PrinterAttributes
 from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
 from custom_components.elegoo_printer.sdcp.models.printer import (
+    FileFilamentData,
     Printer,
     PrinterData,
 )
@@ -58,11 +61,17 @@ from custom_components.elegoo_printer.sdcp.models.status import (
 from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
 if TYPE_CHECKING:
+    from custom_components.elegoo_printer.cc2.gcode_proxy import GCodeProxyClient
     from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
 
 logging.getLogger("websocket").setLevel(logging.CRITICAL)
 
 DEFAULT_PORT = 54780
+
+# Seconds to wait before re-querying the gcode proxy for a filename that
+# previously returned no data (e.g. the file was printed from local storage
+# and never passed through the proxy).
+GCODE_PROXY_RETRY_SECONDS = 60
 
 
 class ElegooPrinterClient:
@@ -79,6 +88,7 @@ class ElegooPrinterClient:
         session: aiohttp.ClientSession,
         logger: Any = LOGGER,
         config: MappingProxyType[str, Any] = MappingProxyType({}),
+        gcode_proxy: GCodeProxyClient | None = None,
     ) -> None:
         """
         Initialize an ElegooPrinterClient for communicating with an Elegoo 3D printer.
@@ -88,6 +98,7 @@ class ElegooPrinterClient:
             session: The aiohttp client session.
             logger: The logger to use.
             config: A dictionary containing the config for the printer.
+            gcode_proxy: Optional proxy client for per-slot filament data.
 
         """
         if ip_address is None:
@@ -105,6 +116,10 @@ class ElegooPrinterClient:
         self._background_tasks: set[asyncio.Task] = set()
         self._response_events: dict[str, asyncio.Event] = {}
         self._response_lock = asyncio.Lock()
+        self._gcode_proxy = gcode_proxy
+        self._gcode_filament_fetched: tuple[str, str] | None = None
+        self._gcode_filament_attempt_for: tuple[str, str] | None = None
+        self._gcode_filament_attempt_at: float = 0.0
 
     @property
     def is_connected(self) -> bool:
@@ -372,6 +387,16 @@ class ElegooPrinterClient:
         clamped_temperature = max(0, min(110, int(temperature)))
         data = {"TempTargetHotbed": clamped_temperature}
         await self._send_printer_cmd(CMD_CONTROL_DEVICE, data)
+
+    async def get_canvas_status(self) -> None:
+        """
+        Request Canvas/AMS status (filament colors, active tray).
+
+        SDCP replies asynchronously: the response arrives as a push frame
+        handled by _canvas_handler, which stores the parsed result in
+        printer_data.ams_status. Nothing useful is available to return here.
+        """
+        await self._send_printer_cmd(CMD_GET_CANVAS_STATUS, {})
 
     async def _send_printer_cmd(
         self, cmd: int, data: dict[str, Any] | None = None
@@ -679,6 +704,8 @@ class ElegooPrinterClient:
                     self._print_history_detail_handler(data_data)
                 elif cmd == CMD_SET_VIDEO_STREAM:
                     self._print_video_handler(data_data)
+                elif cmd == CMD_GET_CANVAS_STATUS:
+                    self._canvas_handler(data_data)
         except json.JSONDecodeError:
             self.logger.exception("Invalid JSON")
 
@@ -697,6 +724,64 @@ class ElegooPrinterClient:
             json.dumps(data), self.printer.printer_type
         )
         self.printer_data.status = printer_status
+        self._maybe_fetch_gcode_filament(
+            printer_status.print_info.filename,
+            printer_status.print_info.task_id,
+        )
+
+    def _maybe_fetch_gcode_filament(
+        self, filename: str | None, task_id: str | None
+    ) -> None:
+        """
+        Schedule a gcode proxy fetch when a new print job appears.
+
+        Keyed on (task_id, filename): task_id is unique per job, so
+        re-printing the same filename (e.g. another plate of the same
+        project re-sliced and re-uploaded) refetches fresh data. A job the
+        proxy has no data for is retried at most every
+        GCODE_PROXY_RETRY_SECONDS.
+        """
+        if not self._gcode_proxy or not filename or not task_id:
+            return
+        job_key = (task_id, filename)
+        if job_key == self._gcode_filament_fetched:
+            return
+        now = time.monotonic()
+        if (
+            job_key == self._gcode_filament_attempt_for
+            and now - self._gcode_filament_attempt_at < GCODE_PROXY_RETRY_SECONDS
+        ):
+            return
+        if self._gcode_filament_fetched is not None:
+            # New print job — drop the previous job's filament data
+            self.printer_data.gcode_filament_data = None
+            self._gcode_filament_fetched = None
+        self._gcode_filament_attempt_for = job_key
+        self._gcode_filament_attempt_at = now
+        task = asyncio.create_task(self._fetch_gcode_filament(filename, job_key))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _fetch_gcode_filament(
+        self, filename: str, job_key: tuple[str, str]
+    ) -> None:
+        """Fetch per-slot filament data for a print job from the gcode proxy."""
+        if not self._gcode_proxy:
+            return
+        # SDCP status may report a storage path (e.g. /local/file.gcode);
+        # the proxy archives by the bare upload filename.
+        query_name = filename.rsplit("/", 1)[-1]
+        payload = await self._gcode_proxy.fetch_filament_data(query_name)
+        if not payload:
+            self.logger.debug("No gcode proxy data for %s (will retry)", filename)
+            return
+        filament_data = FileFilamentData.from_proxy_payload(payload)
+        if filament_data is None:
+            self.logger.debug("Gcode proxy payload empty for %s", filename)
+            return
+        self.printer_data.gcode_filament_data = filament_data
+        self._gcode_filament_fetched = job_key
+        self.logger.debug("Gcode proxy filament data cached for %s", filename)
 
     def _attributes_handler(self, data: dict[str, Any]) -> None:
         """
@@ -749,6 +834,20 @@ class ElegooPrinterClient:
 
         """
         self.printer_data.video = ElegooVideo(data_data)
+
+    def _canvas_handler(self, data: dict[str, Any]) -> None:
+        """Parse Canvas/AMS status response and update printer_data."""
+        try:
+            ack = data.get("Ack", -1)
+            if ack != 0:
+                self.logger.debug("Canvas status request returned Ack=%s", ack)
+                return
+
+            ams_status = AMSStatus(data)
+            self.printer_data.ams_status = ams_status
+            self.logger.debug("Canvas status updated: %s", ams_status)
+        except (KeyError, ValueError, TypeError):
+            self.logger.exception("Failed to parse Canvas status")
 
     async def _set_response_event(self, request_id: str) -> asyncio.Event:
         """Set the event for a given request ID."""

@@ -13,11 +13,11 @@ from .definitions import (
     PRINTER_ATTRIBUTES_V3_ONLY,
     PRINTER_STATUS_CANVAS,
     PRINTER_STATUS_CC2_GCODE_FILAMENT,
-    PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT,
     PRINTER_STATUS_COMMON,
     PRINTER_STATUS_FDM,
     PRINTER_STATUS_FDM_CURRENT_EXTRUSION,
     PRINTER_STATUS_FDM_TOTAL_EXTRUSION,
+    PRINTER_STATUS_GCODE_PROXY_FILAMENT,
     PRINTER_STATUS_RESIN,
     PRINTER_STATUS_RESIN_VAT_HEATER,
     ElegooPrinterSensorEntityDescription,
@@ -68,19 +68,22 @@ async def async_setup_entry(
     if printer_type == PrinterType.FDM:
         sensors.extend(PRINTER_STATUS_FDM)
 
-        # Canvas/AMS sensors (CC2 with Canvas support)
-        if protocol_version == ProtocolVersion.CC2:
+        if printer.has_canvas:
             sensors.extend(PRINTER_STATUS_CANVAS)
 
         # Gcode filament data sensors (CC2 only, uses CC2_CMD_GET_FILE_DETAIL)
         if protocol_version == ProtocolVersion.CC2:
             sensors.extend(PRINTER_STATUS_CC2_GCODE_FILAMENT)
-            config = {
-                **(entry.data or {}),
-                **(entry.options or {}),
-            }
-            if config.get(CONF_GCODE_PROXY_URL):
-                sensors.extend(PRINTER_STATUS_CC2_GCODE_PROXY_FILAMENT)
+
+        # Per-slot filament usage from the gcode capture proxy — any FDM
+        # printer with a proxy configured (CC2 fetches over MQTT status,
+        # CC1 over the SDCP WebSocket client)
+        config = {
+            **(entry.data or {}),
+            **(entry.options or {}),
+        }
+        if config.get(CONF_GCODE_PROXY_URL):
+            sensors.extend(PRINTER_STATUS_GCODE_PROXY_FILAMENT)
 
         # Current extrusion
         if printer.open_centauri or protocol_version == ProtocolVersion.CC2:

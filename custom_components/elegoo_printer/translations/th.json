@@ -22,7 +22,7 @@
           "gcode_proxy_url": "URL พร็อกซี GCode (ไม่บังคับ)"
         },
         "data_description": {
-          "gcode_proxy_url": "URL พื้นฐานของ cc2-gcode-capture-proxy (โฮสต์, โฮสต์:พอร์ต หรือ URL http(s); ใช้ http หากไม่ระบุ scheme) ปล่อยว่างไว้เพื่อปิดใช้งาน"
+          "gcode_proxy_url": "URL พื้นฐานของ elegoo-printer-proxy (โฮสต์, โฮสต์:พอร์ต หรือ URL http(s); ใช้ http หากไม่ระบุ scheme) ปล่อยว่างไว้เพื่อปิดใช้งาน"
         }
       },
       "mqtt_options": {
@@ -33,15 +33,20 @@
         }
       },
       "websocket_options": {
-        "title": "ตัวเลือกเครื่องพิมพ์",
-        "description": "สำหรับการช่วยในการตั้งค่าโปรดดูหน้า GitHub ของโครงการ",
+        "title": "ตัวเลือก {printer_model}",
+        "description": "ตั้งค่าการตั้งค่าเครื่องพิมพ์ {printer_model} ของคุณ",
         "data": {
           "ip_address": "ที่อยู่ IP ของเครื่องพิมพ์",
           "proxy_enabled": "เปิดใช้งานเซิร์ฟเวอร์พร็อกซี",
+          "has_canvas": "ติดตั้ง Canvas/AMS แล้ว",
+          "gcode_proxy_url": "URL พร็อกซี GCode (ไม่บังคับ)",
           "external_ip": "ที่อยู่ภายนอก (ไม่บังคับ, สำหรับการตั้งค่าเครือข่ายขั้นสูง)"
         },
         "data_description": {
-          "external_ip": "เขียนทับที่อยู่ที่ถูกตรวจจับอัตโนมัติด้วยที่อยู่ IP หรือชื่อโฮสต์ ปล่อยว่างสำหรับการตรวจจับอัตโนมัติ ใช้สำหรับการตั้งค่า Kubernetes/Docker หรือเมื่ออยู่ด้านหลัง reverse proxy พอร์ต 3030 และ 3031 จะถูกเพิ่มโดยอัตโนมัติ"
+          "proxy_enabled": "ส่งคำสั่งเครื่องพิมพ์และสตรีมกล้องผ่านการเชื่อมต่อเดียวภายใน Home Assistant เพื่อหลีกเลี่ยงข้อจำกัดของเครื่องพิมพ์ในการเชื่อมต่อพร้อมกัน",
+          "has_canvas": "เปิดใช้งานเอนทิตีเส้นพิมพ์ต่อช่องสำหรับหน่วย Canvas (AMS) หลายวัสดุที่เชื่อมต่อ",
+          "gcode_proxy_url": "URL พื้นฐานของ elegoo-printer-proxy (โฮสต์, โฮสต์:พอร์ต หรือ URL http(s) ใช้ HTTP หากไม่ระบุ scheme) ปล่อยว่างไว้เพื่อปิดใช้งาน",
+          "external_ip": "ใช้เฉพาะโดยเซิร์ฟเวอร์พร็อกซีในตัว: ที่อยู่ที่อุปกรณ์อื่นควรใช้เพื่อเข้าถึง ปล่อยว่างเพื่อตรวจจับที่อยู่ Home Assistant โดยอัตโนมัติ สำหรับการตั้งค่า Kubernetes/Docker หรือ reverse proxy พอร์ต 3030 และ 3031 จะถูกเพิ่มโดยอัตโนมัติ"
         }
       }
     }
@@ -70,7 +75,8 @@
         "title": "ตัวเลือกเครื่องพิมพ์ FDM",
         "description": "ตั้งค่าตัวเลือกเพิ่มเติมสำหรับเครื่องพิมพ์ที่เลือก ดูหน้า GitHub ของโครงการเพื่อข้อมูลเพิ่มเติมเกี่ยวกับเซิร์ฟเวอร์พร็อกซี",
         "data": {
-          "proxy_enabled": "เปิดใช้งานเซิร์ฟเวอร์พร็อกซี"
+          "proxy_enabled": "เปิดใช้งานเซิร์ฟเวอร์พร็อกซี",
+          "has_canvas": "ติดตั้ง Canvas/AMS แล้ว"
         }
       },
       "resin_options": {
@@ -138,9 +144,24 @@
           "complete": "เสร็จสมบูรณ์",
           "file_checking": "ตรวจสอบไฟล์",
           "recovery": "กู้คืน",
+          "printing_recovery": "กู้คืนการพิมพ์",
           "loading": "กำลังโหลด",
           "preheating": "อุ่นล่วงหน้า",
-          "leveling": "ปรับระดับ"
+          "leveling": "ปรับระดับ",
+          "printers_checking": "ตรวจสอบเครื่องพิมพ์",
+          "resuming": "กำลังดำเนินการต่อ",
+          "error": "ข้อผิดพลาด",
+          "resonance_testing": "ทดสอบการสั่นพ้อง",
+          "print_started": "เริ่มพิมพ์แล้ว",
+          "auto_leveling_completed": "ปรับระดับอัตโนมัติเสร็จสิ้น",
+          "preheating_completed": "อุ่นเครื่องเสร็จสิ้น",
+          "homing_completed": "กลับตำแหน่งเริ่มต้นเสร็จสิ้น",
+          "resonance_testing_completed": "ทดสอบการสั่นพ้องเสร็จสิ้น",
+          "auto_feeding": "ป้อนอัตโนมัติ",
+          "filament_unloading": "ถอดเส้นพลาสติก",
+          "filament_unload_abnormal": "ถอดเส้นพลาสติกผิดปกติ",
+          "filament_unload_paused": "ถอดเส้นพลาสติกหยุดชั่วคราว",
+          "unrecognized": "ไม่รู้จัก"
         }
       },
       "current_status": {

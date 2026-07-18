@@ -7,6 +7,8 @@ MIT License
 
 from __future__ import annotations
 
+import asyncio
+import json
 from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -27,11 +29,14 @@ from .const import (
     CONF_CC2_ACCESS_CODE,
     CONF_EXTERNAL_IP,
     CONF_GCODE_PROXY_URL,
+    CONF_HAS_CANVAS,
     CONF_MQTT_EXTERNAL_HOST,
     CONF_MQTT_EXTERNAL_PORT,
     CONF_PROXY_ENABLED,
+    CONFIG_VERSION_5,
     DOMAIN,
     LOGGER,
+    WEBSOCKET_PORT,
 )
 from .sdcp.exceptions import (
     ElegooConfigFlowConnectionError,
@@ -113,6 +118,9 @@ def _normalize_gcode_proxy_base_url(raw: str) -> str | None:
         return None
     return f"{scheme}://{cleaned}"
 
+
+# Total budget for CC1 Canvas detection (WS handshake + first status push).
+_CANVAS_DETECT_TIMEOUT: float = 5
 
 MANUAL_IP_SCHEMA = vol.Schema(
     {
@@ -370,8 +378,9 @@ async def _async_validate_input(  # noqa: PLR0912
 class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Elegoo."""
 
-    VERSION = 4
+    VERSION = CONFIG_VERSION_5
     MINOR_VERSION = 0
+    _detected_canvas: bool | None = None
 
     def _cleanup_user_input(self, raw_ip: str) -> str | None:
         """
@@ -388,6 +397,39 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         """
         return _sanitize_ip_address(raw_ip)
+
+    async def _async_detect_canvas(self, printer: Printer) -> bool:
+        """Detect Canvas on CC1 by reading AmsConnectStatus from status push."""
+        import aiohttp  # noqa: PLC0415
+
+        ws_url = f"ws://{printer.ip_address}:{WEBSOCKET_PORT}/websocket"
+        session = async_get_clientsession(self.hass)
+        try:
+            # The timeout must cover ws_connect too: a device that accepts TCP
+            # but never completes the WS handshake would otherwise hang the
+            # config flow on HA's shared session (no handshake timeout).
+            async with (
+                asyncio.timeout(_CANVAS_DETECT_TIMEOUT),
+                session.ws_connect(ws_url) as ws,
+            ):
+                async for msg in ws:
+                    if msg.type != aiohttp.WSMsgType.TEXT:
+                        break
+                    parsed = json.loads(msg.data)
+                    topic = parsed.get("Topic", "")
+                    if "status" in topic:
+                        status_data = (
+                            parsed.get("Data", {}).get("Data", {}).get("Status", {})
+                        )
+                        ams_connect = status_data.get("AmsConnectStatus", 0)
+                        LOGGER.debug(
+                            "CC1 Canvas detection: AmsConnectStatus=%s",
+                            ams_connect,
+                        )
+                        return bool(ams_connect)
+        except (TimeoutError, aiohttp.ClientError, json.JSONDecodeError):
+            LOGGER.debug("CC1 Canvas detection failed — assuming no Canvas")
+        return False
 
     async def async_step_user(
         self,
@@ -519,20 +561,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         ),
                         errors=_errors,
                     )
-                return self.async_show_form(
-                    step_id="fdm_options",
-                    data_schema=vol.Schema(
-                        {
-                            vol.Required(
-                                CONF_PROXY_ENABLED,
-                                default=self.selected_printer.proxy_enabled,
-                            ): selector.BooleanSelector(
-                                selector.BooleanSelectorConfig(),
-                            ),
-                        }
-                    ),
-                    errors=_errors,
-                )
+                return await self.async_step_fdm_options()
             _errors["base"] = "invalid_printer_selection"
 
         # Filter out printers without an IP address
@@ -736,9 +765,20 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.ConfigFlowResult:
         """Handle the configuration of additional options for a discovered Elegoo printer."""  # noqa: E501
         _errors = {}
+
+        if (
+            user_input is None
+            and self.selected_printer
+            and self._detected_canvas is None
+        ):
+            self._detected_canvas = await self._async_detect_canvas(
+                self.selected_printer
+            )
+
         if user_input is not None and self.selected_printer:
             printer_to_validate = Printer.from_dict(self.selected_printer.to_dict())
             printer_to_validate.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+            printer_to_validate.has_canvas = user_input.get(CONF_HAS_CANVAS, False)
             # Preserve external_ip from manual IP entry if set
             if self.selected_printer.external_ip:
                 printer_to_validate.external_ip = self.selected_printer.external_ip
@@ -753,7 +793,6 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
             try:
-                # Pass the full user_input to _async_test_connection for centauri_carbon and proxy_enabled  # noqa: E501
                 validated_printer = await _async_test_connection(
                     self.hass, printer_to_validate, user_input
                 )
@@ -787,6 +826,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                             if self.selected_printer
                             else False
                         ),
+                    ): selector.BooleanSelector(
+                        selector.BooleanSelectorConfig(),
+                    ),
+                    vol.Required(
+                        CONF_HAS_CANVAS,
+                        default=self._detected_canvas or False,
                     ): selector.BooleanSelector(
                         selector.BooleanSelectorConfig(),
                     ),
@@ -908,6 +953,7 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         printer = Printer.from_dict(self.selected_printer.to_dict())
         printer.mqtt_broker_enabled = False
         printer.proxy_enabled = False
+        printer.has_canvas = True
         # Preserve external_ip from manual IP entry if set
         if self.selected_printer.external_ip:
             printer.external_ip = self.selected_printer.external_ip
@@ -1074,6 +1120,26 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             return await self.async_step_mqtt_options(user_input)
         return await self.async_step_websocket_options(user_input)
 
+    async def _async_validate_gcode_proxy(
+        self, proxy_raw: str | None
+    ) -> tuple[str | None, str | None]:
+        """
+        Normalize and health-check a gcode proxy URL.
+
+        Returns (normalized_url, error_key); both None when the field is blank.
+        """
+        proxy_raw = (proxy_raw or "").strip()
+        if not proxy_raw:
+            return None, None
+        proxy_url = _normalize_gcode_proxy_base_url(proxy_raw)
+        if proxy_url is None:
+            return None, "gcode_proxy_invalid"
+        session = async_get_clientsession(self.hass)
+        proxy_client = GCodeProxyClient(proxy_url, session)
+        if not await proxy_client.check_health():
+            return None, "gcode_proxy_unreachable"
+        return proxy_url, None
+
     async def async_step_cc2_options(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
@@ -1092,31 +1158,20 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             if access_code:
                 printer_data[CONF_CC2_ACCESS_CODE] = access_code
 
-            proxy_raw = (user_input.get(CONF_GCODE_PROXY_URL) or "").strip()
-            if proxy_raw:
-                proxy_url = _normalize_gcode_proxy_base_url(proxy_raw)
-                if proxy_url is None:
-                    _errors[CONF_GCODE_PROXY_URL] = "gcode_proxy_invalid"
-                    return self.async_show_form(
-                        step_id="cc2_options",
-                        data_schema=self.add_suggested_values_to_schema(
-                            vol.Schema(self._cc2_options_schema()),
-                            suggested_values=user_input,
-                        ),
-                        errors=_errors,
-                    )
-                session = async_get_clientsession(self.hass)
-                proxy_client = GCodeProxyClient(proxy_url, session)
-                if not await proxy_client.check_health():
-                    _errors[CONF_GCODE_PROXY_URL] = "gcode_proxy_unreachable"
-                    return self.async_show_form(
-                        step_id="cc2_options",
-                        data_schema=self.add_suggested_values_to_schema(
-                            vol.Schema(self._cc2_options_schema()),
-                            suggested_values=user_input,
-                        ),
-                        errors=_errors,
-                    )
+            proxy_url, proxy_error = await self._async_validate_gcode_proxy(
+                user_input.get(CONF_GCODE_PROXY_URL)
+            )
+            if proxy_error:
+                _errors[CONF_GCODE_PROXY_URL] = proxy_error
+                return self.async_show_form(
+                    step_id="cc2_options",
+                    data_schema=self.add_suggested_values_to_schema(
+                        vol.Schema(self._cc2_options_schema()),
+                        suggested_values=user_input,
+                    ),
+                    errors=_errors,
+                )
+            if proxy_url:
                 printer_data[CONF_GCODE_PROXY_URL] = proxy_url
             else:
                 printer_data.pop(CONF_GCODE_PROXY_URL, None)
@@ -1130,7 +1185,9 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="cc2_options",
             data_schema=self.add_suggested_values_to_schema(
                 vol.Schema(self._cc2_options_schema()),
-                suggested_values=self._cc2_options_suggested(current_settings),
+                suggested_values=self._suggested_with_normalized_proxy(
+                    current_settings
+                ),
             ),
             errors=_errors,
         )
@@ -1150,7 +1207,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         }
 
     @staticmethod
-    def _cc2_options_suggested(settings: dict) -> dict:
+    def _suggested_with_normalized_proxy(settings: dict) -> dict:
         suggested = dict(settings)
         proxy_url = (suggested.get(CONF_GCODE_PROXY_URL) or "").strip()
         if proxy_url:
@@ -1238,8 +1295,28 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         LOGGER.debug("data: %s", self.config_entry.data)
         LOGGER.debug("options: %s", self.config_entry.options)
 
+        # Resin printers have no Canvas unit and nothing for the gcode proxy
+        # to capture, so those fields are FDM-only.
+        is_fdm = printer.printer_type != PrinterType.RESIN
+        placeholders = {"printer_model": printer.model or printer.name or "Printer"}
+
         if user_input is not None:
             printer.ip_address = user_input[CONF_IP_ADDRESS]
+            proxy_url, proxy_error = await self._async_validate_gcode_proxy(
+                user_input.get(CONF_GCODE_PROXY_URL)
+            )
+            if proxy_error:
+                _errors[CONF_GCODE_PROXY_URL] = proxy_error
+                return self.async_show_form(
+                    step_id="websocket_options",
+                    data_schema=self.add_suggested_values_to_schema(
+                        vol.Schema(self._websocket_options_schema(is_fdm=is_fdm)),
+                        suggested_values=user_input,
+                    ),
+                    errors=_errors,
+                    description_placeholders=placeholders,
+                )
+
             if not user_input[CONF_PROXY_ENABLED]:
                 printer.proxy_websocket_port = None
                 printer.proxy_video_port = None
@@ -1249,11 +1326,17 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                     self.hass, printer, user_input
                 )
                 tested_printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+                tested_printer.has_canvas = user_input.get(CONF_HAS_CANVAS, False)
                 tested_printer.external_ip = user_input.get(CONF_EXTERNAL_IP)
                 LOGGER.debug("Tested printer: %s", tested_printer.to_dict_safe())
+                printer_data = tested_printer.to_dict()
+                if proxy_url:
+                    printer_data[CONF_GCODE_PROXY_URL] = proxy_url
+                else:
+                    printer_data.pop(CONF_GCODE_PROXY_URL, None)
                 return self.async_create_entry(
                     title=tested_printer.name,
-                    data=tested_printer.to_dict(),
+                    data=printer_data,
                 )
             except ElegooConfigFlowConnectionError as exception:
                 LOGGER.error("Connection error: %s", exception)
@@ -1268,23 +1351,39 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 LOGGER.exception(exception)
                 _errors["base"] = "unknown"
 
-        data_schema = {
+        return self.async_show_form(
+            step_id="websocket_options",
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema(self._websocket_options_schema(is_fdm=is_fdm)),
+                suggested_values=self._suggested_with_normalized_proxy(
+                    current_settings
+                ),
+            ),
+            errors=_errors,
+            description_placeholders=placeholders,
+        )
+
+    @staticmethod
+    def _websocket_options_schema(*, is_fdm: bool) -> dict:
+        """Build the WebSocket/SDCP options schema; Canvas fields are FDM-only."""
+        schema: dict = {
             vol.Required(CONF_IP_ADDRESS): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
             ),
             vol.Required(CONF_PROXY_ENABLED): selector.BooleanSelector(
                 selector.BooleanSelectorConfig(),
             ),
-            vol.Optional(CONF_EXTERNAL_IP): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
-            ),
         }
-
-        return self.async_show_form(
-            step_id="websocket_options",
-            data_schema=self.add_suggested_values_to_schema(
-                vol.Schema(data_schema),
-                suggested_values=current_settings,
-            ),
-            errors=_errors,
+        if is_fdm:
+            schema[vol.Required(CONF_HAS_CANVAS, default=False)] = (
+                selector.BooleanSelector(selector.BooleanSelectorConfig())
+            )
+            schema[vol.Optional(CONF_GCODE_PROXY_URL, default="")] = (
+                selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
+                )
+            )
+        schema[vol.Optional(CONF_EXTERNAL_IP)] = selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
         )
+        return schema

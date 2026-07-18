@@ -47,8 +47,7 @@ async def async_setup_entry(
     if protocol_version == ProtocolVersion.V3:
         sensors.extend(PRINTER_ATTRIBUTES_BINARY_V3_ONLY)
 
-    # Canvas/AMS binary sensors (CC2 FDM with Canvas support)
-    if printer_type == PrinterType.FDM and protocol_version == ProtocolVersion.CC2:
+    if printer_type == PrinterType.FDM and printer.has_canvas:
         sensors.extend(PRINTER_BINARY_STATUS_CANVAS)
 
     # Vat heater specific binary sensors

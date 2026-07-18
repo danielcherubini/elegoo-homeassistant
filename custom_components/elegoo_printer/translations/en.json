@@ -22,7 +22,7 @@
           "gcode_proxy_url": "GCode proxy URL (optional)"
         },
         "data_description": {
-          "gcode_proxy_url": "Base URL of the cc2-gcode-capture-proxy (host, host:port, or http(s) URL; http is used if you omit the scheme). Leave blank to disable."
+          "gcode_proxy_url": "Base URL of the elegoo-printer-proxy (host, host:port, or http(s) URL. HTTP is used if you omit the scheme). Leave blank to disable."
         }
       },
       "mqtt_options": {
@@ -41,15 +41,20 @@
         }
       },
       "websocket_options": {
-        "title": "Printer Options",
-        "description": "For help with configuration, please see the project's GitHub page.",
+        "title": "{printer_model} Options",
+        "description": "Configure your {printer_model} printer settings.",
         "data": {
           "ip_address": "Printer IP Address",
           "proxy_enabled": "Enable the proxy server",
+          "has_canvas": "Canvas/AMS installed",
+          "gcode_proxy_url": "GCode proxy URL (optional)",
           "external_ip": "External Address (optional, for advanced network setups)"
         },
         "data_description": {
-          "external_ip": "Override auto-detected address with an IP address or hostname. Leave blank for automatic detection. Use for Kubernetes/Docker setups or when behind a reverse proxy. Ports 3030 and 3031 will be appended automatically."
+          "proxy_enabled": "Route printer commands and the camera stream through a single connection inside Home Assistant, working around the printer's limit on simultaneous connections.",
+          "has_canvas": "Enable per-slot filament entities for a connected Canvas (AMS) multi-material unit.",
+          "gcode_proxy_url": "Base URL of the elegoo-printer-proxy (host, host:port, or http(s) URL. HTTP is used if you omit the scheme). Leave blank to disable.",
+          "external_ip": "Only used by the built-in proxy server: the address other devices should use to reach it. Leave blank to auto-detect this Home Assistant's address. For Kubernetes/Docker or reverse-proxy setups. Ports 3030 and 3031 are appended automatically."
         }
       }
     }
@@ -78,7 +83,8 @@
         "title": "FDM Printer Options",
         "description": "Configure additional options for your selected printer. See the project's GitHub page for more information about the proxy server.",
         "data": {
-          "proxy_enabled": "Enable the proxy server"
+          "proxy_enabled": "Enable the proxy server",
+          "has_canvas": "Canvas/AMS installed"
         }
       },
       "resin_options": {
@@ -147,9 +153,24 @@
           "complete": "Complete",
           "file_checking": "Checking File",
           "recovery": "Recovery",
+          "printing_recovery": "Printing Recovery",
           "loading": "Loading",
           "preheating": "Preheating",
-          "leveling": "Leveling"
+          "leveling": "Leveling",
+          "printers_checking": "Printer Checking",
+          "resuming": "Resuming",
+          "error": "Error",
+          "resonance_testing": "Resonance Testing",
+          "print_started": "Print Started",
+          "auto_leveling_completed": "Auto Leveling Completed",
+          "preheating_completed": "Preheating Completed",
+          "homing_completed": "Homing Completed",
+          "resonance_testing_completed": "Resonance Testing Completed",
+          "auto_feeding": "Auto Feeding",
+          "filament_unloading": "Filament Unloading",
+          "filament_unload_abnormal": "Filament Unload Abnormal",
+          "filament_unload_paused": "Filament Unload Paused",
+          "unrecognized": "Unrecognized"
         }
       },
       "current_status": {

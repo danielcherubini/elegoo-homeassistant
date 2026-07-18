@@ -22,7 +22,7 @@
           "gcode_proxy_url": "GCode-Proxy-URL (optional)"
         },
         "data_description": {
-          "gcode_proxy_url": "Basis-URL des cc2-gcode-capture-proxy (Host, Host:Port oder http(s)-URL; ohne Schema wird http verwendet). Leer lassen, um zu deaktivieren."
+          "gcode_proxy_url": "Basis-URL des elegoo-printer-proxy (Host, Host:Port oder http(s)-URL; ohne Schema wird http verwendet). Leer lassen, um zu deaktivieren."
         }
       },
       "mqtt_options": {
@@ -33,15 +33,20 @@
         }
       },
       "websocket_options": {
-        "title": "Druckeroptionen",
-        "description": "Für Hilfe bei der Konfiguration, besuchen Sie bitte die GitHub-Seite des Projekts.",
+        "title": "{printer_model} Optionen",
+        "description": "Konfigurieren Sie die Einstellungen Ihres {printer_model} Druckers.",
         "data": {
           "ip_address": "Drucker-IP-Adresse",
           "proxy_enabled": "Proxy-Server aktivieren",
+          "has_canvas": "Canvas/AMS installiert",
+          "gcode_proxy_url": "GCode-Proxy-URL (optional)",
           "external_ip": "Externe Adresse (optional, für erweiterte Netzwerkkonfigurationen)"
         },
         "data_description": {
-          "external_ip": "Überschreiben Sie die automatisch erkannte Adresse mit einer IP-Adresse oder einem Hostnamen. Leer lassen für automatische Erkennung. Verwenden Sie dies für Kubernetes/Docker-Einrichtungen oder wenn hinter einem Reverse Proxy. Die Ports 3030 und 3031 werden automatisch angehängt."
+          "proxy_enabled": "Leitet Druckerbefehle und den Kamera-Stream über eine einzelne Verbindung in Home Assistant, um die Begrenzung gleichzeitiger Verbindungen des Druckers zu umgehen.",
+          "has_canvas": "Aktiviert Filament-Entitäten pro Slot für eine angeschlossene Canvas (AMS) Multi-Material-Einheit.",
+          "gcode_proxy_url": "Basis-URL des elegoo-printer-proxy (Host, Host:Port oder http(s)-URL. Ohne Schema wird HTTP verwendet). Leer lassen, um zu deaktivieren.",
+          "external_ip": "Wird nur vom integrierten Proxy-Server verwendet: die Adresse, die andere Geräte verwenden sollen, um ihn zu erreichen. Leer lassen zur automatischen Erkennung der Home Assistant-Adresse. Für Kubernetes/Docker- oder Reverse-Proxy-Einrichtungen. Ports 3030 und 3031 werden automatisch angehängt."
         }
       }
     }
@@ -70,7 +75,8 @@
         "title": "FDM-Druckeroptionen",
         "description": "Konfigurieren Sie zusätzliche Optionen für Ihren ausgewählten Drucker. Besuchen Sie die GitHub-Seite des Projekts für weitere Informationen zum Proxy-Server.",
         "data": {
-          "proxy_enabled": "Proxy-Server aktivieren"
+          "proxy_enabled": "Proxy-Server aktivieren",
+          "has_canvas": "Canvas/AMS installiert"
         }
       },
       "resin_options": {
@@ -138,9 +144,24 @@
           "complete": "Abgeschlossen",
           "file_checking": "Dateiüberprüfung",
           "recovery": "Wiederherstellung",
+          "printing_recovery": "Druck-Wiederherstellung",
           "loading": "Laden",
           "preheating": "Vorwärmen",
-          "leveling": "Ausrichten"
+          "leveling": "Ausrichten",
+          "printers_checking": "Druckerüberprüfung",
+          "resuming": "Fortsetzen",
+          "error": "Fehler",
+          "resonance_testing": "Resonanztest",
+          "print_started": "Druck gestartet",
+          "auto_leveling_completed": "Automatische Nivellierung abgeschlossen",
+          "preheating_completed": "Vorwärmen abgeschlossen",
+          "homing_completed": "Referenzfahrt abgeschlossen",
+          "resonance_testing_completed": "Resonanztest abgeschlossen",
+          "auto_feeding": "Automatische Zuführung",
+          "filament_unloading": "Filament entladen",
+          "filament_unload_abnormal": "Abnormales Filament-Entladen",
+          "filament_unload_paused": "Filament-Entladen pausiert",
+          "unrecognized": "Nicht erkannt"
         }
       },
       "current_status": {

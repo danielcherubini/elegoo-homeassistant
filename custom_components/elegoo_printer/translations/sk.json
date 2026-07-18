@@ -22,7 +22,7 @@
           "gcode_proxy_url": "URL proxy GCode (voliteľné)"
         },
         "data_description": {
-          "gcode_proxy_url": "Základná URL cc2-gcode-capture-proxy (hostiteľ, hostiteľ:port alebo http(s) URL; bez schémy sa použije http). Nechajte prázdne na deaktivovanie."
+          "gcode_proxy_url": "Základná URL elegoo-printer-proxy (hostiteľ, hostiteľ:port alebo http(s) URL; bez schémy sa použije http). Nechajte prázdne na deaktivovanie."
         }
       },
       "mqtt_options": {
@@ -33,15 +33,20 @@
         }
       },
       "websocket_options": {
-        "title": "Možnosti tlačiarne",
-        "description": "Pre pomoc s konfiguráciou, navštívte stránku GitHub projektu.",
+        "title": "Možnosti {printer_model}",
+        "description": "Konfigurujte nastavenia tlačiarne {printer_model}.",
         "data": {
           "ip_address": "IP adresa tlačiarne",
           "proxy_enabled": "Povoliť proxy server",
+          "has_canvas": "Canvas/AMS nainštalované",
+          "gcode_proxy_url": "URL proxy GCode (voliteľné)",
           "external_ip": "Externá adresa (voliteľné, pre pokročilé sieťové nastavenia)"
         },
         "data_description": {
-          "external_ip": "Prepísať automaticky detegovanú adresu IP alebo názvom hostiteľa. Nechajte prázdne pre automatickú detekciu. Použite pre Kubernetes/Docker nastavenie alebo za reverzný proxy. Porty 3030 a 3031 budú pridané automaticky."
+          "proxy_enabled": "Smeruje príkazy tlačiarne a stream kamery cez jedno pripojenie v Home Assistant, čím obchádza limit tlačiarne na súčasné pripojenia.",
+          "has_canvas": "Povolí entity filamentov pre každý slot pripojenej jednotky Canvas (AMS) pre viaceré materiály.",
+          "gcode_proxy_url": "Základná URL elegoo-printer-proxy (hostiteľ, hostiteľ:port alebo http(s) URL. Bez schémy sa použije HTTP). Nechajte prázdne na deaktivovanie.",
+          "external_ip": "Používa sa len vstavaným proxy serverom: adresa, ktorú by mali ostatné zariadenia použiť na prístup. Nechajte prázdne pre automatickú detekciu adresy Home Assistant. Pre Kubernetes/Docker alebo reverzný proxy nastavenia. Porty 3030 a 3031 budú pridané automaticky."
         }
       }
     }
@@ -70,7 +75,8 @@
         "title": "Možnosti FDM tlačiarne",
         "description": "Konfigurujte ďalšie možnosti pre vybranú tlačiareň. Navštívte stránku GitHub projektu pre viac informácií o proxy serveri.",
         "data": {
-          "proxy_enabled": "Povoliť proxy server"
+          "proxy_enabled": "Povoliť proxy server",
+          "has_canvas": "Canvas/AMS nainštalované"
         }
       },
       "resin_options": {
@@ -138,9 +144,24 @@
           "complete": "Hotovo",
           "file_checking": "Kontrola súboru",
           "recovery": "Obnova",
+          "printing_recovery": "Obnova tlače",
           "loading": "Načítanie",
           "preheating": "Predohrievanie",
-          "leveling": "Vyrovnávanie"
+          "leveling": "Vyrovnávanie",
+          "printers_checking": "Kontrola tlačiarne",
+          "resuming": "Obnovenie",
+          "error": "Chyba",
+          "resonance_testing": "Testovanie rezonancie",
+          "print_started": "Tlač spustená",
+          "auto_leveling_completed": "Automatické vyrovnanie dokončené",
+          "preheating_completed": "Predhrievanie dokončené",
+          "homing_completed": "Návrat do východiskovej pozície dokončený",
+          "resonance_testing_completed": "Testovanie rezonancie dokončené",
+          "auto_feeding": "Automatické podávanie",
+          "filament_unloading": "Vykladanie filamentu",
+          "filament_unload_abnormal": "Abnormálne vyloženie filamentu",
+          "filament_unload_paused": "Vykladanie filamentu pozastavené",
+          "unrecognized": "Nerozpoznané"
         }
       },
       "current_status": {

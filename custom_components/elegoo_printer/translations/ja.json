@@ -22,7 +22,7 @@
           "gcode_proxy_url": "GCode プロキシ URL（オプション）"
         },
         "data_description": {
-          "gcode_proxy_url": "cc2-gcode-capture-proxy のベース URL（ホスト、ホスト:ポート、または http(s) URL。スキームを省略すると http が使用されます）。無効にするには空白のままにしてください。"
+          "gcode_proxy_url": "elegoo-printer-proxy のベース URL（ホスト、ホスト:ポート、または http(s) URL。スキームを省略すると http が使用されます）。無効にするには空白のままにしてください。"
         }
       },
       "mqtt_options": {
@@ -33,15 +33,20 @@
         }
       },
       "websocket_options": {
-        "title": "プリンターオプション",
-        "description": "設定に関するヘルプについては、プロジェクトの GitHub ページをご覧ください。",
+        "title": "{printer_model} オプション",
+        "description": "{printer_model} プリンターの設定を構成します。",
         "data": {
           "ip_address": "プリンター IP アドレス",
           "proxy_enabled": "プロキシサーバーを有効にする",
+          "has_canvas": "Canvas/AMS 搭載",
+          "gcode_proxy_url": "GCode プロキシ URL（オプション）",
           "external_ip": "外部アドレス（オプション、高度なネットワーク設定用）"
         },
         "data_description": {
-          "external_ip": "自動検出されたアドレスを IP アドレスまたはホスト名で上書きします。自動検出のために空白のままにしてください。Kubernetes/Docker 設定やリバースプロキシの背後で使用します。ポート 3030 および 3031 が自動的に追加されます。"
+          "proxy_enabled": "プリンターのコマンドとカメラストリームを Home Assistant 内の単一接続経由でルーティングし、プリンターの同時接続数制限を回避します。",
+          "has_canvas": "接続された Canvas (AMS) マルチマテリアルユニットのスロットごとのフィラメントエンティティを有効にします。",
+          "gcode_proxy_url": "elegoo-printer-proxy のベース URL（ホスト、ホスト:ポート、または http(s) URL。スキームを省略すると HTTP が使用されます）。無効にするには空白のままにしてください。",
+          "external_ip": "内蔵プロキシサーバーのみが使用: 他のデバイスがアクセスするために使用するアドレス。Home Assistant のアドレスを自動検出するには空白のままにしてください。Kubernetes/Docker またはリバースプロキシ環境用。ポート 3030 および 3031 が自動的に追加されます。"
         }
       }
     }
@@ -70,7 +75,8 @@
         "title": "FDM プリンターオプション",
         "description": "選択したプリンターの追加オプションを構成します。プロキシサーバーに関する詳細については、プロジェクトの GitHub ページをご覧ください。",
         "data": {
-          "proxy_enabled": "プロキシサーバーを有効にする"
+          "proxy_enabled": "プロキシサーバーを有効にする",
+          "has_canvas": "Canvas/AMS 搭載"
         }
       },
       "resin_options": {
@@ -138,9 +144,24 @@
           "complete": "完了",
           "file_checking": "ファイルチェック中",
           "recovery": "回復",
+          "printing_recovery": "印刷復旧",
           "loading": "読み込み中",
           "preheating": "予熱中",
-          "leveling": "レベルリング"
+          "leveling": "レベルリング",
+          "printers_checking": "プリンター確認中",
+          "resuming": "再開中",
+          "error": "エラー",
+          "resonance_testing": "共振テスト",
+          "print_started": "印刷開始",
+          "auto_leveling_completed": "オートレベリング完了",
+          "preheating_completed": "予熱完了",
+          "homing_completed": "ホーミング完了",
+          "resonance_testing_completed": "共振テスト完了",
+          "auto_feeding": "自動フィード",
+          "filament_unloading": "フィラメント取り出し中",
+          "filament_unload_abnormal": "フィラメント取り出し異常",
+          "filament_unload_paused": "フィラメント取り出し一時停止",
+          "unrecognized": "未認識"
         }
       },
       "current_status": {

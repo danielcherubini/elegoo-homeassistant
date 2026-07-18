@@ -71,7 +71,7 @@ class TestDiscoveryProtocol:
         assert discovery_protocol.printer_registry == mock_printer_registry
         assert discovery_protocol.proxy_ip == "10.0.0.100"
         assert discovery_protocol.transport is None
-        assert discovery_protocol._last_discovery_time == 0.0  # noqa: SLF001
+        assert discovery_protocol._last_discovery_time == 0.0
 
     def test_connection_made(self, discovery_protocol: DiscoveryProtocol) -> None:
         """Test connection_made method."""
@@ -92,7 +92,7 @@ class TestDiscoveryProtocol:
         self, discovery_protocol: DiscoveryProtocol, mock_logger: Mock
     ) -> None:
         """Test rate limiting in datagram_received."""
-        discovery_protocol._last_discovery_time = time.time()  # noqa: SLF001
+        discovery_protocol._last_discovery_time = time.time()
 
         discovery_protocol.datagram_received(
             DISCOVERY_MESSAGE.encode(), ("127.0.0.1", 12345)
@@ -113,7 +113,7 @@ class TestDiscoveryProtocol:
         mock_printer_registry.get_all_printers.return_value = {}
         mock_transport = Mock()
         discovery_protocol.transport = mock_transport
-        discovery_protocol._last_discovery_time = 0.0  # noqa: SLF001  # Allow discovery  # noqa: SLF001
+        discovery_protocol._last_discovery_time = 0.0  # Allow discovery
 
         # Test
         discovery_protocol.datagram_received(
@@ -148,7 +148,7 @@ class TestDiscoveryProtocol:
         mock_printer_registry.get_all_printers.return_value = printers
         mock_transport = Mock()
         discovery_protocol.transport = mock_transport
-        discovery_protocol._last_discovery_time = 0.0  # noqa: SLF001  # Allow discovery  # noqa: SLF001
+        discovery_protocol._last_discovery_time = 0.0  # Allow discovery
 
         # Test
         discovery_protocol.datagram_received(
@@ -195,7 +195,7 @@ class TestDiscoveryProtocol:
         mock_printer_registry.get_all_printers.return_value = printers
         mock_transport = Mock()
         discovery_protocol.transport = mock_transport
-        discovery_protocol._last_discovery_time = 0.0  # noqa: SLF001  # noqa: SLF001
+        discovery_protocol._last_discovery_time = 0.0
 
         # Test
         discovery_protocol.datagram_received(
@@ -253,7 +253,7 @@ class TestDiscoveryProtocol:
         mock_printer_registry.get_all_printers.return_value = printers
         mock_transport = Mock()
         discovery_protocol.transport = mock_transport
-        discovery_protocol._last_discovery_time = 0.0  # noqa: SLF001
+        discovery_protocol._last_discovery_time = 0.0
 
         # Test
         discovery_protocol.datagram_received(
@@ -285,7 +285,7 @@ class TestDiscoveryProtocol:
         """Test exception handling in datagram_received."""
         # Setup to raise exception
         mock_printer_registry.get_all_printers.side_effect = Exception("Test error")
-        discovery_protocol._last_discovery_time = 0.0  # noqa: SLF001
+        discovery_protocol._last_discovery_time = 0.0
 
         # Test
         discovery_protocol.datagram_received(
@@ -317,7 +317,7 @@ class TestDiscoveryProtocol:
         mock_printer_registry.get_all_printers.return_value = {}
         mock_transport = Mock()
         discovery_protocol.transport = mock_transport
-        discovery_protocol._last_discovery_time = 0.0  # noqa: SLF001
+        discovery_protocol._last_discovery_time = 0.0
 
         discovery_protocol.datagram_received(
             DISCOVERY_MESSAGE.encode(), ("127.0.0.1", 12345)
@@ -334,7 +334,7 @@ class TestDiscoveryProtocol:
         """Test datagram_received when transport is not available."""
         mock_printer_registry.get_all_printers.return_value = {}
         discovery_protocol.transport = None  # No transport
-        discovery_protocol._last_discovery_time = 0.0  # noqa: SLF001
+        discovery_protocol._last_discovery_time = 0.0
 
         # Should not raise exception
         discovery_protocol.datagram_received(
@@ -350,7 +350,7 @@ class TestDiscoveryProtocol:
         discovery_protocol.transport = mock_transport
 
         # First request should go through
-        discovery_protocol._last_discovery_time = 0.0  # noqa: SLF001
+        discovery_protocol._last_discovery_time = 0.0
         discovery_protocol.datagram_received(
             DISCOVERY_MESSAGE.encode(), ("127.0.0.1", 12345)
         )
@@ -359,7 +359,7 @@ class TestDiscoveryProtocol:
         # Second request within rate limit should be blocked
         mock_transport.reset_mock()
         current_time = time.time()
-        discovery_protocol._last_discovery_time = current_time - (  # noqa: SLF001
+        discovery_protocol._last_discovery_time = current_time - (
             DISCOVERY_RATE_LIMIT_SECONDS - 0.1
         )
         discovery_protocol.datagram_received(
@@ -369,7 +369,7 @@ class TestDiscoveryProtocol:
 
         # Third request after rate limit should go through
         mock_transport.reset_mock()
-        discovery_protocol._last_discovery_time = current_time - (  # noqa: SLF001
+        discovery_protocol._last_discovery_time = current_time - (
             DISCOVERY_RATE_LIMIT_SECONDS + 0.1
         )
         discovery_protocol.datagram_received(

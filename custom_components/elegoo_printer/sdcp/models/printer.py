@@ -15,6 +15,7 @@ from custom_components.elegoo_printer.const import (
     CONF_CC2_ACCESS_CODE,
     CONF_CC2_TOKEN_STATUS,
     CONF_EXTERNAL_IP,
+    CONF_HAS_CANVAS,
     CONF_MQTT_BROKER_ENABLED,
     CONF_MQTT_EXTERNAL_HOST,
     CONF_MQTT_EXTERNAL_PORT,
@@ -62,6 +63,34 @@ class FileFilamentData:
     total_filament_changes: int | None = None
     estimated_time: str | None = None
     slicer_version: str | None = None
+
+    @classmethod
+    def from_proxy_payload(cls, payload: dict[str, Any]) -> FileFilamentData | None:
+        """
+        Build from a gcode capture proxy /api/filament response.
+
+        The payload nests per-slot data under a "filament" key with
+        "slicer_version" and "filename" at the top level. Returns None when
+        the payload carries no filament data.
+        """
+        filament = payload.get("filament") or {}
+        if not filament:
+            return None
+        return cls(
+            total_filament_used=filament.get("total_grams"),
+            filename=payload.get("filename"),
+            per_slot_grams=filament.get("per_slot_grams", []),
+            per_slot_mm=filament.get("per_slot_mm", []),
+            per_slot_cm3=filament.get("per_slot_cm3", []),
+            per_slot_cost=filament.get("per_slot_cost", []),
+            per_slot_density=filament.get("per_slot_density", []),
+            per_slot_diameter=filament.get("per_slot_diameter", []),
+            filament_names=filament.get("filament_names", []),
+            total_cost=filament.get("total_cost"),
+            total_filament_changes=filament.get("total_filament_changes"),
+            estimated_time=filament.get("estimated_time"),
+            slicer_version=payload.get("slicer_version"),
+        )
 
 
 class FirmwareUpdateInfo(TypedDict, total=False):
@@ -132,6 +161,7 @@ class Printer:
     external_ip: str | None
     open_centauri: bool
     has_vat_heater: bool
+    has_canvas: bool
     cc2_access_code: str | None
     cc2_token_status: int
 
@@ -156,6 +186,7 @@ class Printer:
             self.is_proxy = False
             self.open_centauri = False
             self.has_vat_heater = False
+            self.has_canvas = False
         else:
             try:
                 j: dict[str, Any] = json.loads(json_string)  # Decode the JSON string
@@ -185,6 +216,7 @@ class Printer:
 
                 # Check if this printer has vat heating capability
                 self.has_vat_heater = self._has_vat_heater(self.model)
+                self.has_canvas = False
             except json.JSONDecodeError:
                 # Handle the error appropriately (e.g., log it, raise an exception)
                 self.connection = None
@@ -201,6 +233,7 @@ class Printer:
                 self.is_proxy = False
                 self.open_centauri = False
                 self.has_vat_heater = False
+                self.has_canvas = False
 
         # Initialize config-based attributes for all instances
         self.proxy_enabled = config.get(CONF_PROXY_ENABLED, False)
@@ -294,6 +327,7 @@ class Printer:
             "mqtt_external_port": self.mqtt_external_port,
             "open_centauri": self.open_centauri,
             "has_vat_heater": self.has_vat_heater,
+            "has_canvas": self.has_canvas,
             "cc2_access_code": self.cc2_access_code,
             "cc2_token_status": self.cc2_token_status,
         }
@@ -430,6 +464,8 @@ class Printer:
 
         # Check if this printer has vat heating capability
         printer.has_vat_heater = Printer._has_vat_heater(printer.model)
+
+        printer.has_canvas = attrs.get(CONF_HAS_CANVAS, False)
 
         # CC2-specific settings
         printer.cc2_access_code = attrs.get(
