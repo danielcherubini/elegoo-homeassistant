@@ -1239,6 +1239,7 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         LOGGER.debug("options: %s", self.config_entry.options)
 
         if user_input is not None:
+            printer.ip_address = user_input[CONF_IP_ADDRESS]
             if not user_input[CONF_PROXY_ENABLED]:
                 printer.proxy_websocket_port = None
                 printer.proxy_video_port = None
