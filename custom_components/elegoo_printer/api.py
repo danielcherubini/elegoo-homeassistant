@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import re
+import socket
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -119,7 +120,21 @@ class ElegooPrinterApiClient:
             )
             return False
 
-        # Try direct IP first (more efficient for cross-subnet)
+        discovery_addresses = {printer.ip_address}
+        try:
+            resolved_address = await self.hass.async_add_executor_job(
+                socket.gethostbyname, printer.ip_address
+            )
+        except socket.gaierror as e:
+            self._logger.debug(
+                "Could not resolve configured printer address %s: %s",
+                printer.ip_address,
+                e,
+            )
+        else:
+            discovery_addresses.add(resolved_address)
+
+        # Try the configured address first (more efficient for cross-subnet)
         printer_reachable = False
 
         try:
@@ -132,7 +147,7 @@ class ElegooPrinterApiClient:
                 self.client.discover_printer, printer.ip_address
             )
             printer_reachable = any(
-                p.ip_address == printer.ip_address for p in discovered_printers
+                p.ip_address in discovery_addresses for p in discovered_printers
             )
         except (OSError, RuntimeError, TimeoutError) as e:
             self._logger.debug(
@@ -153,7 +168,7 @@ class ElegooPrinterApiClient:
                     self.client.discover_printer
                 )
                 printer_reachable = any(
-                    p.ip_address == printer.ip_address for p in discovered_printers
+                    p.ip_address in discovery_addresses for p in discovered_printers
                 )
             except (OSError, RuntimeError, TimeoutError) as e:
                 self._logger.warning(
