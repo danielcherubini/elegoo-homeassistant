@@ -305,7 +305,9 @@ class TestCanvasGating:
     ) -> None:
         """Test Canvas sensor inclusion for various printer configurations."""
         keys = _registered_keys(
-            printer_type, protocol_version,
-            open_centauri=False, has_canvas=has_canvas,
+            printer_type,
+            protocol_version,
+            open_centauri=False,
+            has_canvas=has_canvas,
         )
         assert CANVAS_KEYS.issubset(keys) == expected

@@ -72,7 +72,11 @@ def _get_active_tray_id(printer_data: PrinterData) -> str | None:
     active = printer_data.ams_status.ams_current_enabled
     if not active:
         return None
-    return active.get("TrayId")
+    tray_id = active.get("TrayId")
+    # CC1 reports -1 when idle (no filament feeding)
+    if tray_id is not None and tray_id.startswith("-"):
+        return None
+    return tray_id
 
 
 def _get_active_filament_color(printer_data: PrinterData) -> str | None:

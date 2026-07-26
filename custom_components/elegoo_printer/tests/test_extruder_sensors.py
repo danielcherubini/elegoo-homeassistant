@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from custom_components.elegoo_printer.definitions import (
     PRINTER_STATUS_CANVAS,
     PRINTER_STATUS_CC2_GCODE_FILAMENT,
     PRINTER_STATUS_GCODE_PROXY_FILAMENT,
+    _get_active_tray_id,
     _get_slot_attributes,
     _get_slot_cm3,
     _get_slot_color,
@@ -325,6 +328,43 @@ class TestGetTotalFilamentUsedAttributes:
         assert attrs["filename"] == "only_name.gcode"
         assert "print_time_sec" not in attrs
         assert "color_map" not in attrs
+
+
+class TestGetActiveTrayId:
+    """active_tray_id returns the padded tray ID or None."""
+
+    @pytest.mark.parametrize(
+        ("active_tray_id", "expected"),
+        [
+            (0, "00"),
+            (1, "01"),
+            (3, "03"),
+            (-1, None),
+        ],
+        ids=["tray_zero", "tray_one", "tray_three", "idle_sentinel"],
+    )
+    def test_active_tray_value(self, active_tray_id: int, expected: str | None) -> None:
+        """Valid trays return zero-padded ID; CC1 idle sentinel (-1) returns None."""
+        data = {
+            **CANVAS_TRAY_DATA,
+            "active_canvas_id": 0,
+            "active_tray_id": active_tray_id,
+        }
+        pd = _make_printer_data(ams_status=AMSStatus(data))
+        assert _get_active_tray_id(pd) == expected
+
+    @pytest.mark.parametrize(
+        "printer_data",
+        [
+            _make_printer_data(ams_status=AMSStatus(CANVAS_TRAY_DATA)),
+            _make_printer_data(),
+            None,
+        ],
+        ids=["no_active_tray", "no_ams", "none_printer_data"],
+    )
+    def test_missing_data_returns_none(self, printer_data: PrinterData | None) -> None:
+        """Returns None when active tray, AMS, or printer data is absent."""
+        assert _get_active_tray_id(printer_data) is None
 
 
 class TestFilamentSensorAvailability:
