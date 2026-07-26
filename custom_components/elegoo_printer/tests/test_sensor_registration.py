@@ -10,6 +10,7 @@ import pytest
 from custom_components.elegoo_printer.definitions import (
     _FDM_PRINT_STATUS_OPTIONS,
     _RESIN_PRINT_STATUS_OPTIONS,
+    PRINTER_STATUS_CANVAS,
     PRINTER_STATUS_CC2_GCODE_FILAMENT,
     PRINTER_STATUS_FDM,
     PRINTER_STATUS_FDM_CURRENT_EXTRUSION,
@@ -23,6 +24,7 @@ from custom_components.elegoo_printer.sdcp.models.enums import (
 )
 from custom_components.elegoo_printer.sensor import async_setup_entry
 
+CANVAS_KEYS = {desc.key for desc in PRINTER_STATUS_CANVAS}
 CURRENT_EXTRUSION_KEYS = {desc.key for desc in PRINTER_STATUS_FDM_CURRENT_EXTRUSION}
 TOTAL_EXTRUSION_KEYS = {desc.key for desc in PRINTER_STATUS_FDM_TOTAL_EXTRUSION}
 GCODE_FILAMENT_KEYS = {desc.key for desc in PRINTER_STATUS_CC2_GCODE_FILAMENT}
@@ -41,6 +43,7 @@ def _registered_keys(
     protocol_version: ProtocolVersion,
     *,
     open_centauri: bool,
+    has_canvas: bool = False,
     config_data: dict | None = None,
 ) -> set[str]:
     """Call the real async_setup_entry and return the set of registered sensor keys."""
@@ -48,6 +51,7 @@ def _registered_keys(
     printer.printer_type = printer_type
     printer.protocol_version = protocol_version
     printer.open_centauri = open_centauri
+    printer.has_canvas = has_canvas
     printer.has_vat_heater = False
 
     coordinator = MagicMock()
@@ -268,3 +272,40 @@ class TestPrintStatusOptionsScoping:
     def test_resin_options_subset_of_fdm(self) -> None:
         """Every resin option is also a valid FDM option."""
         assert set(_RESIN_PRINT_STATUS_OPTIONS).issubset(_FDM_PRINT_STATUS_OPTIONS)
+
+
+class TestCanvasGating:
+    """Test Canvas sensor inclusion via async_setup_entry."""
+
+    def test_canvas_keys_include_active_tray_id(self) -> None:
+        """Verify active_tray_id is in the Canvas sensor tuple."""
+        assert "active_tray_id" in CANVAS_KEYS
+
+    @pytest.mark.parametrize(
+        ("printer_type", "protocol_version", "has_canvas", "expected"),
+        [
+            (PrinterType.FDM, ProtocolVersion.CC2, True, True),
+            (PrinterType.FDM, ProtocolVersion.V3, True, True),
+            (PrinterType.FDM, ProtocolVersion.V1, True, True),
+            (PrinterType.FDM, ProtocolVersion.CC2, False, False),
+            (PrinterType.FDM, ProtocolVersion.V3, False, False),
+            (PrinterType.FDM, ProtocolVersion.V1, False, False),
+            (PrinterType.RESIN, ProtocolVersion.V3, True, False),
+            (PrinterType.RESIN, ProtocolVersion.CC2, True, False),
+            (None, ProtocolVersion.CC2, True, False),
+            (None, ProtocolVersion.V3, True, False),
+        ],
+    )
+    def test_canvas_gating(
+        self,
+        printer_type: PrinterType | None,
+        protocol_version: ProtocolVersion,
+        has_canvas: bool,  # noqa: FBT001
+        expected: bool,  # noqa: FBT001
+    ) -> None:
+        """Test Canvas sensor inclusion for various printer configurations."""
+        keys = _registered_keys(
+            printer_type, protocol_version,
+            open_centauri=False, has_canvas=has_canvas,
+        )
+        assert CANVAS_KEYS.issubset(keys) == expected
