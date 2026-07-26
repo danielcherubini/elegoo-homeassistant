@@ -65,6 +65,16 @@ def _get_current_coord_value(printer_data: PrinterData, index: int) -> float | N
         return None
 
 
+def _get_active_tray_id(printer_data: PrinterData) -> str | None:
+    """Get the tray ID of the currently active filament."""
+    if not printer_data or not printer_data.ams_status:
+        return None
+    active = printer_data.ams_status.ams_current_enabled
+    if not active:
+        return None
+    return active.get("TrayId")
+
+
 def _get_active_filament_color(printer_data: PrinterData) -> str | None:
     """Get the hex color of the currently active filament."""
     if not printer_data or not printer_data.ams_status:
@@ -1031,6 +1041,12 @@ PRINTER_STATUS_CANVAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         extra_attributes=lambda entity: _get_active_filament_attributes(
             entity.coordinator.data
         ),
+    ),
+    ElegooPrinterSensorEntityDescription(
+        key="active_tray_id",
+        name="Active Tray ID",
+        icon="mdi:tray-full",
+        value_fn=lambda printer_data: _get_active_tray_id(printer_data),
     ),
     # --- A1-A4 Color ---
     *(
