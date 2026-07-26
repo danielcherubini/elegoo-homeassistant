@@ -1046,7 +1046,7 @@ PRINTER_STATUS_CANVAS: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         key="active_tray_id",
         name="Active Tray ID",
         icon="mdi:tray-full",
-        value_fn=lambda printer_data: _get_active_tray_id(printer_data),
+        value_fn=_get_active_tray_id,
     ),
     # --- A1-A4 Color ---
     *(
