@@ -877,6 +877,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DISTANCE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=4,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda printer_data: (
@@ -951,6 +952,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DISTANCE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
         value_fn=lambda printer_data: _get_current_coord_value(printer_data, 0),
     ),
@@ -962,6 +964,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DISTANCE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
         value_fn=lambda printer_data: _get_current_coord_value(printer_data, 1),
     ),
@@ -973,6 +976,7 @@ PRINTER_STATUS_FDM: tuple[ElegooPrinterSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DISTANCE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
         value_fn=lambda printer_data: _get_current_coord_value(printer_data, 2),
     ),
@@ -987,6 +991,7 @@ PRINTER_STATUS_FDM_TOTAL_EXTRUSION: tuple[ElegooPrinterSensorEntityDescription, 
         device_class=SensorDeviceClass.DISTANCE,
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
         value_fn=lambda printer_data: (
             printer_data.status.print_info.total_extrusion
@@ -1007,6 +1012,7 @@ PRINTER_STATUS_FDM_CURRENT_EXTRUSION: tuple[
         device_class=SensorDeviceClass.DISTANCE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
         value_fn=lambda printer_data: (
             printer_data.status.print_info.current_extrusion
@@ -1190,6 +1196,7 @@ PRINTER_STATUS_GCODE_PROXY_FILAMENT: tuple[
             icon="mdi:ruler",
             state_class=SensorStateClass.MEASUREMENT,
             native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+            suggested_unit_of_measurement=UnitOfLength.MILLIMETERS,
             suggested_display_precision=2,
             value_fn=(lambda pd, _i=i: _get_slot_mm(pd, _i)),
         )
