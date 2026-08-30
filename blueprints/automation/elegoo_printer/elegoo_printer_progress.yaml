@@ -1,5 +1,5 @@
 blueprint:
-  name: Elegoo Printer Progress Notification (v4)
+  name: Elegoo Printer Progress Notification (v5)
   description: Sends notifications for printer progress, status changes, and error states.
   author: Daniel Cherubini
   homeassistant:
@@ -43,18 +43,14 @@ blueprint:
       selector:
         device:
           integration: mobile_app
-    percentage_divisor:
-      name: Notification Frequency
+    progress_notifications:
+      name: Progress Notifications
       description: >-
-        Notify when the percentage complete is divisible by this number. Use 1
-        to be notified on every percentage change.
+        Comma-separated list of completion percentages at which to send
+        a progress notification (e.g. 10,20,50,75,90,100).
+      default: "10,20,50,75,90,100"
       selector:
-        select:
-          options:
-            - "1"
-            - "2"
-            - "5"
-      default: "5"
+        text:
     camera_entity:
       name: Printer Camera (Optional)
       description: Override the default camera entity for the printer. Leave blank to use the default camera from the printer device.
@@ -79,7 +75,9 @@ max_exceeded: silent
 variables:
   percent_complete_entity: !input percent_complete_entity
   notify_device: !input notify_device
-  percentage_divisor: !input percentage_divisor
+  progress_points: >-
+    {{ progress_notifications | string | replace(' ', '') | split(',') |
+    rejectequalto('') | map('int') | list }}
   camera_entity_input: !input camera_entity
   dashboard_url: !input dashboard_url
   enable_status_notifications: !input enable_status_notifications
@@ -134,7 +132,7 @@ action:
             value_template: "{{ states(percent_complete_entity) | int(0) < 100 }}"
           - condition: template
             value_template: >-
-              {{ states(percent_complete_entity) | int(0) % (percentage_divisor | int) == 0 }}
+              {{ states(percent_complete_entity) | int(0) in progress_points }}
           - condition: template
             value_template: >-
               {{ current_status_entity != none and states(current_status_entity) == 'printing' }}
