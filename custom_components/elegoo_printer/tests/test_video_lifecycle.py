@@ -232,14 +232,19 @@ class TestVideoLifecycleMixin:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """A staled native stream flag is cleared for the next disable."""
+        """A stale native stream flag is cleared for the next disable."""
 
         async def run() -> None:
             client, _ = _make_client()
             subject = _VideoLifecycleSubject(client)
+            # Use a zero timeout and a tiny positive last_activity so the
+            # idle check (loop_time - last > 0) holds regardless of the
+            # event loop's clock basis. A real past value is unrepresentable
+            # when the loop's clock is a fresh counter, so we make the
+            # timeout itself zero instead.
+            monkeypatch.setattr(camera_module, "NATIVE_STREAM_IDLE_TIMEOUT", 0)
             subject._native_stream_active = True
-            subject._last_activity = 1000.0
-            monkeypatch.setattr(camera_module, "NATIVE_STREAM_IDLE_TIMEOUT", 1.0)
+            subject._last_activity = 1e-9
             await subject._idle_watchdog_tick()
             assert subject._native_stream_active is False
 
