@@ -42,7 +42,6 @@ from .coordinator import ElegooDataUpdateCoordinator
 if TYPE_CHECKING:
     from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
-
 # Graceful ffmpeg shutdown timeouts
 FFMPEG_QUIT_TIMEOUT = 10  # seconds to wait after sending 'q' to ffmpeg
 FFMPEG_TERMINATE_TIMEOUT = 5  # seconds to wait after SIGTERM before SIGKILL
@@ -108,6 +107,200 @@ class ElegooCameraMjpeg(CameraMjpeg):
         self._clear()
 
 
+class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
+    """
+    Ref-counted lifecycle for the printer's video stream.
+
+    Printers advertise a fixed number of concurrent video stream
+    connections (num_video_stream_connected vs. max_video_stream_allowed)
+    and once the stream is enabled it stays active on the printer side
+    until explicitly disabled. Leaving it enabled with no viewers occupies
+    a slot (which can block other consumers and requires a printer reboot
+    to release), so this mixin:
+
+    - Enables the video when the first viewer (MJPEG stream, transient
+      image grab, or native stream) appears
+    - Disables it when the last viewer disconnects
+    - An idle watchdog re-attempts failed disables and clears stale
+      native stream flags
+    - Disables on entity removal to clean up residual state
+
+    The mixin does not own entity state. Camera classes call
+    ``_init_video_lifecycle(client)`` inside their own ``__init__`` once
+    ``self._printer_client`` is available.
+    """
+
+    def _init_video_lifecycle(self, client: "ElegooPrinterClient") -> None:
+        """Initialize stream lifecycle state on this camera entity."""
+        self._printer_client = client
+        self._active_mjpeg_streams = 0
+        self._transient_viewers = 0
+        self._native_stream_active = False
+        self._stream_enabled = False
+        self._last_activity = 0.0
+        self._idle_watchdog_task = None
+
+    def _is_over_capacity(self) -> bool:
+        """Check if the printer is over capacity."""
+        attrs = self._printer_client.printer_data.attributes
+        num_connected = getattr(attrs, "num_video_stream_connected", 0) or 0
+        max_allowed = getattr(attrs, "max_video_stream_allowed", 0) or 0
+        return num_connected >= max_allowed
+
+    def _has_active_viewers(self) -> bool:
+        """Check if any viewer type is currently active."""
+        return (
+            self._active_mjpeg_streams > 0
+            or self._transient_viewers > 0
+            or self._native_stream_active
+        )
+
+    async def _ensure_stream_enabled(self) -> None:
+        """
+        Enable printer video if not already enabled.
+
+        Idempotent — safe to call when already enabled.
+        On failure, _stream_enabled is NOT set (may retry later).
+        """
+        if self._stream_enabled:
+            return
+        if not self._printer_client.is_connected:
+            LOGGER.debug(
+                "Printer client not connected, deferring video enable for %s",
+                self.entity_id,
+            )
+            return
+        try:
+            video = await self._printer_client.get_printer_video(enable=True)
+        except Exception as e:  # noqa: BLE001
+            LOGGER.warning(
+                "Exception enabling printer video for %s: %s",
+                self.entity_id,
+                e,
+            )
+            return
+        if video.status == ElegooVideoStatus.SUCCESS:
+            self._stream_enabled = True
+            LOGGER.debug("Enabled printer video for %s", self.entity_id)
+        else:
+            LOGGER.warning(
+                "Failed to enable printer video for %s: %s",
+                self.entity_id,
+                video.status,
+            )
+
+    async def _disable_stream(self) -> None:
+        """
+        Disable printer video.
+
+        On failure, _stream_enabled stays True (video may still be on
+        printer). The idle watchdog will re-attempt on subsequent
+        intervals.
+        """
+        if not self._stream_enabled:
+            return
+        try:
+            await self._printer_client.set_printer_video_stream(enable=False)
+        except Exception as e:  # noqa: BLE001
+            LOGGER.warning(
+                "Failed to disable printer video for %s (may be over capacity): %s",
+                self.entity_id,
+                e,
+            )
+            # Don't clear flag — video may still be enabled on printer
+            return
+        self._stream_enabled = False
+        LOGGER.debug("Disabled printer video for %s", self.entity_id)
+
+    async def _get_stream_url(self) -> str | None:
+        """
+        Get the stream URL from cached printer data.
+
+        Does NOT toggle the printer video — reads the URL cached by the
+        last call to get_printer_video(). Callers must ensure the video
+        is enabled via _ensure_stream_enabled() before calling this method.
+        """
+        if (not self._printer_client.is_connected) or self._is_over_capacity():
+            return None
+        video_url = self._printer_client.printer_data.video.video_url
+        if video_url:
+            LOGGER.debug(
+                "stream_source: Using cached stream URL: %s",
+                video_url,
+            )
+            return video_url
+        return None
+
+    async def _idle_watchdog_tick(self) -> None:
+        """
+        Run a single watchdog pass.
+
+        1. If no viewers are active and video is enabled, attempt to
+           disable it (handles failed disables from the normal
+           disconnect path).
+        2. If the native stream has been idle for
+           NATIVE_STREAM_IDLE_TIMEOUT, clear the native-stream flag
+           (allows a future disable attempt).
+        """
+        if self._stream_enabled and not self._has_active_viewers():
+            await self._disable_stream()
+        if (
+            self._native_stream_active
+            and self._last_activity > 0
+            and asyncio.get_running_loop().time() - self._last_activity
+            > NATIVE_STREAM_IDLE_TIMEOUT
+        ):
+            LOGGER.debug(
+                "Native stream idle for %.0fs, clearing flag for %s",
+                NATIVE_STREAM_IDLE_TIMEOUT,
+                self.entity_id,
+            )
+            self._native_stream_active = False
+
+    async def _idle_watchdog(self) -> None:
+        """
+        Periodically check for idle conditions and clean up.
+
+        Runs every IDLE_WATCHDOG_INTERVAL seconds. See the tick for the
+        two responsibilities (disabled-when-idle, stale native flag).
+        """
+        while True:
+            try:
+                await asyncio.sleep(IDLE_WATCHDOG_INTERVAL)
+                await self._idle_watchdog_tick()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                LOGGER.exception("Idle watchdog error for %s", self.entity_id)
+
+    async def _cleanup_video_lifecycle(self) -> None:
+        """Cancel the idle watchdog and release the video stream state."""
+        if self._idle_watchdog_task is not None:
+            self._idle_watchdog_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._idle_watchdog_task
+            self._idle_watchdog_task = None
+        self._active_mjpeg_streams = 0
+        self._transient_viewers = 0
+        self._native_stream_active = False
+        await self._disable_stream()
+
+    async def async_added_to_hass(self) -> None:
+        """Start the idle watchdog when the entity is added."""
+        await super().async_added_to_hass()
+        self._idle_watchdog_task = asyncio.create_task(self._idle_watchdog())
+
+    async def async_will_remove_from_hass(self) -> None:
+        """
+        Clean up when the entity is removed from Home Assistant.
+
+        Cancels the idle watchdog, resets stream state and disables the
+        printer video.
+        """
+        await super().async_will_remove_from_hass()
+        await self._cleanup_video_lifecycle()
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ElegooPrinterConfigEntry,
@@ -132,7 +325,7 @@ async def async_setup_entry(
             )
 
 
-class ElegooStreamCamera(ElegooPrinterEntity, Camera):
+class ElegooStreamCamera(ElegooVideoStreamLifecycle, Camera):
     """Representation of a camera that streams from an Elegoo printer."""
 
     def __init__(
@@ -159,102 +352,13 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         self._extra_ffmpeg_arguments = (
             "-rtsp_transport udp -fflags nobuffer -err_detect ignore_err"
         )
-
-        # Stream lifecycle tracking
-        self._active_mjpeg_streams: int = 0
         self._active_mjpeg_processes: set[ElegooCameraMjpeg] = set()
-        self._transient_viewers: int = 0  # async_camera_image grabs
-        self._native_stream_active: bool = False
-        self._stream_enabled: bool = False
-        self._last_activity: float = 0.0  # monotonic time of last stream activity
-        self._idle_watchdog_task: asyncio.Task | None = None
-
-    def _is_over_capacity(self) -> bool:
-        """Check if the printer is over capacity."""
-        attrs = self._printer_client.printer_data.attributes
-        num_connected = getattr(attrs, "num_video_stream_connected", 0) or 0
-        max_allowed = getattr(attrs, "max_video_stream_allowed", 0) or 0
-        return num_connected >= max_allowed
+        self._init_video_lifecycle(self._printer_client)
 
     @cached_property
     def supported_features(self) -> CameraEntityFeature:
         """Return supported features."""
         return self._attr_supported_features
-
-    def _has_active_viewers(self) -> bool:
-        """Check if any viewer type is currently active."""
-        return (
-            self._active_mjpeg_streams > 0
-            or self._transient_viewers > 0
-            or self._native_stream_active
-        )
-
-    async def _ensure_stream_enabled(self) -> None:
-        """
-        Enable printer video if not already enabled.
-
-        Idempotent — safe to call when already enabled.
-        On failure, _stream_enabled is NOT set (may retry later).
-        """
-        if self._stream_enabled:
-            return
-        try:
-            video = await self._printer_client.get_printer_video(enable=True)
-            if video.status == ElegooVideoStatus.SUCCESS:
-                self._stream_enabled = True
-                LOGGER.debug("Enabled printer video for %s", self.entity_id)
-            else:
-                LOGGER.warning(
-                    "Failed to enable printer video for %s: %s",
-                    self.entity_id,
-                    video.status,
-                )
-        except Exception as e:  # noqa: BLE001
-            LOGGER.warning(
-                "Exception enabling printer video for %s: %s",
-                self.entity_id,
-                e,
-            )
-
-    async def _disable_stream(self) -> None:
-        """
-        Disable printer video.
-
-        On failure, _stream_enabled stays True (video may still be on printer).
-        The idle watchdog will re-attempt on subsequent intervals.
-        """
-        if not self._stream_enabled:
-            return
-        try:
-            await self._printer_client.set_printer_video_stream(enable=False)
-            self._stream_enabled = False
-            LOGGER.debug("Disabled printer video for %s", self.entity_id)
-        except Exception as e:  # noqa: BLE001
-            LOGGER.warning(
-                "Failed to disable printer video for %s (may be over capacity): %s",
-                self.entity_id,
-                e,
-            )
-            # Don't clear flag — video may still be enabled on printer
-
-    async def _get_stream_url(self) -> str | None:
-        """
-        Get the stream URL from cached printer data.
-
-        Does NOT toggle the printer video — reads the URL cached by the
-        last call to get_printer_video(). Callers must ensure the video
-        is enabled via _ensure_stream_enabled() before calling this method.
-        """
-        if (not self._printer_client.is_connected) or self._is_over_capacity():
-            return None
-        video_url = self._printer_client.printer_data.video.video_url
-        if video_url:
-            LOGGER.debug(
-                "stream_source: Resin printer video (RTSP), using direct URL: %s",
-                video_url,
-            )
-            return video_url
-        return None
 
     async def handle_async_mjpeg_stream(
         self, request: web.Request
@@ -334,8 +438,8 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
         """
         Return a still image from the camera.
 
-        Treats the image grab as a transient viewer — enables video if needed,
-        but only disables if no other viewers are active.
+        Treats the image grab as a transient viewer — enables video if
+        needed, but only disables if no other viewers are active.
 
         Note: This path uses HA's async_get_image() which spawns its own
         ffmpeg process. That process does NOT get graceful SIGTERM shutdown,
@@ -366,81 +470,21 @@ class ElegooStreamCamera(ElegooPrinterEntity, Camera):
             if not self._has_active_viewers():
                 await self._disable_stream()
 
-    async def async_added_to_hass(self) -> None:
-        """Start the idle watchdog when the entity is added."""
-        await super().async_added_to_hass()
-        self._idle_watchdog_task = asyncio.create_task(self._idle_watchdog())
-
-    async def _idle_watchdog(self) -> None:
-        """
-        Periodically check for idle conditions and clean up.
-
-        Runs every IDLE_WATCHDOG_INTERVAL seconds. Two responsibilities:
-        1. If no viewers are active and video is enabled, attempt to disable
-           (handles failed disables from normal disconnect path).
-        2. If native stream has been idle for NATIVE_STREAM_IDLE_TIMEOUT,
-           clear the native stream flag (allows future disable attempts).
-
-        Limitation: We cannot detect when HA's native stream stops (no callback).
-        The idle timeout is a best-effort heuristic. If a native stream is
-        actively consuming the RTSP feed when the flag is cleared, the next
-        watchdog tick (~60s later) will disable the video. This is acceptable
-        because STREAM is not advertised in supported_features, so this path
-        is not actively used.
-        """
-        loop = asyncio.get_running_loop()
-        while True:
-            try:
-                await asyncio.sleep(IDLE_WATCHDOG_INTERVAL)
-                # Always attempt disable if video is on but no viewers
-                if self._stream_enabled and not self._has_active_viewers():
-                    await self._disable_stream()
-                # Clear native stream flag if idle (next tick will disable)
-                if (
-                    self._native_stream_active
-                    and self._last_activity > 0
-                    and loop.time() - self._last_activity > NATIVE_STREAM_IDLE_TIMEOUT
-                ):
-                    LOGGER.debug(
-                        "Native stream idle for %.0fs, clearing flag for %s",
-                        NATIVE_STREAM_IDLE_TIMEOUT,
-                        self.entity_id,
-                    )
-                    self._native_stream_active = False
-            except asyncio.CancelledError:
-                raise
-            except Exception:  # noqa: BLE001
-                LOGGER.exception("Idle watchdog error for %s", self.entity_id)
-
     async def async_will_remove_from_hass(self) -> None:
         """
         Clean up when the entity is removed from Home Assistant.
 
-        Cancels the idle watchdog, closes any in-flight MJPEG processes,
-        and disables the printer video.
+        Closes any in-flight MJPEG processes (camera-specific state),
+        then delegates to the lifecycle for watchdog cancellation and
+        stream disabling.
         """
-        # Cancel idle watchdog
-        if self._idle_watchdog_task:
-            self._idle_watchdog_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._idle_watchdog_task
-            self._idle_watchdog_task = None
-
-        # Close any in-flight MJPEG processes
         for proc in self._active_mjpeg_processes.copy():
             await proc.close(shutdown_timeout=FFMPEG_QUIT_TIMEOUT)
         self._active_mjpeg_processes.clear()
-        self._active_mjpeg_streams = 0
-        self._transient_viewers = 0
-
-        # Disable native stream tracking
-        self._native_stream_active = False
-
-        # Disable printer video
-        await self._disable_stream()
+        await super().async_will_remove_from_hass()
 
 
-class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
+class ElegooMjpegCamera(ElegooVideoStreamLifecycle, MjpegCamera):
     """Representation of an MjpegCamera."""
 
     def __init__(
@@ -482,13 +526,7 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         self._printer_client: ElegooPrinterClient = (
             coordinator.config_entry.runtime_data.api.client
         )
-
-    def _is_over_capacity(self) -> bool:
-        """Check if the printer is over capacity."""
-        attrs = self._printer_client.printer_data.attributes
-        num_connected = getattr(attrs, "num_video_stream_connected", 0) or 0
-        max_allowed = getattr(attrs, "max_video_stream_allowed", 0) or 0
-        return num_connected >= max_allowed
+        self._init_video_lifecycle(self._printer_client)
 
     @staticmethod
     def _normalize_video_url(video_url: str | None) -> str | None:
@@ -515,41 +553,101 @@ class ElegooMjpegCamera(ElegooPrinterEntity, MjpegCamera):
         return video_url
 
     async def _update_stream_url(self) -> None:
-        """Update the MJPEG stream URL."""
+        """
+        Update the MJPEG stream URL and manage video state.
+
+        Ref-counted like the rest of the lifecycle: the update is
+        re-requested only when the video is not enabled, or when the
+        video is enabled but the URL is mismatched (retries are safe
+        because an already-enabled stream tolerates a subsequent enable).
+        Over-capacity/disconnected printers are left untouched.
+        """
+        if self._stream_enabled and self._mjpeg_url:
+            # URL still valid from when the stream was enabled
+            return
         if (not self._printer_client.is_connected) or self._is_over_capacity():
+            self._mjpeg_url = None
             return
         video = await self._printer_client.get_printer_video(enable=True)
-        if video.status and video.status == ElegooVideoStatus.SUCCESS:
-            LOGGER.debug("stream_source: Video is OK, getting stream source")
+        if video.status == ElegooVideoStatus.SUCCESS:
+            self._stream_enabled = True
             video_url = self._normalize_video_url(video.video_url)
+            self._mjpeg_url = video_url
             if not video_url:
                 LOGGER.debug("stream_source: Empty or invalid video URL from printer")
-                self._mjpeg_url = None
-                return
-
-            LOGGER.debug("stream_source: Using video url: %s", video_url)
-            self._mjpeg_url = video_url
+            else:
+                LOGGER.debug("stream_source: Using video url: %s", video_url)
         else:
             LOGGER.debug("stream_source: Failed to get video stream: %s", video.status)
+            self._stream_enabled = False
             self._mjpeg_url = None
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Asynchronously gets the current MJPEG stream URL for the printer camera."""
-        await self._update_stream_url()
-        if (not self._mjpeg_url) or self._is_over_capacity():
-            return None
-        return await super().async_camera_image(width=width, height=height)
+        """
+        Return a still image from the printer camera.
+
+        Treats the image grab as a transient viewer — ref-counts the
+        video stream per ElegooVideoStreamLifecycle: enables the stream
+        on the first viewer and disables it when the last viewer
+        disconnects. The base MjpegCamera image path reads a single
+        frame from a short-lived HTTP connection, which closes when the
+        grab completes, so no stream connection is left open afterwards.
+        """
+        # Enable stream if no other viewers are active (check before increment)
+        if not self._has_active_viewers():
+            await self._update_stream_url()
+        self._transient_viewers += 1
+        try:
+            if (not self._mjpeg_url) or self._is_over_capacity():
+                return None
+            return await super().async_camera_image(width=width, height=height)
+        finally:
+            self._transient_viewers = max(0, self._transient_viewers - 1)
+            # Only disable if no other viewers are active
+            if not self._has_active_viewers():
+                await self._disable_stream()
 
     async def handle_async_mjpeg_stream(
         self, request: web.Request
     ) -> web.StreamResponse:
-        """Generate an HTTP MJPEG stream from the camera."""
-        await self._update_stream_url()
-        if not self._mjpeg_url:
-            return web.Response(
-                status=HTTPStatus.SERVICE_UNAVAILABLE,
-                reason="Stream URL not available",
-            )
-        return await super().handle_async_mjpeg_stream(request)
+        """
+        Generate an HTTP MJPEG stream from the camera.
+
+        Ref-counted: enables video on first viewer, disables on last.
+        """
+        # Enable stream if first viewer
+        if not self._has_active_viewers():
+            await self._update_stream_url()
+        self._active_mjpeg_streams += 1
+        self._last_activity = asyncio.get_running_loop().time()
+        try:
+            if not self._mjpeg_url or self._is_over_capacity():
+                return web.Response(
+                    status=HTTPStatus.SERVICE_UNAVAILABLE,
+                    reason="Stream URL not available",
+                )
+            return await super().handle_async_mjpeg_stream(request)
+        finally:
+            # Disable stream if last viewer
+            self._last_activity = asyncio.get_running_loop().time()
+            self._active_mjpeg_streams = max(0, self._active_mjpeg_streams - 1)
+            if not self._has_active_viewers():
+                await self._disable_stream()
+
+    async def stream_source(self) -> str | None:
+        """
+        Return the MJPEG stream source.
+
+        Enables video for native streams (which uses the MJPEG source
+        with FFmpeg), tracks the stream, and disables it after
+        NATIVE_STREAM_IDLE_TIMEOUT of idle via the idle watchdog.
+        """
+        if not self._native_stream_active:
+            await self._update_stream_url()
+            if not self._mjpeg_url:
+                return None
+            self._native_stream_active = True
+            self._last_activity = asyncio.get_running_loop().time()
+        return self._mjpeg_url
