@@ -47,11 +47,12 @@ make test     # pytest
 2. Push to `main` only — **do not push a tag** (see Recovery below)
 3. The `release.yml` workflow triggers automatically, validates versions match, re-runs lint + tests, generates release notes, and creates both the `vX.Y.Z` tag and the GitHub Release
 
-### 5. Curate the release notes
-The auto-generated notes are a flat PR list. For a polished user-facing release, replace them with a curated summary:
+### 5. Curate the release notes (after the release is created)
+Once the workflow has created the release, the notes are a flat PR list. **Update them immediately after the release is created** by replacing them with a curated, user-facing summary:
 - Group by impact: Features / Fixes / Documentation / Migration
 - Explain the *why*, not just the *what* — users care about outcomes
-- Thank new contributors prominently (GitHub's auto-notes list them but don't explain their work)
+- **Thank everyone who reported issues and helped** — name the issue reporters (each fix usually exists because someone filed a good report) and any new contributors. Say specifically what each person's contribution was (e.g. "the report that made the fix possible", "the diagnosis", "the concrete criteria that shaped the default"). Per person, tied to the issue number.
+- Cover every issue handled in the cycle, not just the ones with code changes (e.g. one closed pending logs, one closed as not planned) so reporters see their report was acted on
 - Use `gh release edit vX.Y.Z --notes-file <notes.md>`
 
 ### 6. Verify
