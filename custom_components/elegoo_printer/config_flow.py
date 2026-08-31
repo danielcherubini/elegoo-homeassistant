@@ -48,6 +48,8 @@ from .websocket.client import ElegooPrinterClient
 from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from homeassistant.helpers.selector import SelectOptionDict
 
 
@@ -1085,6 +1087,14 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return True
 
 
+# Maps a TransportType to its options-flow step id.
+_OPTIONS_STEP_IDS: dict[TransportType, str] = {
+    TransportType.CC2_MQTT: "cc2_options",
+    TransportType.MQTT: "mqtt_options",
+    TransportType.WEBSOCKET: "websocket_options",
+}
+
+
 class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
     """Options flow handler for Elegoo Printer."""
 
@@ -1120,6 +1130,77 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             return await self.async_step_mqtt_options(user_input)
         return await self.async_step_websocket_options(user_input)
 
+    async def _async_step_transport_options(  # noqa: PLR0913
+        self,
+        user_input: dict[str, Any] | None,
+        transport: TransportType,
+        schema: dict | Callable[[Printer], dict],
+        suggested_values: Callable[[dict[str, Any]], dict[str, Any]],
+        process_input: Callable[
+            [dict[str, Any], Printer, dict[str, str]],
+            Awaitable[config_entries.ConfigFlowResult | None],
+        ],
+        description_placeholders: (
+            dict[str, Any] | Callable[[Printer], dict[str, Any]] | None
+        ) = None,
+    ) -> config_entries.ConfigFlowResult:
+        """
+        Shared skeleton for the transport-specific options steps.
+
+        Flow: ``current_settings`` merge → ``Printer.from_dict`` →
+        transport-specific input processing (``process_input``) →
+        ``async_create_entry`` or ``async_show_form``.
+
+        Arguments:
+            user_input: The user input data.
+            transport: The transport-type discriminator (maps to the step id).
+            schema: The raw form schema, or a callable that receives the
+                constructed printer.
+            suggested_values: Builds the ``suggested_values`` for the final
+                form from ``current_settings``.
+            process_input: The transport-specific input processing (including
+                the network checks). Returns the early form show or
+                ``async_create_entry`` result, or ``None`` to fall through
+                to the final form show.
+            description_placeholders: Optional description placeholders, or a
+                callable that receives the constructed printer.
+
+        Returns:
+            The result of the configuration flow step.
+
+        """
+        _errors: dict[str, str] = {}
+        current_settings = {
+            **(self.config_entry.data or {}),
+            **(self.config_entry.options or {}),
+        }
+        printer = Printer.from_dict(current_settings)
+
+        if user_input is not None:
+            result = await process_input(user_input, printer, _errors)
+            if result is not None:
+                return result
+
+        # A failed websocket connection test (process_input returned None)
+        # falls through and re-shows the form.
+        if callable(schema):
+            schema = schema(printer)
+        if callable(description_placeholders):
+            description_placeholders = description_placeholders(printer)
+
+        show_form_kwargs: dict[str, Any] = {}
+        if description_placeholders is not None:
+            show_form_kwargs["description_placeholders"] = description_placeholders
+        return self.async_show_form(
+            step_id=_OPTIONS_STEP_IDS[transport],
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema(schema),
+                suggested_values=suggested_values(current_settings),
+            ),
+            errors=_errors,
+            **show_form_kwargs,
+        )
+
     async def _async_validate_gcode_proxy(
         self, proxy_raw: str | None
     ) -> tuple[str | None, str | None]:
@@ -1144,14 +1225,12 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Handle options for CC2 printers."""
-        _errors = {}
-        current_settings = {
-            **(self.config_entry.data or {}),
-            **(self.config_entry.options or {}),
-        }
-        printer = Printer.from_dict(current_settings)
 
-        if user_input is not None:
+        async def _process_cc2_options_input(
+            user_input: dict[str, Any],
+            printer: Printer,
+            _errors: dict[str, str],
+        ) -> config_entries.ConfigFlowResult | None:
             printer.ip_address = user_input.get(CONF_IP_ADDRESS, printer.ip_address)
             printer_data = printer.to_dict()
             access_code = user_input.get(CONF_CC2_ACCESS_CODE)
@@ -1181,15 +1260,12 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 data=printer_data,
             )
 
-        return self.async_show_form(
-            step_id="cc2_options",
-            data_schema=self.add_suggested_values_to_schema(
-                vol.Schema(self._cc2_options_schema()),
-                suggested_values=self._suggested_with_normalized_proxy(
-                    current_settings
-                ),
-            ),
-            errors=_errors,
+        return await self._async_step_transport_options(
+            user_input,
+            TransportType.CC2_MQTT,
+            schema=self._cc2_options_schema(),
+            suggested_values=self._suggested_with_normalized_proxy,
+            process_input=_process_cc2_options_input,
         )
 
     @staticmethod
@@ -1223,13 +1299,6 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Handle options for MQTT printers (embedded broker)."""
-        _errors = {}
-        current_settings = {
-            **(self.config_entry.data or {}),
-            **(self.config_entry.options or {}),
-        }
-        printer = Printer.from_dict(current_settings)
-
         data_schema = {
             vol.Required(CONF_IP_ADDRESS): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
@@ -1245,7 +1314,11 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             ),
         }
 
-        if user_input is not None:
+        async def _process_mqtt_options_input(
+            user_input: dict[str, Any],
+            printer: Printer,
+            _errors: dict[str, str],
+        ) -> config_entries.ConfigFlowResult | None:
             printer.ip_address = user_input.get(CONF_IP_ADDRESS, printer.ip_address)
             printer.external_ip = user_input.get(CONF_EXTERNAL_IP)
             printer.mqtt_external_host = user_input.get(CONF_MQTT_EXTERNAL_HOST)
@@ -1273,34 +1346,37 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 data=printer.to_dict(),
             )
 
-        return self.async_show_form(
-            step_id="mqtt_options",
-            data_schema=self.add_suggested_values_to_schema(
-                vol.Schema(data_schema),
-                suggested_values=current_settings,
-            ),
-            errors=_errors,
+        return await self._async_step_transport_options(
+            user_input,
+            TransportType.MQTT,
+            schema=data_schema,
+            suggested_values=lambda settings: settings,
+            process_input=_process_mqtt_options_input,
         )
 
     async def async_step_websocket_options(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Handle options for WebSocket/SDCP printers."""
-        _errors = {}
-        current_settings = {
-            **(self.config_entry.data or {}),
-            **(self.config_entry.options or {}),
-        }
-        printer = Printer.from_dict(current_settings)
         LOGGER.debug("data: %s", self.config_entry.data)
         LOGGER.debug("options: %s", self.config_entry.options)
 
-        # Resin printers have no Canvas unit and nothing for the gcode proxy
-        # to capture, so those fields are FDM-only.
-        is_fdm = printer.printer_type != PrinterType.RESIN
-        placeholders = {"printer_model": printer.model or printer.name or "Printer"}
+        def _websocket_description_placeholders(
+            printer: Printer,
+        ) -> dict[str, Any]:
+            return {"printer_model": printer.model or printer.name or "Printer"}
 
-        if user_input is not None:
+        def _websocket_options_schema_for(printer: Printer) -> dict:
+            # Resin printers have no Canvas unit and nothing for the gcode proxy
+            # to capture, so those fields are FDM-only.
+            is_fdm = printer.printer_type != PrinterType.RESIN
+            return self._websocket_options_schema(is_fdm=is_fdm)
+
+        async def _process_websocket_options_input(
+            user_input: dict[str, Any],
+            printer: Printer,
+            _errors: dict[str, str],
+        ) -> config_entries.ConfigFlowResult | None:
             printer.ip_address = user_input[CONF_IP_ADDRESS]
             proxy_url, proxy_error = await self._async_validate_gcode_proxy(
                 user_input.get(CONF_GCODE_PROXY_URL)
@@ -1310,11 +1386,13 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 return self.async_show_form(
                     step_id="websocket_options",
                     data_schema=self.add_suggested_values_to_schema(
-                        vol.Schema(self._websocket_options_schema(is_fdm=is_fdm)),
+                        vol.Schema(_websocket_options_schema_for(printer)),
                         suggested_values=user_input,
                     ),
                     errors=_errors,
-                    description_placeholders=placeholders,
+                    description_placeholders=_websocket_description_placeholders(
+                        printer
+                    ),
                 )
 
             if not user_input[CONF_PROXY_ENABLED]:
@@ -1350,17 +1428,16 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             except OSError as exception:
                 LOGGER.exception(exception)
                 _errors["base"] = "unknown"
+            # A failed connection test re-shows the form instead.
+            return None
 
-        return self.async_show_form(
-            step_id="websocket_options",
-            data_schema=self.add_suggested_values_to_schema(
-                vol.Schema(self._websocket_options_schema(is_fdm=is_fdm)),
-                suggested_values=self._suggested_with_normalized_proxy(
-                    current_settings
-                ),
-            ),
-            errors=_errors,
-            description_placeholders=placeholders,
+        return await self._async_step_transport_options(
+            user_input,
+            TransportType.WEBSOCKET,
+            schema=_websocket_options_schema_for,
+            suggested_values=self._suggested_with_normalized_proxy,
+            process_input=_process_websocket_options_input,
+            description_placeholders=_websocket_description_placeholders,
         )
 
     @staticmethod
