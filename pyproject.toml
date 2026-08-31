@@ -18,6 +18,7 @@ dev = [
     "paho-mqtt>=2.1.0",
     "pre-commit>=4.5.1",
     "pytest>=8.4.1",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.9.10",
     "ty>=0.0.1a21",
 ]
@@ -63,6 +64,7 @@ max-complexity = 25
 "custom_components/elegoo_printer/cc2/tests/*.py" = ["S101", "SLF001", "PLC0415"]
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 pythonpath = [
   "."
 ]

@@ -1,7 +1,6 @@
 """Tests for the PrinterRegistry class."""
 
 import json
-from unittest.mock import Mock
 
 import pytest
 
@@ -10,35 +9,9 @@ from custom_components.elegoo_printer.websocket.server.registry import PrinterRe
 
 
 @pytest.fixture
-def mock_logger() -> Mock:
-    """Create a mock logger for testing."""
-    return Mock()
-
-
-@pytest.fixture
 def printer_registry() -> PrinterRegistry:
     """Create a PrinterRegistry instance for testing."""
     return PrinterRegistry()
-
-
-@pytest.fixture
-def sample_printer() -> Printer:
-    """Create a sample printer for testing."""
-    printer_json = json.dumps(
-        {
-            "Id": "test_connection",
-            "Data": {
-                "Name": "Test Printer",
-                "MachineName": "Saturn 4 Ultra",
-                "BrandName": "Elegoo",
-                "MainboardIP": "192.168.1.100",
-                "ProtocolVersion": "V3.0.0",
-                "FirmwareVersion": "V1.0.0",
-                "MainboardID": "test_mainboard_id_12345",
-            },
-        }
-    )
-    return Printer(printer_json)
 
 
 class TestPrinterRegistry:

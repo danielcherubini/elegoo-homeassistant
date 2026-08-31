@@ -11,22 +11,9 @@ from custom_components.elegoo_printer.sdcp.models.printer import Printer
 from custom_components.elegoo_printer.websocket.server.discovery import (
     DiscoveryProtocol,
 )
-from custom_components.elegoo_printer.websocket.server.registry import PrinterRegistry
 from custom_components.elegoo_printer.websocket.server.utils import (
     DISCOVERY_RATE_LIMIT_SECONDS,
 )
-
-
-@pytest.fixture
-def mock_logger() -> Mock:
-    """Create a mock logger for testing."""
-    return Mock()
-
-
-@pytest.fixture
-def mock_printer_registry() -> Mock:
-    """Create a mock printer registry for testing."""
-    return Mock(spec=PrinterRegistry)
 
 
 @pytest.fixture
@@ -35,26 +22,6 @@ def discovery_protocol(
 ) -> DiscoveryProtocol:
     """Create a DiscoveryProtocol instance for testing."""
     return DiscoveryProtocol(mock_logger, mock_printer_registry, "10.0.0.100")
-
-
-@pytest.fixture
-def sample_printer() -> Printer:
-    """Create a sample printer for testing."""
-    printer_json = json.dumps(
-        {
-            "Id": "test_connection",
-            "Data": {
-                "Name": "Test Printer",
-                "MachineName": "Saturn 4 Ultra",
-                "BrandName": "Elegoo",
-                "MainboardIP": "192.168.1.100",
-                "ProtocolVersion": "V3.0.0",
-                "FirmwareVersion": "V1.0.0",
-                "MainboardID": "test_mainboard_id_12345",
-            },
-        }
-    )
-    return Printer(printer_json)
 
 
 class TestDiscoveryProtocol:
