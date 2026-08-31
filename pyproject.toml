@@ -58,6 +58,10 @@ max-complexity = 25
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["S101"]
 "custom_components/elegoo_printer/sdcp/tests/*.py" = ["S101"]
+"custom_components/elegoo_printer/sdcp/tests/test_transport_base.py" = [
+  "SLF001",
+  "PLR2004",
+]
 "custom_components/elegoo_printer/sdcp/models/tests/*.py" = ["S101"]
 "custom_components/elegoo_printer/websocket/tests/*.py" = ["S101", "SLF001", "PLR2004"]
 "custom_components/elegoo_printer/tests/*.py" = ["S101", "D102", "D103", "ANN001", "ANN201", "ANN202", "PLR2004", "SLF001", "D403", "ARG002"]

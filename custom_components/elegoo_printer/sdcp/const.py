@@ -61,3 +61,7 @@ CMD_AMS_UNLOADING = 505
 
 # MQTT Auto-Push Commands
 CMD_SET_STATUS_UPDATE_PERIOD = 512  # Tell printer to auto-push status updates
+
+# Shared SDCP command timeout (websocket + mqtt; cc2 keeps its own
+# CC2_COMMAND_TIMEOUT — same value, different name.)
+SDCP_COMMAND_TIMEOUT = 10
