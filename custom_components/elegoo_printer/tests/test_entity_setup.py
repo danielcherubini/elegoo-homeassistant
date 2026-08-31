@@ -115,16 +115,32 @@ async def _setup_platform(
     return total
 
 
+# Exact per-platform entity counts for the FDM suite — pinning these guards
+# the definitions.py tuple split from silently dropping entities (a test
+# asserting only "total >= 1" would still pass if a whole tuple vanished).
+FDM_ENTITY_COUNTS = {
+    "binary_sensor": 3,
+    "button": 7,
+    "fan": 3,
+    "image": 1,
+    "light": 1,
+    "number": 2,
+    "select": 1,
+    "sensor": 34,
+}
+
+
 @pytest.mark.parametrize("platform", PLATFORMS)
 async def test_platform_setups_fdm_entities(
     hass: MagicMock, entry: SimpleNamespace, platform: str
 ) -> None:
-    """Each of the 8 platforms adds entities for an FDM V3 printer."""
+    """Each of the 8 platforms adds the recorded number of FDM V3 entities."""
     printer = _fdm_printer()
     assert printer.printer_type == PrinterType.FDM
     _wire_entry(entry, printer)
 
-    await _setup_platform(platform, hass, entry)
+    total = await _setup_platform(platform, hass, entry)
+    assert total == FDM_ENTITY_COUNTS[platform]
 
 
 async def test_camera_platform_not_included() -> None:
@@ -154,4 +170,7 @@ async def test_sensor_platform_setups_resin_entities(
     assert printer.printer_type == PrinterType.RESIN
     _wire_entry(entry, printer)
 
-    await _setup_platform("sensor", hass, entry)
+    total = await _setup_platform("sensor", hass, entry)
+    # Recorded count is 27; keep a floor (not an exact pin) so resin-only
+    # additions can vary without breaking, but a dropped tuple is caught.
+    assert total >= 15

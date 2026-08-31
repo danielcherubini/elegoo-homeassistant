@@ -122,6 +122,7 @@ class ElegooPrinterClient(SdcpPrinterClient):
 
     async def _publish_frame(self, frame: str) -> None:
         """Publish a request frame on the websocket."""
+        # Race-window guard: is_connected already passed; the ws may have closed since.
         if self.printer_websocket is None:
             msg = "Not connected"
             raise ElegooPrinterNotConnectedError(msg)

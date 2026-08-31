@@ -25,7 +25,9 @@ from custom_components.elegoo_printer.coordinator import ElegooDataUpdateCoordin
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
 )
+from custom_components.elegoo_printer.sdcp.models.enums import TransportType
 from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
+from custom_components.elegoo_printer.sdcp.models.status import PrinterStatus
 
 
 def _ensure_entry_shim(entry: SimpleNamespace) -> None:
@@ -149,8 +151,9 @@ async def test_cc2_transition_replay_skips_non_cc2_clients(
     """
     The CC2 transition-replay guard is a no-op for mock (non-CC2) clients.
 
-    The task-7 guard is ``transport_type != CC2_MQTT``; the current guard
-    is an isinstance check, which a plain MagicMock never satisfies.
+    The guard is an early return on ``api.printer.transport_type !=
+    TransportType.CC2_MQTT``; a plain MagicMock's ``transport_type`` is
+    never the CC2 enum, so replay bails out before the client is touched.
     """
     api = entry.runtime_data.api
     assert not isinstance(api.client, ElegooCC2Client)
@@ -160,6 +163,37 @@ async def test_cc2_transition_replay_skips_non_cc2_clients(
 
     # The guard early-returned: no attribute access happened on the mock.
     api.client.assert_not_called()
+
+
+async def test_cc2_transition_replay_consumes_queue_for_cc2_clients(
+    hass: MagicMock,
+    entry: SimpleNamespace,
+) -> None:
+    """
+    A CC2 client passes the guard, so the transition queue is replayed.
+
+    Pins the guard direction (``transport_type != CC2_MQTT``): a CC2
+    transport must go through the replay, not the early return — a
+    ``==``/``!=`` flip breaks this test.
+    """
+    api = entry.runtime_data.api
+    api.printer.transport_type = TransportType.CC2_MQTT
+    snapshot = PrinterStatus()
+    api.client.consume_print_status_transition_queue.return_value = [snapshot]
+
+    coordinator = _make_coordinator(hass, entry)
+    set_updated_data = MagicMock()
+    coordinator.async_set_updated_data = set_updated_data
+    original_status = api.printer_data.status
+
+    coordinator._replay_cc2_print_status_transitions()
+
+    # The guard passed: the client's queue was consumed.
+    api.client.consume_print_status_transition_queue.assert_called_once()
+    # The queued snapshot was replayed.
+    set_updated_data.assert_called_once_with(api.printer_data)
+    # The live status is restored after the replay.
+    assert api.printer_data.status is original_status
 
 
 async def test_firmware_check_is_rate_limited_across_refreshes(

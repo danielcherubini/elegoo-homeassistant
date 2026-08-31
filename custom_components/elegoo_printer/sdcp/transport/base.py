@@ -99,7 +99,6 @@ class SdcpPrinterClient:
         self._listener_task: asyncio.Task | None = None
         self._background_tasks: set[asyncio.Task] = set()
         self._response_events: dict[str, asyncio.Event] = {}
-        self._response_data: dict = {}
         self._response_lock = asyncio.Lock()
 
     @property
@@ -153,7 +152,6 @@ class SdcpPrinterClient:
             for ev in self._response_events.values():
                 ev.set()
             self._response_events.clear()
-            self._response_data.clear()
 
         await self._on_disconnect()
         self._is_connected = False
@@ -316,10 +314,13 @@ class SdcpPrinterClient:
         """
         Extract the status payload out of a status-topic frame.
 
-        A 4-case union chain that subsumes both pre-extraction shapes:
+        A 5-case union chain that subsumes both pre-extraction shapes:
 
         - ``{'Data': {'Status': {...}}}`` -> the inner Status (mqtt shape)
         - ``{'Status': {...}}`` (no Data) -> the top-level Status
+        - ``{'Data': <dict without Status>}`` + a top-level ``Status`` ->
+          the top-level Status wins (old ws subsumption; the old mqtt
+          would warn+skip this ambiguous frame)
         - ``{'Data': <dict without Status>}`` and no top-level Status ->
           None: the handler must SKIP (no update; the old mqtt
           ``_status_handler`` skipped this shape — preserve that)

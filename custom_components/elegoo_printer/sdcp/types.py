@@ -77,6 +77,7 @@ class SDCPStatusPayload(TypedDict, total=False):
     HeatStatus: int
     ZOffset: float
     CurrentFanSpeed: dict[str, Any]
+    LightStatus: Any
     # The nested `PrintInfo` object read by `PrinterStatus.__init__`
     # (its own sparse shape is owned by the SDCP print-info middleware,
     # not this tranche).

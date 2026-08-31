@@ -6,6 +6,10 @@ Covers:
 - the ws listener must survive a model-raising (malformed) frame
 - the ws _parse_response must ignore a 1-segment Topic instead of an IndexError
 - the ws async_get_printer_last_task sort key must be comparable (float)
+
+Note: the ``_ws_listener`` / ``_mqtt_listener`` aliases on the clients are
+pinned-name aliases (one-line ``def``s returning ``self._listen()``) kept
+so pre-existing tests can call them — do not delete them as "unused".
 """
 
 from __future__ import annotations
@@ -64,7 +68,9 @@ class FakeClientSession:
         """Initialize with the fake websocket to return on ws_connect."""
         self._ws = ws
 
-    def ws_connect(self, *args: object, **kwargs: object) -> object:
+    async def ws_connect(self, *args: object, **kwargs: object) -> object:
+        """Return the fake websocket (and remember it for inspection)."""
+        del args, kwargs
         return self._ws
 
 

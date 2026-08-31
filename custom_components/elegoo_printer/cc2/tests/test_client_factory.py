@@ -7,7 +7,7 @@ The CC2-only sides (auth fallback, connection generation, delayed disconnect,
 light control, print-status queue, gcode proxy) are covered by the other
 ``cc2/tests`` modules; these tests pin the connect/disconnect/listener/
 request-response contract using the shared ``FakeAiomqttClient`` double
-(ONE implementation, imported from ``tests/test_mqtt_client.py``).
+(ONE implementation, imported from ``tests/fakes.py``).
 
 Any failure while writing a pin means a previously-unknown bug, not a test
 error.
@@ -37,7 +37,7 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
 from custom_components.elegoo_printer.sdcp.models.printer import Printer
 from custom_components.elegoo_printer.sdcp.models.status import PrinterStatus
 from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
-from custom_components.elegoo_printer.tests.test_mqtt_client import (
+from custom_components.elegoo_printer.tests.fakes import (
     FailingFakeAiomqttClient,
     FakeAiomqttClient,
 )
@@ -164,8 +164,6 @@ def _speed_up_wait_for(monkeypatch: pytest.MonkeyPatch) -> None:
             else:
                 kwargs["timeout"] = 0.1
         return await real_wait_for(fut, *args, **kwargs)
-
-    monkeypatch.setattr(asyncio, "wait_for", fast_wait_for)
 
     monkeypatch.setattr(asyncio, "wait_for", fast_wait_for)
 
