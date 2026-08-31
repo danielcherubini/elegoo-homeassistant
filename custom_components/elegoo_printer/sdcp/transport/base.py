@@ -1,7 +1,7 @@
 """
 Shared SDCP transport base for the websocket and mqtt printer clients.
 
-``ElegooPrinterClient`` (websocket) and ``ElegooMqttClient`` (MQTT
+``ElegooPrinterClient`` (websocket) and ``ElegooMQTTClient`` (MQTT
 bridge) both speak SDCP over different wires; this base owns the
 machinery they share one-for-one:
 
@@ -437,26 +437,6 @@ class SdcpPrinterClient:
             self._background_tasks.add(task)
             task.add_done_callback(self._background_tasks.discard)
             return self.printer_data.print_history.get(task_id)
-        return None
-
-    def get_printer_last_task(self) -> PrintHistoryDetail | None:
-        """Retrieve the last print task."""
-        if self.printer_data.print_history:
-
-            def sort_key(tid: str) -> float:
-                task = self.printer_data.print_history.get(tid)
-                return task.end_time.timestamp() if task and task.end_time else 0.0
-
-            last_task_id = max(
-                self.printer_data.print_history.keys(),
-                key=sort_key,
-            )
-            task_data = self.printer_data.print_history.get(last_task_id)
-            if task_data is None:
-                task = asyncio.create_task(self.get_printer_task_detail([last_task_id]))
-                self._background_tasks.add(task)
-                task.add_done_callback(self._background_tasks.discard)
-            return task_data
         return None
 
     async def async_get_printer_last_task(self) -> PrintHistoryDetail | None:

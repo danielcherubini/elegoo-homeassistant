@@ -78,7 +78,7 @@ if TYPE_CHECKING:
     from custom_components.elegoo_printer.sdcp.types import SDCPFrame
 
 
-class ElegooMqttClient(SdcpPrinterClient):
+class ElegooMQTTClient(SdcpPrinterClient):
     """
     MQTT client for interacting with an Elegoo printer via MQTT bridge.
 
@@ -96,7 +96,7 @@ class ElegooMqttClient(SdcpPrinterClient):
         client_factory: Callable[[dict[str, Any]], Any] | None = None,
     ) -> None:
         """
-        Initialize an ElegooMqttClient.
+        Initialize an ElegooMQTTClient.
 
         For communicating with an Elegoo 3D printer via MQTT bridge.
 
@@ -174,12 +174,14 @@ class ElegooMqttClient(SdcpPrinterClient):
                 self.logger.exception("Error during MQTT disconnect")
         self.mqtt_client = None
 
-    def _send_mqtt_connect_command(self, printer_ip: str) -> bool:
+    def _send_broker_redirect_command(self, printer_ip: str) -> bool:
         """
         Send UDP command to tell printer to connect to MQTT broker.
 
         Uses the M66666 command with the MQTT broker host and port to instruct
         the printer to connect to the specified MQTT broker.
+        NOTE: this is the M66666 `<host> <port>` UDP redirect command — it is
+        not an MQTT connect frame.
 
         Arguments:
             printer_ip: The IP address of the printer.
@@ -232,7 +234,7 @@ class ElegooMqttClient(SdcpPrinterClient):
 
         # First, tell the printer to connect to our MQTT broker
         if printer.ip_address:
-            if not self._send_mqtt_connect_command(printer.ip_address):
+            if not self._send_broker_redirect_command(printer.ip_address):
                 msg = (
                     "Failed to send MQTT connect command, "
                     "but will try to connect anyway"
@@ -420,20 +422,6 @@ class ElegooMqttClient(SdcpPrinterClient):
             return task
 
         self.logger.debug("Empty id_list, returning None")
-        return None
-
-    def get_current_print_thumbnail(self) -> str | None:
-        """
-        Return the thumbnail URL of the current print task, or None if no thumbnail.
-
-        Returns:
-            The URL of the current print task's thumbnail image,
-            or None if there is no active task or thumbnail.
-
-        """
-        task = self.get_printer_current_task()
-        if task:
-            return task.thumbnail
         return None
 
     async def async_get_printer_current_task(self) -> PrintHistoryDetail | None:

@@ -38,7 +38,7 @@ class PrintHistoryDetail:
         self.already_print_layer: int | None = data.get("AlreadyPrintLayer")
         self.task_id: str | None = data.get("TaskId")
         self.MD5: str | None = data.get("MD5")
-        self.current_layer_tal_volume: float | None = data.get(
+        self.current_layer_total_volume: float | None = data.get(
             "CurrentLayerTalVolume"
         )  # Or int, depending on actual type
         self.time_lapse_video_status: int | None = data.get("TimeLapseVideoStatus")

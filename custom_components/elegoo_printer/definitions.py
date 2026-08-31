@@ -1,9 +1,9 @@
 """Definitions for the Elegoo Printer Integration."""
 
-from collections.abc import Callable, Coroutine
+from __future__ import annotations
+
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -24,17 +24,23 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfTime,
 )
-from homeassistant.helpers.typing import StateType
 
-from .sdcp.models.ams import AMSTray
+if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
+    from datetime import datetime
+
+    from homeassistant.helpers.typing import StateType
+
+    from .sdcp.models.ams import AMSTray
+    from .sdcp.models.printer import PrinterData
+    from .websocket.client import ElegooPrinterClient
+
 from .sdcp.models.enums import (
     ElegooErrorStatusReason,
     ElegooMachineStatus,
     ElegooPrintError,
     ElegooPrintStatus,
 )
-from .sdcp.models.printer import PrinterData
-from .websocket.client import ElegooPrinterClient
 
 _FDM_STATUS_THRESHOLD = 100
 _RESIN_PRINT_STATUS_OPTIONS: list[str] = [

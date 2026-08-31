@@ -69,8 +69,6 @@ if TYPE_CHECKING:
 
 logging.getLogger("websocket").setLevel(logging.CRITICAL)
 
-DEFAULT_PORT = 54780
-
 # Seconds to wait before re-querying the gcode proxy for a filename that
 # previously returned no data (e.g. the file was printed from local storage
 # and never passed through the proxy).
@@ -174,20 +172,6 @@ class ElegooPrinterClient(SdcpPrinterClient):
             )
             return self.printer_data.print_history.get(task_id)
 
-        return None
-
-    def get_current_print_thumbnail(self) -> str | None:
-        """
-        Return the thumbnail URL of the current print task, or None if no thumbnail.
-
-        Returns:
-            The URL of the current print task's thumbnail image,
-            or None if there is no active task or thumbnail.
-
-        """
-        task = self.get_printer_current_task()
-        if task:
-            return task.thumbnail
         return None
 
     async def async_get_printer_current_task(self) -> PrintHistoryDetail | None:

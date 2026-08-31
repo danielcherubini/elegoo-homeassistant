@@ -27,3 +27,9 @@ class ElegooPrinterNotConnectedError(ElegooSDCPError):
 
 class ElegooPrinterTimeoutError(ElegooPrinterConnectionError):
     """Exception to indicate a timeout error with the Elegoo printer."""
+
+
+PRINT_TRANSPORT_ERRORS: tuple[type[Exception], ...] = (
+    ElegooPrinterConnectionError,
+    ElegooPrinterNotConnectedError,
+)

@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 import aiohttp
 
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
-from custom_components.elegoo_printer.mqtt.client import ElegooMqttClient
+from custom_components.elegoo_printer.mqtt.client import ElegooMQTTClient
 from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
@@ -115,7 +115,7 @@ def test_mqtt_disconnect_suppresses_terminal_listener_exception() -> None:
     """mqtt disconnect() must contain a terminal listener exception."""
 
     async def _run() -> None:
-        client = ElegooMqttClient()
+        client = ElegooMQTTClient()
         client.logger = MagicMock()
         client._is_connected = True
         client._listener_task = asyncio.create_task(_terminal())

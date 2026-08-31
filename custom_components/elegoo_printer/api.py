@@ -29,7 +29,7 @@ from .const import (
     LOGGER,
     WEBSOCKET_PORT,
 )
-from .mqtt.client import ElegooMqttClient
+from .mqtt.client import ElegooMQTTClient
 from .mqtt.const import MQTT_BROKER_PORT, MQTT_PORT
 from .mqtt.server import ElegooMQTTBroker
 from .sdcp.exceptions import ElegooPrinterConnectionError
@@ -89,7 +89,7 @@ class ElegooPrinterApiClient:
     _THUMBNAIL_TIMEOUT = 10  # seconds
 
     _ip_address: str | None
-    client: ElegooPrinterClient | ElegooMqttClient | ElegooCC2Client
+    client: ElegooPrinterClient | ElegooMQTTClient | ElegooCC2Client
     _logger: Logger
     printer: Printer
     printer_data: PrinterData
@@ -293,7 +293,7 @@ class ElegooPrinterApiClient:
                     printer.ip_address, external_ip
                 )
 
-            self.client = ElegooMqttClient(
+            self.client = ElegooMQTTClient(
                 mqtt_host=mqtt_host,
                 mqtt_port=mqtt_port,
                 advertise_host=advertise_host,
@@ -341,7 +341,7 @@ class ElegooPrinterApiClient:
                     e,
                 )
                 printer_reachable = False
-        elif isinstance(self.client, ElegooMqttClient):
+        elif isinstance(self.client, ElegooMQTTClient):
             # For MQTT, verify broker connectivity instead of printer
             try:
                 _, writer = await asyncio.wait_for(
@@ -385,7 +385,7 @@ class ElegooPrinterApiClient:
 
         # Printer is reachable, now set up proxy if enabled
         # Note: MQTT/CC2 doesn't support proxy mode yet, only WebSocket does
-        mqtt_clients = (ElegooMqttClient, ElegooCC2Client)
+        mqtt_clients = (ElegooMQTTClient, ElegooCC2Client)
         if proxy_server_enabled and not isinstance(self.client, mqtt_clients):
             printer = await self._setup_proxy_if_enabled(printer)
             if printer is None:
@@ -406,7 +406,7 @@ class ElegooPrinterApiClient:
         )
         try:
             # MQTT/CC2 doesn't support proxy mode yet, only WebSocket does
-            if isinstance(self.client, (ElegooMqttClient, ElegooCC2Client)):
+            if isinstance(self.client, (ElegooMQTTClient, ElegooCC2Client)):
                 connected = await self.client.connect_printer(printer)
             else:
                 connected = await self.client.connect_printer(
@@ -496,7 +496,7 @@ class ElegooPrinterApiClient:
         )
 
         # Test connectivity: for MQTT/CC2 test broker, for WebSocket test printer
-        if isinstance(self.client, (ElegooMqttClient, ElegooCC2Client)):
+        if isinstance(self.client, (ElegooMQTTClient, ElegooCC2Client)):
             # For MQTT/CC2, verify broker connectivity
             try:
                 _, writer = await asyncio.wait_for(
@@ -526,7 +526,7 @@ class ElegooPrinterApiClient:
 
         # Printer is reachable, handle proxy server if enabled
         # Note: MQTT/CC2 doesn't support proxy mode yet, only WebSocket does
-        mqtt_clients = (ElegooMqttClient, ElegooCC2Client)
+        mqtt_clients = (ElegooMQTTClient, ElegooCC2Client)
         if self._proxy_server_enabled and not isinstance(self.client, mqtt_clients):
             # Release existing reference before creating new one
             if self.server is not None:
@@ -544,7 +544,7 @@ class ElegooPrinterApiClient:
             self._proxy_server_enabled and self.server is not None,
         )
         # MQTT/CC2 doesn't support proxy mode yet, only WebSocket does
-        if isinstance(self.client, (ElegooMqttClient, ElegooCC2Client)):
+        if isinstance(self.client, (ElegooMQTTClient, ElegooCC2Client)):
             connected = await self.client.connect_printer(printer)
         else:
             connected = await self.client.connect_printer(

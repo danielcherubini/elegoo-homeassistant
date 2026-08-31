@@ -1,7 +1,7 @@
 """
 Characterization tests for the SDCP-over-MQTT client transport.
 
-These tests pin the CURRENT behavior of ``ElegooMqttClient`` using an injected
+These tests pin the CURRENT behavior of ``ElegooMQTTClient`` using an injected
 ``client_factory`` fake (never a real ``aiomqtt.Client``). Any failure while
 writing a pin means a previously-unknown bug, not a test error.
 """
@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from custom_components.elegoo_printer.mqtt.client import ElegooMqttClient
+from custom_components.elegoo_printer.mqtt.client import ElegooMQTTClient
 from custom_components.elegoo_printer.mqtt.const import (
     TOPIC_ATTRIBUTES,
     TOPIC_ERROR,
@@ -125,14 +125,14 @@ def _make_printer() -> Printer:
     return printer
 
 
-def _make_client(fake: FakeAiomqttClient) -> ElegooMqttClient:
+def _make_client(fake: FakeAiomqttClient) -> ElegooMQTTClient:
     """Wire a client to the fake via the ``client_factory`` seam."""
 
     def factory(**kwargs: Any) -> FakeAiomqttClient:
         fake.kwargs.update(kwargs)
         return fake
 
-    return ElegooMqttClient(
+    return ElegooMQTTClient(
         mqtt_host="127.0.0.1",
         mqtt_port=1883,
         logger=MagicMock(),
@@ -140,7 +140,7 @@ def _make_client(fake: FakeAiomqttClient) -> ElegooMqttClient:
     )
 
 
-async def _echo_responses(client: ElegooMqttClient, fake: FakeAiomqttClient) -> None:
+async def _echo_responses(client: ElegooMQTTClient, fake: FakeAiomqttClient) -> None:
     """
     Reply to every published request with a matching-RequestID response.
 
@@ -181,7 +181,7 @@ async def _wait_until(predicate: Any, max_wait: float = 5.0) -> None:
         await asyncio.sleep(0.01)
 
 
-async def _make_connected(client: ElegooMqttClient, fake: FakeAiomqttClient) -> None:
+async def _make_connected(client: ElegooMQTTClient, fake: FakeAiomqttClient) -> None:
     """Establish a connected client without going through connect_printer."""
     fake.connected = True
     client.mqtt_client = fake
@@ -189,7 +189,7 @@ async def _make_connected(client: ElegooMqttClient, fake: FakeAiomqttClient) -> 
     client._listener_task = asyncio.create_task(client._mqtt_listener())
 
 
-async def _teardown(client: ElegooMqttClient, echo: asyncio.Task | None) -> None:
+async def _teardown(client: ElegooMQTTClient, echo: asyncio.Task | None) -> None:
     """Cancel the echo helper and disconnect the client."""
     if echo is not None:
         echo.cancel()

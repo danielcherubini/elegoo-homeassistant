@@ -28,7 +28,7 @@ import pytest
 
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.conftest import FakeClientSession
-from custom_components.elegoo_printer.mqtt.client import ElegooMqttClient
+from custom_components.elegoo_printer.mqtt.client import ElegooMQTTClient
 from custom_components.elegoo_printer.sdcp.models.attributes import (
     PrinterAttributes,
 )
@@ -68,9 +68,9 @@ def _make_ws_client() -> ElegooPrinterClient:
     )
 
 
-def _make_mqtt_client() -> ElegooMqttClient:
+def _make_mqtt_client() -> ElegooMQTTClient:
     """Build an mqtt client with the factory seam (no network)."""
-    return ElegooMqttClient(
+    return ElegooMQTTClient(
         mqtt_host="127.0.0.1", logger=MagicMock(), client_factory=None
     )
 
@@ -87,7 +87,7 @@ def ws_client() -> ElegooPrinterClient:
 
 
 @pytest.fixture
-def mqtt_client() -> ElegooMqttClient:
+def mqtt_client() -> ElegooMQTTClient:
     """Construct an mqtt client (no network)."""
     return _make_mqtt_client()
 
@@ -106,7 +106,7 @@ def test_ws_client_constructs_disconnected(ws_client: ElegooPrinterClient) -> No
 
 
 def test_mqtt_client_constructs_disconnected(
-    mqtt_client: ElegooMqttClient,
+    mqtt_client: ElegooMQTTClient,
 ) -> None:
     """mqtt: construction (no network) + is_connected False pre-connect."""
     assert isinstance(mqtt_client, SdcpPrinterClient)
@@ -265,7 +265,7 @@ async def test_ws_ams_canvas_pin_is_ack_gated_and_stays_in_ws(
 
 
 async def test_mqtt_push_handlers_route_to_printer_data(
-    mqtt_client: ElegooMqttClient,
+    mqtt_client: ElegooMQTTClient,
 ) -> None:
     """The 3 shared push handler pins, via mqtt leading-slash topics."""
     mqtt_client._parse_response(
@@ -331,7 +331,7 @@ async def test_mqtt_push_handlers_route_to_printer_data(
 
 
 async def test_mqtt_status_and_attribute_pushes_via_own_routing(
-    mqtt_client: ElegooMqttClient,
+    mqtt_client: ElegooMQTTClient,
 ) -> None:
     """mqtt status pushes hit the 4-case chain's happy case (a)."""
     mqtt_client._parse_response(

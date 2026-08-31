@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 import aiomqtt
 
 from custom_components.elegoo_printer.sdcp.exceptions import (
+    PRINT_TRANSPORT_ERRORS,
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
     ElegooPrinterTimeoutError,
@@ -209,11 +210,6 @@ class ElegooCC2Client:
     def _transport_open(self) -> bool:
         """Report whether the cc2 transport is usable (registered + client object)."""
         return self._is_registered and self.mqtt_client is not None
-
-    @property
-    def last_auth_failure(self) -> bool:
-        """Return True if the last connection failure was due to auth."""
-        return self._last_auth_failure
 
     @staticmethod
     def _is_auth_failure(exc: Exception) -> bool:
@@ -1095,11 +1091,7 @@ class ElegooCC2Client:
                 # _send_command returns the full message; extract inner result
                 inner = result.get("result", result)
                 self._handle_file_detail_response(filename, inner)
-        except (
-            ElegooPrinterTimeoutError,
-            ElegooPrinterConnectionError,
-            ElegooPrinterNotConnectedError,
-        ):
+        except PRINT_TRANSPORT_ERRORS:
             self.logger.debug("Failed to get file details for %s", filename)
         finally:
             # Clear pending request flag after handling response
@@ -1178,11 +1170,7 @@ class ElegooCC2Client:
             if result:
                 inner = result.get("result", result)
                 self._handle_file_thumbnail_response(filename, inner)
-        except (
-            ElegooPrinterTimeoutError,
-            ElegooPrinterConnectionError,
-            ElegooPrinterNotConnectedError,
-        ):
+        except PRINT_TRANSPORT_ERRORS:
             self.logger.debug("Failed to get file thumbnail for %s", filename)
         finally:
             if hasattr(self, "_pending_thumbnail_request"):
@@ -1223,11 +1211,7 @@ class ElegooCC2Client:
         """Request full status from printer."""
         try:
             await self._send_command(CC2_CMD_GET_STATUS)
-        except (
-            ElegooPrinterTimeoutError,
-            ElegooPrinterConnectionError,
-            ElegooPrinterNotConnectedError,
-        ):
+        except PRINT_TRANSPORT_ERRORS:
             self.logger.warning("Failed to request full status")
 
     def _handle_attributes(self, attrs_data: CC2Attributes | dict[str, Any]) -> None:
@@ -1346,7 +1330,7 @@ class ElegooCC2Client:
 
         return None
 
-    # Public API methods (matching ElegooMqttClient interface)
+    # Public API methods (matching ElegooMQTTClient interface)
 
     async def get_printer_status(self) -> PrinterData:
         """Return the current printer status."""
@@ -1403,11 +1387,6 @@ class ElegooCC2Client:
             )
             return self.printer_data.print_history.get(last_task_id)
         return None
-
-    def get_current_print_thumbnail(self) -> str | None:
-        """Return the thumbnail URL of the current print task."""
-        task = self.get_printer_current_task()
-        return task.thumbnail if task else None
 
     async def async_get_printer_current_task(self) -> PrintHistoryDetail | None:
         """Asynchronously retrieve the current print task details."""

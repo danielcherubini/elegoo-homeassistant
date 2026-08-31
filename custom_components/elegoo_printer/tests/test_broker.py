@@ -4,7 +4,7 @@ Characterization tests for the embedded MQTT broker (singleton server).
 Pins the singleton/refcount contract (exercising the ``_reset_for_tests``
 seam), the in-process ``publish``/``next_published_message`` API, and one
 real network round-trip: a genuine aiomqtt client (the same library the
-production ``ElegooMqttClient`` uses) connects to a per-test ephemeral
+production ``ElegooMQTTClient`` uses) connects to a per-test ephemeral
 port, subscribes, and receives a published message forwarded by the
 broker — then verifies broker stop clean-up.
 """
