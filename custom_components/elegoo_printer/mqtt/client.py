@@ -71,6 +71,8 @@ from .const import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
 
 
@@ -82,13 +84,14 @@ class ElegooMqttClient:
     rather than connecting directly to the printer.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         mqtt_host: str = "localhost",
         mqtt_port: int = MQTT_PORT,
         advertise_host: str | None = None,
         logger: Any = LOGGER,
         printer: Printer | None = None,
+        client_factory: Callable[[dict[str, Any]], Any] | None = None,
     ) -> None:
         """
         Initialize an ElegooMqttClient.
@@ -104,6 +107,8 @@ class ElegooMqttClient:
                 printer does).
             logger: The logger to use.
             printer: Optional Printer object with existing configuration.
+            client_factory: Optional factory override (test seam). Defaults
+                to the real aiomqtt client.
 
         """
         self.mqtt_host = mqtt_host
@@ -118,6 +123,7 @@ class ElegooMqttClient:
         self._background_tasks: set[asyncio.Task] = set()
         self._response_events: dict[str, asyncio.Event] = {}
         self._response_lock = asyncio.Lock()
+        self._client_factory = client_factory
 
     @property
     def is_connected(self) -> bool:
@@ -248,7 +254,8 @@ class ElegooMqttClient:
                 "keepalive": MQTT_KEEPALIVE,
             }
 
-            self.mqtt_client = aiomqtt.Client(**client_kwargs)
+            client_cls = self._client_factory or aiomqtt.Client
+            self.mqtt_client = client_cls(**client_kwargs)
 
             await self.mqtt_client.__aenter__()
 

@@ -105,6 +105,12 @@ class ElegooMQTTBroker:
                 await cls._instance.stop()
                 cls._instance = None
 
+    @classmethod
+    def _reset_for_tests(cls) -> None:
+        """Reset the singleton for tests only."""
+        cls._instance = None
+        cls._reference_count = 0
+
     async def start(self) -> None:
         """Start the MQTT broker server."""
         try:

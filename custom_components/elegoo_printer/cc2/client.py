@@ -71,6 +71,8 @@ from .const import (
 from .models import CC2StatusMapper
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
     from custom_components.elegoo_printer.sdcp.models.status import (
         LightStatus,
@@ -95,6 +97,7 @@ class ElegooCC2Client:
         logger: Any = LOGGER,
         printer: Printer | None = None,
         gcode_proxy: GCodeProxyClient | None = None,
+        client_factory: Callable[[dict[str, Any]], Any] | None = None,
     ) -> None:
         """
         Initialize an ElegooCC2Client.
@@ -106,6 +109,8 @@ class ElegooCC2Client:
             logger: The logger to use.
             printer: Optional Printer object with existing configuration.
             gcode_proxy: Optional proxy client for per-extruder filament data.
+            client_factory: Optional factory override (test seam). Defaults to
+                the real aiomqtt client.
 
         """
         self.printer_ip = printer_ip
@@ -114,6 +119,7 @@ class ElegooCC2Client:
         self.logger = logger
         self.printer: Printer = printer or Printer()
         self._gcode_proxy = gcode_proxy
+        self._client_factory = client_factory
         self.printer_data = PrinterData(printer=self.printer)
 
         # MQTT client state
@@ -364,7 +370,8 @@ class ElegooCC2Client:
                 len(password) if password else 0,
             )
 
-            self.mqtt_client = aiomqtt.Client(**client_kwargs)
+            client_cls = self._client_factory or aiomqtt.Client
+            self.mqtt_client = client_cls(**client_kwargs)
             await self.mqtt_client.__aenter__()
             self.logger.debug("MQTT connection established successfully")
 
