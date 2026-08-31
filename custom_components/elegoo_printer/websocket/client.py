@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import secrets
@@ -124,17 +125,24 @@ class ElegooPrinterClient:
     @property
     def is_connected(self) -> bool:
         """Return true if the client is connected to the printer."""
-        return (
-            self._is_connected
-            and self.printer_websocket is not None
-            and not self.printer_websocket.closed
-        )
+        return self._is_connected and self._transport_open()
+
+    def _transport_open(self) -> bool:
+        """Report whether the ws transport is open (part of is_connected)."""
+        return self.printer_websocket is not None and not self.printer_websocket.closed
 
     async def disconnect(self) -> None:
         """Disconnect from the printer."""
         self.logger.info("Closing connection to printer")
         if self._listener_task:
             self._listener_task.cancel()
+            try:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._listener_task
+            except Exception:
+                # A terminal listener exception must never escape — failing here
+                # would skip the remaining cleanup and leak the exception.
+                self.logger.exception("WebSocket listener ended with an exception")
             self._listener_task = None
         if self.printer_websocket and not self.printer_websocket.closed:
             await self.printer_websocket.close()
@@ -228,9 +236,9 @@ class ElegooPrinterClient:
         """Retreves last task."""
         if self.printer_data.print_history:
 
-            def sort_key(tid: str) -> int:
+            def sort_key(tid: str) -> float:
                 task = self.printer_data.print_history.get(tid)
-                return task.end_time or 0 if task else 0
+                return task.end_time.timestamp() if task and task.end_time else 0.0
 
             # Get task with the latest begin_time or end_time
             last_task_id = max(
@@ -285,9 +293,9 @@ class ElegooPrinterClient:
         """Retreves last task."""
         if self.printer_data.print_history:
 
-            def sort_key(tid: str) -> int:
+            def sort_key(tid: str) -> float:
                 task = self.printer_data.print_history.get(tid)
-                return task.end_time or 0 if task else 0
+                return task.end_time.timestamp() if task and task.end_time else 0.0
 
             # Get task with the latest begin_time or end_time
             last_task_id = max(
@@ -613,7 +621,11 @@ class ElegooPrinterClient:
         try:
             async for msg in self.printer_websocket:
                 if msg.type == aiohttp.WSMsgType.TEXT:
-                    self._parse_response(msg.data)
+                    try:
+                        self._parse_response(msg.data)
+                    except Exception:
+                        # A malformed frame must never kill the listener.
+                        self.logger.exception("Failed to parse WebSocket message")
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     error_str = f"WebSocket connection error: {self.printer_websocket.exception()}"  # noqa: E501
                     self.logger.debug(error_str)
@@ -628,7 +640,7 @@ class ElegooPrinterClient:
             if is_timeout or is_heartbeat:
                 self.logger.debug("WebSocket heartbeat timeout: %s", e)
             else:
-                self.logger.debug("WebSocket listener exception: %s", e)
+                self.logger.exception("WebSocket listener exception: %s", e)  # noqa: TRY401
             raise ElegooPrinterConnectionError from e
         finally:
             self._is_connected = False
@@ -650,7 +662,13 @@ class ElegooPrinterClient:
             data = json.loads(response)
             topic = data.get("Topic")
             if topic:
-                match topic.split("/")[1]:
+                parts = topic.split("/")
+                if len(parts) < 2:  # noqa: PLR2004
+                    self.logger.warning(
+                        "Ignoring message with malformed Topic: %s", topic
+                    )
+                    return
+                match parts[1]:
                     case "response":
                         self._response_handler(data)
                     case "status":

@@ -190,9 +190,11 @@ class ElegooCC2Client:
     @property
     def is_connected(self) -> bool:
         """Return true if the client is connected and registered."""
-        return (
-            self._is_connected and self._is_registered and self.mqtt_client is not None
-        )
+        return self._is_connected and self._transport_open()
+
+    def _transport_open(self) -> bool:
+        """Report whether the cc2 transport is usable (registered + client object)."""
+        return self._is_registered and self.mqtt_client is not None
 
     @property
     def last_auth_failure(self) -> bool:
@@ -431,8 +433,13 @@ class ElegooCC2Client:
         # Cancel listener task
         if self._listener_task:
             self._listener_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._listener_task
+            try:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._listener_task
+            except Exception:
+                # A terminal listener exception must never escape — failing here
+                # would skip the remaining cleanup and leak the exception.
+                self.logger.exception("CC2 MQTT listener ended with an exception")
             self._listener_task = None
             # The listener's finally may have created a new delay task — cancel it
             if self._disconnect_delay_task is not None:

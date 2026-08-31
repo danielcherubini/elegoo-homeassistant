@@ -122,7 +122,11 @@ class ElegooMqttClient:
     @property
     def is_connected(self) -> bool:
         """Return true if the client is connected to the printer."""
-        return self._is_connected and self.mqtt_client is not None
+        return self._is_connected and self._transport_open()
+
+    def _transport_open(self) -> bool:
+        """Report whether the mqtt transport is usable (client object exists)."""
+        return self.mqtt_client is not None
 
     async def disconnect(self) -> None:
         """Disconnect from the printer."""
@@ -133,13 +137,23 @@ class ElegooMqttClient:
             try:
                 self.logger.debug("Sending disconnect command to printer")
                 await self._send_printer_cmd(CMD_DISCONNECT, {})
-            except (ElegooPrinterConnectionError, ElegooPrinterTimeoutError, OSError):
+            except (
+                ElegooPrinterConnectionError,
+                ElegooPrinterNotConnectedError,
+                ElegooPrinterTimeoutError,
+                OSError,
+            ):
                 self.logger.debug("Failed to send disconnect command")
 
         if self._listener_task:
             self._listener_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._listener_task
+            try:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._listener_task
+            except Exception:
+                # A terminal listener exception must never escape — failing here
+                # would skip the remaining cleanup and leak the exception.
+                self.logger.exception("MQTT listener ended with an exception")
             self._listener_task = None
 
         # Unblock any waiters
