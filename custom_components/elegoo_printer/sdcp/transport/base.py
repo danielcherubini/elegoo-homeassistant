@@ -9,7 +9,7 @@ machinery they share one-for-one:
   :meth:`SdcpPrinterClient._send_printer_cmd` SDCP request framing;
 - the shared push-handler bodies (print history / history detail / video)
   routed by :meth:`SdcpPrinterClient._handle_push_frame`;
-- the 4-case status payload extraction chain
+- the 5-case status payload extraction chain
   (:meth:`SdcpPrinterClient._status_payload_extract`) and the shared
   status / attributes apply helpers.
 

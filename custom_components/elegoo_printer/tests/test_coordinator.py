@@ -183,7 +183,7 @@ async def test_cc2_transition_replay_consumes_queue_for_cc2_clients(
 
     coordinator = _make_coordinator(hass, entry)
     set_updated_data = MagicMock()
-    coordinator.async_set_updated_data = set_updated_data
+    coordinator.async_set_updated_data = set_updated_data  # type: ignore[invalid-assignment]
     original_status = api.printer_data.status
 
     coordinator._replay_cc2_print_status_transitions()
