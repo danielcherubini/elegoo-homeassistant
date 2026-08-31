@@ -62,6 +62,10 @@ if TYPE_CHECKING:
     )
     from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
     from custom_components.elegoo_printer.sdcp.models.status import LightStatus
+    from custom_components.elegoo_printer.sdcp.types import (
+        SDCPFrame,
+        SDCPStatusMessage,
+    )
 
 logging.getLogger("websocket").setLevel(logging.CRITICAL)
 
@@ -481,7 +485,7 @@ class ElegooPrinterClient(SdcpPrinterClient):
         except json.JSONDecodeError:
             self.logger.exception("Invalid JSON received")
 
-    def _response_handler(self, data: dict[str, Any]) -> None:
+    def _response_handler(self, data: SDCPFrame) -> None:
         """
         Handle response messages by dispatching to the appropriate handler based on the command type.
 
@@ -516,7 +520,7 @@ class ElegooPrinterClient(SdcpPrinterClient):
         except json.JSONDecodeError:
             self.logger.exception("Invalid JSON")
 
-    def _status_handler(self, data: dict[str, Any]) -> None:
+    def _status_handler(self, data: SDCPStatusMessage) -> None:
         """
         Parse and updates the printer's status information from the provided data.
 

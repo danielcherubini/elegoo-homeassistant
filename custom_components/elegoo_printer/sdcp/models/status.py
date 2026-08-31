@@ -1,9 +1,12 @@
 """Models for the Elegoo printer."""
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .enums import ElegooMachineStatus, ElegooPrintError, ElegooPrintStatus, PrinterType
+
+if TYPE_CHECKING:
+    from custom_components.elegoo_printer.sdcp.types import SDCPStatusMessage
 
 
 class CurrentFanSpeed:
@@ -254,7 +257,9 @@ class PrinterStatus:
 
     def __init__(
         self,
-        data: dict[str, Any] | None = None,
+        # The envelope shape is covered by the union: `SDCPStatusMessage`
+        # models the nested / flat status containers the wire sends.
+        data: "SDCPStatusMessage | dict[str, Any] | None" = None,
         printer_type: PrinterType | None = None,
     ) -> None:
         """Initialize a new PrinterStatus object from a dictionary."""

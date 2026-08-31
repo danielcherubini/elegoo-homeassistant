@@ -32,7 +32,7 @@ import contextlib
 import json
 import secrets
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from custom_components.elegoo_printer.sdcp.const import (
     CMD_SET_VIDEO_STREAM,
@@ -55,6 +55,14 @@ from custom_components.elegoo_printer.sdcp.models.printer import (
 )
 from custom_components.elegoo_printer.sdcp.models.status import PrinterStatus
 from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
+
+if TYPE_CHECKING:
+    from custom_components.elegoo_printer.sdcp.types import (
+        SDCPElegooVideoFrame,
+        SDCPStatusMessage,
+        SDPPrintHistoryDetailFrame,
+        SDPPrintHistoryMessage,
+    )
 
 __all__ = ["SdcpPrinterClient"]
 
@@ -260,7 +268,7 @@ class SdcpPrinterClient:
             case "elegoo_video":
                 self._print_video_handler(data)
 
-    def _print_history_handler(self, data_data: dict[str, Any]) -> None:
+    def _print_history_handler(self, data_data: SDPPrintHistoryMessage) -> None:
         """
         Parse and update the printer's print history cache from the data.
 
@@ -273,7 +281,9 @@ class SdcpPrinterClient:
                 if task_id not in self.printer_data.print_history:
                     self.printer_data.print_history[task_id] = None
 
-    def _print_history_detail_handler(self, data_data: dict[str, Any]) -> None:
+    def _print_history_detail_handler(
+        self, data_data: SDPPrintHistoryDetailFrame
+    ) -> None:
         """
         Parse and update the printer's print history details from the data.
 
@@ -288,7 +298,7 @@ class SdcpPrinterClient:
                 if detail.task_id is not None:
                     self.printer_data.print_history[detail.task_id] = detail
 
-    def _print_video_handler(self, data_data: dict[str, Any]) -> None:
+    def _print_video_handler(self, data_data: SDCPElegooVideoFrame) -> None:
         """
         Parse video stream data and update the printer's video attribute.
 
@@ -342,7 +352,7 @@ class SdcpPrinterClient:
         except Exception:
             self.logger.exception("Exception in _status_handler")
 
-    def _status_handler(self, data: dict[str, Any]) -> None:
+    def _status_handler(self, data: SDCPStatusMessage) -> None:
         """
         Shared status push handler (mqtt shape: the extraction chain).
 

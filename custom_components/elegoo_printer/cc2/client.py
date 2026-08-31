@@ -80,6 +80,14 @@ if TYPE_CHECKING:
     )
 
     from .gcode_proxy import GCodeProxyClient
+    from .types import (
+        CC2Attributes,
+        CC2CanvasStatus,
+        CC2Envelope,
+        CC2FileThumbnailResponse,
+        CC2StatusFrame,
+        CC2VideoResponse,
+    )
 
 
 class ElegooCC2Client:
@@ -763,7 +771,7 @@ class ElegooCC2Client:
             await self._handle_status_event(data)
             return
 
-    async def _handle_response(self, data: dict[str, Any]) -> None:
+    async def _handle_response(self, data: CC2Envelope) -> None:
         """Handle a command response message."""
         request_id = data.get("id")
         method = data.get("method")
@@ -789,7 +797,7 @@ class ElegooCC2Client:
         elif method == CC2_CMD_GET_CANVAS_STATUS:
             self._handle_canvas_status(result)
 
-    async def _handle_status_event(self, data: dict[str, Any]) -> None:
+    async def _handle_status_event(self, data: CC2Envelope) -> None:
         """Handle a status event (push notification)."""
         method = data.get("method")
 
@@ -802,7 +810,7 @@ class ElegooCC2Client:
             result = data.get("result", {})
             self._handle_attributes(result)
 
-    def _handle_full_status(self, status_data: dict[str, Any]) -> None:
+    def _handle_full_status(self, status_data: CC2StatusFrame | dict[str, Any]) -> None:
         """Handle a full status response (from method 1002)."""
         self.logger.debug("Received full status update")
         self._cached_status = deepcopy(status_data)
@@ -1181,7 +1189,9 @@ class ElegooCC2Client:
                 del self._pending_thumbnail_request
 
     def _handle_file_thumbnail_response(
-        self, filename: str, result: dict[str, Any]
+        self,
+        filename: str,
+        result: CC2FileThumbnailResponse | dict[str, Any],
     ) -> None:
         """Handle file thumbnail response and cache thumbnail data."""
         if "_file_thumbnails" not in self._integration_data:
@@ -1220,7 +1230,7 @@ class ElegooCC2Client:
         ):
             self.logger.warning("Failed to request full status")
 
-    def _handle_attributes(self, attrs_data: dict[str, Any]) -> None:
+    def _handle_attributes(self, attrs_data: CC2Attributes | dict[str, Any]) -> None:
         """Handle attributes response."""
         self.logger.debug("Received attributes update")
         try:
@@ -1232,7 +1242,9 @@ class ElegooCC2Client:
         except Exception:
             self.logger.exception("Failed to map CC2 attributes")
 
-    def _handle_video_response(self, video_data: dict[str, Any]) -> None:
+    def _handle_video_response(
+        self, video_data: CC2VideoResponse | dict[str, Any]
+    ) -> None:
         """Handle video stream response."""
         error_code = video_data.get("error_code", 0)
 
@@ -1250,7 +1262,7 @@ class ElegooCC2Client:
         }
         self.printer_data.video = ElegooVideo(converted_data)
 
-    def _handle_canvas_status(self, result: dict[str, Any]) -> None:
+    def _handle_canvas_status(self, result: CC2CanvasStatus | dict[str, Any]) -> None:
         """
         Process Canvas status response and update printer_data.
 

@@ -75,6 +75,7 @@ if TYPE_CHECKING:
     )
     from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
     from custom_components.elegoo_printer.sdcp.models.status import LightStatus
+    from custom_components.elegoo_printer.sdcp.types import SDCPFrame
 
 
 class ElegooMqttClient(SdcpPrinterClient):
@@ -617,7 +618,7 @@ class ElegooMqttClient(SdcpPrinterClient):
         except json.JSONDecodeError:
             self.logger.exception("Invalid JSON received")
 
-    def _response_handler(self, data: dict[str, Any]) -> None:
+    def _response_handler(self, data: SDCPFrame) -> None:
         """
         Handle response messages by dispatching to the shared push handlers.
 
