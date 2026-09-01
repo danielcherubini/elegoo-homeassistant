@@ -17,9 +17,9 @@ Bring your Elegoo 3D printers into Home Assistant! This integration allows you t
 - [Supported Printers](#️-supported-printers)
 - [Installation](#️-installation)
 - [Configuration](#-configuration)
-- [Services](#-services)
+- [Services](#️-services)
 - [Entities](#-entities)
-- [Automation Blueprints](#automation-blueprints)
+- [Automation Blueprints](#-automation-blueprints)
 - [Contributing](#️-contributing)
 
 ---
