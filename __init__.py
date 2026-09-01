@@ -78,7 +78,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             hass.config_entries.async_update_entry(entry, data=new_data, options=new_options)
             await hass.config_entries.async_reload(entry_id)
             
-    # Đăng ký service 'update_ip'
+    # Update service 'update_ip'
     hass.services.async_register(DOMAIN, "update_ip", update_ip_service)
     return True
 
