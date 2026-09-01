@@ -11,10 +11,13 @@ import asyncio
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+import voluptuous as vol
 from aiohttp import ClientError
 from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_IP_ADDRESS, Platform, UnitOfTime
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.core import SupportsResponse
+from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -42,7 +45,7 @@ from .data import ElegooPrinterData
 from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
+    from homeassistant.core import HomeAssistant, ServiceCall
 
     from .data import ElegooPrinterConfigEntry
 
@@ -57,6 +60,108 @@ PLATFORMS: list[Platform] = [
     Platform.SELECT,
     Platform.NUMBER,
 ]
+
+SERVICE_UPDATE_IP = "update_ip"
+
+# min-length: a watcher script that forwards an empty address must fail loudly,
+# not silently. Plain str (no IP regex): hostnames are allowed, matching the
+# config flow's plain TextSelector.
+SERVICE_UPDATE_IP_SCHEMA = vol.Schema(
+    {
+        vol.Required("entry_id"): str,
+        vol.Required(CONF_IP_ADDRESS): vol.Length(min=1),
+    }
+)
+
+
+async def _async_update_ip(hass: HomeAssistant, call: ServiceCall) -> dict:
+    """
+    Update a config entry's printer IP address and reload the entry.
+
+    Accepts ``entry_id`` and ``ip_address``; writes the new address into the
+    entry data, reloads the entry so the integration reconnects at the new
+    address, and returns a definitive ``{success, error|message}`` result
+    (supports_response=optional).
+    """
+    entry_id = call.data["entry_id"]
+    entry = hass.config_entries.async_get_entry(entry_id)
+    # The services.yaml selector constrains the entry picker in the UI, but a
+    # programmatic/automation call can pass any entry_id — this domain check
+    # is the real guard, not dead code.
+    if entry is None or entry.domain != DOMAIN:
+        return {
+            "success": False,
+            "error": f"Config entry {entry_id} not found for {DOMAIN}",
+        }
+
+    new_ip = call.data[CONF_IP_ADDRESS]
+    LOGGER.info("Updating printer IP to %s for entry %s", new_ip, entry_id)
+
+    # Update the entry data only: the integration has no options flow; the
+    # config flow and all migrations write the IP into entry.data.
+    # Pin note: async_update_entry is a sync @callback on the HA 2025.4.0 pin
+    # — it must NOT be awaited. If the HA pin is ever advanced, re-verify
+    # this call form.
+    new_data = {**entry.data, CONF_IP_ADDRESS: new_ip}
+    hass.config_entries.async_update_entry(entry, data=new_data)
+
+    try:
+        # On a still-LOADED entry, the data write above also fires the
+        # entry's add_update_listener(async_reload_entry) reload. HA
+        # serializes both on the entry's setup lock (the final state is
+        # deterministic) but the second full unload→setup cycle would still
+        # run (extra printer API connect/disconnect, MQTT broker
+        # stop/start, entity re-registration churn, ~2x latency). In the
+        # headline use case (the printer is unreachable at the old IP, the
+        # entry is in SETUP_RETRY/SETUP_ERROR, and there is no live update
+        # listener) this explicit reload is the only cycle. No awaitable
+        # public API exists to wait for the listener-driven reload (verified
+        # HA 2025.4 and 2026.8), so this explicit one is what lets the
+        # handler return a definitive result.
+        await hass.config_entries.async_reload(entry.entry_id)
+    except ConfigEntryError as err:
+        # DEFENSIVE catch: on HA 2025.4 the entry setup flow catches
+        # ConfigEntryError internally (marking the entry SETUP_ERROR) instead
+        # of propagating it, so the state check below is the real failure
+        # signal; this branch guards other HA versions/paths.
+        return {
+            "success": False,
+            "error": f"Reload failed after IP update: {err}",
+        }
+
+    # The real failure signal: on HA 2025.4 a failed reload leaves the entry
+    # not-LOADED rather than raising.
+    if entry.state is not ConfigEntryState.LOADED:
+        LOGGER.warning(
+            "Reload after IP update failed for entry %s (state: %s)",
+            entry_id,
+            entry.state,
+        )
+        return {
+            "success": False,
+            "error": (
+                f"Printer unreachable at new address {new_ip} "
+                f"(entry state: {entry.state})"
+            ),
+        }
+
+    LOGGER.info("IP updated to %s and entry %s reloaded", new_ip, entry_id)
+    return {"success": True, "message": f"IP updated to {new_ip} and entry reloaded"}
+
+
+# https://developers.home-assistant.io/docs/creating_integration_file_structure/#defining-services
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG001
+    """Set up the Elegoo Printer component."""
+    # `config` is part of the HA async_setup contract (the manifest-level
+    # service registration is unconditional); ARG001 noqa is intentional.
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_UPDATE_IP,
+        _async_update_ip,
+        schema=SERVICE_UPDATE_IP_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    return True
 
 
 # https://developers.home-assistant.io/docs/config_entries_index/#setting-up-an-entry

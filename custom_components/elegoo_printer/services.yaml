@@ -1,17 +1,17 @@
 update_ip:
   name: Update IP Address
-  description: Update new IP adress.
+  description: Update the IP address of an Elegoo Printer config entry and reload it.
   fields:
     entry_id:
       name: Config Entry
-      description: Chooose printer need to change IP.
+      description: Choose the printer who needs to change its IP.
       required: true
       selector:
         config_entry:
           integration: elegoo_printer
     ip_address:
       name: IP Address
-      description: Type ip adress that need to change (Example: 192.168.1.3).
+      description: "Type the new IP address (Example: 192.168.1.3)."
       example: "192.168.1.3"
       required: true
       selector:
