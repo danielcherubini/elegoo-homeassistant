@@ -7,6 +7,8 @@ Implementation plans for features and fixes.
 - **Total Plans:** 3
 - **In Progress:** 0
 - **Completed:** 3
+- **Total Specs:** 1
+- **Specs Completed:** 1
 
 ## Active Plans
 
@@ -23,3 +25,15 @@ _(none)_
 ## Superseded Plans
 
 _(none)_
+
+## Specs
+
+### Draft
+
+_(none)_
+
+### Completed
+
+| Spec | Status | PR |
+|------|--------|----|
+| [Update IP Service Placement](../specs/spec-001-update-ip-service-spec.md) | ✅ COMPLETED | [#404](https://github.com/danielcherubini/elegoo-homeassistant/pull/404) |
