@@ -1,17 +1,17 @@
 update_ip:
   name: Update IP Address
-  description: Cập nhật địa chỉ IP mới cho máy in Elegoo (khi máy in đổi IP).
+  description: Update new IP adress.
   fields:
     entry_id:
       name: Config Entry
-      description: Chọn máy in Elegoo mà bạn muốn cập nhật IP.
+      description: Chooose printer need to change IP.
       required: true
       selector:
         config_entry:
           integration: elegoo_printer
     ip_address:
       name: IP Address
-      description: Nhập địa chỉ IP mới của máy in (ví dụ 192.168.1.3).
+      description: Type ip adress that need to change (Example: 192.168.1.3).
       example: "192.168.1.3"
       required: true
       selector:
