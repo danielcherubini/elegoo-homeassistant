@@ -180,6 +180,17 @@ async def test_listen_not_implemented_in_base() -> None:
         await bare._listen()
 
 
+async def test_get_printer_task_detail_not_implemented_in_base() -> None:
+    """The base get_printer_task_detail must raise NotImplementedError."""
+
+    class _Bare(SdcpPrinterClient):
+        """A bare base instance (no transport overrides)."""
+
+    bare = _Bare(None, Printer())
+    with pytest.raises(NotImplementedError):
+        await bare.get_printer_task_detail(["test_id"])
+
+
 async def test_request_topic_base_starts_without_leading_slash() -> None:
     """The base request topic keeps the wire prefix as-is (ws shape)."""
     client = _make_client(logger=None)
