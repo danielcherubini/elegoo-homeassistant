@@ -1,5 +1,5 @@
 blueprint:
-  name: Elegoo Printer Progress Notification (v6)
+  name: Elegoo Printer Progress Notification (v7)
   description: Sends notifications for printer progress, status changes, and error states.
   author: Daniel Cherubini
   homeassistant:
@@ -76,8 +76,7 @@ variables:
   percent_complete_entity: !input percent_complete_entity
   notify_device: !input notify_device
   progress_points: >-
-    {{ progress_notifications | string | replace(' ', '') | split(',') |
-    select('ne', '') | map('int') | list }}
+    {{ progress_notifications | string | replace(' ', '') }}
   camera_entity_input: !input camera_entity
   dashboard_url: !input dashboard_url
   enable_status_notifications: !input enable_status_notifications
@@ -132,7 +131,8 @@ action:
             value_template: "{{ states(percent_complete_entity) | int(0) < 100 }}"
           - condition: template
             value_template: >-
-              {{ states(percent_complete_entity) | int(0) in progress_points }}
+              {% set p = states(percent_complete_entity) | int(0) %}
+              {{ (',' ~ p ~ ',') in (',' ~ progress_points ~ ',') }}
           - condition: template
             value_template: >-
               {{ current_status_entity != none and states(current_status_entity) == 'printing' }}
