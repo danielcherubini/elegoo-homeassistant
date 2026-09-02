@@ -543,6 +543,8 @@ class ElegooMQTTClient(SdcpPrinterClient):
                     self.logger.exception("Failed to decode MQTT message")
                 except (json.JSONDecodeError, KeyError, ValueError):
                     self.logger.exception("Error processing MQTT message")
+                except Exception:
+                    self.logger.exception("Failed to process MQTT message")
         except asyncio.CancelledError:
             self.logger.debug("MQTT listener cancelled.")
         except (asyncio.TimeoutError, OSError, aiomqtt.MqttError):
