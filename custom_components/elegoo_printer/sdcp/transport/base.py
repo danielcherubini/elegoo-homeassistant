@@ -60,8 +60,8 @@ if TYPE_CHECKING:
     from custom_components.elegoo_printer.sdcp.types import (
         SDCPElegooVideoFrame,
         SDCPStatusMessage,
-        SDPPrintHistoryDetailFrame,
-        SDPPrintHistoryMessage,
+        SDCPPrintHistoryDetailFrame,
+        SDCPPrintHistoryMessage,
     )
 
 __all__ = ["SdcpPrinterClient"]
@@ -180,6 +180,13 @@ class SdcpPrinterClient:
         msg = "publish_frame must be implemented by the transport"
         raise NotImplementedError(msg)
 
+    async def get_printer_task_detail(
+        self, id_list: list[str]
+    ) -> PrintHistoryDetail | None:
+        """Fetch task detail by ID (overridden per transport)."""
+        msg = "get_printer_task_detail must be implemented by the transport"
+        raise NotImplementedError(msg)
+
     async def _send_printer_cmd(
         self, cmd: int, data: dict[str, Any] | None = None
     ) -> None:
@@ -266,7 +273,7 @@ class SdcpPrinterClient:
             case "elegoo_video":
                 self._print_video_handler(data)
 
-    def _print_history_handler(self, data_data: SDPPrintHistoryMessage) -> None:
+    def _print_history_handler(self, data_data: SDCPPrintHistoryMessage) -> None:
         """
         Parse and update the printer's print history cache from the data.
 
@@ -280,7 +287,7 @@ class SdcpPrinterClient:
                     self.printer_data.print_history[task_id] = None
 
     def _print_history_detail_handler(
-        self, data_data: SDPPrintHistoryDetailFrame
+        self, data_data: SDCPPrintHistoryDetailFrame
     ) -> None:
         """
         Parse and update the printer's print history details from the data.
