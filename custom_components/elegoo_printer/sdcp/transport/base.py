@@ -59,9 +59,9 @@ from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 if TYPE_CHECKING:
     from custom_components.elegoo_printer.sdcp.types import (
         SDCPElegooVideoFrame,
-        SDCPStatusMessage,
         SDCPPrintHistoryDetailFrame,
         SDCPPrintHistoryMessage,
+        SDCPStatusMessage,
     )
 
 __all__ = ["SdcpPrinterClient"]
