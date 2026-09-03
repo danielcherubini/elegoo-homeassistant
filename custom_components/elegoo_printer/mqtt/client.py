@@ -660,7 +660,6 @@ class ElegooMQTTClient(SdcpPrinterClient):
             data_content = data["Data"]
             self.logger.debug("Data content keys: %s", list(data_content.keys()))
             if "Attributes" in data_content:
-                attributes_data = data_content["Attributes"]
                 self.logger.debug("Extracted attributes data successfully")
             else:
                 self.logger.warning(
@@ -668,16 +667,14 @@ class ElegooMQTTClient(SdcpPrinterClient):
                     list(data_content.keys()),
                 )
                 return
+            self._apply_attributes(data_content)
         elif "Attributes" in data:
-            # Fallback for WebSocket format
             self.logger.debug("Using WebSocket fallback format")
-            attributes_data = data["Attributes"]
+            self._apply_attributes(data)
         else:
             keys = list(data.keys())
             self.logger.warning("Unknown attributes message format: %s", keys)
             return
-
-        self._apply_attributes(attributes_data)
 
     def _set_response_event_sync(self, request_id: str) -> None:
         """Set the event for a given request ID (synchronous wrapper)."""

@@ -309,15 +309,7 @@ async def test_status_push_updates_printer_data(
 async def test_attributes_push_updates_printer_data(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """
-    An attributes push frame re-assigns printer_data.attributes.
-
-    Pins CURRENT (buggy) behavior: the MQTT handler unwraps
-    ``data["Data"]["Attributes"]`` but ``PrinterAttributes.from_json``
-    expects the wrapper shape ``{"Attributes": ...}`` (the WebSocket
-    handler passes the whole message, so only the MQTT transport is
-    affected). The flat payload is dropped, leaving empty attribute values.
-    """
+    """An attributes push frame re-assigns printer_data.attributes."""
     _speed_up_wait_for(monkeypatch)
     fake = FakeAiomqttClient()
     client = _make_client(fake)
@@ -339,9 +331,8 @@ async def test_attributes_push_updates_printer_data(
     await _wait_until(lambda: client.printer_data.attributes is not default_attributes)
     assert await client.get_printer_attributes() is client.printer_data
     assert isinstance(client.printer_data.attributes, PrinterAttributes)
-    # Pin the wrapper-mismatch behavior (attribute values are dropped).
-    assert client.printer_data.attributes.firmware_version == ""
-    assert client.printer_data.attributes.machine_name == ""
+    assert client.printer_data.attributes.firmware_version == "V1.2.3"
+    assert client.printer_data.attributes.machine_name == "Saturn 4"
     await _teardown(client, None)
 
 
