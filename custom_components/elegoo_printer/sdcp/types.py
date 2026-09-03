@@ -119,7 +119,7 @@ type SDCPStatusMessage = SDCPStatusWrapper | SDCPStatusPayload
 decodes the inner payload."""
 
 
-class SDPPrintHistoryMessage(TypedDict, total=False):
+class SDCPPrintHistoryMessage(TypedDict, total=False):
     """A `print_history` frame (key -> sparse task-summary dicts)."""
 
     PrintHistory: dict[str, Any]
@@ -128,7 +128,7 @@ class SDPPrintHistoryMessage(TypedDict, total=False):
     HistoryData: list[Any]
 
 
-class SDPPrintHistoryDetailFrame(TypedDict, total=False):
+class SDCPPrintHistoryDetailFrame(TypedDict, total=False):
     """A `PrintHistoryDetail` frame (sparse; nested shape stays `Any`)."""
 
     PrintInfo: dict[str, Any]
