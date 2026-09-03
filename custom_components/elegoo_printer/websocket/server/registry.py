@@ -71,14 +71,6 @@ class PrinterRegistry:
                 return printer
         return None
 
-    def get_all_printers_by_mainboard_id(self) -> dict[str, Printer]:
-        """Get all printers mapped by their MainboardID."""
-        printers_by_id = {}
-        for printer in self._printers.values():
-            if printer.id:
-                printers_by_id[printer.id.lower()] = printer
-        return printers_by_id
-
     def count(self) -> int:
         """Return the number of registered printers."""
         return len(self._printers)

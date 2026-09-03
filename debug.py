@@ -11,7 +11,7 @@ from loguru import logger
 
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.cc2.discovery import CC2Discovery
-from custom_components.elegoo_printer.mqtt.client import ElegooMqttClient
+from custom_components.elegoo_printer.mqtt.client import ElegooMQTTClient
 from custom_components.elegoo_printer.mqtt.server import ElegooMQTTBroker
 from custom_components.elegoo_printer.sdcp.const import DEBUG
 from custom_components.elegoo_printer.sdcp.models.enums import TransportType
@@ -69,7 +69,7 @@ async def monitor_printer(
         )
     elif printer.transport_type == TransportType.MQTT:
         logger.info(f"🔌 Using MQTT transport for {printer.name}")
-        elegoo_printer = ElegooMqttClient(
+        elegoo_printer = ElegooMQTTClient(
             mqtt_host=MQTT_HOST,
             mqtt_port=MQTT_PORT,
             logger=logger,

@@ -98,7 +98,11 @@ class PrinterAttributes:
     """  # noqa: E501
 
     def __init__(
-        self, data: dict[str, Any] | None = None
+        self,
+        # Envelope shape covered by dict[str, Any] (no dedicated
+        # TypedDict needed: the `{'Attributes': {...}}` wrapper is a
+        # plain dict today).
+        data: dict[str, Any] | None = None,
     ) -> None:  # Make 'data' optional
         """
         Initialize a new PrinterAttributes object from a dictionary.

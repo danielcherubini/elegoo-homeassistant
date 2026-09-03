@@ -489,6 +489,9 @@ class PrinterData:
         print_history (dict[str, PrintHistoryDetail | None]): The print history of the
             printer.
         current_job (PrintHistoryDetail | None): The current print job of the printer.
+            Terminology: the SDCP wire + most of this codebase call it a ``task``
+            (task_id); CC2 firmware and some cc2 modules call it a ``job``.
+            Same concept.
         video (ElegooVideo): The video object of the printer.
         firmware_update_info (dict): Firmware update state and metadata
             (update_available, current_version, latest_version, package_url, changelog).

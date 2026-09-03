@@ -18,6 +18,7 @@ dev = [
     "paho-mqtt>=2.1.0",
     "pre-commit>=4.5.1",
     "pytest>=8.4.1",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.9.10",
     "ty>=0.0.1a21",
 ]
@@ -57,12 +58,17 @@ max-complexity = 25
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["S101"]
 "custom_components/elegoo_printer/sdcp/tests/*.py" = ["S101"]
+"custom_components/elegoo_printer/sdcp/tests/test_transport_base.py" = [
+  "SLF001",
+  "PLR2004",
+]
 "custom_components/elegoo_printer/sdcp/models/tests/*.py" = ["S101"]
 "custom_components/elegoo_printer/websocket/tests/*.py" = ["S101", "SLF001", "PLR2004"]
 "custom_components/elegoo_printer/tests/*.py" = ["S101", "D102", "D103", "ANN001", "ANN201", "ANN202", "PLR2004", "SLF001", "D403", "ARG002"]
 "custom_components/elegoo_printer/cc2/tests/*.py" = ["S101", "SLF001", "PLC0415"]
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 pythonpath = [
   "."
 ]

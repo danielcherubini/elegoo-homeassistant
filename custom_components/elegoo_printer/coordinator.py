@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.const import CONF_HAS_CANVAS, LOGGER
 from custom_components.elegoo_printer.sdcp.exceptions import (
+    PRINT_TRANSPORT_ERRORS,
     ElegooPrinterConnectionError,
-    ElegooPrinterNotConnectedError,
     ElegooPrinterTimeoutError,
 )
+from custom_components.elegoo_printer.sdcp.models.enums import TransportType
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -107,11 +107,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             if self.update_interval != timedelta(seconds=2):
                 self.update_interval = timedelta(seconds=2)
             return self.data  # noqa: TRY300
-        except (
-            ElegooPrinterConnectionError,
-            ElegooPrinterNotConnectedError,
-            ElegooPrinterTimeoutError,
-        ) as e:
+        except PRINT_TRANSPORT_ERRORS as e:
             self.online = False
             LOGGER.info(
                 "Connection to Elegoo printer lost: %s. Attempting to reconnect.", e
@@ -150,7 +146,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
 
         """  # noqa: E501
         api = self.config_entry.runtime_data.api
-        if not isinstance(api.client, ElegooCC2Client):
+        if api.printer.transport_type != TransportType.CC2_MQTT:
             return
         pending = api.client.consume_print_status_transition_queue()
         if not pending:

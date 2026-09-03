@@ -3,25 +3,25 @@ Elegoo MQTT Client for SDCP.
 
 This client connects to an MQTT broker that bridges communication
 with Elegoo printers, rather than connecting directly to the printer.
+
+Inherits the shared SDCP state / request-response machinery from
+``SdcpPrinterClient`` (``sdcp.transport.base``) and keeps only the
+MQTT-specific wire behaviour (leading-slash topics, the
+``CMD_DISCONNECT`` handshake, the ``aiomqtt`` transport).
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
-import secrets
 import socket
-import time
 from typing import TYPE_CHECKING, Any
 
 import aiomqtt
 
 from custom_components.elegoo_printer.const import (
     DEFAULT_BROADCAST_ADDRESS,
-    DISCOVERY_MESSAGE,
     DISCOVERY_PORT,
-    DISCOVERY_TIMEOUT,
 )
 from custom_components.elegoo_printer.sdcp.const import (
     CMD_CONTINUE_PRINT,
@@ -43,19 +43,15 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterNotConnectedError,
     ElegooPrinterTimeoutError,
 )
-from custom_components.elegoo_printer.sdcp.models.attributes import PrinterAttributes
-from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
-    PrintHistoryDetail,
-)
 from custom_components.elegoo_printer.sdcp.models.printer import (
     Printer,
-    PrinterData,
 )
-from custom_components.elegoo_printer.sdcp.models.status import (
-    LightStatus,
-    PrinterStatus,
+from custom_components.elegoo_printer.sdcp.transport.base import (
+    SdcpPrinterClient,
 )
-from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
+from custom_components.elegoo_printer.sdcp.transport.discovery import (
+    perform_printer_discovery,
+)
 
 from .const import (
     MQTT_KEEPALIVE,
@@ -71,10 +67,18 @@ from .const import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
+
     from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
+    from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
+        PrintHistoryDetail,
+    )
+    from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
+    from custom_components.elegoo_printer.sdcp.models.status import LightStatus
+    from custom_components.elegoo_printer.sdcp.types import SDCPFrame
 
 
-class ElegooMqttClient:
+class ElegooMQTTClient(SdcpPrinterClient):
     """
     MQTT client for interacting with an Elegoo printer via MQTT bridge.
 
@@ -82,16 +86,17 @@ class ElegooMqttClient:
     rather than connecting directly to the printer.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         mqtt_host: str = "localhost",
         mqtt_port: int = MQTT_PORT,
         advertise_host: str | None = None,
         logger: Any = LOGGER,
         printer: Printer | None = None,
+        client_factory: Callable[[dict[str, Any]], Any] | None = None,
     ) -> None:
         """
-        Initialize an ElegooMqttClient.
+        Initialize an ElegooMQTTClient.
 
         For communicating with an Elegoo 3D printer via MQTT bridge.
 
@@ -104,66 +109,79 @@ class ElegooMqttClient:
                 printer does).
             logger: The logger to use.
             printer: Optional Printer object with existing configuration.
+            client_factory: Optional factory override (test seam). Defaults
+                to the real aiomqtt client.
 
         """
         self.mqtt_host = mqtt_host
         self.mqtt_port = mqtt_port
         self.advertise_host = advertise_host or mqtt_host
         self.mqtt_client: aiomqtt.Client | None = None
-        self.printer: Printer = printer or Printer()
-        self.printer_data = PrinterData(printer=self.printer)
-        self.logger = logger
-        self._is_connected: bool = False
-        self._listener_task: asyncio.Task | None = None
-        self._background_tasks: set[asyncio.Task] = set()
-        self._response_events: dict[str, asyncio.Event] = {}
-        self._response_lock = asyncio.Lock()
+        super().__init__(logger, printer or Printer())
+        self._client_factory = client_factory
 
-    @property
-    def is_connected(self) -> bool:
-        """Return true if the client is connected to the printer."""
-        return self._is_connected and self.mqtt_client is not None
+    def _transport_open(self) -> bool:
+        """Report whether the mqtt transport is usable (client object exists)."""
+        return self.mqtt_client is not None
 
-    async def disconnect(self) -> None:
-        """Disconnect from the printer."""
-        self.logger.info("Closing MQTT connection to printer")
+    # ------------------------------------------------------------------
+    # Transport-specific hooks / overrides on the shared base
+    # ------------------------------------------------------------------
 
-        # Send disconnect command to printer if connected
+    def _request_topic(self, prefix: str) -> str:
+        """
+        Request topic prefix for this transport (in-frame "Topic").
+
+        The leading slash is required to match the printer's subscription
+        pattern — do NOT 'fix' it.
+        """
+        return f"/{prefix}"
+
+    async def _publish_frame(self, frame: str) -> None:
+        """Publish a request frame on the mqtt request topic."""
+        if self.mqtt_client is None:
+            msg = "Not connected"
+            raise ElegooPrinterNotConnectedError(msg)
+        try:
+            # Leading slash required to match printer's subscription pattern
+            topic = f"/{TOPIC_PREFIX}/{TOPIC_REQUEST}/{self.printer.id}"
+            await self.mqtt_client.publish(topic, frame)
+        except (OSError, aiomqtt.MqttError) as e:
+            self._is_connected = False
+            self.logger.info("MQTT connection error")
+            raise ElegooPrinterConnectionError from e
+
+    async def _disconnect_pre(self) -> None:
+        """Send the disconnect command to the printer if connected."""
         if self._is_connected and self.mqtt_client:
             try:
                 self.logger.debug("Sending disconnect command to printer")
                 await self._send_printer_cmd(CMD_DISCONNECT, {})
-            except (ElegooPrinterConnectionError, ElegooPrinterTimeoutError, OSError):
+            except (
+                ElegooPrinterConnectionError,
+                ElegooPrinterNotConnectedError,
+                ElegooPrinterTimeoutError,
+                OSError,
+            ):
                 self.logger.debug("Failed to send disconnect command")
 
-        if self._listener_task:
-            self._listener_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._listener_task
-            self._listener_task = None
-
-        # Unblock any waiters
-        async with self._response_lock:
-            for ev in self._response_events.values():
-                ev.set()
-            self._response_events.clear()
-
-        # Properly close MQTT connection
+    async def _on_disconnect(self) -> None:
+        """Close the MQTT connection properly."""
         if self.mqtt_client:
             try:
                 await self.mqtt_client.__aexit__(None, None, None)
             except (asyncio.TimeoutError, OSError, aiomqtt.MqttError):
                 self.logger.exception("Error during MQTT disconnect")
-
         self.mqtt_client = None
-        self._is_connected = False
 
-    def _send_mqtt_connect_command(self, printer_ip: str) -> bool:
+    def _send_broker_redirect_command(self, printer_ip: str) -> bool:
         """
         Send UDP command to tell printer to connect to MQTT broker.
 
         Uses the M66666 command with the MQTT broker host and port to instruct
         the printer to connect to the specified MQTT broker.
+        NOTE: this is the M66666 `<host> <port>` UDP redirect command — it is
+        not an MQTT connect frame.
 
         Arguments:
             printer_ip: The IP address of the printer.
@@ -216,7 +234,7 @@ class ElegooMqttClient:
 
         # First, tell the printer to connect to our MQTT broker
         if printer.ip_address:
-            if not self._send_mqtt_connect_command(printer.ip_address):
+            if not self._send_broker_redirect_command(printer.ip_address):
                 msg = (
                     "Failed to send MQTT connect command, "
                     "but will try to connect anyway"
@@ -234,7 +252,8 @@ class ElegooMqttClient:
                 "keepalive": MQTT_KEEPALIVE,
             }
 
-            self.mqtt_client = aiomqtt.Client(**client_kwargs)
+            client_cls = self._client_factory or aiomqtt.Client
+            self.mqtt_client = client_cls(**client_kwargs)
 
             await self.mqtt_client.__aenter__()
 
@@ -252,7 +271,7 @@ class ElegooMqttClient:
                 await self.mqtt_client.subscribe(topic)
 
             self._is_connected = True
-            self._listener_task = asyncio.create_task(self._mqtt_listener())
+            self._listener_task = self._start_listener()
 
             # Send connection handshake commands (like Cassini does)
             # CMD_0 and CMD_1 are handshakes that trigger status/attributes
@@ -295,71 +314,25 @@ class ElegooMqttClient:
             A list of discovered MQTT printers, or an empty list if none are found.
 
         """
-        discovered_printers: list[Printer] = []
         self.logger.info("Broadcasting for MQTT printer discovery...")
-        msg = DISCOVERY_MESSAGE.encode()
-        with socket.socket(
-            socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
-        ) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            sock.settimeout(DISCOVERY_TIMEOUT)
-            try:
-                sock.sendto(msg, (broadcast_address, DISCOVERY_PORT))
-                while True:
-                    try:
-                        data, addr = sock.recvfrom(8192)
-                        msg_str = f"Discovery response received from {addr}"
-                        self.logger.info(msg_str)
-                        try:
-                            printer_info = data.decode("utf-8")
-                            printer = Printer(printer_info)
-                            discovered_printers.append(printer)
-                            self.logger.debug(
-                                "Discovered printer: %s (transport: %s)",
-                                printer.name,
-                                printer.transport_type.value,
-                            )
-                        except (UnicodeDecodeError, ValueError, TypeError):
-                            self.logger.exception("Failed to parse printer data")
-                    except socket.timeout:
-                        break  # Timeout, no more responses
-            except OSError as e:
-                msg_str = f"Socket error during discovery: {e}"
-                self.logger.exception(msg_str)
-                return []
+        discovered_printers = perform_printer_discovery(
+            broadcast_address, logger=self.logger
+        )
+
+        for printer in discovered_printers:
+            self.logger.debug(
+                "Discovered printer: %s (transport: %s)",
+                printer.name,
+                printer.transport_type.value,
+            )
 
         if not discovered_printers:
             self.logger.debug("No MQTT printers found during discovery.")
         else:
-            msg_str = f"Discovered {len(discovered_printers)} MQTT printer(s)."
-            self.logger.debug(msg_str)
+            msg = f"Discovered {len(discovered_printers)} MQTT printer(s)."
+            self.logger.debug(msg)
 
         return discovered_printers
-
-    async def _mqtt_listener(self) -> None:
-        """Listen for messages on MQTT and handle them."""
-        if not self.mqtt_client:
-            return
-
-        try:
-            async for message in self.mqtt_client.messages:
-                try:
-                    payload = message.payload.decode("utf-8")
-                    self._parse_response(payload, str(message.topic))
-                except UnicodeDecodeError:
-                    self.logger.exception("Failed to decode MQTT message")
-                except (json.JSONDecodeError, KeyError, ValueError):
-                    self.logger.exception("Error processing MQTT message")
-        except asyncio.CancelledError:
-            self.logger.debug("MQTT listener cancelled.")
-        except (asyncio.TimeoutError, OSError, aiomqtt.MqttError):
-            self.logger.exception("MQTT listener exception")
-            # Don't raise - let the finally block run to clean up
-            # Raising here causes "Task exception was never retrieved"
-            return
-        finally:
-            self._is_connected = False
-            self.logger.info("MQTT listener stopped.")
 
     async def get_printer_status(self) -> PrinterData:
         """
@@ -406,32 +379,6 @@ class ElegooMqttClient:
         )
         return self.printer_data
 
-    async def set_printer_video_stream(self, *, enable: bool) -> None:
-        """
-        Enable or disable the printer's video stream.
-
-        Arguments:
-            enable: If True, enables the video stream; if False, disables it.
-
-        """
-        await self._send_printer_cmd(CMD_SET_VIDEO_STREAM, {"Enable": int(enable)})
-
-    async def get_printer_video(self, *, enable: bool = False) -> ElegooVideo:
-        """
-        Enable/disable video stream and retrieve stream information.
-
-        Arguments:
-            enable: If True, enables the video stream; if False, disables it.
-
-        Returns:
-            The current video stream information from the printer.
-
-        """
-        await self.set_printer_video_stream(enable=enable)
-        msg = f"Sending printer video: {self.printer_data.video.to_dict()}"
-        self.logger.debug(msg)
-        return self.printer_data.video
-
     async def async_get_printer_historical_tasks(
         self,
     ) -> dict[str, PrintHistoryDetail | None] | None:
@@ -477,56 +424,6 @@ class ElegooMqttClient:
         self.logger.debug("Empty id_list, returning None")
         return None
 
-    def get_printer_current_task(self) -> PrintHistoryDetail | None:
-        """Retrieve current task."""
-        if self.printer_data.status.print_info.task_id:
-            task_id = self.printer_data.status.print_info.task_id
-            current_task = self.printer_data.print_history.get(task_id)
-            msg = f"current_task: {current_task}"
-            self.logger.debug(msg)
-            if current_task is not None:
-                return current_task
-            self.logger.debug("Getting printer task from api")
-            task = asyncio.create_task(self.get_printer_task_detail([task_id]))
-            self._background_tasks.add(task)
-            task.add_done_callback(self._background_tasks.discard)
-            return self.printer_data.print_history.get(task_id)
-        return None
-
-    def get_printer_last_task(self) -> PrintHistoryDetail | None:
-        """Retrieve last task."""
-        if self.printer_data.print_history:
-
-            def sort_key(tid: str) -> float:
-                task = self.printer_data.print_history.get(tid)
-                return task.end_time.timestamp() if task and task.end_time else 0.0
-
-            last_task_id = max(
-                self.printer_data.print_history.keys(),
-                key=sort_key,
-            )
-            task_data = self.printer_data.print_history.get(last_task_id)
-            if task_data is None:
-                task = asyncio.create_task(self.get_printer_task_detail([last_task_id]))
-                self._background_tasks.add(task)
-                task.add_done_callback(self._background_tasks.discard)
-            return task_data
-        return None
-
-    def get_current_print_thumbnail(self) -> str | None:
-        """
-        Return the thumbnail URL of the current print task, or None if no thumbnail.
-
-        Returns:
-            The URL of the current print task's thumbnail image,
-            or None if there is no active task or thumbnail.
-
-        """
-        task = self.get_printer_current_task()
-        if task:
-            return task.thumbnail
-        return None
-
     async def async_get_printer_current_task(self) -> PrintHistoryDetail | None:
         """
         Asynchronously retrieve the current print task details from the printer.
@@ -559,25 +456,6 @@ class ElegooMqttClient:
         else:
             self.logger.debug("NO TASK RETURNED FROM PRINTER for task_id: %s", task_id)
         return task
-
-    async def async_get_printer_last_task(self) -> PrintHistoryDetail | None:
-        """Retrieve last task."""
-        if self.printer_data.print_history:
-
-            def sort_key(tid: str) -> float:
-                task = self.printer_data.print_history.get(tid)
-                return task.end_time.timestamp() if task and task.end_time else 0.0
-
-            last_task_id = max(
-                self.printer_data.print_history.keys(),
-                key=sort_key,
-            )
-            task = self.printer_data.print_history.get(last_task_id)
-            if task is None:
-                await self.get_printer_task_detail([last_task_id])
-                return self.printer_data.print_history.get(last_task_id)
-            return task
-        return None
 
     async def async_get_current_print_thumbnail(self) -> str | None:
         """
@@ -647,73 +525,36 @@ class ElegooMqttClient:
         data = {"TempTargetHotbed": clamped_temperature}
         await self._send_printer_cmd(CMD_CONTROL_DEVICE, data)
 
-    async def _send_printer_cmd(
-        self, cmd: int, data: dict[str, Any] | None = None
-    ) -> None:
-        """
-        Send a JSON command to the printer via MQTT.
+    def _mqtt_listener(self) -> Coroutine[Any, Any, None]:
+        """Pinned-name listener alias (tests pin the ``_mqtt_listener`` name)."""
+        return self._listen()
 
-        Arguments:
-            cmd: The command to send.
-            data: The data to send with the command.
+    async def _listen(self) -> None:
+        """Listen for messages on MQTT and handle them."""
+        if not self.mqtt_client:
+            return
 
-        Raises:
-            ElegooPrinterNotConnectedError: If the printer is not connected.
-            ElegooPrinterConnectionError: If an MQTT error or timeout occurs.
-            OSError: If an operating system error occurs while sending the command.
-
-        """
-        if not self.is_connected:
-            msg = "Printer not connected, cannot send command."
-            raise ElegooPrinterNotConnectedError(msg)
-
-        ts = int(time.time())
-        data = data or {}
-        request_id = secrets.token_hex(8)
-        payload = {
-            "Id": self.printer.connection,
-            "Data": {
-                "Cmd": cmd,
-                "Data": data,
-                "RequestID": request_id,
-                "MainboardID": self.printer.id,
-                "TimeStamp": ts,
-                "From": 0,
-            },
-            "Topic": f"/sdcp/request/{self.printer.id}",
-        }
-
-        if DEBUG:
-            msg = f"printer << \n{json.dumps(payload, indent=4)}"
-            self.logger.debug(msg)
-
-        event = asyncio.Event()
-        async with self._response_lock:
-            self._response_events[request_id] = event
-
-        if self.mqtt_client:
-            try:
-                # Leading slash required to match printer's subscription pattern
-                topic = f"/{TOPIC_PREFIX}/{TOPIC_REQUEST}/{self.printer.id}"
-                await self.mqtt_client.publish(topic, json.dumps(payload))
-                await asyncio.wait_for(event.wait(), timeout=10)
-            except asyncio.TimeoutError as e:
-                self.logger.debug(
-                    "Timed out waiting for response to cmd %s (RequestID=%s)",
-                    cmd,
-                    request_id,
-                )
-                raise ElegooPrinterTimeoutError from e
-            except (OSError, aiomqtt.MqttError) as e:
-                self._is_connected = False
-                self.logger.info("MQTT connection error")
-                raise ElegooPrinterConnectionError from e
-            finally:
-                async with self._response_lock:
-                    self._response_events.pop(request_id, None)
-        else:
-            msg = "Not connected"
-            raise ElegooPrinterNotConnectedError(msg)
+        try:
+            async for message in self.mqtt_client.messages:
+                try:
+                    payload = message.payload.decode("utf-8")
+                    self._parse_response(payload, str(message.topic))
+                except UnicodeDecodeError:
+                    self.logger.exception("Failed to decode MQTT message")
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    self.logger.exception("Error processing MQTT message")
+                except Exception:
+                    self.logger.exception("Failed to process MQTT message")
+        except asyncio.CancelledError:
+            self.logger.debug("MQTT listener cancelled.")
+        except (asyncio.TimeoutError, OSError, aiomqtt.MqttError):
+            self.logger.exception("MQTT listener exception")
+            # Don't raise - let the finally block run to clean up
+            # Raising here causes "Task exception was never retrieved"
+            return
+        finally:
+            self._is_connected = False
+            self.logger.info("MQTT listener stopped.")
 
     def _parse_response(self, response: str, topic: str) -> None:
         """
@@ -767,9 +608,9 @@ class ElegooMqttClient:
         except json.JSONDecodeError:
             self.logger.exception("Invalid JSON received")
 
-    def _response_handler(self, data: dict[str, Any]) -> None:
+    def _response_handler(self, data: SDCPFrame) -> None:
         """
-        Handle response messages by dispatching to appropriate handler.
+        Handle response messages by dispatching to the shared push handlers.
 
         Based on the command type.
 
@@ -785,73 +626,23 @@ class ElegooMqttClient:
             data_data = inner_data.get("Data", {})
             cmd: int = inner_data.get("Cmd", 0)
             if cmd == CMD_RETRIEVE_HISTORICAL_TASKS:
-                self._print_history_handler(data_data)
+                self._handle_push_frame("print_history", data_data)
             elif cmd == CMD_RETRIEVE_TASK_DETAILS:
-                self._print_history_detail_handler(data_data)
+                self._handle_push_frame("print_history_detail", data_data)
             elif cmd == CMD_SET_VIDEO_STREAM:
-                self._print_video_handler(data_data)
+                self._handle_push_frame("elegoo_video", data_data)
             # Signal waiters after handlers have updated state to avoid races
             request_id = inner_data.get("RequestID")
             if request_id:
                 self._set_response_event_sync(request_id)
 
-    def _status_handler(self, data: dict[str, Any]) -> None:
-        """
-        Parse and update the printer's status information.
-
-        Arguments:
-            data: Dictionary containing the printer status information in
-                JSON-compatible format.
-
-        """
-        self.logger.debug("_status_handler called with keys: %s", list(data.keys()))
-        if DEBUG:
-            msg = f"status >> \n{json.dumps(data, indent=5)}"
-            self.logger.info(msg)
-
-        # MQTT printers send status nested under data['Data']['Status']
-        # Extract the actual status data
-        if "Data" in data:
-            self.logger.debug("Found 'Data' key, checking for 'Status'")
-            data_content = data["Data"]
-            self.logger.debug("Data content keys: %s", list(data_content.keys()))
-            if "Status" in data_content:
-                status_data = data_content["Status"]
-                self.logger.debug("Extracted status data successfully")
-            else:
-                self.logger.warning(
-                    "Data key present but no Status: %s", list(data_content.keys())
-                )
-                return
-        elif "Status" in data:
-            # Fallback for WebSocket format
-            self.logger.debug("Using WebSocket fallback format")
-            status_data = data["Status"]
-        else:
-            self.logger.warning("Unknown status message format: %s", list(data.keys()))
-            return
-
-        try:
-            printer_status = PrinterStatus.from_json(
-                json.dumps(status_data), self.printer.printer_type
-            )
-            self.logger.debug("PrinterStatus.from_json() succeeded")
-            self.printer_data.status = printer_status
-            print_info_status = (
-                printer_status.print_info.status if printer_status.print_info else None
-            )
-            self.logger.debug(
-                "Assigned printer_data.status (id: %s, status: %s, print_info: %s)",
-                id(self.printer_data),
-                printer_status.current_status,
-                print_info_status,
-            )
-        except Exception:
-            self.logger.exception("Exception in _status_handler")
-
     def _attributes_handler(self, data: dict[str, Any]) -> None:
         """
         Parse and update the printer's attribute data from a JSON dictionary.
+
+        MQTT printers send attributes nested under
+        ``data["Data"]["Attributes"]``; the actual parse / apply / sync
+        step is shared on the base.
 
         Arguments:
             data: Dictionary containing printer attribute information.
@@ -862,86 +653,28 @@ class ElegooMqttClient:
             msg = f"attributes >> \n{json.dumps(data, indent=5)}"
             self.logger.info(msg)
 
-        # MQTT printers send attributes nested under data['Data']['Attributes']
+        # MQTT printers send attributes nested under data["Data"]["Attributes"]
         # Extract the actual attributes data
         if "Data" in data:
             self.logger.debug("Found 'Data' key, checking for 'Attributes'")
             data_content = data["Data"]
             self.logger.debug("Data content keys: %s", list(data_content.keys()))
             if "Attributes" in data_content:
-                attributes_data = data_content["Attributes"]
                 self.logger.debug("Extracted attributes data successfully")
             else:
                 self.logger.warning(
-                    "Data key present but no Attributes: %s", list(data_content.keys())
+                    "Data key present but no Attributes: %s",
+                    list(data_content.keys()),
                 )
                 return
+            self._apply_attributes(data_content)
         elif "Attributes" in data:
-            # Fallback for WebSocket format
             self.logger.debug("Using WebSocket fallback format")
-            attributes_data = data["Attributes"]
+            self._apply_attributes(data)
         else:
             keys = list(data.keys())
             self.logger.warning("Unknown attributes message format: %s", keys)
             return
-
-        try:
-            printer_attributes = PrinterAttributes.from_json(
-                json.dumps(attributes_data)
-            )
-            self.logger.debug("PrinterAttributes.from_json() succeeded")
-            self.printer_data.attributes = printer_attributes
-            self.logger.debug("Assigned printer_data.attributes successfully")
-            if self.printer:
-                self.printer.sync_from_attributes(printer_attributes)
-        except Exception:
-            self.logger.exception("Exception in _attributes_handler")
-
-    def _print_history_handler(self, data_data: dict[str, Any]) -> None:
-        """Parse and update the printer's print history details from the data."""
-        history_data_list = data_data.get("HistoryData")
-        if history_data_list:
-            for task_id in history_data_list:
-                if task_id not in self.printer_data.print_history:
-                    self.printer_data.print_history[task_id] = None
-
-    def _print_history_detail_handler(self, data_data: dict[str, Any]) -> None:
-        """
-        Parse and update the printer's print history details from the provided data.
-
-        Arguments:
-            data_data: The data containing the print history details.
-
-        """
-        self.logger.debug("_print_history_detail_handler received data")
-        history_data_list = data_data.get("HistoryDetailList")
-        if history_data_list:
-            self.logger.debug("Processing %d history detail(s)", len(history_data_list))
-            for history_data in history_data_list:
-                detail = PrintHistoryDetail(history_data)
-                if detail.task_id is not None:
-                    self.printer_data.print_history[detail.task_id] = detail
-                    self.logger.debug(
-                        "Added task %s to history (begin: %s, end: %s, thumbnail: %s)",
-                        detail.task_id,
-                        detail.begin_time,
-                        detail.end_time,
-                        detail.thumbnail is not None,
-                    )
-                else:
-                    self.logger.warning("Task detail has no task_id, skipping")
-        else:
-            self.logger.debug("No HistoryDetailList in data_data")
-
-    def _print_video_handler(self, data_data: dict[str, Any]) -> None:
-        """
-        Parse video stream data and update the printer's video attribute.
-
-        Arguments:
-            data_data: Dictionary containing video stream information.
-
-        """
-        self.printer_data.video = ElegooVideo(data_data)
 
     def _set_response_event_sync(self, request_id: str) -> None:
         """Set the event for a given request ID (synchronous wrapper)."""

@@ -1,6 +1,9 @@
 """Models for Canvas/AMS (Automatic Material System) data."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from custom_components.elegoo_printer.sdcp.types import SDCPAMSStatusFrame
 
 
 class AMSTray:
@@ -114,7 +117,10 @@ class AMSBox:
 class AMSStatus:
     """Represents the complete Canvas/AMS status."""
 
-    def __init__(self, data: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        data: "SDCPAMSStatusFrame | dict[str, Any] | None" = None,
+    ) -> None:
         """
         Initialize an AMSStatus instance.
 

@@ -1,6 +1,5 @@
 """Tests for ElegooPrinterServer utility functions."""
 
-import json
 from unittest.mock import Mock, patch
 
 import pytest
@@ -8,12 +7,6 @@ import pytest
 from custom_components.elegoo_printer.sdcp.models.printer import Printer
 from custom_components.elegoo_printer.websocket.server.proxy import ElegooPrinterServer
 from custom_components.elegoo_printer.websocket.server.registry import PrinterRegistry
-
-
-@pytest.fixture
-def mock_logger() -> Mock:
-    """Create a mock logger for testing."""
-    return Mock()
 
 
 @pytest.fixture
@@ -26,32 +19,6 @@ def mock_hass() -> Mock:
 def mock_session() -> Mock:
     """Create a mock aiohttp session."""
     return Mock()
-
-
-@pytest.fixture
-def mock_printer_registry() -> Mock:
-    """Create a mock printer registry."""
-    return Mock(spec=PrinterRegistry)
-
-
-@pytest.fixture
-def sample_printer() -> Printer:
-    """Create a sample printer for testing."""
-    printer_json = json.dumps(
-        {
-            "Id": "test_connection",
-            "Data": {
-                "Name": "Test Printer",
-                "MachineName": "Saturn 4 Ultra",
-                "BrandName": "Elegoo",
-                "MainboardIP": "192.168.1.100",
-                "ProtocolVersion": "V3.0.0",
-                "FirmwareVersion": "V1.0.0",
-                "MainboardID": "test_mainboard_id_12345",
-            },
-        }
-    )
-    return Printer(printer_json)
 
 
 @pytest.fixture

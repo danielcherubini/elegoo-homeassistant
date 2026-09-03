@@ -1,14 +1,20 @@
 """Elegoo Video Model."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from custom_components.elegoo_printer.sdcp.models.enums import ElegooVideoStatus
+
+if TYPE_CHECKING:
+    from custom_components.elegoo_printer.sdcp.types import SDCPElegooVideoFrame
 
 
 class ElegooVideo:
     """Represents video information from an Elegoo device."""
 
-    def __init__(self, data: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        data: "SDCPElegooVideoFrame | dict[str, Any] | None" = None,
+    ) -> None:
         """
         Initialize an ElegooVideo instance with status and video URL extracted from the provided data dictionary.
 
