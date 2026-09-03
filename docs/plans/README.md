@@ -24,3 +24,15 @@ _(none)_
 ## Superseded Plans
 
 _(none)_
+
+## Specs
+
+### Draft
+
+_(none)_
+
+### Completed
+
+| Spec | Status | PR |
+|------|--------|----|
+| [Update IP Service Placement](../specs/spec-001-update-ip-service-spec.md) | ✅ COMPLETED | [#404](https://github.com/danielcherubini/elegoo-homeassistant/pull/404) |

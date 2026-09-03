@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Canvas (AMS) support for the Centauri Carbon (CC1): per-slot filament sensors, active tray, and filament colors, matching the existing CC2 support. Canvas presence is auto-detected during setup and stored per printer.
 - Per-slot filament usage sensors for the CC1 via the gcode capture proxy. The proxy URL is now configured in the WebSocket printer options, and works with or without a Canvas installed.
 - New FDM print states reported verbatim from the printer — auto leveling, resonance testing, preheating/homing/leveling completed, auto feeding, and filament unload states — with an explicit `unrecognized` fallback so unknown codes can no longer freeze the status sensor.
+- New `update_ip` service: change a printer's IP address from the Developer Tools UI or an automation (e.g. an external IP-detection script) without deleting and re-adding the integration; the config entry reloads with the new address and the service reports whether the printer is reachable at it.
 
 ### Changed
 

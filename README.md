@@ -17,8 +17,9 @@ Bring your Elegoo 3D printers into Home Assistant! This integration allows you t
 - [Supported Printers](#️-supported-printers)
 - [Installation](#️-installation)
 - [Configuration](#-configuration)
+- [Services](#️-services)
 - [Entities](#-entities)
-- [Automation Blueprints](#automation-blueprints)
+- [Automation Blueprints](#-automation-blueprints)
 - [Contributing](#️-contributing)
 
 ---
@@ -139,6 +140,29 @@ The recommended way to install this integration is through the [Home Assistant C
 
 ### ⚠️ Firmware v1.1.29 Bug Notice
 Elegoo firmware **v1.1.29** contains a bug preventing remote control of lights and temperatures **while a print is in progress**. This is a firmware limitation; if you require these features during prints, consider using v1.1.25 if available for your model.
+
+---
+
+## 🛠️ Services
+
+### `update_ip`
+When a printer's IP changes (e.g. via DHCP), there is no need to delete and re-add the integration. The `update_ip` service updates the printer's IP address stored in a config entry and reloads that entry, so the fix takes **seconds** instead of a full re-setup.
+
+- The `entry_id` field is a **dropdown**: pick which printer, then type the new address in the `ip_address` field.
+- Two ways to invoke it:
+  - **UI:** **Developer Tools** → **Actions** → `elegoo_printer.update_ip` — the config-entry dropdown and IP field appear there, and a "return response" option is available through the service response.
+  - **Automation / script:** call the service with the config entry's UUID and the new address in the data:
+    ```yaml
+    action: elegoo_printer.update_ip
+    data:
+      entry_id: <config entry UUID>
+      ip_address: "192.168.1.3"
+    ```
+- **Watcher scripts:** an external IP-detection script (or a router webhook relay) can call the service the moment the printer's new address is known — **no user intervention** required.
+
+**Known behavior:**
+- On a **still-connected (LOADED) entry** the reload effectively runs twice — once triggered by the data change and once explicitly. Home Assistant serializes both, but that means a **second full teardown/reconnect** of the printer connection. On an entry whose printer is unreachable at the old IP (the common DHCP-move case) it is exactly **one reload**.
+- If the printer is **unreachable at the new address**, the entry ends in `SETUP_ERROR` / `SETUP_RETRY` and the service reports failure in its response. **Check the response (or the logs) before assuming success.**
 
 ---
 
