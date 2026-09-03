@@ -4,13 +4,15 @@ Implementation plans for features and fixes.
 
 ## Quick Stats
 
-- **Total Plans:** 4
-- **In Progress:** 0
+- **Total Plans:** 5
+- **In Progress:** 1
 - **Completed:** 4
 
 ## Active Plans
 
-_(none)_
+| Plan | Status | Date |
+|------|--------|------|
+| [Follow-up: Typed Model Hierarchy + CC2 Graft](plan-002-followup-typed-models-cc2-graft.md) | 🔨 IN PROGRESS | 2026-09-03 |
 
 ## Completed Plans
 
