@@ -1548,9 +1548,9 @@ Response (from stock firmware testing):
 |-------|------|-------------|
 | `color` | string | Hex color code with `#` prefix |
 | `name` | string | Filament type name (e.g., "PLA", "PETG") |
-| `t` | int | Canvas tray index used for this slot |
+| `t` | int | Extruder index from the slicer, 0-based — the G-code tool index (`T0`, `T1`, …), not a Canvas tray |
 
-For multi-material prints, `color_map` contains one entry per extruder/slot used. The `t` field maps to the Canvas tray index (0-based). The `total_filament_used` field is a single total value — per-extruder weight breakdown is not available via this method (it exists only in the G-code file comments).
+For multi-material prints, `color_map` contains one entry per extruder used. `t` is the slicer's extruder index (0-based); `color` and `name` are the filament as configured in the slicer, not the tray the file was or will be printed from — the tray is chosen at start time via `slot_map` (see [Printing with Canvas](#printing-with-canvas)). The `total_filament_used` field is a single total value — per-extruder weight breakdown is not available via this method (it exists only in the G-code file comments).
 
 ### Method 1057 - SET_PRINTER_DOWNLOAD_FILE
 
@@ -1827,7 +1827,7 @@ serialised in `src/lan/adapters/elegoo_fdm_cc2/elegoo_fdm_cc2_message_adapter.cp
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `t` | int | Tool index in the G-code (`T0`, `T1`, …), 0-based — the same value as `color_map[].t` in the file list (method 1044) |
+| `t` | int | Tool index in the G-code (`T0`, `T1`, …), 0-based — the same value as `color_map[].t` in the file list / file detail (methods 1044, 1046) |
 | `canvas_id` | int | Which Canvas unit, 0-based |
 | `tray_id` | int | Which tray of that unit, 0-based (0–3 on a four-tray Canvas) |
 
