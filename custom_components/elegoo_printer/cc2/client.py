@@ -1461,6 +1461,13 @@ class ElegooCC2Client:
             The ``error_code`` from the printer's response
             (0 = started, 1009 = printer busy).
 
+        Raises:
+            ElegooPrinterConnectionError: if the printer did not acknowledge
+                the command - ``_send_command`` returns ``None`` when the
+                client disconnects while waiting, and a response without a
+                result or error code is treated the same way, so a print is
+                never reported as started without the printer saying so.
+
         """
         slot_map: list[dict[str, int]] = []
         if tray_id is not None:
@@ -1472,8 +1479,11 @@ class ElegooCC2Client:
             CC2_CMD_START_PRINT,
             {"storage_media": "local", "filename": filename, "config": config},
         )
-        result = (response or {}).get("result") or {}
-        return int(result.get("error_code", 0))
+        result = (response or {}).get("result")
+        if not isinstance(result, dict) or "error_code" not in result:
+            msg = "No acknowledgement from the printer for start print"
+            raise ElegooPrinterConnectionError(msg)
+        return int(result["error_code"])
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """Set the speed of a fan."""

@@ -5,10 +5,15 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.cc2.const import (
     CC2_CMD_START_PRINT,
     CC2_ERROR_PRINTER_BUSY,
+)
+from custom_components.elegoo_printer.sdcp.exceptions import (
+    ElegooPrinterConnectionError,
 )
 from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
 from custom_components.elegoo_printer.sdcp.models.printer import Printer
@@ -86,3 +91,23 @@ def test_start_returns_printer_error_code() -> None:  # noqa: D103
     ):
         code = asyncio.run(client.print_start("benchy.gcode"))
     assert code == CC2_ERROR_PRINTER_BUSY
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        None,  # client disconnected while waiting: _send_command returns None
+        {"id": 1, "method": CC2_CMD_START_PRINT},  # no result at all
+        {"id": 1, "method": CC2_CMD_START_PRINT, "result": {}},  # no error_code
+    ],
+)
+def test_start_without_acknowledgement_raises(response: dict | None) -> None:  # noqa: D103
+    # A missing acknowledgement must not be reported as error_code 0 ("started").
+    client = _client()
+    with (
+        patch.object(
+            client, "_send_command", new_callable=AsyncMock, return_value=response
+        ),
+        pytest.raises(ElegooPrinterConnectionError),
+    ):
+        asyncio.run(client.print_start("benchy.gcode"))
