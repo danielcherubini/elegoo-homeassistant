@@ -97,6 +97,25 @@ class TestUpdateIpService:
 
         asyncio.run(_run())
 
+    def test_registered_update_ip_handler_takes_the_call_alone(self) -> None:
+        # HA calls a service handler with the ServiceCall only. A bare
+        # (hass, call) function registered directly raises TypeError on every
+        # call; this exercises the callable HA would actually invoke.
+        async def _run() -> None:
+            hass = MagicMock()
+            hass.config_entries.async_get_entry.return_value = None
+            await async_setup(hass, {})
+            handler = hass.services.async_register.call_args_list[0].args[2]
+
+            call = MagicMock()
+            call.data = {"entry_id": "ghost-404", "ip_address": "198.51.100.7"}
+            result = await handler(call)
+
+            assert result["success"] is False
+            assert "ghost-404" in _error_message(result)
+
+        asyncio.run(_run())
+
     def test_update_ip_updates_entry_data_and_reloads(self) -> None:
         async def _run() -> None:
             entry = _make_config_entry(
@@ -262,6 +281,22 @@ class TestStartPrintService:
                 "supports_response", args[4] if len(args) > 4 else None
             )
             assert supports_response is SupportsResponse.OPTIONAL
+
+        asyncio.run(_run())
+
+    def test_registered_start_print_handler_takes_the_call_alone(self) -> None:
+        async def _run() -> None:
+            hass = MagicMock()
+            hass.config_entries.async_get_entry.return_value = None
+            await async_setup(hass, {})
+            handler = hass.services.async_register.call_args_list[1].args[2]
+
+            call = MagicMock()
+            call.data = {"entry_id": "ghost-404", "filename": "benchy.gcode"}
+            result = await handler(call)
+
+            assert result["success"] is False
+            assert "ghost-404" in _error_message(result)
 
         asyncio.run(_run())
 

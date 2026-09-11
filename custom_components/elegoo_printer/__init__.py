@@ -8,6 +8,7 @@ https://github.com/danielcherubini/elegoo-homeassistant
 from __future__ import annotations
 
 import asyncio
+from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -240,17 +241,21 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG00
     """Set up the Elegoo Printer component."""
     # `config` is part of the HA async_setup contract (the manifest-level
     # service registration is unconditional); ARG001 noqa is intentional.
+    #
+    # HA invokes a service handler with the ServiceCall only, so the
+    # (hass, call) handlers are bound with partial. Registering them bare
+    # raises "missing 1 required positional argument: 'call'" on every call.
     hass.services.async_register(
         DOMAIN,
         SERVICE_UPDATE_IP,
-        _async_update_ip,
+        partial(_async_update_ip, hass),
         schema=SERVICE_UPDATE_IP_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
     hass.services.async_register(
         DOMAIN,
         SERVICE_START_PRINT,
-        _async_start_print,
+        partial(_async_start_print, hass),
         schema=SERVICE_START_PRINT_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
