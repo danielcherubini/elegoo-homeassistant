@@ -11,7 +11,7 @@ and is documented there instead.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import voluptuous as vol
@@ -24,13 +24,17 @@ from custom_components.elegoo_printer import (
     SERVICE_START_PRINT_SCHEMA,
     SERVICE_UPDATE_IP,
     SERVICE_UPDATE_IP_SCHEMA,
+    SERVICE_UPLOAD_GCODE,
+    SERVICE_UPLOAD_GCODE_SCHEMA,
     _async_start_print,
     _async_update_ip,
+    _async_upload_gcode,
     async_setup,
 )
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.const import DOMAIN
 from custom_components.elegoo_printer.sdcp.exceptions import (
+    ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
 )
 
@@ -79,8 +83,8 @@ class TestUpdateIpService:
             result = await async_setup(hass, {})
 
             assert result is True
-            # update_ip and start_print; this test pins the update_ip call.
-            assert hass.services.async_register.call_count == 2
+            # update_ip, start_print, upload_gcode; this test pins the update_ip call.
+            assert hass.services.async_register.call_count == 3
             args, kwargs = hass.services.async_register.call_args_list[0]
             assert args[0] == DOMAIN
             assert args[1] in (SERVICE_UPDATE_IP, "update_ip")
@@ -414,5 +418,115 @@ class TestStartPrintService:
 
             assert result["success"] is False
             client.print_start.assert_not_awaited()
+
+        asyncio.run(_run())
+
+
+def _upload_hass(
+    entry: MagicMock, *, filename: str = "a.gcode", data: bytes = b"G28"
+) -> MagicMock:
+    """Build a hass mock whose executor job returns the uploaded file."""
+    hass = _make_hass_with_entry(entry=entry)
+    hass.async_add_executor_job = AsyncMock(return_value=(filename, data))
+    return hass
+
+
+def _upload_call(**extra: object) -> MagicMock:
+    call = MagicMock()
+    call.data = {"entry_id": "cc2-1", "file": "fid", **extra}
+    return call
+
+
+class TestUploadGcodeService:
+    """The upload_gcode service streams an uploaded file to a CC2 and may start it."""
+
+    def test_async_setup_registers_upload_gcode_service(self) -> None:
+        async def _run() -> None:
+            hass = MagicMock()
+            await async_setup(hass, {})
+            args, kwargs = hass.services.async_register.call_args_list[2]
+            assert args[0] == DOMAIN
+            assert args[1] == SERVICE_UPLOAD_GCODE
+            schema = kwargs.get("schema", args[3] if len(args) > 3 else None)
+            assert schema is SERVICE_UPLOAD_GCODE_SCHEMA
+
+        asyncio.run(_run())
+
+    def test_schema_defaults(self) -> None:
+        ok = SERVICE_UPLOAD_GCODE_SCHEMA({"entry_id": "x", "file": "fid"})
+        assert ok["start"] is False
+        assert ok["bed_leveling"] is True
+        with pytest.raises(vol.Invalid):
+            SERVICE_UPLOAD_GCODE_SCHEMA({"entry_id": "x", "file": "fid", "tray": 4})
+
+    def test_upload_without_start(self) -> None:
+        async def _run() -> None:
+            client = _cc2_client()
+            client.upload_gcode = AsyncMock(return_value=3)
+            entry = _make_cc2_entry(client=client, state=ConfigEntryState.LOADED)
+            hass = _upload_hass(entry)
+
+            with patch(
+                "custom_components.elegoo_printer.async_get_clientsession"
+            ) as gcs:
+                result = await _async_upload_gcode(hass, _upload_call(start=False))
+
+            assert result["success"] is True
+            assert result["filename"] == "a.gcode"
+            client.upload_gcode.assert_awaited_once_with(
+                gcs.return_value, "a.gcode", b"G28"
+            )
+            client.print_start.assert_not_awaited()
+
+        asyncio.run(_run())
+
+    def test_upload_then_start_with_tray(self) -> None:
+        async def _run() -> None:
+            client = _cc2_client()
+            client.upload_gcode = AsyncMock(return_value=3)
+            entry = _make_cc2_entry(client=client, state=ConfigEntryState.LOADED)
+            hass = _upload_hass(entry)
+
+            with patch("custom_components.elegoo_printer.async_get_clientsession"):
+                result = await _async_upload_gcode(
+                    hass, _upload_call(start=True, tray=1, bed_leveling=False)
+                )
+
+            assert result["success"] is True
+            client.print_start.assert_awaited_once_with(
+                "a.gcode", tray_id=1, bed_leveling=False
+            )
+
+        asyncio.run(_run())
+
+    def test_upload_failure_is_reported_and_nothing_starts(self) -> None:
+        async def _run() -> None:
+            client = _cc2_client()
+            client.upload_gcode = AsyncMock(
+                side_effect=ElegooPrinterConnectionError("Printer answered 429")
+            )
+            entry = _make_cc2_entry(client=client, state=ConfigEntryState.LOADED)
+            hass = _upload_hass(entry)
+
+            with patch("custom_components.elegoo_printer.async_get_clientsession"):
+                result = await _async_upload_gcode(hass, _upload_call(start=True))
+
+            assert result["success"] is False
+            assert "429" in _error_message(result)
+            client.print_start.assert_not_awaited()
+
+        asyncio.run(_run())
+
+    def test_upload_refuses_non_cc2_client(self) -> None:
+        async def _run() -> None:
+            client = MagicMock()
+            client.upload_gcode = AsyncMock(return_value=3)
+            entry = _make_cc2_entry(client=client, state=ConfigEntryState.LOADED)
+            hass = _upload_hass(entry)
+
+            result = await _async_upload_gcode(hass, _upload_call())
+
+            assert result["success"] is False
+            client.upload_gcode.assert_not_awaited()
 
         asyncio.run(_run())

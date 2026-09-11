@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import voluptuous as vol
 from aiohttp import ClientError
+from homeassistant.components.file_upload import process_uploaded_file
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_IP_ADDRESS, Platform, UnitOfTime
@@ -218,6 +219,11 @@ async def _async_start_print(hass: HomeAssistant, call: ServiceCall) -> dict:
             "error": f"Printer not reachable ({err.__class__.__name__})",
         }
 
+    return _start_print_result(code, filename)
+
+
+def _start_print_result(code: int, filename: str) -> dict:
+    """Turn the printer's 1020 error_code into the service response."""
     if code != 0:
         reason = (
             "Printer is busy"
@@ -225,15 +231,105 @@ async def _async_start_print(hass: HomeAssistant, call: ServiceCall) -> dict:
             else "Printer refused the job"
         )
         return {"success": False, "error": f"{reason} (error_code {code})"}
-
-    LOGGER.info(
-        "Print started on entry %s: %s (tray=%s, bed_leveling=%s)",
-        entry_id,
-        filename,
-        tray,
-        bed_leveling,
-    )
+    LOGGER.info("Print started: %s", filename)
     return {"success": True, "message": f"Print started: {filename}"}
+
+
+def _resolve_cc2_client(
+    hass: HomeAssistant, entry_id: str
+) -> tuple[ElegooCC2Client | None, dict | None]:
+    """Return the entry's CC2 client, or the error response to hand back."""
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is None or entry.domain != DOMAIN:
+        return None, {
+            "success": False,
+            "error": f"Config entry {entry_id} not found for {DOMAIN}",
+        }
+    if entry.state is not ConfigEntryState.LOADED:
+        return None, {
+            "success": False,
+            "error": f"Config entry {entry_id} is not loaded (state: {entry.state})",
+        }
+    client = entry.runtime_data.api.client
+    if not isinstance(client, ElegooCC2Client):
+        return None, {
+            "success": False,
+            "error": "This service is only available for Centauri Carbon 2 printers",
+        }
+    return client, None
+
+
+SERVICE_UPLOAD_GCODE = "upload_gcode"
+
+SERVICE_UPLOAD_GCODE_SCHEMA = vol.Schema(
+    {
+        vol.Required("entry_id"): str,
+        # the file_id the frontend's file selector returns after uploading to
+        # /api/file_upload; process_uploaded_file hands us the file and removes it
+        vol.Required("file"): str,
+        vol.Optional("start", default=False): bool,
+        vol.Optional("tray"): vol.All(vol.Coerce(int), vol.Range(min=0, max=3)),
+        vol.Optional("bed_leveling", default=True): bool,
+    }
+)
+
+
+async def _async_upload_gcode(hass: HomeAssistant, call: ServiceCall) -> dict:
+    """
+    Upload a G-code file chosen in the UI to a Centauri Carbon 2, optionally print it.
+
+    The ``file`` field carries the id of a file the frontend uploaded to
+    Home Assistant; the handler streams it to the printer's local storage
+    under its original name and, with ``start``, issues the same start as
+    ``start_print``. CC2 only.
+    """
+    entry_id = call.data["entry_id"]
+    client, error = _resolve_cc2_client(hass, entry_id)
+    if client is None:
+        return error or {"success": False, "error": "unknown"}
+
+    file_id = call.data["file"]
+
+    def _read() -> tuple[str, bytes]:
+        with process_uploaded_file(hass, file_id) as path:
+            return path.name, path.read_bytes()
+
+    try:
+        filename, data = await hass.async_add_executor_job(_read)
+    except (OSError, ValueError) as err:
+        return {"success": False, "error": f"Uploaded file not available: {err!r}"}
+
+    session = async_get_clientsession(hass)
+    try:
+        size = await client.upload_gcode(session, filename, data)
+    except (ElegooPrinterNotConnectedError, ElegooPrinterConnectionError) as err:
+        LOGGER.warning("upload_gcode failed for entry %s: %s", entry_id, err)
+        return {"success": False, "error": str(err) or err.__class__.__name__}
+    LOGGER.info("Uploaded %s (%d bytes) to entry %s", filename, size, entry_id)
+
+    if not call.data.get("start", False):
+        return {
+            "success": True,
+            "message": f"Uploaded {filename} ({size} bytes)",
+            "filename": filename,
+        }
+    try:
+        code = await client.print_start(
+            filename,
+            tray_id=call.data.get("tray"),
+            bed_leveling=call.data.get("bed_leveling", True),
+        )
+    except (ElegooPrinterNotConnectedError, ElegooPrinterConnectionError) as err:
+        return {
+            "success": False,
+            "error": (
+                f"Uploaded {filename}, but starting failed ({err.__class__.__name__})"
+            ),
+            "filename": filename,
+        }
+    result = _start_print_result(code, filename)
+    result["filename"] = filename
+    return result
 
 
 # https://developers.home-assistant.io/docs/creating_integration_file_structure/#defining-services
@@ -257,6 +353,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG00
         SERVICE_START_PRINT,
         partial(_async_start_print, hass),
         schema=SERVICE_START_PRINT_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_UPLOAD_GCODE,
+        partial(_async_upload_gcode, hass),
+        schema=SERVICE_UPLOAD_GCODE_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
     return True

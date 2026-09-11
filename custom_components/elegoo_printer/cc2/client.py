@@ -38,6 +38,7 @@ from custom_components.elegoo_printer.sdcp.models.printer import (
 )
 from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
+from . import upload as _upload
 from .const import (
     CC2_CMD_GET_ATTRIBUTES,
     CC2_CMD_GET_CANVAS_STATUS,
@@ -74,6 +75,8 @@ from .models import CC2StatusMapper
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    import aiohttp
 
     from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
     from custom_components.elegoo_printer.sdcp.models.status import (
@@ -1431,6 +1434,22 @@ class ElegooCC2Client:
     async def print_resume(self) -> None:
         """Resume/continue the current print."""
         await self._send_command(CC2_CMD_RESUME_PRINT)
+
+    async def upload_gcode(
+        self, session: aiohttp.ClientSession, filename: str, data: bytes
+    ) -> int:
+        """
+        Upload a G-code file to the printer's local storage over HTTP.
+
+        The access code that connected the MQTT session doubles as the HTTP
+        token (the SDK sends the access code, or "123456" when none is set).
+        Returns the number of bytes sent; raises ElegooPrinterConnectionError
+        on failure. See cc2/upload.py for the measured constraints.
+        """
+        target = _upload.UploadTarget(
+            host=self.printer_ip, token=self.access_code or CC2_MQTT_DEFAULT_PASSWORD
+        )
+        return await _upload.upload_gcode(session, target, filename, data)
 
     async def print_start(
         self,
