@@ -51,6 +51,7 @@ from .const import (
     CC2_CMD_SET_PRINT_SPEED,
     CC2_CMD_SET_TEMPERATURE,
     CC2_CMD_SET_VIDEO_STREAM,
+    CC2_CMD_START_PRINT,
     CC2_CMD_STOP_PRINT,
     CC2_COMMAND_TIMEOUT,
     CC2_DISCONNECT_DELAY,
@@ -1430,6 +1431,49 @@ class ElegooCC2Client:
     async def print_resume(self) -> None:
         """Resume/continue the current print."""
         await self._send_command(CC2_CMD_RESUME_PRINT)
+
+    async def print_start(
+        self,
+        filename: str,
+        *,
+        tray_id: int | None = None,
+        bed_leveling: bool = True,
+    ) -> int:
+        """
+        Start printing a file that is already in the printer's local storage.
+
+        Sends method 1020 with a ``config`` that carries only what is needed:
+        ``slot_map`` maps G-code tool 0 to ``tray_id`` when one is given (an
+        empty list lets the printer pick the tray), and ``printer_check: true``
+        - what ElegooSlicer sends on every job - forces auto bed leveling.
+        With ``bed_leveling=False`` the key is omitted rather than sent as
+        false: omitted is the measured shape, and the printer then levels only
+        when it decides to on its own. The other ``config`` fields the slicer
+        sends are not required.
+
+        Measured on a Centauri Carbon 2 (firmware 02.01.00.00): a ``slot_map``
+        entry must carry ``t``, ``canvas_id`` and ``tray_id`` together. A
+        partial entry, or an out-of-range ``tray_id``, is acknowledged with
+        ``error_code`` 0 and the printer silently prints from tray 0 - so the
+        response cannot be used to validate the mapping. Only tool 0 is mapped.
+
+        Returns:
+            The ``error_code`` from the printer's response
+            (0 = started, 1009 = printer busy).
+
+        """
+        slot_map: list[dict[str, int]] = []
+        if tray_id is not None:
+            slot_map.append({"t": 0, "canvas_id": 0, "tray_id": tray_id})
+        config: dict[str, Any] = {"slot_map": slot_map}
+        if bed_leveling:
+            config["printer_check"] = True
+        response = await self._send_command(
+            CC2_CMD_START_PRINT,
+            {"storage_media": "local", "filename": filename, "config": config},
+        )
+        result = (response or {}).get("result") or {}
+        return int(result.get("error_code", 0))
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """Set the speed of a fan."""

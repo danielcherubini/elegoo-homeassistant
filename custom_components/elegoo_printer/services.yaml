@@ -16,3 +16,46 @@ update_ip:
       required: true
       selector:
         text:
+
+start_print:
+  name: Start Print
+  description: >-
+    Start a G-code file that is already in the printer's local storage.
+    Centauri Carbon 2 only. The response reports whether the printer accepted
+    the job (error_code 1009 means it is busy).
+  fields:
+    entry_id:
+      name: Config Entry
+      description: The Centauri Carbon 2 to print on.
+      required: true
+      selector:
+        config_entry:
+          integration: elegoo_printer
+    filename:
+      name: File name
+      description: "Exact file name on the printer, as shown in its file list."
+      example: "benchy.gcode"
+      required: true
+      selector:
+        text:
+    tray:
+      name: Canvas tray
+      description: >-
+        Tray to print from, 0-3 (A1-A4). Leave empty to let the printer choose.
+        Maps G-code tool 0 only.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 3
+          mode: box
+    bed_leveling:
+      name: Bed leveling
+      description: >-
+        Run auto bed leveling before the print, as the slicer does (about three
+        minutes). Switch off for a faster reprint; the printer may still level
+        on its own, for example after a bed-temperature change.
+      required: false
+      default: true
+      selector:
+        boolean:

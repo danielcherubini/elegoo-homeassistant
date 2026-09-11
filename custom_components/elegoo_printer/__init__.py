@@ -30,6 +30,8 @@ from homeassistant.loader import async_get_loaded_integration
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 from .api import ElegooPrinterApiClient
+from .cc2.client import ElegooCC2Client
+from .cc2.const import CC2_ERROR_PRINTER_BUSY
 from .const import (
     CONF_PROXY_ENABLED,
     CONFIG_VERSION_1,
@@ -42,6 +44,10 @@ from .const import (
 )
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
+from .sdcp.exceptions import (
+    ElegooPrinterConnectionError,
+    ElegooPrinterNotConnectedError,
+)
 from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
@@ -149,6 +155,86 @@ async def _async_update_ip(hass: HomeAssistant, call: ServiceCall) -> dict:
     return {"success": True, "message": f"IP updated to {new_ip} and entry reloaded"}
 
 
+SERVICE_START_PRINT = "start_print"
+
+# `tray` is validated here because the printer does not: an out-of-range
+# tray_id is acknowledged with error_code 0 and silently printed from tray 0
+# (measured on a CC2, firmware 02.01.00.00). Four trays is what the Canvas has.
+SERVICE_START_PRINT_SCHEMA = vol.Schema(
+    {
+        vol.Required("entry_id"): str,
+        vol.Required("filename"): vol.Length(min=1),
+        vol.Optional("tray"): vol.All(vol.Coerce(int), vol.Range(min=0, max=3)),
+        # default matches ElegooSlicer, which sends printer_check: true on
+        # every job; users who want a faster reprint pass false.
+        vol.Optional("bed_leveling", default=True): bool,
+    }
+)
+
+
+async def _async_start_print(hass: HomeAssistant, call: ServiceCall) -> dict:
+    """
+    Start a file that is already in a Centauri Carbon 2's local storage.
+
+    CC2 only - the SDCP transports are deliberately not wired up, since
+    CMD_START_PRINT crashed the first-gen Centauri Carbon (#297). Accepts
+    ``entry_id``, ``filename``, optional ``tray`` (0-based Canvas tray for
+    G-code tool 0) and ``bed_leveling`` (default on, as the slicer does), and returns a
+    definitive ``{success, message|error}`` result (supports_response=optional).
+    """
+    entry_id = call.data["entry_id"]
+    entry = hass.config_entries.async_get_entry(entry_id)
+    # Same guard as update_ip: the selector limits the UI, not automations.
+    if entry is None or entry.domain != DOMAIN:
+        return {
+            "success": False,
+            "error": f"Config entry {entry_id} not found for {DOMAIN}",
+        }
+    if entry.state is not ConfigEntryState.LOADED:
+        return {
+            "success": False,
+            "error": f"Config entry {entry_id} is not loaded (state: {entry.state})",
+        }
+
+    client = entry.runtime_data.api.client
+    if not isinstance(client, ElegooCC2Client):
+        return {
+            "success": False,
+            "error": "start_print is only available for Centauri Carbon 2 printers",
+        }
+
+    filename = call.data["filename"]
+    tray = call.data.get("tray")
+    bed_leveling = call.data.get("bed_leveling", True)
+    try:
+        code = await client.print_start(
+            filename, tray_id=tray, bed_leveling=bed_leveling
+        )
+    except (ElegooPrinterNotConnectedError, ElegooPrinterConnectionError) as err:
+        LOGGER.warning("start_print failed for entry %s: %r", entry_id, err)
+        return {
+            "success": False,
+            "error": f"Printer not reachable ({err.__class__.__name__})",
+        }
+
+    if code != 0:
+        reason = (
+            "Printer is busy"
+            if code == CC2_ERROR_PRINTER_BUSY
+            else "Printer refused the job"
+        )
+        return {"success": False, "error": f"{reason} (error_code {code})"}
+
+    LOGGER.info(
+        "Print started on entry %s: %s (tray=%s, bed_leveling=%s)",
+        entry_id,
+        filename,
+        tray,
+        bed_leveling,
+    )
+    return {"success": True, "message": f"Print started: {filename}"}
+
+
 # https://developers.home-assistant.io/docs/creating_integration_file_structure/#defining-services
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG001
     """Set up the Elegoo Printer component."""
@@ -159,6 +245,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG00
         SERVICE_UPDATE_IP,
         _async_update_ip,
         schema=SERVICE_UPDATE_IP_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_START_PRINT,
+        _async_start_print,
+        schema=SERVICE_START_PRINT_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
     return True
