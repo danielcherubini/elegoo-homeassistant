@@ -1548,9 +1548,9 @@ Response (from stock firmware testing):
 |-------|------|-------------|
 | `color` | string | Hex color code with `#` prefix |
 | `name` | string | Filament type name (e.g., "PLA", "PETG") |
-| `t` | int | Canvas tray index used for this slot |
+| `t` | int | Extruder index from the slicer, 0-based — the G-code tool index (`T0`, `T1`, …), not a Canvas tray |
 
-For multi-material prints, `color_map` contains one entry per extruder/slot used. The `t` field maps to the Canvas tray index (0-based). The `total_filament_used` field is a single total value — per-extruder weight breakdown is not available via this method (it exists only in the G-code file comments).
+For multi-material prints, `color_map` contains one entry per extruder used. `t` is the slicer's extruder index (0-based); `color` and `name` are the filament as configured in the slicer, not the tray the file was or will be printed from — the tray is chosen at start time via `slot_map` (see [Printing with Canvas](#printing-with-canvas)). The `total_filament_used` field is a single total value — per-extruder weight breakdown is not available via this method (it exists only in the G-code file comments).
 
 ### Method 1057 - SET_PRINTER_DOWNLOAD_FILE
 
@@ -1804,7 +1804,9 @@ The Canvas is Elegoo's Automatic Material System (similar to Bambu Lab AMS).
 
 ### Printing with Canvas
 
-When starting a print with Canvas, include slot mapping:
+When starting a print with Canvas, `config.slot_map` maps each tool index of the G-code to a
+physical tray. Entry format from elegoo-link (`SlotMapItem` in `include/types/printer.h`,
+serialised in `src/lan/adapters/elegoo_fdm_cc2/elegoo_fdm_cc2_message_adapter.cpp`):
 
 ```json
 {
@@ -1815,13 +1817,22 @@ When starting a print with Canvas, include slot mapping:
     "filename": "multicolor.gcode",
     "config": {
       "slot_map": [
-        {"slot": 1, "canvas_id": 1, "tray_id": 1},
-        {"slot": 2, "canvas_id": 1, "tray_id": 2}
+        {"t": 0, "canvas_id": 0, "tray_id": 2},
+        {"t": 1, "canvas_id": 0, "tray_id": 0}
       ]
     }
   }
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `t` | int | Tool index in the G-code (`T0`, `T1`, …), 0-based — the same value as `color_map[].t` in the file list / file detail (methods 1044, 1046) |
+| `canvas_id` | int | Which Canvas unit, 0-based |
+| `tray_id` | int | Which tray of that unit, 0-based (0–3 on a four-tray Canvas) |
+
+An empty `slot_map` leaves the tray choice to the printer. The other `config` fields are
+described under [Start Print](#start-print).
 
 ---
 
@@ -1930,7 +1941,7 @@ This section documents the complete sequence of events when ElegooSlicer sends a
 | `printer_check` | bool | Run pre-print checks |
 | `print_layout` | string | Layout option (model-specific) |
 | `bedlevel_force` | bool | Force bed leveling before print |
-| `slot_map` | array | Canvas/AMS filament mapping |
+| `slot_map` | array | Canvas/AMS filament mapping, see [Printing with Canvas](#printing-with-canvas) |
 
 ### Pause Print
 
