@@ -164,6 +164,23 @@ When a printer's IP changes (e.g. via DHCP), there is no need to delete and re-a
 - On a **still-connected (LOADED) entry** the reload effectively runs twice — once triggered by the data change and once explicitly. Home Assistant serializes both, but that means a **second full teardown/reconnect** of the printer connection. On an entry whose printer is unreachable at the old IP (the common DHCP-move case) it is exactly **one reload**.
 - If the printer is **unreachable at the new address**, the entry ends in `SETUP_ERROR` / `SETUP_RETRY` and the service reports failure in its response. **Check the response (or the logs) before assuming success.**
 
+### `start_print` (Centauri Carbon 2 only)
+Starts a G-code file that is **already in the printer's local storage** - the "print this again" the Elegoo app offers, which is lost in LAN Only mode. Uploading a file is not part of this service; the slicer does that.
+
+```yaml
+action: elegoo_printer.start_print
+data:
+  entry_id: <config entry UUID>
+  filename: "benchy.gcode"   # exact name from the printer's file list
+  tray: 2                    # optional, Canvas tray 0-3 (A1-A4) for G-code tool 0
+  bed_leveling: true         # optional, default true: auto bed leveling first (~3 min), as the slicer does
+```
+
+- The response says whether the printer accepted the job: `error_code` 1009 means it is busy.
+- `tray` is validated by Home Assistant, **not by the printer** - an out-of-range tray is acknowledged with `error_code` 0 and silently printed from tray 0. Only G-code tool 0 is mapped; this service does not preserve a complete multi-tool mapping.
+- `bed_leveling` maps to the protocol's `printer_check`, which ElegooSlicer sends on every job - so it defaults to on. With `false` the key is left out and the printer levels only when it decides to on its own (observed after a bed-temperature change).
+- Not available for the first-generation Centauri Carbon or resin printers, where the equivalent SDCP command crashed the printer (#297).
+
 ---
 
 ## 📊 Entities
