@@ -8,7 +8,11 @@ https://github.com/danielcherubini/elegoo-homeassistant
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import os
+import tempfile
 from functools import partial
+from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -34,6 +38,8 @@ from custom_components.elegoo_printer.websocket.client import ElegooPrinterClien
 from .api import ElegooPrinterApiClient
 from .cc2.client import ElegooCC2Client
 from .cc2.const import CC2_ERROR_PRINTER_BUSY
+from .cc2.upload import CHUNK_SIZE as UPLOAD_CHUNK_SIZE
+from .cc2.upload import UploadFile
 from .const import (
     CONF_PROXY_ENABLED,
     CONFIG_VERSION_1,
@@ -53,6 +59,9 @@ from .sdcp.exceptions import (
 from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    import aiohttp
     from homeassistant.core import HomeAssistant, ServiceCall
 
     from .data import ElegooPrinterConfigEntry
@@ -274,85 +283,147 @@ SERVICE_UPLOAD_GCODE_SCHEMA = vol.Schema(
 )
 
 
-async def _async_upload_gcode(hass: HomeAssistant, call: ServiceCall) -> dict:
-    """
-    Upload a G-code file chosen in the UI to a Centauri Carbon 2, optionally print it.
-
-    The ``file`` field carries the id of a file the frontend uploaded to
-    Home Assistant; the handler streams it to the printer's local storage
-    under its original name and, with ``start``, issues the same start as
-    ``start_print``. CC2 only.
-    """
-    entry_id = call.data["entry_id"]
-    client, error = _resolve_cc2_client(hass, entry_id)
-    if client is None:
-        return error or {"success": False, "error": "unknown"}
-
-    file_id = call.data["file"]
-
-    def _read() -> tuple[str, bytes]:
-        with process_uploaded_file(hass, file_id) as path:
-            return path.name, path.read_bytes()
-
+def _remove_quietly(path: Path) -> None:
+    """Delete the staged copy; a missing file is not an error."""
     try:
-        filename, data = await hass.async_add_executor_job(_read)
-    except (OSError, ValueError) as err:
-        return {"success": False, "error": f"Uploaded file not available: {err!r}"}
+        path.unlink(missing_ok=True)
+    except OSError:
+        LOGGER.warning("Could not remove staged upload %s", path)
 
-    # the selector's `accept` is a browser hint only; the service is reachable
-    # from automations and the API, where any file id can be handed in
-    if not filename.lower().endswith(".gcode"):
-        return {
-            "success": False,
-            "error": f"Not a G-code file: {filename}",
-            "filename": filename,
-        }
 
-    session = async_get_clientsession(hass)
+def _stage_upload(
+    hass: HomeAssistant, file_id: str
+) -> tuple[str, Path | None, UploadFile | None]:
+    """
+    Copy the uploaded file aside in one pass, hashing as it goes.
+
+    Runs in the executor. HA deletes its own copy when the context closes,
+    but the upload has to outlive it and must not sit in memory (up to
+    100 MB). Returns the original name, the staged path and the file's size
+    and MD5; the path and file are None when the name is not a .gcode file.
+    The caller removes the staged copy, whatever happens in between.
+    """
+    with process_uploaded_file(hass, file_id) as path:
+        # the selector's `accept` is a browser hint only; the service is also
+        # reachable from automations and the API, where any file id can be
+        # handed in. Checked before copying, so a wrong file is never touched.
+        if path.suffix.lower() != ".gcode":
+            return path.name, None, None
+        fd, name = tempfile.mkstemp(prefix="elegoo-upload-", suffix=".gcode")
+        staged = Path(name)
+        digest = hashlib.md5(usedforsecurity=False)
+        size = 0
+        try:
+            with os.fdopen(fd, "wb") as dst, path.open("rb") as src:
+                while chunk := src.read(UPLOAD_CHUNK_SIZE):
+                    digest.update(chunk)
+                    dst.write(chunk)
+                    size += len(chunk)
+        except OSError:
+            _remove_quietly(staged)
+            raise
+        return path.name, staged, UploadFile(path.name, size, digest.hexdigest())
+
+
+async def _read_chunks(hass: HomeAssistant, path: Path) -> AsyncIterator[bytes]:
+    """Yield the staged file in upload-sized chunks, reading in the executor."""
+    fh = await hass.async_add_executor_job(partial(path.open, "rb"))
+    try:
+        while chunk := await hass.async_add_executor_job(fh.read, UPLOAD_CHUNK_SIZE):
+            yield chunk
+    finally:
+        await hass.async_add_executor_job(fh.close)
+
+
+async def _upload_then_start(
+    client: ElegooCC2Client,
+    session: aiohttp.ClientSession,
+    file: UploadFile,
+    chunks: AsyncIterator[bytes],
+    call: ServiceCall,
+) -> dict:
+    """Send the file and, if asked, start it - under the printer's upload lock."""
+    entry_id = call.data["entry_id"]
     tray = call.data.get("tray")
     bed_leveling = call.data.get("bed_leveling", True)
     # held across upload and start: the printer assembles an upload from
     # several ranged PUTs and cannot tell two of them apart
     async with client.upload_lock:
         try:
-            size = await client.upload_gcode(session, filename, data)
+            size = await client.upload_gcode(session, file, chunks)
         except (ElegooPrinterNotConnectedError, ElegooPrinterConnectionError) as err:
             LOGGER.warning("upload_gcode failed for entry %s: %s", entry_id, err)
             return {"success": False, "error": str(err) or err.__class__.__name__}
-        LOGGER.info("Uploaded %s (%d bytes) to entry %s", filename, size, entry_id)
+        LOGGER.info("Uploaded %s (%d bytes) to entry %s", file.name, size, entry_id)
 
         if not call.data.get("start", False):
             return {
                 "success": True,
-                "message": f"Uploaded {filename} ({size} bytes)",
-                "filename": filename,
+                "message": f"Uploaded {file.name} ({size} bytes)",
+                "filename": file.name,
             }
         try:
             code = await client.print_start(
-                filename,
-                tray_id=tray,
-                bed_leveling=bed_leveling,
+                file.name, tray_id=tray, bed_leveling=bed_leveling
             )
         except (ElegooPrinterNotConnectedError, ElegooPrinterConnectionError) as err:
             return {
                 "success": False,
                 "error": (
-                    f"Uploaded {filename}, but starting failed "
+                    f"Uploaded {file.name}, but starting failed "
                     f"({err.__class__.__name__})"
                 ),
-                "filename": filename,
+                "filename": file.name,
             }
-    LOGGER.info(
-        "Started %s on entry %s (tray=%s, bed_leveling=%s): code %s",
-        filename,
-        entry_id,
-        "auto" if tray is None else tray,
-        bed_leveling,
-        code,
-    )
-    result = _start_print_result(code, filename)
-    result["filename"] = filename
+        LOGGER.info(
+            "Started %s on entry %s (tray=%s, bed_leveling=%s): code %s",
+            file.name,
+            entry_id,
+            "auto" if tray is None else tray,
+            bed_leveling,
+            code,
+        )
+    result = _start_print_result(code, file.name)
+    result["filename"] = file.name
     return result
+
+
+async def _async_upload_gcode(hass: HomeAssistant, call: ServiceCall) -> dict:
+    """
+    Upload a G-code file chosen in the UI to a Centauri Carbon 2, optionally print it.
+
+    The ``file`` field carries the id of a file the frontend uploaded to
+    Home Assistant; the handler copies it aside, sends it to the printer's
+    local storage under its original name in 1 MB chunks and, with
+    ``start``, issues the same start as ``start_print``. CC2 only.
+    """
+    client, error = _resolve_cc2_client(hass, call.data["entry_id"])
+    if client is None:
+        return error or {"success": False, "error": "unknown"}
+
+    try:
+        filename, staged, file = await hass.async_add_executor_job(
+            _stage_upload, hass, call.data["file"]
+        )
+    except (OSError, ValueError) as err:
+        return {"success": False, "error": f"Uploaded file not available: {err!r}"}
+    if staged is None or file is None:
+        return {
+            "success": False,
+            "error": f"Not a G-code file: {filename}",
+            "filename": filename,
+        }
+
+    chunks = _read_chunks(hass, staged)
+    try:
+        return await _upload_then_start(
+            client, async_get_clientsession(hass), file, chunks, call
+        )
+    finally:
+        # an upload that failed mid-stream leaves the generator open; close it
+        # here so the file handle is released before the copy is removed
+        await chunks.aclose()
+        await hass.async_add_executor_job(_remove_quietly, staged)
 
 
 # https://developers.home-assistant.io/docs/creating_integration_file_structure/#defining-services

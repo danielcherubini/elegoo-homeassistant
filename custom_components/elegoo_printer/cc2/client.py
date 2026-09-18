@@ -74,7 +74,7 @@ from .const import (
 from .models import CC2StatusMapper
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import AsyncIterator, Callable
 
     import aiohttp
 
@@ -93,6 +93,7 @@ if TYPE_CHECKING:
         CC2StatusFrame,
         CC2VideoResponse,
     )
+    from .upload import UploadFile
 
 
 class ElegooCC2Client:
@@ -1449,7 +1450,10 @@ class ElegooCC2Client:
         return self._upload_lock
 
     async def upload_gcode(
-        self, session: aiohttp.ClientSession, filename: str, data: bytes
+        self,
+        session: aiohttp.ClientSession,
+        file: UploadFile,
+        chunks: AsyncIterator[bytes],
     ) -> int:
         """
         Upload a G-code file to the printer's local storage over HTTP.
@@ -1462,7 +1466,7 @@ class ElegooCC2Client:
         target = _upload.UploadTarget(
             host=self.printer_ip, token=self.access_code or CC2_MQTT_DEFAULT_PASSWORD
         )
-        return await _upload.upload_gcode(session, target, filename, data)
+        return await _upload.upload_gcode(session, target, file, chunks)
 
     async def print_start(
         self,

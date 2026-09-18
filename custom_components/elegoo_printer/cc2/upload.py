@@ -17,16 +17,18 @@ response carries the last written byte, later ones the next offset).
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import aiohttp
 
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,35 +46,43 @@ class UploadTarget(NamedTuple):
     token: str
 
 
+class UploadFile(NamedTuple):
+    """What is uploaded: name on the printer, total size and MD5 of the whole file."""
+
+    name: str
+    size: int
+    md5: str
+
+
 async def upload_gcode(
     session: aiohttp.ClientSession,
     target: UploadTarget,
-    filename: str,
-    data: bytes,
-    *,
-    chunk_size: int = CHUNK_SIZE,
+    file: UploadFile,
+    chunks: AsyncIterator[bytes],
 ) -> int:
     """
-    Upload ``data`` as ``filename`` to the printer's local storage.
+    Upload ``chunks`` as ``file.name`` to the printer's local storage.
 
+    ``file.size`` and ``file.md5`` go into every request, so the caller walks
+    the file once before sending; nothing here holds more than one chunk.
     Returns the number of bytes sent. Raises ElegooPrinterConnectionError on
-    an empty file and on any HTTP or printer-side failure; nothing is retried.
+    an empty file, on a short stream and on any HTTP or printer-side
+    failure; nothing is retried.
     """
-    total = len(data)
-    if total == 0:
-        msg = f"Refusing to upload {filename}: the file is empty"
+    if file.size == 0:
+        msg = f"Refusing to upload {file.name}: the file is empty"
         raise ElegooPrinterConnectionError(msg)
-    md5 = hashlib.md5(data, usedforsecurity=False).hexdigest()
     url = f"http://{target.host}:{UPLOAD_PORT}/upload"
     offset = 0
-    while offset < total:
-        chunk = data[offset : offset + chunk_size]
+    async for chunk in chunks:
+        if not chunk:
+            continue
         end = offset + len(chunk) - 1
         headers = {
             "Content-Type": "application/octet-stream",
-            "Content-Range": f"bytes {offset}-{end}/{total}",
-            "X-File-Name": filename,
-            "X-File-MD5": md5,
+            "Content-Range": f"bytes {offset}-{end}/{file.size}",
+            "X-File-Name": file.name,
+            "X-File-MD5": file.md5,
             "X-Token": target.token,
             "Accept": "application/json",
             "User-Agent": USER_AGENT,
@@ -82,16 +92,16 @@ async def upload_gcode(
                 status = response.status
                 text = await response.text()
         except (OSError, aiohttp.ClientError) as err:
-            msg = f"Upload of {filename} failed at byte {offset}: {err!r}"
+            msg = f"Upload of {file.name} failed at byte {offset}: {err!r}"
             raise ElegooPrinterConnectionError(msg) from err
         if status == HTTP_TOO_MANY_REQUESTS:
             msg = (
-                f"Printer answered 429 (busy) at byte {offset} of {filename}; "
+                f"Printer answered 429 (busy) at byte {offset} of {file.name}; "
                 "upload aborted, not retried"
             )
             raise ElegooPrinterConnectionError(msg)
         if status != HTTP_OK:
-            msg = f"Upload of {filename} failed: HTTP {status} at byte {offset}"
+            msg = f"Upload of {file.name} failed: HTTP {status} at byte {offset}"
             raise ElegooPrinterConnectionError(msg)
         try:
             body = json.loads(text) if text.strip().startswith("{") else {}
@@ -100,10 +110,13 @@ async def upload_gcode(
         code = body.get("error_code")
         if code != 0:
             msg = (
-                f"Printer refused chunk at byte {offset} of {filename}: "
+                f"Printer refused chunk at byte {offset} of {file.name}: "
                 f"error_code {code}"
             )
             raise ElegooPrinterConnectionError(msg)
         offset += len(chunk)
-        _LOGGER.debug("Uploaded %d/%d bytes of %s", offset, total, filename)
-    return total
+        _LOGGER.debug("Uploaded %d/%d bytes of %s", offset, file.size, file.name)
+    if offset != file.size:
+        msg = f"Upload of {file.name} ended after {offset} of {file.size} bytes"
+        raise ElegooPrinterConnectionError(msg)
+    return offset

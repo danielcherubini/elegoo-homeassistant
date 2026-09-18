@@ -4,15 +4,22 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 
 import aiohttp
 import pytest
 
-from custom_components.elegoo_printer.cc2.upload import UploadTarget, upload_gcode
+from custom_components.elegoo_printer.cc2.upload import (
+    UploadFile,
+    UploadTarget,
+    upload_gcode,
+)
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 TARGET = UploadTarget(host="192.0.2.7", token="KP")  # noqa: S106 - test fixture
 PUTS_BEFORE_429 = 2
@@ -53,6 +60,21 @@ class FakeSession:
         return self.responses.pop(0)
 
 
+def _feed(data: bytes, size: int = 1000) -> dict[str, Any]:
+    """Present ``data`` the way the service does: chunk stream plus total and MD5."""
+
+    async def chunks() -> AsyncIterator[bytes]:
+        for i in range(0, len(data), size):
+            yield data[i : i + size]
+
+    return {
+        "file": UploadFile(
+            "a.gcode", len(data), hashlib.md5(data, usedforsecurity=False).hexdigest()
+        ),
+        "chunks": chunks(),
+    }
+
+
 def _ok() -> _Response:
     return _Response(200, '{"error_code": 0, "offset": 1}')
 
@@ -62,7 +84,7 @@ def test_chunks_headers_and_token() -> None:  # noqa: D103
     session = FakeSession([_ok(), _ok(), _ok()])
 
     sent = asyncio.run(
-        upload_gcode(session, TARGET, "a.gcode", data, chunk_size=1000)  # type: ignore[arg-type]
+        upload_gcode(session, TARGET, **_feed(data))  # type: ignore[arg-type]
     )
 
     assert sent == len(data)
@@ -88,7 +110,7 @@ def test_429_aborts_without_retry() -> None:  # noqa: D103
 
     with pytest.raises(ElegooPrinterConnectionError, match="429"):
         asyncio.run(
-            upload_gcode(session, TARGET, "a.gcode", data, chunk_size=1000)  # type: ignore[arg-type]
+            upload_gcode(session, TARGET, **_feed(data))  # type: ignore[arg-type]
         )
     assert len(session.calls) == PUTS_BEFORE_429  # stopped at the 429, no third PUT
 
@@ -98,7 +120,7 @@ def test_printer_error_code_aborts() -> None:  # noqa: D103
     session = FakeSession([_Response(200, '{"error_code": 9004, "md5": "deadbeef"}')])
 
     with pytest.raises(ElegooPrinterConnectionError, match="9004"):
-        asyncio.run(upload_gcode(session, TARGET, "a.gcode", data))  # type: ignore[arg-type]
+        asyncio.run(upload_gcode(session, TARGET, **_feed(data)))  # type: ignore[arg-type]
 
 
 def test_non_json_200_is_a_failure() -> None:  # noqa: D103
@@ -106,7 +128,7 @@ def test_non_json_200_is_a_failure() -> None:  # noqa: D103
     session = FakeSession([_Response(200, "OK")])
 
     with pytest.raises(ElegooPrinterConnectionError):
-        asyncio.run(upload_gcode(session, TARGET, "a.gcode", data))  # type: ignore[arg-type]
+        asyncio.run(upload_gcode(session, TARGET, **_feed(data)))  # type: ignore[arg-type]
 
 
 class _RaisingSession:
@@ -128,7 +150,7 @@ def test_empty_file_is_refused() -> None:  # noqa: D103
     session = FakeSession([])
 
     with pytest.raises(ElegooPrinterConnectionError, match="empty"):
-        asyncio.run(upload_gcode(session, TARGET, "a.gcode", b""))  # type: ignore[arg-type]
+        asyncio.run(upload_gcode(session, TARGET, **_feed(b"")))  # type: ignore[arg-type]
     assert session.calls == []
 
 
@@ -138,4 +160,15 @@ def test_aiohttp_error_is_wrapped() -> None:  # noqa: D103
     session = _RaisingSession(aiohttp.ServerDisconnectedError())
 
     with pytest.raises(ElegooPrinterConnectionError, match="failed at byte 0"):
-        asyncio.run(upload_gcode(session, TARGET, "a.gcode", b"x" * 10))  # type: ignore[arg-type]
+        asyncio.run(upload_gcode(session, TARGET, **_feed(b"x" * 10)))  # type: ignore[arg-type]
+
+
+def test_short_stream_is_a_failure() -> None:  # noqa: D103
+    # The stream ends before ``total`` bytes; the printer would sit on a partial file.
+    data = b"x" * 2500
+    session = FakeSession([_ok(), _ok(), _ok()])
+    feed = _feed(data)
+    feed["file"] = feed["file"]._replace(size=3000)
+
+    with pytest.raises(ElegooPrinterConnectionError, match="2500 of 3000"):
+        asyncio.run(upload_gcode(session, TARGET, **feed))  # type: ignore[arg-type]

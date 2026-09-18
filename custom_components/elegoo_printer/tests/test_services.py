@@ -11,7 +11,10 @@ and is documented there instead.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+import hashlib
+from contextlib import nullcontext
+from pathlib import Path
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 import voluptuous as vol
@@ -29,9 +32,12 @@ from custom_components.elegoo_printer import (
     _async_start_print,
     _async_update_ip,
     _async_upload_gcode,
+    _remove_quietly,
+    _stage_upload,
     async_setup,
 )
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
+from custom_components.elegoo_printer.cc2.upload import UploadFile
 from custom_components.elegoo_printer.const import DOMAIN
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
@@ -425,9 +431,14 @@ class TestStartPrintService:
 def _upload_hass(
     entry: MagicMock, *, filename: str = "a.gcode", data: bytes = b"G28"
 ) -> MagicMock:
-    """Build a hass mock whose executor job returns the uploaded file."""
+    """Build a hass mock whose executor job returns the staged upload."""
     hass = _make_hass_with_entry(entry=entry)
-    hass.async_add_executor_job = AsyncMock(return_value=(filename, data))
+    # upload_gcode is mocked in these tests, so the staged path is never opened
+    staged = Path("elegoo-upload-test.gcode")
+    file = UploadFile(
+        filename, len(data), hashlib.md5(data, usedforsecurity=False).hexdigest()
+    )
+    hass.async_add_executor_job = AsyncMock(return_value=(filename, staged, file))
     return hass
 
 
@@ -474,7 +485,11 @@ class TestUploadGcodeService:
             assert result["success"] is True
             assert result["filename"] == "a.gcode"
             client.upload_gcode.assert_awaited_once_with(
-                gcs.return_value, "a.gcode", b"G28"
+                gcs.return_value,
+                UploadFile(
+                    "a.gcode", 3, hashlib.md5(b"G28", usedforsecurity=False).hexdigest()
+                ),
+                ANY,
             )
             client.print_start.assert_not_awaited()
 
@@ -530,3 +545,54 @@ class TestUploadGcodeService:
             client.upload_gcode.assert_not_awaited()
 
         asyncio.run(_run())
+
+    def test_upload_rejects_non_gcode(self) -> None:
+        async def _run() -> None:
+            client = _cc2_client()
+            client.upload_gcode = AsyncMock(return_value=3)
+            entry = _make_cc2_entry(client=client, state=ConfigEntryState.LOADED)
+            hass = _make_hass_with_entry(entry=entry)
+            hass.async_add_executor_job = AsyncMock(return_value=("a.txt", None, None))
+
+            result = await _async_upload_gcode(hass, _upload_call())
+
+            assert result["success"] is False
+            assert "a.txt" in _error_message(result)
+            client.upload_gcode.assert_not_awaited()
+
+        asyncio.run(_run())
+
+
+class TestStageUpload:
+    """_stage_upload copies the uploaded file aside and hashes it in one pass."""
+
+    def test_copies_and_hashes(self, tmp_path: Path) -> None:
+        payload = b"G28\n" * 1000
+        src = tmp_path / "part.gcode"
+        src.write_bytes(payload)
+        with patch(
+            "custom_components.elegoo_printer.process_uploaded_file",
+            return_value=nullcontext(src),
+        ):
+            name, staged, file = _stage_upload(MagicMock(), "fid")
+        assert staged is not None
+        try:
+            assert name == "part.gcode"
+            assert file == UploadFile(
+                "part.gcode",
+                len(payload),
+                hashlib.md5(payload, usedforsecurity=False).hexdigest(),
+            )
+            assert staged.read_bytes() == payload
+        finally:
+            _remove_quietly(staged)
+        assert not staged.exists()
+
+    def test_rejects_other_suffix_without_copying(self, tmp_path: Path) -> None:
+        src = tmp_path / "notes.txt"
+        src.write_bytes(b"x")
+        with patch(
+            "custom_components.elegoo_printer.process_uploaded_file",
+            return_value=nullcontext(src),
+        ):
+            assert _stage_upload(MagicMock(), "fid") == ("notes.txt", None, None)
