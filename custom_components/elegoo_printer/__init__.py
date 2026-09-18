@@ -299,34 +299,57 @@ async def _async_upload_gcode(hass: HomeAssistant, call: ServiceCall) -> dict:
     except (OSError, ValueError) as err:
         return {"success": False, "error": f"Uploaded file not available: {err!r}"}
 
-    session = async_get_clientsession(hass)
-    try:
-        size = await client.upload_gcode(session, filename, data)
-    except (ElegooPrinterNotConnectedError, ElegooPrinterConnectionError) as err:
-        LOGGER.warning("upload_gcode failed for entry %s: %s", entry_id, err)
-        return {"success": False, "error": str(err) or err.__class__.__name__}
-    LOGGER.info("Uploaded %s (%d bytes) to entry %s", filename, size, entry_id)
-
-    if not call.data.get("start", False):
-        return {
-            "success": True,
-            "message": f"Uploaded {filename} ({size} bytes)",
-            "filename": filename,
-        }
-    try:
-        code = await client.print_start(
-            filename,
-            tray_id=call.data.get("tray"),
-            bed_leveling=call.data.get("bed_leveling", True),
-        )
-    except (ElegooPrinterNotConnectedError, ElegooPrinterConnectionError) as err:
+    # the selector's `accept` is a browser hint only; the service is reachable
+    # from automations and the API, where any file id can be handed in
+    if not filename.lower().endswith(".gcode"):
         return {
             "success": False,
-            "error": (
-                f"Uploaded {filename}, but starting failed ({err.__class__.__name__})"
-            ),
+            "error": f"Not a G-code file: {filename}",
             "filename": filename,
         }
+
+    session = async_get_clientsession(hass)
+    tray = call.data.get("tray")
+    bed_leveling = call.data.get("bed_leveling", True)
+    # held across upload and start: the printer assembles an upload from
+    # several ranged PUTs and cannot tell two of them apart
+    async with client.upload_lock:
+        try:
+            size = await client.upload_gcode(session, filename, data)
+        except (ElegooPrinterNotConnectedError, ElegooPrinterConnectionError) as err:
+            LOGGER.warning("upload_gcode failed for entry %s: %s", entry_id, err)
+            return {"success": False, "error": str(err) or err.__class__.__name__}
+        LOGGER.info("Uploaded %s (%d bytes) to entry %s", filename, size, entry_id)
+
+        if not call.data.get("start", False):
+            return {
+                "success": True,
+                "message": f"Uploaded {filename} ({size} bytes)",
+                "filename": filename,
+            }
+        try:
+            code = await client.print_start(
+                filename,
+                tray_id=tray,
+                bed_leveling=bed_leveling,
+            )
+        except (ElegooPrinterNotConnectedError, ElegooPrinterConnectionError) as err:
+            return {
+                "success": False,
+                "error": (
+                    f"Uploaded {filename}, but starting failed "
+                    f"({err.__class__.__name__})"
+                ),
+                "filename": filename,
+            }
+    LOGGER.info(
+        "Started %s on entry %s (tray=%s, bed_leveling=%s): code %s",
+        filename,
+        entry_id,
+        "auto" if tray is None else tray,
+        bed_leveling,
+        code,
+    )
     result = _start_print_result(code, filename)
     result["filename"] = filename
     return result

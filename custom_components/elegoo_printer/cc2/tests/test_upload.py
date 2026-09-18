@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 from typing import Any, Self
 
+import aiohttp
 import pytest
 
 from custom_components.elegoo_printer.cc2.upload import UploadTarget, upload_gcode
@@ -106,3 +107,35 @@ def test_non_json_200_is_a_failure() -> None:  # noqa: D103
 
     with pytest.raises(ElegooPrinterConnectionError):
         asyncio.run(upload_gcode(session, TARGET, "a.gcode", data))  # type: ignore[arg-type]
+
+
+class _RaisingSession:
+    """A session whose PUT raises the given exception."""
+
+    def __init__(self, error: Exception) -> None:
+        """Store the exception to raise on the first PUT."""
+        self._error = error
+        self.calls: list[dict[str, Any]] = []
+
+    def put(self, url: str, *, data: bytes, headers: dict[str, str]) -> _Response:
+        """Record the attempt, then raise."""
+        self.calls.append({"url": url, "data": data, "headers": headers})
+        raise self._error
+
+
+def test_empty_file_is_refused() -> None:  # noqa: D103
+    # A zero-byte file would send no PUT at all and still report 0 bytes sent.
+    session = FakeSession([])
+
+    with pytest.raises(ElegooPrinterConnectionError, match="empty"):
+        asyncio.run(upload_gcode(session, TARGET, "a.gcode", b""))  # type: ignore[arg-type]
+    assert session.calls == []
+
+
+def test_aiohttp_error_is_wrapped() -> None:  # noqa: D103
+    # aiohttp.ClientError is not an OSError, so it needs catching explicitly;
+    # otherwise it escapes the service's structured failure response.
+    session = _RaisingSession(aiohttp.ServerDisconnectedError())
+
+    with pytest.raises(ElegooPrinterConnectionError, match="failed at byte 0"):
+        asyncio.run(upload_gcode(session, TARGET, "a.gcode", b"x" * 10))  # type: ignore[arg-type]

@@ -20,14 +20,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from typing import TYPE_CHECKING, NamedTuple
+from typing import NamedTuple
+
+import aiohttp
 
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
 )
-
-if TYPE_CHECKING:
-    import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,9 +56,12 @@ async def upload_gcode(
     Upload ``data`` as ``filename`` to the printer's local storage.
 
     Returns the number of bytes sent. Raises ElegooPrinterConnectionError on
-    any HTTP or printer-side failure; nothing is retried.
+    an empty file and on any HTTP or printer-side failure; nothing is retried.
     """
     total = len(data)
+    if total == 0:
+        msg = f"Refusing to upload {filename}: the file is empty"
+        raise ElegooPrinterConnectionError(msg)
     md5 = hashlib.md5(data, usedforsecurity=False).hexdigest()
     url = f"http://{target.host}:{UPLOAD_PORT}/upload"
     offset = 0
@@ -79,7 +81,7 @@ async def upload_gcode(
             async with session.put(url, data=chunk, headers=headers) as response:
                 status = response.status
                 text = await response.text()
-        except OSError as err:
+        except (OSError, aiohttp.ClientError) as err:
             msg = f"Upload of {filename} failed at byte {offset}: {err!r}"
             raise ElegooPrinterConnectionError(msg) from err
         if status == HTTP_TOO_MANY_REQUESTS:

@@ -159,6 +159,7 @@ class ElegooCC2Client:
         self._response_events: dict[int, asyncio.Event] = {}
         self._response_data: dict[int, dict[str, Any]] = {}
         self._response_lock = asyncio.Lock()
+        self._upload_lock = asyncio.Lock()
         self._request_counter = 0
 
         # Client identification - match web interface format
@@ -1434,6 +1435,18 @@ class ElegooCC2Client:
     async def print_resume(self) -> None:
         """Resume/continue the current print."""
         await self._send_command(CC2_CMD_RESUME_PRINT)
+
+    @property
+    def upload_lock(self) -> asyncio.Lock:
+        """
+        Serialise uploads to this printer.
+
+        An upload is assembled from several ranged PUTs and the protocol has no
+        session id, so two concurrent uploads would interleave their ranges into
+        one file. Callers hold this across the whole upload, including an
+        optional start, so a print cannot begin from a half-written file.
+        """
+        return self._upload_lock
 
     async def upload_gcode(
         self, session: aiohttp.ClientSession, filename: str, data: bytes
