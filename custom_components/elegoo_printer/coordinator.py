@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.const import CONF_HAS_CANVAS, LOGGER
 from custom_components.elegoo_printer.sdcp.exceptions import (
     PRINT_TRANSPORT_ERRORS,
@@ -144,7 +145,9 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         answers with every file's metadata, so this is deliberately slow; the
         Refresh File List button covers the moment right after a slicer upload.
         """
-        if not hasattr(api.client, "get_file_list"):
+        # isinstance, not hasattr: the file list is a CC2 method, and a mock
+        # client answers hasattr with True for everything.
+        if not isinstance(api.client, ElegooCC2Client):
             return
         if (
             self._last_file_list_check is not None

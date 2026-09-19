@@ -166,6 +166,7 @@ def _build_api_mock() -> MagicMock:
         "async_get_printer_data",
         "async_get_firmware_update_info",
         "async_get_canvas_status",
+        "async_get_file_list",
         "reconnect",
         "is_thumbnail_available",
     ):

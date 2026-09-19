@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.config_entries import current_entry as _current_entry_var
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -26,7 +26,7 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
 )
 from custom_components.elegoo_printer.sdcp.models.enums import TransportType
-from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
+from custom_components.elegoo_printer.sdcp.models.printer import Printer, PrinterData
 from custom_components.elegoo_printer.sdcp.models.status import PrinterStatus
 
 
@@ -211,3 +211,37 @@ async def test_firmware_check_is_rate_limited_across_refreshes(
     # Follow-up refresh within the 12h window skips the firmware endpoint.
     await coordinator.async_refresh()
     entry.runtime_data.api.async_get_firmware_update_info.assert_awaited_once()
+
+
+async def test_refresh_fetches_the_file_list_for_cc2_once_per_interval(
+    hass: MagicMock, entry: SimpleNamespace
+) -> None:
+    """A CC2 client gets its file list on the first poll, then every ten minutes."""
+    entry.runtime_data.api.async_get_printer_data.return_value = PrinterData()
+    entry.runtime_data.api.async_get_firmware_update_info.return_value = None
+    entry.runtime_data.api.client = ElegooCC2Client(
+        "192.168.1.1", "TESTSN", printer=Printer()
+    )
+    entry.runtime_data.api.async_get_file_list = AsyncMock(return_value={})
+
+    coordinator = _make_coordinator(hass, entry)
+    await coordinator.async_refresh()
+    await coordinator.async_refresh()
+
+    entry.runtime_data.api.async_get_file_list.assert_awaited_once()
+    assert coordinator.online is True
+
+
+async def test_refresh_does_not_fetch_a_file_list_for_other_clients(
+    hass: MagicMock, entry: SimpleNamespace
+) -> None:
+    """Only the CC2 client has a file list; a mock client must not be asked."""
+    entry.runtime_data.api.async_get_printer_data.return_value = PrinterData()
+    entry.runtime_data.api.async_get_firmware_update_info.return_value = None
+    entry.runtime_data.api.async_get_file_list = AsyncMock(return_value={})
+
+    coordinator = _make_coordinator(hass, entry)
+    await coordinator.async_refresh()
+
+    entry.runtime_data.api.async_get_file_list.assert_not_awaited()
+    assert coordinator.online is True
