@@ -10,6 +10,7 @@ import aiohttp
 import pytest
 
 from custom_components.elegoo_printer.cc2.upload import (
+    CHUNK_TIMEOUT,
     UploadFile,
     UploadTarget,
     upload_gcode,
@@ -54,9 +55,18 @@ class FakeSession:
         self.responses = list(responses)
         self.calls: list[dict[str, Any]] = []
 
-    def put(self, url: str, *, data: bytes, headers: dict[str, str]) -> _Response:
+    def put(
+        self,
+        url: str,
+        *,
+        data: bytes,
+        headers: dict[str, str],
+        timeout: aiohttp.ClientTimeout | None = None,
+    ) -> _Response:
         """Record the PUT and return the next scripted response."""
-        self.calls.append({"url": url, "data": data, "headers": headers})
+        self.calls.append(
+            {"url": url, "data": data, "headers": headers, "timeout": timeout}
+        )
         return self.responses.pop(0)
 
 
@@ -96,6 +106,7 @@ def test_chunks_headers_and_token() -> None:  # noqa: D103
         "bytes 1000-1999/2800",
         "bytes 2000-2799/2800",
     ]
+    assert all(c["timeout"] is CHUNK_TIMEOUT for c in session.calls)
     h = session.calls[0]["headers"]
     assert h["X-File-Name"] == "a.gcode"
     assert h["X-Token"] == "KP"
@@ -139,9 +150,18 @@ class _RaisingSession:
         self._error = error
         self.calls: list[dict[str, Any]] = []
 
-    def put(self, url: str, *, data: bytes, headers: dict[str, str]) -> _Response:
+    def put(
+        self,
+        url: str,
+        *,
+        data: bytes,
+        headers: dict[str, str],
+        timeout: aiohttp.ClientTimeout | None = None,
+    ) -> _Response:
         """Record the attempt, then raise."""
-        self.calls.append({"url": url, "data": data, "headers": headers})
+        self.calls.append(
+            {"url": url, "data": data, "headers": headers, "timeout": timeout}
+        )
         raise self._error
 
 
@@ -172,3 +192,11 @@ def test_short_stream_is_a_failure() -> None:  # noqa: D103
 
     with pytest.raises(ElegooPrinterConnectionError, match="2500 of 3000"):
         asyncio.run(upload_gcode(session, TARGET, **feed))  # type: ignore[arg-type]
+
+
+def test_socket_timeout_is_wrapped() -> None:  # noqa: D103
+    # What a printer that loses power mid-upload turns into, given CHUNK_TIMEOUT.
+    session = _RaisingSession(TimeoutError())
+
+    with pytest.raises(ElegooPrinterConnectionError, match="failed at byte 0"):
+        asyncio.run(upload_gcode(session, TARGET, **_feed(b"x" * 10)))  # type: ignore[arg-type]

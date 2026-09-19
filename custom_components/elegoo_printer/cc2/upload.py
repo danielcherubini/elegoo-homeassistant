@@ -37,6 +37,13 @@ UPLOAD_PORT = 80
 HTTP_OK = 200
 HTTP_TOO_MANY_REQUESTS = 429
 USER_AGENT = "elegoo-homeassistant"
+# Per chunk. A 1 MB chunk crosses the LAN in well under a second and the printer
+# acknowledges each one, so a printer that vanishes mid-upload surfaces here as a
+# TimeoutError instead of holding the call, the upload lock and the staged copy
+# until TCP gives up on its own. Measured 19.09.2026: without this, a power cut
+# during the upload held the service for 2.5 minutes, until the rebooted printer
+# answered the replayed chunk with HTTP 408.
+CHUNK_TIMEOUT = aiohttp.ClientTimeout(sock_connect=10, sock_read=30)
 
 
 class UploadTarget(NamedTuple):
@@ -88,7 +95,9 @@ async def upload_gcode(
             "User-Agent": USER_AGENT,
         }
         try:
-            async with session.put(url, data=chunk, headers=headers) as response:
+            async with session.put(
+                url, data=chunk, headers=headers, timeout=CHUNK_TIMEOUT
+            ) as response:
                 status = response.status
                 text = await response.text()
         except (OSError, aiohttp.ClientError) as err:
