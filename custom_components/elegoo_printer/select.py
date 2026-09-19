@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from homeassistant.components.select import SelectEntity
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.restore_state import RestoreEntity
 
 if TYPE_CHECKING:
@@ -170,6 +171,6 @@ class ElegooPrintFileSelect(ElegooPrinterEntity, RestoreEntity, SelectEntity):
         """Remember the choice. Nothing is sent to the printer."""
         if option not in self.options:
             msg = f"{option!r} is not on the printer"
-            raise ValueError(msg)
+            raise ServiceValidationError(msg)
         self._chosen = option
         self.async_write_ha_state()

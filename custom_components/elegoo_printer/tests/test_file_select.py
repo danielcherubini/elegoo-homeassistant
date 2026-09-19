@@ -6,6 +6,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.elegoo_printer.definitions import PRINTER_FILE_SELECT_CC2
 from custom_components.elegoo_printer.sdcp.models.file_info import PrinterFile
@@ -44,7 +45,7 @@ def test_selecting_keeps_the_choice_and_sends_nothing() -> None:
 
 def test_selecting_a_file_not_on_the_printer_is_refused() -> None:
     select = _select([BENCHY])
-    with pytest.raises(ValueError, match="not on the printer"):
+    with pytest.raises(ServiceValidationError, match="not on the printer"):
         asyncio.run(select.async_select_option(CLIP))
     assert select.current_option is None
 
