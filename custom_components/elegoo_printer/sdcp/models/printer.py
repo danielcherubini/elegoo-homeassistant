@@ -502,6 +502,8 @@ class PrinterData:
             by name (CC2 only, method 1044).
         selected_file (str | None): The file chosen in the Print File select;
             what the Print Selected File button starts (CC2 only).
+        selected_tray (int | None): The Canvas tray chosen in the Print Tray
+            select, 0-3, or None for the printer's own choice (CC2 only).
 
     """
 
@@ -537,6 +539,7 @@ class PrinterData:
         self.gcode_filament_data: FileFilamentData | None = None
         self.file_list: dict[str, PrinterFile] = {}
         self.selected_file: str | None = None
+        self.selected_tray: int | None = None
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
         """Round datetime object to minutes."""

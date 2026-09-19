@@ -235,6 +235,9 @@
     "select": {
       "print_file": {
         "name": "Print file"
+      },
+      "print_tray": {
+        "name": "Print tray"
       }
     },
     "button": {

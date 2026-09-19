@@ -24,11 +24,14 @@ if TYPE_CHECKING:
 
 from .const import LOGGER
 from .definitions import (
+    PRINT_TRAY_OPTIONS,
     PRINTER_FILE_SELECT_CC2,
     PRINTER_SELECT_TYPES_CC2,
     PRINTER_SELECT_TYPES_V1V3,
+    PRINTER_TRAY_SELECT_CC2,
     ElegooPrinterDynamicSelectEntityDescription,
     ElegooPrinterSelectEntityDescription,
+    _tray_labels,
 )
 from .entity import ElegooPrinterEntity
 
@@ -75,6 +78,12 @@ async def async_setup_entry(
                 [ElegooPrintFileSelect(coordinator, file_description)],
                 update_before_add=True,
             )
+        if api.printer.has_canvas:
+            for tray_description in PRINTER_TRAY_SELECT_CC2:
+                async_add_entities(
+                    [ElegooPrintTraySelect(coordinator, tray_description)],
+                    update_before_add=True,
+                )
 
 
 class ElegooPrintSpeedSelect(ElegooPrinterEntity, SelectEntity):
@@ -173,4 +182,65 @@ class ElegooPrintFileSelect(ElegooPrinterEntity, RestoreEntity, SelectEntity):
             msg = f"{option!r} is not on the printer"
             raise ServiceValidationError(msg)
         self.coordinator.data.selected_file = option
+        self.async_write_ha_state()
+
+
+class ElegooPrintTraySelect(ElegooPrinterEntity, RestoreEntity, SelectEntity):
+    """
+    The Canvas tray the Print Selected File button prints from.
+
+    ``Automatic`` leaves the choice to the printer, ``A1``-``A4`` map to
+    tray 0-3 for G-code tool 0, as ``start_print``'s ``tray`` does. The
+    choice is kept in ``printer_data.selected_tray`` and restored across
+    restarts; the trays' current filaments are exposed as attributes.
+    """
+
+    def __init__(
+        self,
+        coordinator: ElegooDataUpdateCoordinator,
+        description: ElegooPrinterDynamicSelectEntityDescription,
+    ) -> None:
+        """Initialize the tray select."""
+        super().__init__(coordinator)
+        self.entity_description: ElegooPrinterDynamicSelectEntityDescription = (
+            description
+        )
+        self._attr_unique_id = coordinator.generate_unique_id(description.key)
+        self._attr_name = description.name
+        self._attr_options = description.options_fn(None)
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the last choice."""
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last and last.state in PRINT_TRAY_OPTIONS:
+            self.coordinator.data.selected_tray = PRINT_TRAY_OPTIONS[last.state]
+
+    @property
+    def current_option(self) -> str:
+        """Return the label of the chosen tray; Automatic when none is chosen."""
+        chosen = self.coordinator.data.selected_tray if self.coordinator.data else None
+        for label, tray_id in PRINT_TRAY_OPTIONS.items():
+            if tray_id == chosen:
+                return label
+        return "Automatic"
+
+    @property
+    def available(self) -> bool:
+        """Available once the printer has reported its Canvas."""
+        if not super().available:
+            return False
+        return self.entity_description.available_fn(self.coordinator.data)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        """What each tray holds right now."""
+        return _tray_labels(self.coordinator.data)
+
+    async def async_select_option(self, option: str) -> None:
+        """Remember the tray. Nothing is sent to the printer."""
+        if option not in PRINT_TRAY_OPTIONS:
+            msg = f"{option!r} is not a tray"
+            raise ServiceValidationError(msg)
+        self.coordinator.data.selected_tray = PRINT_TRAY_OPTIONS[option]
         self.async_write_ha_state()

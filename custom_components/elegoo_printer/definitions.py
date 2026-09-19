@@ -1392,6 +1392,46 @@ PRINTER_FILE_SELECT_CC2: tuple[ElegooPrinterDynamicSelectEntityDescription, ...]
     ),
 )
 
+# Print Tray options: label -> tray_id for G-code tool 0. "Automatic" sends no
+# slot_map and leaves the choice to the printer - measured on fw 02.01.00.00 to
+# be the last active tray once and tray 0 otherwise, so it is a choice too.
+PRINT_TRAY_OPTIONS: dict[str, int | None] = {
+    "Automatic": None,
+    "A1": 0,
+    "A2": 1,
+    "A3": 2,
+    "A4": 3,
+}
+
+
+def _tray_labels(printer_data: PrinterData | None) -> dict[str, str]:
+    """Return what each tray holds right now, from the Canvas status."""
+    if not printer_data or not printer_data.ams_status:
+        return {}
+    labels: dict[str, str] = {}
+    for box in printer_data.ams_status.ams_boxes:
+        for tray in box.tray_list:
+            if tray.id:
+                name = " ".join(
+                    x for x in (tray.filament_name, tray.filament_color) if x
+                )
+                labels[f"A{int(tray.id) + 1}"] = name or "empty"
+    return labels
+
+
+PRINTER_TRAY_SELECT_CC2: tuple[ElegooPrinterDynamicSelectEntityDescription, ...] = (
+    ElegooPrinterDynamicSelectEntityDescription(
+        key="print_tray",
+        name="Print Tray",
+        translation_key="print_tray",
+        icon="mdi:palette",
+        options_fn=lambda _: list(PRINT_TRAY_OPTIONS),
+        available_fn=lambda printer_data: bool(
+            printer_data and printer_data.ams_status
+        ),
+    ),
+)
+
 PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
     ElegooPrinterNumberEntityDescription(
         key="target_nozzle_temp",
@@ -1434,15 +1474,15 @@ async def _print_selected_file_action(client: ElegooPrinterClient) -> None:
     """
     Start the file chosen in the Print File select (CC2, method 1020).
 
-    Uses the start_print defaults: the printer picks the tray, auto bed
-    leveling on as in the slicer. The service remains the way to choose a
-    tray or skip leveling. A non-zero error_code (1009 = busy) is logged;
+    The tray comes from the Print Tray select (None = the printer's choice);
+    auto bed leveling is on, as in the slicer. The service remains the way
+    to skip leveling. A non-zero error_code (1009 = busy) is logged;
     the button has no response to carry it.
     """
     name = client.printer_data.selected_file
     if not name:
         return
-    code = await client.print_start(name)
+    code = await client.print_start(name, tray_id=client.printer_data.selected_tray)
     if code != 0:
         LOGGER.warning("Printer refused to start %s: error_code %s", name, code)
 
