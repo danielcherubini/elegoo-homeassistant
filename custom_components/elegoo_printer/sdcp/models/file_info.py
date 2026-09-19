@@ -24,10 +24,14 @@ class PrinterFile:
             data = {}
         self.name: str = str(data.get("filename") or "")
         self.size: int = int(data.get("size") or 0)
+        self.created: datetime | None = None
         created = data.get("create_time")
-        self.created: datetime | None = (
-            datetime.fromtimestamp(int(created), tz=UTC) if created else None
-        )
+        if created:
+            try:
+                self.created = datetime.fromtimestamp(int(created), tz=UTC)
+            except (OverflowError, OSError, ValueError, TypeError):
+                # a corrupt or out-of-range timestamp is not worth losing the file for
+                self.created = None
         self.layers: int = int(data.get("layer") or 0)
         self.print_time: int = int(data.get("print_time") or 0)
         self.filament_used: float = float(data.get("total_filament_used") or 0.0)

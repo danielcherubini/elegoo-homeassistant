@@ -1272,18 +1272,20 @@ class ElegooCC2Client:
 
     def _handle_file_list(self, result: CC2FileList | dict[str, Any]) -> None:
         """Replace ``printer_data.file_list`` with the entries of a 1044 result."""
-        try:
-            files = {}
-            for entry in result.get("file_list") or []:
-                if not isinstance(entry, dict) or entry.get("type", "file") != "file":
-                    continue
+        files = {}
+        for entry in result.get("file_list") or []:
+            if not isinstance(entry, dict) or entry.get("type", "file") != "file":
+                continue
+            try:
                 file = PrinterFile(entry)
-                if file.name:
-                    files[file.name] = file
-            self.printer_data.file_list = files
-            self.logger.debug("File list updated: %d files", len(files))
-        except (KeyError, ValueError, TypeError):
-            self.logger.exception("Failed to parse file list")
+            except (ValueError, TypeError, OverflowError, OSError):
+                # one malformed entry must not cost the rest of the listing
+                self.logger.debug("Skipping unparseable file entry: %s", entry)
+                continue
+            if file.name:
+                files[file.name] = file
+        self.printer_data.file_list = files
+        self.logger.debug("File list updated: %d files", len(files))
 
     async def get_file_list(self) -> dict[str, PrinterFile]:
         """

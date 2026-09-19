@@ -107,3 +107,29 @@ def test_unsolicited_1044_response_is_stored() -> None:  # noqa: D103
     client = _client()
     asyncio.run(client._handle_response(_response(SKULLBOWL)))
     assert SKULLBOWL["filename"] in client.printer_data.file_list
+
+
+def test_corrupt_timestamp_keeps_the_file() -> None:  # noqa: D103
+    # datetime.fromtimestamp raises OverflowError/OSError far outside its range.
+    bad = dict(SKULLBOWL, create_time=10**20)
+    client = _client()
+    with patch.object(
+        client, "_send_command", new_callable=AsyncMock, return_value=_response(bad)
+    ):
+        files = asyncio.run(client.get_file_list())
+    file = files[SKULLBOWL["filename"]]
+    assert file.created is None
+    assert file.size == SKULLBOWL["size"]
+
+
+def test_one_unparseable_entry_does_not_drop_the_listing() -> None:  # noqa: D103
+    broken = dict(SKULLBOWL, filename="broken.gcode", size="not a number")
+    client = _client()
+    with patch.object(
+        client,
+        "_send_command",
+        new_callable=AsyncMock,
+        return_value=_response(broken, SKULLBOWL),
+    ):
+        files = asyncio.run(client.get_file_list())
+    assert list(files) == [SKULLBOWL["filename"]]
