@@ -15,6 +15,7 @@ from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING
+from urllib.parse import unquote
 
 import voluptuous as vol
 from aiohttp import ClientError
@@ -304,13 +305,17 @@ def _stage_upload(
     The caller removes the staged copy, whatever happens in between.
     """
     with process_uploaded_file(hass, file_id) as path:
+        # The name arrives percent-encoded ("Rapid%20PLA%2B"), whichever client
+        # uploaded it, and the printer stores it decoded. Decode here too, so
+        # the response and the start command name the file the printer shows.
+        name = unquote(path.name)
         # the selector's `accept` is a browser hint only; the service is also
         # reachable from automations and the API, where any file id can be
         # handed in. Checked before copying, so a wrong file is never touched.
-        if path.suffix.lower() != ".gcode":
-            return path.name, None, None
-        fd, name = tempfile.mkstemp(prefix="elegoo-upload-", suffix=".gcode")
-        staged = Path(name)
+        if not name.lower().endswith(".gcode"):
+            return name, None, None
+        fd, tmp = tempfile.mkstemp(prefix="elegoo-upload-", suffix=".gcode")
+        staged = Path(tmp)
         digest = hashlib.md5(usedforsecurity=False)
         size = 0
         try:
@@ -322,7 +327,7 @@ def _stage_upload(
         except OSError:
             _remove_quietly(staged)
             raise
-        return path.name, staged, UploadFile(path.name, size, digest.hexdigest())
+        return name, staged, UploadFile(name, size, digest.hexdigest())
 
 
 async def _read_chunks(hass: HomeAssistant, path: Path) -> AsyncIterator[bytes]:

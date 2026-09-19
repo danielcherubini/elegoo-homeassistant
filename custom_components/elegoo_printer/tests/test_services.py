@@ -588,6 +588,21 @@ class TestStageUpload:
             _remove_quietly(staged)
         assert not staged.exists()
 
+    def test_decodes_percent_encoded_name(self, tmp_path: Path) -> None:
+        # HA hands the name over percent-encoded; the printer stores it decoded.
+        src = tmp_path / "Rapid%20PLA%2B%20part.gcode"
+        src.write_bytes(b"G28")
+        with patch(
+            "custom_components.elegoo_printer.process_uploaded_file",
+            return_value=nullcontext(src),
+        ):
+            name, staged, file = _stage_upload(MagicMock(), "fid")
+        assert staged is not None
+        _remove_quietly(staged)
+        assert name == "Rapid PLA+ part.gcode"
+        assert file is not None
+        assert file.name == "Rapid PLA+ part.gcode"
+
     def test_rejects_other_suffix_without_copying(self, tmp_path: Path) -> None:
         src = tmp_path / "notes.txt"
         src.write_bytes(b"x")
