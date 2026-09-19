@@ -1481,17 +1481,25 @@ Response:
   "method": 1044,
   "result": {
     "error_code": 0,
-    "total": 25,
-    "files": [
+    "file_list": [
       {
-        "name": "benchy.gcode",
+        "filename": "benchy.gcode",
         "size": 1234567,
-        "modified": 1706900000
+        "create_time": 1706900000,
+        "layer": 251,
+        "print_time": 5137,
+        "total_filament_used": 34.92,
+        "last_print_time": 0,
+        "total_print_times": 0,
+        "type": "file",
+        "color_map": [{"t": 0, "color": "#7F7E83", "name": "PLA"}]
       }
     ]
   }
 }
 ```
+
+Measured on firmware 02.01.00.00: `print_time` is the slicer's estimate in seconds, `total_filament_used` is grams, and `color_map[].t` is the G-code tool index, not a tray. Without `page`/`page_size` the printer returned all 54 files in one response.
 
 ### File Detail via MQTT [Both]
 

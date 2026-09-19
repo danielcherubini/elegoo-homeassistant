@@ -10,6 +10,7 @@ from custom_components.elegoo_printer.coordinator import ElegooDataUpdateCoordin
 from custom_components.elegoo_printer.data import ElegooPrinterConfigEntry
 from custom_components.elegoo_printer.definitions import (
     PRINTER_FDM_BUTTONS,
+    PRINTER_FDM_BUTTONS_CC2_ONLY,
     PRINTER_FDM_BUTTONS_V3_ONLY,
     ElegooPrinterButtonEntityDescription,
 )
@@ -54,6 +55,12 @@ async def async_setup_entry(
             f"Adding {len(PRINTER_FDM_BUTTONS_V3_ONLY)} V3-only button entities"
         )
         for description in PRINTER_FDM_BUTTONS_V3_ONLY:
+            async_add_entities(
+                [ElegooSimpleButton(coordinator, description)], update_before_add=True
+            )
+
+    if printer.protocol_version == ProtocolVersion.CC2:
+        for description in PRINTER_FDM_BUTTONS_CC2_ONLY:
             async_add_entities(
                 [ElegooSimpleButton(coordinator, description)], update_before_add=True
             )

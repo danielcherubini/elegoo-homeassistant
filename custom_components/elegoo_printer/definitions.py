@@ -355,6 +355,19 @@ class ElegooPrinterSelectEntityDescription(SelectEntityDescription):
 
 
 @dataclass(kw_only=True)
+class ElegooPrinterDynamicSelectEntityDescription(SelectEntityDescription):
+    """
+    Select whose options come from printer data and whose choice is only a choice.
+
+    Selecting does not act on the printer; ``options_fn`` reads the options
+    from ``PrinterData`` and ``available_fn`` says whether there are any.
+    """
+
+    options_fn: Callable[..., list[str]]
+    available_fn: Callable[..., bool] = lambda printer_data: bool(printer_data)
+
+
+@dataclass(kw_only=True)
 class ElegooPrinterNumberEntityDescription(NumberEntityDescription):
     """Number entity description for Elegoo Printers."""
 
@@ -1365,6 +1378,19 @@ PRINTER_SELECT_TYPES_CC2: tuple[ElegooPrinterSelectEntityDescription, ...] = (
     ),
 )
 
+PRINTER_FILE_SELECT_CC2: tuple[ElegooPrinterDynamicSelectEntityDescription, ...] = (
+    ElegooPrinterDynamicSelectEntityDescription(
+        key="print_file",
+        name="Print File",
+        translation_key="print_file",
+        icon="mdi:file-document-outline",
+        options_fn=lambda printer_data: (
+            sorted(printer_data.file_list) if printer_data else []
+        ),
+        available_fn=lambda printer_data: bool(printer_data and printer_data.file_list),
+    ),
+)
+
 PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
     ElegooPrinterNumberEntityDescription(
         key="target_nozzle_temp",
@@ -1396,6 +1422,11 @@ PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
 async def _pause_print_action(client: ElegooPrinterClient) -> None:
     """Pause print action."""
     return await client.print_pause()
+
+
+async def _refresh_file_list_action(client: ElegooPrinterClient) -> None:
+    """Fetch the printer's file list now (CC2, method 1044)."""
+    await client.get_file_list()
 
 
 async def _resume_print_action(client: ElegooPrinterClient) -> None:
@@ -1456,6 +1487,17 @@ PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (
             client.printer_data.status.current_status in [ElegooMachineStatus.PRINTING]
             or client.printer_data.status.print_info.status == ElegooPrintStatus.PAUSED
         ),
+    ),
+)
+
+PRINTER_FDM_BUTTONS_CC2_ONLY: tuple[ElegooPrinterButtonEntityDescription, ...] = (
+    ElegooPrinterButtonEntityDescription(
+        key="refresh_file_list",
+        name="Refresh File List",
+        translation_key="refresh_file_list",
+        action_fn=_refresh_file_list_action,
+        icon="mdi:refresh",
+        available_fn=lambda client: bool(client),
     ),
 )
 

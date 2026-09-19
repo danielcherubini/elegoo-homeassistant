@@ -32,6 +32,7 @@ from .video import ElegooVideo
 
 if TYPE_CHECKING:
     from .ams import AMSStatus
+    from .file_info import PrinterFile
     from .print_history_detail import PrintHistoryDetail
 from typing import TypedDict
 
@@ -497,6 +498,8 @@ class PrinterData:
             (update_available, current_version, latest_version, package_url, changelog).
         ams_status (AMSStatus | None): Canvas/AMS status including filament colors and
             active tray information (CC2 only).
+        file_list (dict[str, PrinterFile]): Files in the printer's local storage,
+            by name (CC2 only, method 1044).
 
     """
 
@@ -530,6 +533,7 @@ class PrinterData:
         }
         self.ams_status: AMSStatus | None = None
         self.gcode_filament_data: FileFilamentData | None = None
+        self.file_list: dict[str, PrinterFile] = {}
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
         """Round datetime object to minutes."""

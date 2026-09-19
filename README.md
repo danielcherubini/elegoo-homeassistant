@@ -188,6 +188,8 @@ The integration provides a comprehensive set of entities including **Live Camera
 
 **Filament / Canvas A1–A4 sensors (CC1 and CC2):** Gcode file-detail and optional proxy sensors are created at setup time (proxy extras are only added when a proxy URL is configured). They stay **available** between prints; when there is no current job data they report **unknown** rather than becoming **unavailable**, so automations and history are not disrupted each time a print ends.
 
+**Print file (CC2):** a select listing the G-code files in the printer's local storage, read over MQTT (method 1044) every ten minutes and on the **Refresh File List** button. Choosing a file does not start it - pass the select's state to `start_print` as `filename`.
+
 ## 🤖 Automation Blueprints
 Includes a blueprint for mobile notifications. [Import it here.](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/danielcherubini/elegoo-homeassistant/blob/main/blueprints/automation/elegoo_printer/elegoo_printer_progress.yaml)
 

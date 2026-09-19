@@ -87,6 +87,26 @@ class CC2CanvasStatus(TypedDict, total=False):
     canvas_info: dict[str, Any]
 
 
+class CC2FileEntry(TypedDict, total=False):
+    """One entry of a file listing (method 1044), as measured on fw 02.01.00.00."""
+
+    filename: str
+    size: int
+    create_time: int
+    layer: int
+    print_time: int
+    total_filament_used: float
+    color_map: list[dict[str, Any]]
+    type: str
+
+
+class CC2FileList(TypedDict, total=False):
+    """A file listing response result (method 1044)."""
+
+    error_code: int
+    file_list: list[CC2FileEntry]
+
+
 class CC2Attributes(TypedDict, total=False):
     """
     A CC2 attributes response result (sparse).

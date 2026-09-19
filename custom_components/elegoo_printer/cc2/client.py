@@ -29,6 +29,7 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterTimeoutError,
 )
 from custom_components.elegoo_printer.sdcp.models.ams import AMSStatus
+from custom_components.elegoo_printer.sdcp.models.file_info import PrinterFile
 from custom_components.elegoo_printer.sdcp.models.print_history_detail import (
     PrintHistoryDetail,
 )
@@ -42,6 +43,7 @@ from .const import (
     CC2_CMD_GET_ATTRIBUTES,
     CC2_CMD_GET_CANVAS_STATUS,
     CC2_CMD_GET_FILE_DETAIL,
+    CC2_CMD_GET_FILE_LIST,
     CC2_CMD_GET_FILE_THUMBNAIL,
     CC2_CMD_GET_STATUS,
     CC2_CMD_PAUSE_PRINT,
@@ -86,6 +88,7 @@ if TYPE_CHECKING:
         CC2Attributes,
         CC2CanvasStatus,
         CC2Envelope,
+        CC2FileList,
         CC2FileThumbnailResponse,
         CC2StatusFrame,
         CC2VideoResponse,
@@ -793,6 +796,8 @@ class ElegooCC2Client:
             self._handle_video_response(result)
         elif method == CC2_CMD_GET_CANVAS_STATUS:
             self._handle_canvas_status(result)
+        elif method == CC2_CMD_GET_FILE_LIST:
+            self._handle_file_list(result)
 
     async def _handle_status_event(self, data: CC2Envelope) -> None:
         """Handle a status event (push notification)."""
@@ -1264,6 +1269,42 @@ class ElegooCC2Client:
             self.logger.debug("Canvas status updated: %s", ams_status)
         except (KeyError, ValueError, TypeError):
             self.logger.exception("Failed to parse Canvas status")
+
+    def _handle_file_list(self, result: CC2FileList | dict[str, Any]) -> None:
+        """Replace ``printer_data.file_list`` with the entries of a 1044 result."""
+        try:
+            files = {}
+            for entry in result.get("file_list") or []:
+                if not isinstance(entry, dict) or entry.get("type", "file") != "file":
+                    continue
+                file = PrinterFile(entry)
+                if file.name:
+                    files[file.name] = file
+            self.printer_data.file_list = files
+            self.logger.debug("File list updated: %d files", len(files))
+        except (KeyError, ValueError, TypeError):
+            self.logger.exception("Failed to parse file list")
+
+    async def get_file_list(self) -> dict[str, PrinterFile]:
+        """
+        Fetch the files in the printer's local storage (method 1044).
+
+        Sends the parameters ElegooSlicer sends; no paging, the printer
+        answered with all 54 files at once (fw 02.01.00.00). The result is
+        kept in ``printer_data.file_list`` and returned.
+
+        Raises:
+            ElegooPrinterConnectionError: if the printer did not answer.
+
+        """
+        response = await self._send_command(
+            CC2_CMD_GET_FILE_LIST, {"storage_media": "local", "path": "/"}
+        )
+        if not response:
+            msg = "Printer did not answer the file list request"
+            raise ElegooPrinterConnectionError(msg)
+        self._handle_file_list(response.get("result", response))
+        return self.printer_data.file_list
 
     async def _send_command(
         self,
