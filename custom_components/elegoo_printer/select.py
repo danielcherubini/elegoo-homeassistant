@@ -121,10 +121,10 @@ class ElegooPrintFileSelect(ElegooPrinterEntity, RestoreEntity, SelectEntity):
     A file in the printer's local storage, chosen but not started.
 
     The options are the printer's file list (method 1044, refreshed by the
-    coordinator and by the Refresh File List button); the choice is kept on
-    the entity and restored across restarts. Selecting never starts a print -
-    that stays with the ``start_print`` service, which takes this entity's
-    state as its ``filename``.
+    coordinator and by the Refresh File List button); the choice is kept in
+    ``printer_data.selected_file`` and restored across restarts. Selecting
+    never starts a print: that is the Print Selected File button, or the
+    ``start_print`` service with this entity's state as ``filename``.
     """
 
     def __init__(
@@ -139,14 +139,13 @@ class ElegooPrintFileSelect(ElegooPrinterEntity, RestoreEntity, SelectEntity):
         )
         self._attr_unique_id = coordinator.generate_unique_id(description.key)
         self._attr_name = description.name
-        self._chosen: str | None = None
 
     async def async_added_to_hass(self) -> None:
         """Restore the last choice; it is validated against the options when read."""
         await super().async_added_to_hass()
         last = await self.async_get_last_state()
         if last and last.state not in (None, "unknown", "unavailable"):
-            self._chosen = last.state
+            self.coordinator.data.selected_file = last.state
 
     @property
     def options(self) -> list[str]:
@@ -156,8 +155,9 @@ class ElegooPrintFileSelect(ElegooPrinterEntity, RestoreEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """Return the chosen file, or None once it is no longer on the printer."""
-        if self._chosen in self.options:
-            return self._chosen
+        chosen = self.coordinator.data.selected_file if self.coordinator.data else None
+        if chosen in self.options:
+            return chosen
         return None
 
     @property
@@ -172,5 +172,5 @@ class ElegooPrintFileSelect(ElegooPrinterEntity, RestoreEntity, SelectEntity):
         if option not in self.options:
             msg = f"{option!r} is not on the printer"
             raise ServiceValidationError(msg)
-        self._chosen = option
+        self.coordinator.data.selected_file = option
         self.async_write_ha_state()

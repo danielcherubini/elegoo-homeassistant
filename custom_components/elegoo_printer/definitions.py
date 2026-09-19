@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from .sdcp.models.printer import PrinterData
     from .websocket.client import ElegooPrinterClient
 
+from .const import LOGGER
 from .sdcp.models.enums import (
     ElegooErrorStatusReason,
     ElegooMachineStatus,
@@ -1429,6 +1430,33 @@ async def _refresh_file_list_action(client: ElegooPrinterClient) -> None:
     await client.get_file_list()
 
 
+async def _print_selected_file_action(client: ElegooPrinterClient) -> None:
+    """
+    Start the file chosen in the Print File select (CC2, method 1020).
+
+    Uses the start_print defaults: the printer picks the tray, auto bed
+    leveling on as in the slicer. The service remains the way to choose a
+    tray or skip leveling. A non-zero error_code (1009 = busy) is logged;
+    the button has no response to carry it.
+    """
+    name = client.printer_data.selected_file
+    if not name:
+        return
+    code = await client.print_start(name)
+    if code != 0:
+        LOGGER.warning("Printer refused to start %s: error_code %s", name, code)
+
+
+def _print_selected_file_available(client: ElegooPrinterClient) -> bool:
+    """Idle, a file chosen, and that file still on the printer."""
+    data = client.printer_data
+    return (
+        data.status.current_status == ElegooMachineStatus.IDLE
+        and bool(data.selected_file)
+        and data.selected_file in data.file_list
+    )
+
+
 async def _resume_print_action(client: ElegooPrinterClient) -> None:
     """Resume print action."""
     return await client.print_resume()
@@ -1491,6 +1519,14 @@ PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (
 )
 
 PRINTER_FDM_BUTTONS_CC2_ONLY: tuple[ElegooPrinterButtonEntityDescription, ...] = (
+    ElegooPrinterButtonEntityDescription(
+        key="print_selected_file",
+        name="Print Selected File",
+        translation_key="print_selected_file",
+        action_fn=_print_selected_file_action,
+        icon="mdi:printer-3d-nozzle",
+        available_fn=_print_selected_file_available,
+    ),
     ElegooPrinterButtonEntityDescription(
         key="refresh_file_list",
         name="Refresh File List",

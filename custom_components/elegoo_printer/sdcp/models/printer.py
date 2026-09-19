@@ -500,6 +500,8 @@ class PrinterData:
             active tray information (CC2 only).
         file_list (dict[str, PrinterFile]): Files in the printer's local storage,
             by name (CC2 only, method 1044).
+        selected_file (str | None): The file chosen in the Print File select;
+            what the Print Selected File button starts (CC2 only).
 
     """
 
@@ -534,6 +536,7 @@ class PrinterData:
         self.ams_status: AMSStatus | None = None
         self.gcode_filament_data: FileFilamentData | None = None
         self.file_list: dict[str, PrinterFile] = {}
+        self.selected_file: str | None = None
 
     def round_minute(self, date: datetime | None = None, round_to: int = 1) -> datetime:
         """Round datetime object to minutes."""

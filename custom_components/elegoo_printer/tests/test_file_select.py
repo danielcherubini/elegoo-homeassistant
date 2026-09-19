@@ -8,7 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.exceptions import ServiceValidationError
 
-from custom_components.elegoo_printer.definitions import PRINTER_FILE_SELECT_CC2
+from custom_components.elegoo_printer.definitions import (
+    PRINTER_FDM_BUTTONS_CC2_ONLY,
+    PRINTER_FILE_SELECT_CC2,
+    _print_selected_file_action,
+    _print_selected_file_available,
+)
+from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStatus
 from custom_components.elegoo_printer.sdcp.models.file_info import PrinterFile
 from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
 from custom_components.elegoo_printer.select import ElegooPrintFileSelect
@@ -38,6 +44,7 @@ def test_selecting_keeps_the_choice_and_sends_nothing() -> None:
     select.async_write_ha_state = MagicMock()
     asyncio.run(select.async_select_option(CLIP))
     assert select.current_option == CLIP
+    assert select.coordinator.data.selected_file == CLIP
     select.async_write_ha_state.assert_called_once()
     # nothing on the coordinator or its API was touched
     assert not select.coordinator.method_calls
@@ -88,3 +95,50 @@ def test_restores_the_last_choice() -> None:
     ):
         asyncio.run(select.async_added_to_hass())
     assert select.current_option == CLIP
+
+
+def _client(
+    files: list[str], chosen: str | None, status: ElegooMachineStatus
+) -> MagicMock:
+    client = MagicMock()
+    client.printer_data = PrinterData()
+    client.printer_data.file_list = {n: PrinterFile({"filename": n}) for n in files}
+    client.printer_data.selected_file = chosen
+    client.printer_data.status.current_status = status
+    client.print_start = AsyncMock(return_value=0)
+    return client
+
+
+def test_print_button_starts_the_chosen_file_with_defaults() -> None:
+    client = _client([BENCHY], BENCHY, ElegooMachineStatus.IDLE)
+    asyncio.run(_print_selected_file_action(client))
+    client.print_start.assert_awaited_once_with(BENCHY)
+
+
+def test_print_button_does_nothing_without_a_choice() -> None:
+    client = _client([BENCHY], None, ElegooMachineStatus.IDLE)
+    asyncio.run(_print_selected_file_action(client))
+    client.print_start.assert_not_awaited()
+
+
+def test_print_button_availability() -> None:
+    assert _print_selected_file_available(
+        _client([BENCHY], BENCHY, ElegooMachineStatus.IDLE)
+    )
+    assert not _print_selected_file_available(
+        _client([BENCHY], None, ElegooMachineStatus.IDLE)
+    )
+    assert not _print_selected_file_available(
+        _client([BENCHY], BENCHY, ElegooMachineStatus.PRINTING)
+    )
+    # chosen earlier, deleted on the printer since
+    assert not _print_selected_file_available(
+        _client([], BENCHY, ElegooMachineStatus.IDLE)
+    )
+
+
+def test_print_button_is_the_first_cc2_button() -> None:
+    assert [d.key for d in PRINTER_FDM_BUTTONS_CC2_ONLY] == [
+        "print_selected_file",
+        "refresh_file_list",
+    ]
