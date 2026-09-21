@@ -47,6 +47,8 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
+    from custom_components.elegoo_printer.sdcp.models.file_info import PrinterFile
+
     from .sdcp.models.enums import ElegooFan
     from .sdcp.models.print_history_detail import (
         PrintHistoryDetail,
@@ -888,6 +890,12 @@ class ElegooPrinterApiClient:
         if self.client and hasattr(self.client, "get_canvas_status"):
             return await self.client.get_canvas_status()
         return None
+
+    async def async_get_file_list(self) -> dict[str, PrinterFile]:
+        """Fetch the files in the printer's local storage (CC2 only)."""
+        if self.client and hasattr(self.client, "get_file_list"):
+            return await self.client.get_file_list()
+        return {}
 
     async def _setup_proxy_if_enabled(self, printer: Printer) -> Printer | None:
         """

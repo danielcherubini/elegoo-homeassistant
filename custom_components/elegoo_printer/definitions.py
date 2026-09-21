@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from .sdcp.models.printer import PrinterData
     from .websocket.client import ElegooPrinterClient
 
+from .const import LOGGER
 from .sdcp.models.enums import (
     ElegooErrorStatusReason,
     ElegooMachineStatus,
@@ -352,6 +353,19 @@ class ElegooPrinterSelectEntityDescription(SelectEntityDescription):
     options_map: dict[str, Any]
     current_option_fn: Callable[..., str | None]
     select_option_fn: Callable[..., Coroutine[Any, Any, None]]
+
+
+@dataclass(kw_only=True)
+class ElegooPrinterDynamicSelectEntityDescription(SelectEntityDescription):
+    """
+    Select whose options come from printer data and whose choice is only a choice.
+
+    Selecting does not act on the printer; ``options_fn`` reads the options
+    from ``PrinterData`` and ``available_fn`` says whether there are any.
+    """
+
+    options_fn: Callable[..., list[str]]
+    available_fn: Callable[..., bool] = lambda printer_data: bool(printer_data)
 
 
 @dataclass(kw_only=True)
@@ -1365,6 +1379,59 @@ PRINTER_SELECT_TYPES_CC2: tuple[ElegooPrinterSelectEntityDescription, ...] = (
     ),
 )
 
+PRINTER_FILE_SELECT_CC2: tuple[ElegooPrinterDynamicSelectEntityDescription, ...] = (
+    ElegooPrinterDynamicSelectEntityDescription(
+        key="print_file",
+        name="Print File",
+        translation_key="print_file",
+        icon="mdi:file-document-outline",
+        options_fn=lambda printer_data: (
+            sorted(printer_data.file_list) if printer_data else []
+        ),
+        available_fn=lambda printer_data: bool(printer_data and printer_data.file_list),
+    ),
+)
+
+# Print Tray options: label -> tray_id for G-code tool 0. "Automatic" sends no
+# slot_map and leaves the choice to the printer - measured on fw 02.01.00.00 to
+# be the last active tray once and tray 0 otherwise, so it is a choice too.
+PRINT_TRAY_OPTIONS: dict[str, int | None] = {
+    "Automatic": None,
+    "A1": 0,
+    "A2": 1,
+    "A3": 2,
+    "A4": 3,
+}
+
+
+def _tray_labels(printer_data: PrinterData | None) -> dict[str, str]:
+    """Return what each tray holds right now, from the Canvas status."""
+    if not printer_data or not printer_data.ams_status:
+        return {}
+    labels: dict[str, str] = {}
+    for box in printer_data.ams_status.ams_boxes:
+        for tray in box.tray_list:
+            if tray.id:
+                name = " ".join(
+                    x for x in (tray.filament_name, tray.filament_color) if x
+                )
+                labels[f"A{int(tray.id) + 1}"] = name or "empty"
+    return labels
+
+
+PRINTER_TRAY_SELECT_CC2: tuple[ElegooPrinterDynamicSelectEntityDescription, ...] = (
+    ElegooPrinterDynamicSelectEntityDescription(
+        key="print_tray",
+        name="Print Tray",
+        translation_key="print_tray",
+        icon="mdi:palette",
+        options_fn=lambda _: list(PRINT_TRAY_OPTIONS),
+        available_fn=lambda printer_data: bool(
+            printer_data and printer_data.ams_status
+        ),
+    ),
+)
+
 PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
     ElegooPrinterNumberEntityDescription(
         key="target_nozzle_temp",
@@ -1396,6 +1463,38 @@ PRINTER_NUMBER_TYPES: tuple[ElegooPrinterNumberEntityDescription, ...] = (
 async def _pause_print_action(client: ElegooPrinterClient) -> None:
     """Pause print action."""
     return await client.print_pause()
+
+
+async def _refresh_file_list_action(client: ElegooPrinterClient) -> None:
+    """Fetch the printer's file list now (CC2, method 1044)."""
+    await client.get_file_list()
+
+
+async def _print_selected_file_action(client: ElegooPrinterClient) -> None:
+    """
+    Start the file chosen in the Print File select (CC2, method 1020).
+
+    The tray comes from the Print Tray select (None = the printer's choice);
+    auto bed leveling is on, as in the slicer. The service remains the way
+    to skip leveling. A non-zero error_code (1009 = busy) is logged;
+    the button has no response to carry it.
+    """
+    name = client.printer_data.selected_file
+    if not name:
+        return
+    code = await client.print_start(name, tray_id=client.printer_data.selected_tray)
+    if code != 0:
+        LOGGER.warning("Printer refused to start %s: error_code %s", name, code)
+
+
+def _print_selected_file_available(client: ElegooPrinterClient) -> bool:
+    """Idle, a file chosen, and that file still on the printer."""
+    data = client.printer_data
+    return (
+        data.status.current_status == ElegooMachineStatus.IDLE
+        and bool(data.selected_file)
+        and data.selected_file in data.file_list
+    )
 
 
 async def _resume_print_action(client: ElegooPrinterClient) -> None:
@@ -1456,6 +1555,25 @@ PRINTER_FDM_BUTTONS: tuple[ElegooPrinterButtonEntityDescription, ...] = (
             client.printer_data.status.current_status in [ElegooMachineStatus.PRINTING]
             or client.printer_data.status.print_info.status == ElegooPrintStatus.PAUSED
         ),
+    ),
+)
+
+PRINTER_FDM_BUTTONS_CC2_ONLY: tuple[ElegooPrinterButtonEntityDescription, ...] = (
+    ElegooPrinterButtonEntityDescription(
+        key="print_selected_file",
+        name="Print Selected File",
+        translation_key="print_selected_file",
+        action_fn=_print_selected_file_action,
+        icon="mdi:printer-3d-nozzle",
+        available_fn=_print_selected_file_available,
+    ),
+    ElegooPrinterButtonEntityDescription(
+        key="refresh_file_list",
+        name="Refresh File List",
+        translation_key="refresh_file_list",
+        action_fn=_refresh_file_list_action,
+        icon="mdi:refresh",
+        available_fn=lambda client: bool(client),
     ),
 )
 

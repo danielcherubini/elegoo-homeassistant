@@ -231,6 +231,22 @@
       "end_time": {
         "name": "End Time"
       }
+    },
+    "select": {
+      "print_file": {
+        "name": "Print file"
+      },
+      "print_tray": {
+        "name": "Print tray"
+      }
+    },
+    "button": {
+      "refresh_file_list": {
+        "name": "Refresh file list"
+      },
+      "print_selected_file": {
+        "name": "Print selected file"
+      }
     }
   }
 }

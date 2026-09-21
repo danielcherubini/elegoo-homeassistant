@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.const import CONF_HAS_CANVAS, LOGGER
 from custom_components.elegoo_printer.sdcp.exceptions import (
     PRINT_TRANSPORT_ERRORS,
@@ -40,6 +41,8 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         self._firmware_check_interval = timedelta(hours=12)  # Check every 12 hours
         self._last_canvas_check: datetime | None = None
         self._canvas_check_interval = timedelta(seconds=30)  # Check every 30 seconds
+        self._last_file_list_check: datetime | None = None
+        self._file_list_check_interval = timedelta(minutes=10)
         super().__init__(
             hass,
             LOGGER,
@@ -101,6 +104,8 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                     # Rate-limit even on failure to avoid hammering the endpoint
                     self._last_canvas_check = now
 
+            await self._refresh_file_list_if_due(api, now)
+
             self._replay_cc2_print_status_transitions()
 
             self.online = True
@@ -131,6 +136,31 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             )
             msg = f"Unexpected Error: {e.strerror}"
             raise UpdateFailed(msg) from e
+
+    async def _refresh_file_list_if_due(self, api: Any, now: datetime) -> None:
+        """
+        Fetch the CC2 file list every ten minutes.
+
+        The list only changes when a file is uploaded or deleted, and a request
+        answers with every file's metadata, so this is deliberately slow; the
+        Refresh File List button covers the moment right after a slicer upload.
+        """
+        # isinstance, not hasattr: the file list is a CC2 method, and a mock
+        # client answers hasattr with True for everything.
+        if not isinstance(api.client, ElegooCC2Client):
+            return
+        if (
+            self._last_file_list_check is not None
+            and now - self._last_file_list_check < self._file_list_check_interval
+        ):
+            return
+        LOGGER.debug("Refreshing the printer's file list")
+        try:
+            await api.async_get_file_list()
+        except (ElegooPrinterConnectionError, ElegooPrinterTimeoutError):
+            LOGGER.debug("File list refresh failed")
+        finally:
+            self._last_file_list_check = now
 
     def _replay_cc2_print_status_transitions(self) -> None:
         """
