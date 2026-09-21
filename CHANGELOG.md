@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.
 - WebSocket discovery now recognizes hostnames by their resolved IPv4 address, and options updates validate the newly submitted address.
 - CC1 print status no longer sticks on a stale state for the remainder of a job when the printer holds an unmapped milestone code.
 - The Canvas auto-detection step in setup is bounded by a timeout, so a device that accepts connections but never answers can no longer hang the config flow.
+- `bed_leveling: false` on the CC2 now sends `printer_check: false` instead of leaving the key out. Measured on firmware 02.01.00.00: the printer remembers the last value it was given, so an omitted key means "carry on as before" rather than "off" - a job that omits it after one that sent true levels again, even with the bed temperature unchanged. An explicit false skips leveling (first layer at 180 s instead of 398 s). ElegooSlicer sends false the same way when its own bed-leveling box is unchecked.
 
 ### Breaking Changes
 

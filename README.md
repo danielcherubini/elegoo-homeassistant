@@ -178,7 +178,7 @@ data:
 
 - The response says whether the printer accepted the job: `error_code` 1009 means it is busy.
 - `tray` is validated by Home Assistant, **not by the printer** - an out-of-range tray is acknowledged with `error_code` 0 and silently printed from tray 0. Only G-code tool 0 is mapped; this service does not preserve a complete multi-tool mapping.
-- `bed_leveling` maps to the protocol's `printer_check`, which ElegooSlicer sends on every job - so it defaults to on. With `false` the key is left out and the printer levels only when it decides to on its own (observed after a bed-temperature change).
+- `bed_leveling` maps to the protocol's `printer_check`, which ElegooSlicer sends on every job - so it defaults to on. `false` is sent as `false`, which is how the slicer's own unchecked box does it and the only way to stop the printer levelling: leaving the key out lets it decide, and it has been observed levelling for 196 s even when the previous print used the same bed temperature.
 - Not available for the first-generation Centauri Carbon or resin printers, where the equivalent SDCP command crashed the printer (#297).
 
 ### `upload_gcode` (Centauri Carbon 2 only)

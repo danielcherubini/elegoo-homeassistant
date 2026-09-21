@@ -1533,12 +1533,19 @@ class ElegooCC2Client:
 
         Sends method 1020 with a ``config`` that carries only what is needed:
         ``slot_map`` maps G-code tool 0 to ``tray_id`` when one is given (an
-        empty list lets the printer pick the tray), and ``printer_check: true``
-        - what ElegooSlicer sends on every job - forces auto bed leveling.
-        With ``bed_leveling=False`` the key is omitted rather than sent as
-        false: omitted is the measured shape, and the printer then levels only
-        when it decides to on its own. The other ``config`` fields the slicer
-        sends are not required.
+        empty list lets the printer pick the tray), and ``printer_check``
+        carries ``bed_leveling``. The other ``config`` fields the slicer sends
+        are not required.
+
+        The key is sent in both directions, never omitted, because the
+        firmware REMEMBERS THE LAST VALUE IT WAS GIVEN. Measured on a Centauri
+        Carbon 2 (02.01.00.00), same file and a 60 C bed throughout: with
+        ``true`` it levels (sub-status 2901 for ~200 s, first layer at 398 s
+        against 180 s), and a following job that omits the key levels again -
+        it inherits that ``true``. An omitted key therefore does not mean
+        "off", it means "carry on as before", and "before" may be someone
+        else's job, such as one started from the slicer with its bed-leveling
+        box ticked. Only an explicit ``false`` turns it off.
 
         Measured on a Centauri Carbon 2 (firmware 02.01.00.00): a ``slot_map``
         entry must carry ``t``, ``canvas_id`` and ``tray_id`` together. A
@@ -1561,9 +1568,10 @@ class ElegooCC2Client:
         slot_map: list[dict[str, int]] = []
         if tray_id is not None:
             slot_map.append({"t": 0, "canvas_id": 0, "tray_id": tray_id})
-        config: dict[str, Any] = {"slot_map": slot_map}
-        if bed_leveling:
-            config["printer_check"] = True
+        config: dict[str, Any] = {
+            "slot_map": slot_map,
+            "printer_check": bed_leveling,
+        }
         response = await self._send_command(
             CC2_CMD_START_PRINT,
             {"storage_media": "local", "filename": filename, "config": config},

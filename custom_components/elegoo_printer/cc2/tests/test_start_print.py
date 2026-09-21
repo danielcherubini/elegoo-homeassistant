@@ -64,21 +64,28 @@ def test_start_with_tray_sends_full_slot_map_entry() -> None:  # noqa: D103
             {
                 "storage_media": "local",
                 "filename": "benchy.gcode",
-                "config": {"slot_map": [{"t": 0, "canvas_id": 0, "tray_id": 3}]},
+                "config": {
+                    "slot_map": [{"t": 0, "canvas_id": 0, "tray_id": 3}],
+                    "printer_check": False,
+                },
             },
         )
 
 
-def test_start_without_bed_leveling_omits_printer_check() -> None:  # noqa: D103
-    # Omitted, not false: omitted is the shape that was measured on the printer.
+def test_start_without_bed_leveling_sends_printer_check_false() -> None:  # noqa: D103
+    # False, not omitted. Measured on fw 02.01.00.00, bed at 60 C throughout:
+    # the firmware remembers the last value it was given, so a job that omits
+    # the key after one that sent true levels again. Omitting it would mean
+    # "carry on as before" - possibly someone else's true - where the service
+    # promises off. ElegooSlicer sends false the same way when its own
+    # bed-leveling box is unchecked.
     client = _client()
     with patch.object(
         client, "_send_command", new_callable=AsyncMock, return_value=_response(0)
     ) as mock_cmd:
         asyncio.run(client.print_start("benchy.gcode", bed_leveling=False))
         params = mock_cmd.call_args.args[1]
-        assert params["config"] == {"slot_map": []}
-        assert "printer_check" not in params["config"]
+        assert params["config"] == {"slot_map": [], "printer_check": False}
 
 
 def test_start_returns_printer_error_code() -> None:  # noqa: D103

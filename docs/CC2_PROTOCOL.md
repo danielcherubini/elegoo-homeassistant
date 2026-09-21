@@ -1946,7 +1946,7 @@ This section documents the complete sequence of events when ElegooSlicer sends a
 | Field | Type | Description |
 |-------|------|-------------|
 | `delay_video` | bool | Delay start until video streaming active |
-| `printer_check` | bool | Run pre-print checks |
+| `printer_check` | bool | Auto bed leveling. Three states, measured on 02.01.00.00: `true` always levels (~200 s), `false` never does, and leaving the key out lets the printer decide. ElegooSlicer sends `true`, or `false` when its bed-leveling box is unchecked |
 | `print_layout` | string | Layout option (model-specific) |
 | `bedlevel_force` | bool | Force bed leveling before print |
 | `slot_map` | array | Canvas/AMS filament mapping, see [Printing with Canvas](#printing-with-canvas) |
