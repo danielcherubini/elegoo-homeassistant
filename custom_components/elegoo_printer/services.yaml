@@ -53,8 +53,8 @@ start_print:
       name: Bed leveling
       description: >-
         Run auto bed leveling before the print, as the slicer does (about three
-        minutes). Switch off for a faster reprint; the printer may still level
-        on its own, for example after a bed-temperature change.
+        minutes). Switch off for a faster reprint: the printer is then told not
+        to level, the same way the slicer's own checkbox does it.
       required: false
       default: true
       selector:
@@ -103,7 +103,7 @@ upload_gcode:
       name: Bed leveling
       description: >-
         Run auto bed leveling before the print, as the slicer does (about three
-        minutes). Only with "Start printing".
+        minutes). Switch off to skip it. Only with "Start printing".
       required: false
       default: true
       selector:
