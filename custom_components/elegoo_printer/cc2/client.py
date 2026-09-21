@@ -1429,8 +1429,18 @@ class ElegooCC2Client:
         await self._send_command(CC2_CMD_STOP_PRINT)
 
     async def print_resume(self) -> None:
-        """Resume/continue the current print."""
-        await self._send_command(CC2_CMD_RESUME_PRINT)
+        """
+        Resume/continue the current print.
+
+        Fire-and-forget: the printer does not acknowledge 1023 until the
+        resume has actually completed — it reheats, homes and returns to
+        position first. Measured on a Centauri Carbon 2 (firmware
+        02.01.00.00): 122 s between the request and the ``error_code: 0``
+        response. Waiting for that reply would always exceed
+        CC2_COMMAND_TIMEOUT (10 s) and raise ElegooPrinterTimeoutError,
+        even though the command was accepted and the print is resuming.
+        """
+        await self._send_command(CC2_CMD_RESUME_PRINT, wait_for_response=False)
 
     async def print_start(
         self,
