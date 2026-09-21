@@ -111,3 +111,25 @@ def test_start_without_acknowledgement_raises(response: dict | None) -> None:  #
         pytest.raises(ElegooPrinterConnectionError),
     ):
         asyncio.run(client.print_start("benchy.gcode"))
+
+
+@pytest.mark.parametrize(
+    ("access_code", "token"), [("KP", "KP"), (None, "123456"), ("", "123456")]
+)
+def test_upload_gcode_uses_access_code_as_token(  # noqa: D103
+    access_code: str | None, token: str
+) -> None:
+    client = _client()
+    client.access_code = access_code
+    with patch(
+        "custom_components.elegoo_printer.cc2.upload.upload_gcode",
+        new_callable=AsyncMock,
+        return_value=3,
+    ) as mock_upload:
+        sent = asyncio.run(client.upload_gcode(object(), "a.gcode", b"abc"))  # type: ignore[arg-type]
+    assert sent == len(b"abc")
+    args = mock_upload.call_args.args
+    assert args[1].host == "192.168.1.1"
+    assert args[1].token == token
+    assert args[2] == "a.gcode"
+    assert args[3] == b"abc"

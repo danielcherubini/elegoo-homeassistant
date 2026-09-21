@@ -38,6 +38,7 @@ from custom_components.elegoo_printer.sdcp.models.printer import (
 )
 from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
+from . import upload as _upload
 from .const import (
     CC2_CMD_GET_ATTRIBUTES,
     CC2_CMD_GET_CANVAS_STATUS,
@@ -73,7 +74,9 @@ from .const import (
 from .models import CC2StatusMapper
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import AsyncIterator, Callable
+
+    import aiohttp
 
     from custom_components.elegoo_printer.sdcp.models.enums import ElegooFan
     from custom_components.elegoo_printer.sdcp.models.status import (
@@ -90,6 +93,7 @@ if TYPE_CHECKING:
         CC2StatusFrame,
         CC2VideoResponse,
     )
+    from .upload import UploadFile
 
 
 class ElegooCC2Client:
@@ -156,6 +160,7 @@ class ElegooCC2Client:
         self._response_events: dict[int, asyncio.Event] = {}
         self._response_data: dict[int, dict[str, Any]] = {}
         self._response_lock = asyncio.Lock()
+        self._upload_lock = asyncio.Lock()
         self._request_counter = 0
 
         # Client identification - match web interface format
@@ -1441,6 +1446,37 @@ class ElegooCC2Client:
         even though the command was accepted and the print is resuming.
         """
         await self._send_command(CC2_CMD_RESUME_PRINT, wait_for_response=False)
+
+    @property
+    def upload_lock(self) -> asyncio.Lock:
+        """
+        Serialise uploads to this printer.
+
+        An upload is assembled from several ranged PUTs and the protocol has no
+        session id, so two concurrent uploads would interleave their ranges into
+        one file. Callers hold this across the whole upload, including an
+        optional start, so a print cannot begin from a half-written file.
+        """
+        return self._upload_lock
+
+    async def upload_gcode(
+        self,
+        session: aiohttp.ClientSession,
+        file: UploadFile,
+        chunks: AsyncIterator[bytes],
+    ) -> int:
+        """
+        Upload a G-code file to the printer's local storage over HTTP.
+
+        The access code that connected the MQTT session doubles as the HTTP
+        token (the SDK sends the access code, or "123456" when none is set).
+        Returns the number of bytes sent; raises ElegooPrinterConnectionError
+        on failure. See cc2/upload.py for the measured constraints.
+        """
+        target = _upload.UploadTarget(
+            host=self.printer_ip, token=self.access_code or CC2_MQTT_DEFAULT_PASSWORD
+        )
+        return await _upload.upload_gcode(session, target, file, chunks)
 
     async def print_start(
         self,

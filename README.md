@@ -181,6 +181,23 @@ data:
 - `bed_leveling` maps to the protocol's `printer_check`, which ElegooSlicer sends on every job - so it defaults to on. With `false` the key is left out and the printer levels only when it decides to on its own (observed after a bed-temperature change).
 - Not available for the first-generation Centauri Carbon or resin printers, where the equivalent SDCP command crashed the printer (#297).
 
+### `upload_gcode` (Centauri Carbon 2 only)
+Uploads a G-code file **from the device you are using Home Assistant on** to the printer's local storage, and optionally starts it. In **Developer Tools → Actions** the `file` field opens a file picker (filtered to `.gcode`); the file goes to Home Assistant first and from there to the printer over the LAN, the way ElegooSlicer sends it (`PUT /upload` in 1 MB chunks). It then appears in the printer's file list and can be started with `start_print` or from the printer's screen.
+
+```yaml
+action: elegoo_printer.upload_gcode
+data:
+  entry_id: <config entry UUID>
+  file: <file_id from the file picker>
+  start: true               # optional, default false
+  tray: 2                   # optional, with start
+  bed_leveling: true        # optional, with start, default true
+```
+
+- Up to 100 MB (Home Assistant's upload limit). The file keeps its name; an existing file of the same name is replaced.
+- The upload is not retried: if the printer answers "busy" (HTTP 429) or rejects a chunk, the service reports it and stops - the printer does not list a failed upload.
+- In an automation the `file` field needs a file id from Home Assistant's upload API; the field is meant for the UI.
+
 ---
 
 ## 📊 Entities

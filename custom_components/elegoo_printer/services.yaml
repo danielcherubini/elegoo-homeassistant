@@ -59,3 +59,53 @@ start_print:
       default: true
       selector:
         boolean:
+
+upload_gcode:
+  name: Upload G-code
+  description: >-
+    Upload a G-code file from this device to the printer's local storage, and
+    optionally start printing it. Centauri Carbon 2 only. The file keeps its
+    name; an existing file of the same name is replaced.
+  fields:
+    entry_id:
+      name: Config Entry
+      description: The Centauri Carbon 2 to upload to.
+      required: true
+      selector:
+        config_entry:
+          integration: elegoo_printer
+    file:
+      name: G-code file
+      description: Pick a .gcode file on this device.
+      required: true
+      selector:
+        file:
+          accept: ".gcode"
+    start:
+      name: Start printing
+      description: Start the print as soon as the upload is complete.
+      required: false
+      default: false
+      selector:
+        boolean:
+    tray:
+      name: Canvas tray
+      description: >-
+        Tray to print from, 0-3 (A1-A4), only with "Start printing". Leave
+        empty to let the printer choose. Maps G-code tool 0 only.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 3
+          mode: box
+    bed_leveling:
+      name: Bed leveling
+      description: >-
+        Run auto bed leveling before the print, as the slicer does (about three
+        minutes). Only with "Start printing".
+      required: false
+      default: true
+      selector:
+        boolean:
+

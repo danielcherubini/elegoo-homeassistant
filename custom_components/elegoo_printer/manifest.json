@@ -3,7 +3,7 @@
   "name": "Elegoo Printer",
   "codeowners": ["@danielcherubini"],
   "config_flow": true,
-  "dependencies": ["ffmpeg"],
+  "dependencies": ["ffmpeg", "file_upload"],
   "documentation": "https://github.com/danielcherubini/elegoo-homeassistant",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/danielcherubini/elegoo-homeassistant/issues",
