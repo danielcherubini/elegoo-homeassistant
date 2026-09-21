@@ -28,7 +28,7 @@ flowchart LR
     Slicer2[ElegooSlicer] -->|upload| Proxy[GCode Capture Proxy]
     Proxy -->|JSON metadata| HAElegoo2[HA Elegoo Integration]
     CC2Printer[Printer] -->|"MQTT / WebSocket"| HAElegoo2
-    HAElegoo2 -->|"A1-A4 sensors"| Cache2["Cache Automation (input_text JSON)"]
+    HAElegoo2 -->|"A1-A4 sensors"| Cache2["Cache Automation (event → template sensor)"]
     Cache2 -->|"on complete"| Auto2[Spoolman Push Automation]
   end
 
@@ -53,9 +53,11 @@ The integration exposes this data as sensors when the proxy URL is configured (S
 
 > **This chain applies to both printers.** Examples below use the CC2's
 > entity ids; for a Centauri Carbon (CC1), substitute `centauri_carbon_`
-> for `centauri_carbon_2_` in every entity id and create the matching
-> `input_text.centauri_carbon_cached_slot_data` helper. Duplicate the
-> cache, reset, and push automations once per printer.
+> for `centauri_carbon_2_` in every entity id, create the matching
+> `sensor.centauri_carbon_cached_slot_data` template sensor, and use
+> different event names (`cache_cc1_data` / `reset_cc1_data`) so the two
+> printers' caches don't overwrite each other. Duplicate the cache, reset,
+> and push automations once per printer.
 
 **Proxy-only sensors** (created only when a proxy URL is configured):
 * `sensor.centauri_carbon_2_a1_grams` through `a4_grams` — per-slot planned weight
@@ -78,7 +80,7 @@ The integration exposes this data as sensors when the proxy URL is configured (S
 
 1. ElegooSlicer uploads gcode through the proxy → proxy saves per-slot metadata
 2. HA integration fetches proxy data when a print starts → per-slot sensors populate
-3. A cache automation saves the slot data to an `input_text` helper (slot sensors clear to "unknown" on print complete)
+3. A cache automation fires an event; a template sensor stores the slot data in a `slot_data` attribute (slot sensors clear to "unknown" on print complete)
 4. On print complete, the push automation reads the cached data, matches each filament name to a Spoolman spool, and calls `spoolman.use_spool_filament`
 
 ### Prerequisites
@@ -99,9 +101,65 @@ rest_command:
 
 ### Required helper
 
-Create in Settings → Devices & Services → Helpers:
+Add this template sensor to `configuration.yaml`, then reload the template
+integration (Settings → Devices & Services → Template → Reload, or restart HA):
 
-* **Cached CC2 Slot Data** — Input Text (`input_text.centauri_carbon_2_cached_slot_data`) with max length 255
+```yaml
+template:
+  - sensor:
+      - name: "Centauri Carbon 2 Cached Slot Data"
+        unique_id: centauri_carbon_2_cached_slot_data
+        state: >
+          {{ 'cached' if trigger.event.event_type == 'cache_cc2_data'
+             else 'empty' }}
+        attributes:
+          slot_data: >
+            {% if trigger.event.event_type == 'cache_cc2_data' %}
+              {{ {'task_id': trigger.event.data.task_id,
+                 'a1': {'name': trigger.event.data.n1,
+                        'grams': trigger.event.data.g1 | float(0)},
+                 'a2': {'name': trigger.event.data.n2,
+                        'grams': trigger.event.data.g2 | float(0)},
+                 'a3': {'name': trigger.event.data.n3,
+                        'grams': trigger.event.data.g3 | float(0)},
+                 'a4': {'name': trigger.event.data.n4,
+                        'grams': trigger.event.data.g4 | float(0)}} }}
+            {% else %}
+              {{ {'task_id': trigger.event.data.task_id,
+                 'a1': {'name': '', 'grams': 0},
+                 'a2': {'name': '', 'grams': 0},
+                 'a3': {'name': '', 'grams': 0},
+                 'a4': {'name': '', 'grams': 0}} }}
+            {% endif %}
+        trigger:
+          - trigger: event
+            event_type:
+              - cache_cc2_data
+              - reset_cc2_data
+```
+
+The sensor's main state is only a `cached` / `empty` marker; the data lives
+in the `slot_data` attribute, which Home Assistant stores as a native
+dictionary.
+
+**Why a template sensor instead of an `input_text` helper.** The cache holds
+the filament names of all four slots, and Home Assistant *states* are capped
+at 255 characters. Verbose slicer preset names (brand + material + color
+profile) easily exceed the cap, and HA then rejects the whole
+`input_text.set_value` write — the cache stayed empty and the
+completion push never ran. Template sensor attributes have no such limit, so the cache
+holds the full data. The events only carry short strings; the sensor
+assembles the dictionary itself, and no `to_json` / `from_json` juggling is
+needed anywhere.
+
+The `task_id` inside the attribute ties the cache to the print it was
+captured for: the push automation below only acts when it matches the printer's
+current task id, so a cache that survived a Home Assistant restart (template
+sensor states are restored) can never be applied to a different print.
+
+**Migrating from the `input_text` version:** add the sensor, replace the three
+automations below, and delete the old `input_text.centauri_carbon_2_cached_slot_data`
+helper.
 
 ### Optional: Per-slot Spoolman remaining weight sensors
 
@@ -287,7 +345,9 @@ update_spoolman_from_filament_name:
 
 ### Automation: Cache CC2 Slot Data
 
-Caches the per-slot filament names and grams as JSON into the `input_text` helper whenever the proxy sensors populate. Required because the sensors clear to "unknown" on print complete.
+Fires the `cache_cc2_data` event whenever the proxy sensors populate; the
+template sensor above turns it into the `slot_data` attribute. Required
+because the sensors clear to "unknown" on print complete.
 
 **Trigger on all four slot sensors, with `mode: restart` and a settle
 delay.** The integration writes the four slot sensors one after another
@@ -313,30 +373,33 @@ conditions:
       {{ trigger.to_state.state not in ['unknown', 'unavailable'] }}
 actions:
   - delay: "00:00:02"
-  - action: input_text.set_value
-    target:
-      entity_id: input_text.centauri_carbon_2_cached_slot_data
-    data:
-      value: >
-        {% set n1 = states('sensor.centauri_carbon_2_a1_name') %}
-        {% set n2 = states('sensor.centauri_carbon_2_a2_name') %}
-        {% set n3 = states('sensor.centauri_carbon_2_a3_name') %}
-        {% set n4 = states('sensor.centauri_carbon_2_a4_name') %}
-        {{ {
-          'a1': {'name': '' if n1 in ['unknown','unavailable'] else n1,
-                 'grams': states('sensor.centauri_carbon_2_a1_grams') | float(0) | round(2)},
-          'a2': {'name': '' if n2 in ['unknown','unavailable'] else n2,
-                 'grams': states('sensor.centauri_carbon_2_a2_grams') | float(0) | round(2)},
-          'a3': {'name': '' if n3 in ['unknown','unavailable'] else n3,
-                 'grams': states('sensor.centauri_carbon_2_a3_grams') | float(0) | round(2)},
-          'a4': {'name': '' if n4 in ['unknown','unavailable'] else n4,
-                 'grams': states('sensor.centauri_carbon_2_a4_grams') | float(0) | round(2)}
-        } | to_json }}
+  # The event carries short strings only; the template sensor assembles the
+  # dictionary. The task id ties the cache to this print (see the sensor above).
+  - event: cache_cc2_data
+    event_data:
+      task_id: "{{ states('sensor.centauri_carbon_2_task_id') }}"
+      n1: >
+        {% set n = states('sensor.centauri_carbon_2_a1_name') %}
+        {{ '' if n in ['unknown', 'unavailable'] else n }}
+      g1: "{{ states('sensor.centauri_carbon_2_a1_grams') | float(0) | round(2) }}"
+      n2: >
+        {% set n = states('sensor.centauri_carbon_2_a2_name') %}
+        {{ '' if n in ['unknown', 'unavailable'] else n }}
+      g2: "{{ states('sensor.centauri_carbon_2_a2_grams') | float(0) | round(2) }}"
+      n3: >
+        {% set n = states('sensor.centauri_carbon_2_a3_name') %}
+        {{ '' if n in ['unknown', 'unavailable'] else n }}
+      g3: "{{ states('sensor.centauri_carbon_2_a3_grams') | float(0) | round(2) }}"
+      n4: >
+        {% set n = states('sensor.centauri_carbon_2_a4_name') %}
+        {{ '' if n in ['unknown', 'unavailable'] else n }}
+      g4: "{{ states('sensor.centauri_carbon_2_a4_grams') | float(0) | round(2) }}"
 ```
 
 ### Automation: Reset CC2 Slot Cache on New Job
 
-Zeroes the cache whenever a new task id appears. Without this, a print
+Zeroes the cache whenever a new task id appears, by firing the
+`reset_cc2_data` event. Without this, a print
 whose upload never reached the capture proxy (for example, the slicer
 was re-added via auto-discovery and uploaded directly to the printer)
 leaves the *previous* print's cache in place — and the completion push
@@ -361,20 +424,24 @@ conditions:
          and trigger.from_state is not none
          and trigger.to_state.state != trigger.from_state.state }}
 actions:
-  - action: input_text.set_value
-    target:
-      entity_id: input_text.centauri_carbon_2_cached_slot_data
-    data:
-      value: >
-        {{ {'a1': {'name': '', 'grams': 0},
-            'a2': {'name': '', 'grams': 0},
-            'a3': {'name': '', 'grams': 0},
-            'a4': {'name': '', 'grams': 0}} | to_json }}
+  # The task id is stored in the reset branch, so the cache stays "valid but
+  # empty" for this task: the push automation treats it as a valid cache with
+  # nothing to push (silent) rather than a missing one (notification).
+  - event: reset_cc2_data
+    event_data:
+      task_id: "{{ states('sensor.centauri_carbon_2_task_id') }}"
 ```
 
 ### Automation: CC2 Spoolman Update
 
-On print complete, reads the cached slot data and pushes usage to Spoolman for each slot that consumed filament.
+On print complete, reads the cached slot data from the template sensor's
+`slot_data` attribute and pushes usage to Spoolman for each slot that
+consumed filament.
+
+The push only happens when the cache's `task_id` matches the printer's
+current task id. A cache from a different print (for example, restored after
+a Home Assistant restart) is rejected and reported instead of deducting the
+old print's filament a second time.
 
 ```yaml
 alias: CC2 Spoolman Update
@@ -386,16 +453,18 @@ triggers:
     trigger: state
 conditions: []
 actions:
+  # state_attr returns the attribute as stored; rendering it through a
+  # template parses the dict back into a native mapping, so slot_data below
+  # is a real dictionary - no to_json/from_json juggling anywhere.
   - variables:
-      raw_data: "{{ states('input_text.centauri_carbon_2_cached_slot_data') }}"
+      slot_data: "{{ state_attr('sensor.centauri_carbon_2_cached_slot_data', 'slot_data') }}"
   - choose:
       - conditions:
           - condition: template
             value_template: >
-              {{ raw_data not in ['unknown', 'unavailable', '', 'None'] }}
+              {{ slot_data is mapping
+                 and slot_data.get('task_id') == states('sensor.centauri_carbon_2_task_id') }}
         sequence:
-          - variables:
-              slot_data: "{{ raw_data if raw_data is mapping else raw_data | from_json }}"
           - repeat:
               for_each:
                 - a1
@@ -407,20 +476,21 @@ actions:
                     - conditions:
                         - condition: template
                           value_template: >
-                            {% set slot = slot_data[repeat.item] %}
-                            {{ slot.grams | float(0) > 0
-                               and slot.name not in ['', none, 'None'] }}
+                            {% set slot = slot_data.get(repeat.item, {}) %}
+                            {{ slot.get('grams', 0) | float(0) > 0
+                               and slot.get('name', '') not in ['', none, 'None'] }}
                       sequence:
                         - action: script.update_spoolman_from_filament_name
                           data:
-                            filament_name: "{{ slot_data[repeat.item].name }}"
-                            use_weight: "{{ slot_data[repeat.item].grams | float | round(2) }}"
+                            filament_name: "{{ slot_data[repeat.item]['name'] }}"
+                            use_weight: "{{ slot_data[repeat.item]['grams'] | float | round(2) }}"
     default:
       - action: persistent_notification.create
         data:
           title: "Spoolman: CC2 no cached slot data"
           message: >
-            CC2 print completed but no cached slot data was found.
+            CC2 print completed but no usable cached slot data was found
+            (no cache, or the cache belongs to a different print).
             Filament usage was not tracked. Make sure the gcode capture
             proxy is configured and the "Cache CC2 Slot Data" automation
             is enabled.
