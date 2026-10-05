@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Firmware update entity for SDCP V3 printers: new printer firmware now shows up in **Settings → Updates** with Elegoo's changelog as release notes, instead of only as the diagnostic Firmware Update Available binary sensor (which stays). Read-only - SDCP has no install command, so the update is still installed from the printer's screen.
 - Print file and print tray selects with Refresh File List and Print Selected File buttons for the Centauri Carbon 2: the files in the printer's local storage (method 1044), a tray to print from, and a button to start. Choosing never starts a print; the button does.
 - Canvas (AMS) support for the Centauri Carbon (CC1): per-slot filament sensors, active tray, and filament colors, matching the existing CC2 support. Canvas presence is auto-detected during setup and stored per printer.
 - Per-slot filament usage sensors for the CC1 via the gcode capture proxy. The proxy URL is now configured in the WebSocket printer options, and works with or without a Canvas installed.
@@ -21,6 +22,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- A failed firmware check (e.g. Elegoo's server unreachable) no longer resets Firmware Update Available to "no update" until the next check 12 hours later; the last known result is kept.
 - WebSocket discovery now recognizes hostnames by their resolved IPv4 address, and options updates validate the newly submitted address.
 - CC1 print status no longer sticks on a stale state for the remainder of a job when the printer holds an unmapped milestone code.
 - The Canvas auto-detection step in setup is bounded by a timeout, so a device that accepts connections but never answers can no longer hang the config flow.

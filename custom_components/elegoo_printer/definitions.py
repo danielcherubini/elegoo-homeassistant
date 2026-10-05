@@ -16,6 +16,7 @@ from homeassistant.components.number import NumberEntityDescription, NumberMode
 from homeassistant.components.select import SelectEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
+from homeassistant.components.update import UpdateDeviceClass, UpdateEntityDescription
 from homeassistant.const import (
     PERCENTAGE,
     EntityCategory,
@@ -596,6 +597,14 @@ PRINTER_ATTRIBUTES_BINARY_V3_ONLY: tuple[
     ),
 )
 
+
+# Firmware update entity, only on V3 printers - reads the same firmware check
+# as the Firmware Update Available binary sensor above
+PRINTER_FIRMWARE_UPDATE = UpdateEntityDescription(
+    key="firmware_update",
+    name="Firmware",
+    device_class=UpdateDeviceClass.FIRMWARE,
+)
 
 # Binary sensors only available on printers with vat heating
 PRINTER_BINARY_STATUS_RESIN_VAT_HEATER: tuple[
