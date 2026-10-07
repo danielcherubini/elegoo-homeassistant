@@ -33,6 +33,8 @@ CONF_MQTT_EXTERNAL_PORT = "mqtt_external_port"
 CONF_CC2_ACCESS_CODE = "cc2_access_code"
 CONF_CC2_TOKEN_STATUS = "cc2_token_status"  # noqa: S105
 CONF_GCODE_PROXY_URL = "gcode_proxy_url"
+CONF_PROXY_HOST = "proxy_host"
+CONF_SERIAL = "serial"
 
 # Websocket and proxy settings
 DEFAULT_BROADCAST_ADDRESS = "255.255.255.255"
