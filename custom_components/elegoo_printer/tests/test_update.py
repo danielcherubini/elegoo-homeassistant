@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock
 
+import pytest
+
 from custom_components.elegoo_printer import update
 from custom_components.elegoo_printer.api import ElegooPrinterApiClient
 from custom_components.elegoo_printer.sdcp.models.enums import ProtocolVersion
@@ -126,6 +128,16 @@ async def test_versions_compared_without_v_prefix(entry: SimpleNamespace) -> Non
     assert entity.version_is_newer("1.1.40", "V1.1.40") is False
 
 
+async def test_lowercase_v_prefix_compares_as_a_version(
+    entry: SimpleNamespace,
+) -> None:
+    """A lowercase ``v`` prefix compares equal, not as a different version."""
+    entity = _entity(entry, {"update_available": False, "current_version": "v1.2.2"})
+
+    assert entity.version_is_newer("1.2.2", "v1.2.2") is False
+    assert entity.version_is_newer("1.2.3", "v1.2.2") is True
+
+
 async def test_off_after_installing_newer_than_advertised(
     entry: SimpleNamespace,
 ) -> None:
@@ -203,11 +215,35 @@ async def test_successful_check_maps_the_server_response(
     }
 
 
+async def test_release_summary_carries_the_changelog(entry: SimpleNamespace) -> None:
+    """The changelog doubles as the inline summary on the Updates card."""
+    entity = _entity(
+        entry,
+        {"update_available": True, "current_version": "V1.1.40", "changelog": "Fixes"},
+    )
+
+    assert entity.release_summary == "Fixes"
+
+
+async def test_release_summary_is_none_without_a_check(entry: SimpleNamespace) -> None:
+    """No changelog means no summary, rather than an empty one."""
+    entity = _entity(entry, {})
+
+    assert entity.release_summary is None
+
+
+@pytest.mark.parametrize("protocol_version", [ProtocolVersion.V1, ProtocolVersion.CC2])
 async def test_setup_skips_non_v3_printers(
-    hass: MagicMock, entry: SimpleNamespace
+    hass: MagicMock, entry: SimpleNamespace, protocol_version: ProtocolVersion
 ) -> None:
-    """Only V3 printers get the entity, like the binary sensor."""
-    entry.runtime_data.api.printer.protocol_version = ProtocolVersion.V1
+    """
+    Only V3 printers get the entity, like the binary sensor.
+
+    CC2 is pinned alongside V1 because it is a current product, and the
+    proxy-configured CC2 path builds its printer without discovery, so it
+    relies on this gate rather than on a discovery-set protocol.
+    """
+    entry.runtime_data.api.printer.protocol_version = protocol_version
     add_entities = AsyncMock()
 
     await update.async_setup_entry(hass, entry, add_entities)

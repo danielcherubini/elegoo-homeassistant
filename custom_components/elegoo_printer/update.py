@@ -107,20 +107,31 @@ class ElegooPrinterFirmwareUpdate(ElegooPrinterEntity, UpdateEntity):
 
     def version_is_newer(self, latest_version: str, installed_version: str) -> bool:
         """
-        Compare the versions, ignoring a leading ``V``.
+        Compare the versions directly, prefix aside.
 
         The printer reports ``V1.1.40`` while the server answers ``1.4.46``
-        (seen on a Centauri Carbon). Comparing the live installed version
-        keeps the entity right after an update, when Elegoo's flag is stale
-        until the next 12-hourly check; the flag is only the fallback for
-        versions that can't be compared.
+        (seen on a Centauri Carbon); ``AwesomeVersion`` already ignores a
+        leading ``V``/``v``, so the two compare without normalising them
+        first. Comparing the live installed version keeps the entity right
+        after an update, when Elegoo's flag is stale until the next 12-hourly
+        check; the flag is only the fallback for versions that can't be
+        compared.
         """
         try:
-            return AwesomeVersion(latest_version.lstrip("Vv")) > AwesomeVersion(
-                installed_version.lstrip("Vv")
-            )
+            return AwesomeVersion(latest_version) > AwesomeVersion(installed_version)
         except AwesomeVersionCompareException:
             return bool(self._info.get("update_available"))
+
+    @property
+    def release_summary(self) -> str | None:
+        """
+        Return the changelog as the dashboard's inline summary.
+
+        Home Assistant truncates this to 255 characters itself, so the full
+        changelog is passed through: the summary shows on the Updates card and
+        ``async_release_notes`` offers the whole thing in the dialog.
+        """
+        return self._info.get("changelog")
 
     async def async_release_notes(self) -> str | None:
         """Return Elegoo's changelog for the latest firmware."""

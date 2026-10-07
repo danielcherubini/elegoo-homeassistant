@@ -1085,7 +1085,9 @@ class ElegooPrinterApiClient:
         Check if a firmware update is available.
 
         Returns:
-            bool: True if update is available, False otherwise.
+            bool: True if update is available, False otherwise. False is also
+                returned when the check could not be performed; use
+                ``async_get_firmware_update_info`` to tell those apart.
 
         """
         info = await self.async_get_firmware_update_info()
