@@ -1,7 +1,28 @@
 ---
-status: committed
+status: implemented
 done-when: A CC2 can be added and fully driven (MQTT control, g-code upload, camera) through a user-hosted forward proxy by setting `proxy_host`; discovery is skipped when `proxy_host` is set; the serial is auto-learned or prompted; the camera streams through the proxy; runtime setup (api.py) connects through the proxy; unset `proxy_host` behaves exactly as today.
 ---
+
+> **Implemented** (all six tasks, on `stack/cc2-proxy-model`). Deviations from the
+> plan, all deliberate:
+>
+> 1. **Task 3** — the proxy short-circuit is a method (`_async_handle_proxy_entry`)
+>    returning `None` for "no proxy entered", not inline: the inline version
+>    pushed `async_step_manual_ip` over `PLR0911`.
+> 2. **Task 3** — the constructed printer's `name` is left **empty**, not
+>    `"Elegoo CC2"`. Every other path titles from `printer.name or "Elegoo Printer"`,
+>    and `sync_from_attributes` fills in the printer's real `hostname` on the first
+>    attributes poll — verified end to end, so the entry ends up correctly named.
+>    `model` stays the literal `"Centauri Carbon 2"` because `PrinterType.from_model`
+>    derives `printer_type` from it.
+> 3. **Task 4** — the bound parameter is `wait_timeout`, not `timeout` (`ASYNC109`
+>    bans `timeout=` on async defs, and the rule's structured-concurrency premise
+>    genuinely does not hold: the bound is *per password attempt*). The wait uses
+>    `async with asyncio.timeout()` in an extracted `_await_serial_topic`, which
+>    also avoids a `B023` closure-over-loop-variable bug in the plan's snippet.
+> 4. **Task 5** — `_apply_serial` is a helper, because both the attempt's printer
+>    **and** `selected_printer` need the serial: the next attempt rebuilds from the
+>    latter, so setting only the local copy silently loses it on a retry.
 
 # CC2 `proxy_host` — connect the integration through a forward proxy — Plan
 
