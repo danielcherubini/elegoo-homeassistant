@@ -232,6 +232,20 @@ async def test_release_summary_is_none_without_a_check(entry: SimpleNamespace) -
     assert entity.release_summary is None
 
 
+async def test_release_url_is_the_package_link(entry: SimpleNamespace) -> None:
+    """The firmware package link is offered from the Updates dialog."""
+    entity = _entity(
+        entry,
+        {
+            "update_available": True,
+            "current_version": "V1.1.40",
+            "package_url": "https://example.invalid/fw.bin",
+        },
+    )
+
+    assert entity.release_url == "https://example.invalid/fw.bin"
+
+
 @pytest.mark.parametrize("protocol_version", [ProtocolVersion.V1, ProtocolVersion.CC2])
 async def test_setup_skips_non_v3_printers(
     hass: MagicMock, entry: SimpleNamespace, protocol_version: ProtocolVersion
