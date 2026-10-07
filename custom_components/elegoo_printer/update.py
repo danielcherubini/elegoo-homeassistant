@@ -133,11 +133,6 @@ class ElegooPrinterFirmwareUpdate(ElegooPrinterEntity, UpdateEntity):
         """
         return self._info.get("changelog")
 
-    @property
-    def release_url(self) -> str | None:
-        """Return Elegoo's download link for the latest firmware package."""
-        return self._info.get("package_url")
-
     async def async_release_notes(self) -> str | None:
         """Return Elegoo's changelog for the latest firmware."""
         return self._info.get("changelog")
