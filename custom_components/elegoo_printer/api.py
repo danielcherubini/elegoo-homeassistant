@@ -1085,7 +1085,9 @@ class ElegooPrinterApiClient:
         Check if a firmware update is available.
 
         Returns:
-            bool: True if update is available, False otherwise.
+            bool: True if update is available, False otherwise. False is also
+                returned when the check could not be performed; use
+                ``async_get_firmware_update_info`` to tell those apart.
 
         """
         info = await self.async_get_firmware_update_info()
@@ -1096,18 +1098,14 @@ class ElegooPrinterApiClient:
         Get detailed firmware update information.
 
         Returns:
-            dict: Firmware update details including versions and changelog.
+            dict: Firmware update details including versions and changelog,
+                or an empty dict when the check failed, so the coordinator
+                keeps the last known result instead of reporting "no update".
 
         """
         update_data = await self.async_check_firmware_update()
         if not update_data:
-            return {
-                "update_available": False,
-                "current_version": self.printer.firmware,
-                "latest_version": None,
-                "package_url": None,
-                "changelog": None,
-            }
+            return {}
 
         return {
             "update_available": update_data.get("update", False),

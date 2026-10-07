@@ -213,6 +213,28 @@ async def test_firmware_check_is_rate_limited_across_refreshes(
     entry.runtime_data.api.async_get_firmware_update_info.assert_awaited_once()
 
 
+async def test_failed_firmware_check_keeps_the_last_result(
+    hass: MagicMock,
+    entry: SimpleNamespace,
+) -> None:
+    """An empty result from a failed check leaves the known update in place."""
+    printer_data = PrinterData()
+    entry.runtime_data.api.async_get_printer_data.return_value = printer_data
+    known = {"update_available": True, "current_version": "V1.1.40"}
+    entry.runtime_data.api.async_get_firmware_update_info.return_value = known
+
+    coordinator = _make_coordinator(hass, entry)
+    await coordinator.async_refresh()
+    assert coordinator.data.firmware_update_info == known
+
+    # Next due check fails: the API returns {}.
+    entry.runtime_data.api.async_get_firmware_update_info.return_value = {}
+    coordinator._last_firmware_check = None
+    await coordinator.async_refresh()
+
+    assert coordinator.data.firmware_update_info == known
+
+
 async def test_refresh_fetches_the_file_list_for_cc2_once_per_interval(
     hass: MagicMock, entry: SimpleNamespace
 ) -> None:
