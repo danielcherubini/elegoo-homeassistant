@@ -45,17 +45,25 @@ from custom_components.elegoo_printer.tests.fakes import (
 # Named constants for PLR2004 suspects.
 EXPECTED_SUBSCRIPTIONS = 3
 NOZZLE_TEMP = 21.5
+PRINTER_IP = "10.0.0.9"
+PROXY_IP = "10.0.0.5"
+PRINTER_STREAM_URL = "http://10.0.0.9:8080/?action=stream"
+PROXY_STREAM_URL = "http://10.0.0.5:8080/?action=stream"
 
 
-def _make_printer() -> Printer:
+def _make_printer(*, proxy_host: str | None = None) -> Printer:
     """Build the printer object the client is connected with."""
     printer = Printer()
     printer.name = "CC2TestPrinter"
     printer.id = "test_serial"
+    printer.ip_address = PRINTER_IP
+    printer.proxy_host = proxy_host
     return printer
 
 
-def _make_client() -> tuple[ElegooCC2Client, FakeAiomqttClient]:
+def _make_client(
+    printer: Printer | None = None,
+) -> tuple[ElegooCC2Client, FakeAiomqttClient]:
     """Wire a client to the fake via the ``client_factory`` seam."""
     fake = FakeAiomqttClient()
 
@@ -69,6 +77,7 @@ def _make_client() -> tuple[ElegooCC2Client, FakeAiomqttClient]:
         access_code="x",  # Skip the ""/"123456" password-fallback loop.
         logger=MagicMock(),
         client_factory=factory,
+        printer=printer,
     )
     return client, fake
 
@@ -356,3 +365,123 @@ async def test_video_response_updates_video_data(
     assert isinstance(client.printer_data.video, ElegooVideo)
     assert await client.get_printer_status() is client.printer_data
     await _teardown(client, None)
+
+
+# --- connection_host routing (#414) -------------------------------------------------
+
+
+async def test_connect_printer_targets_proxy_when_proxy_host_set() -> None:
+    """A printer with proxy_host routes the MQTT connection at the proxy."""
+    client, fake = _make_client()
+    fake.queue_message(
+        f"elegoo/{client.serial_number}/register_response",
+        {"error": CC2_REG_OK},
+    )
+    echo = asyncio.create_task(_echo_cc2_responses(client, fake))
+    try:
+        assert (
+            await client.connect_printer(
+                _make_printer(proxy_host=PROXY_IP),
+            )
+            is True
+        )
+        assert client.printer_ip == PROXY_IP
+        assert fake.kwargs["hostname"] == PROXY_IP
+    finally:
+        await _teardown(client, echo)
+
+
+async def test_connect_printer_targets_printer_ip_without_proxy_host() -> None:
+    """Without proxy_host the MQTT connection targets the printer IP itself."""
+    client, fake = _make_client()
+    fake.queue_message(
+        f"elegoo/{client.serial_number}/register_response",
+        {"error": CC2_REG_OK},
+    )
+    echo = asyncio.create_task(_echo_cc2_responses(client, fake))
+    try:
+        assert await client.connect_printer(_make_printer()) is True
+        assert client.printer_ip == PRINTER_IP
+        assert fake.kwargs["hostname"] == PRINTER_IP
+    finally:
+        await _teardown(client, echo)
+
+
+async def _video_url_for(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    proxy_host: str | None,
+    response_result: dict[str, Any],
+) -> str:
+    """Drive a video-stream response through the listener, return the URL used."""
+    _speed_up_wait_for(monkeypatch)
+    printer = _make_printer(proxy_host=proxy_host)
+    # _handle_video_response builds from self.printer_ip, which in production
+    # connect_printer derives from printer.connection_host.
+    client, fake = _make_client(printer)
+    client.printer_ip = printer.connection_host or client.printer_ip
+    await _make_connected(client, fake)
+    # PrinterData pre-seeds an empty ElegooVideo; clear it so the wait below
+    # observes the response under test rather than the default.
+    client.printer_data.video = None
+
+    fake.queue_message(
+        f"elegoo/{client.serial_number}/api_response",
+        {"id": 997, "method": CC2_CMD_SET_VIDEO_STREAM, "result": response_result},
+    )
+    await _wait_until(lambda: client.printer_data.video is not None)
+    video_url = client.printer_data.video.video_url
+    await _teardown(client, None)
+    return video_url
+
+
+async def test_video_response_ignores_printer_url_when_proxied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With proxy_host set, the stream URL is built from the proxy host."""
+    video_url = await _video_url_for(
+        monkeypatch,
+        proxy_host=PROXY_IP,
+        response_result={"error_code": 0, "video_url": PRINTER_STREAM_URL},
+    )
+
+    assert video_url == PROXY_STREAM_URL
+
+
+async def test_video_response_prefers_printer_url_without_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without proxy_host the printer-supplied URL stays preferred."""
+    video_url = await _video_url_for(
+        monkeypatch,
+        proxy_host=None,
+        response_result={"error_code": 0, "video_url": PRINTER_STREAM_URL},
+    )
+
+    assert video_url == PRINTER_STREAM_URL
+
+
+async def test_video_response_builds_fallback_url_without_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without proxy_host and without a supplied URL, the default is built."""
+    video_url = await _video_url_for(
+        monkeypatch,
+        proxy_host=None,
+        response_result={"error_code": 0},
+    )
+
+    assert video_url == PRINTER_STREAM_URL
+
+
+async def test_video_response_does_not_override_on_error_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The proxy URL override is gated on success — an error yields no URL."""
+    video_url = await _video_url_for(
+        monkeypatch,
+        proxy_host=PROXY_IP,
+        response_result={"error_code": 1},
+    )
+
+    assert video_url == ""

@@ -11,7 +11,14 @@ import pytest
 from custom_components.elegoo_printer.camera import (
     FFMPEG_QUIT_TIMEOUT,
     ElegooCameraMjpeg,
+    ElegooMjpegCamera,
 )
+from custom_components.elegoo_printer.sdcp.models.enums import (
+    PrinterType,
+    ProtocolVersion,
+    TransportType,
+)
+from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 
 def _run(coro: Coroutine[Any, Any, None]) -> None:
@@ -182,3 +189,45 @@ class TestElegooCameraMjpegClose:
             assert default_shutdown_timeout == FFMPEG_QUIT_TIMEOUT
 
         _run(run_test())
+
+
+class TestElegooMjpegCameraInitialUrl:
+    """The FDM initial MJPEG URL must honor proxy_host (#414)."""
+
+    @staticmethod
+    def _cc2_printer(proxy_host: str | None) -> Printer:
+        """Build a real CC2 printer for the camera to read (never a MagicMock)."""
+        printer = Printer()
+        printer.name = "Centauri Carbon 2"
+        printer.id = "SERIAL123"
+        printer.model = "Centauri Carbon 2"
+        printer.ip_address = "10.0.0.9"
+        printer.protocol_version = ProtocolVersion.CC2
+        printer.transport_type = TransportType.CC2_MQTT
+        printer.printer_type = PrinterType.from_model("Centauri Carbon 2")
+        printer.proxy_enabled = False
+        printer.proxy_host = proxy_host
+        return printer
+
+    @classmethod
+    def _camera_for(cls, proxy_host: str | None) -> ElegooMjpegCamera:
+        """Build an ElegooMjpegCamera whose coordinator carries that printer."""
+        coordinator = MagicMock()
+        coordinator.config_entry.runtime_data.api.printer = cls._cc2_printer(proxy_host)
+        coordinator.generate_unique_id.return_value = "unique-id"
+        description = MagicMock()
+        description.name = "Camera"
+        description.key = "camera"
+        return ElegooMjpegCamera(MagicMock(), coordinator, description)
+
+    def test_proxy_host_wins_over_printer_ip(self) -> None:
+        """With proxy_host set, the stream URL points at the proxy."""
+        camera = self._camera_for("10.0.0.5")
+
+        assert camera._mjpeg_url == "http://10.0.0.5:3031/video"
+
+    def test_printer_ip_used_without_proxy_host(self) -> None:
+        """Without proxy_host the stream URL points at the printer itself."""
+        camera = self._camera_for(None)
+
+        assert camera._mjpeg_url == "http://10.0.0.9:3031/video"

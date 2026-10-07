@@ -510,8 +510,11 @@ class ElegooMjpegCamera(ElegooVideoStreamLifecycle, MjpegCamera):
             # Use centralized proxy on port 3031 with MainboardID as query parameter
             mjpeg_url = f"http://{proxy_ip}:{VIDEO_PORT}/video?id={printer.id}"
         else:
-            # Direct HTTP MJPEG stream from the printer
-            mjpeg_url = f"http://{printer.ip_address}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"
+            # Direct HTTP MJPEG stream from the printer (through the proxy host
+            # when one is configured, since connection_host derives it).
+            mjpeg_url = (
+                f"http://{printer.connection_host}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"
+            )
 
         MjpegCamera.__init__(
             self,

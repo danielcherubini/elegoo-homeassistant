@@ -241,7 +241,7 @@ class ElegooPrinterApiClient:
             access_code = config.get(CONF_CC2_ACCESS_CODE)
             gcode_proxy = _create_gcode_proxy(config, session, printer.name, logger)
             self.client = ElegooCC2Client(
-                printer_ip=printer.ip_address or "",
+                printer_ip=printer.connection_host or "",
                 serial_number=printer.id or "",
                 access_code=access_code,
                 logger=logger,
@@ -251,8 +251,8 @@ class ElegooPrinterApiClient:
             # No proxy or embedded broker for CC2
             self._proxy_server_enabled = False
             self._mqtt_broker_enabled = False
-            # Store printer IP/port for connectivity test
-            self._mqtt_host = printer.ip_address or ""
+            # Store the connection host (proxy when set) for the connectivity test
+            self._mqtt_host = printer.connection_host or ""
             self._mqtt_port = 1883  # CC2 MQTT port
 
         elif printer.transport_type == TransportType.MQTT:

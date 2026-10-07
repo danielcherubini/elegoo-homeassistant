@@ -268,7 +268,9 @@ class ElegooCC2Client:
         await self.disconnect()
 
         self.printer = printer
-        self.printer_ip = printer.ip_address or self.printer_ip
+        # connection_host is the proxy when one is configured, else the printer
+        # IP; every CC2 connection (MQTT broker, g-code upload, camera) targets it.
+        self.printer_ip = printer.connection_host or self.printer_ip
         self.serial_number = printer.id or self.serial_number
 
         self.logger.info(
@@ -1246,8 +1248,11 @@ class ElegooCC2Client:
         # CC2 may return video_url directly or just success
         # Construct URL for MJPEG stream on port 8080 if successful
         video_url = video_data.get("video_url", "")
-        if error_code == 0 and not video_url:
-            # No URL provided but success - construct default stream URL
+        if error_code == 0 and (self.printer.proxy_host or not video_url):
+            # Proxy mode: always build from the proxy host and ignore the
+            # printer-supplied URL (it embeds the printer's real IP, which a
+            # transparent tunnel does not expose to Home Assistant).
+            # No proxy: keep the existing fallback for a success without a URL.
             video_url = f"http://{self.printer_ip}:8080/?action=stream"
 
         # Convert to format ElegooVideo expects
