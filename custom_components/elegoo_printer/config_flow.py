@@ -21,7 +21,7 @@ from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .cc2.const import CC2_CONFIG_FLOW_DISCOVERY_TIMEOUT
+from .cc2.const import CC2_CONFIG_FLOW_DISCOVERY_TIMEOUT, CC2_MQTT_PORT
 from .cc2.discovery import CC2Discovery
 from .cc2.gcode_proxy import GCodeProxyClient
 from .const import (
@@ -34,6 +34,7 @@ from .const import (
     CONF_MQTT_EXTERNAL_PORT,
     CONF_PROXY_ENABLED,
     CONF_PROXY_HOST,
+    CONF_SERIAL,
     CONFIG_VERSION_5,
     DOMAIN,
     LOGGER,
@@ -213,7 +214,8 @@ async def _async_test_connection(
 
         # Create CC2 client and test connection
         cc2_client = ElegooCC2Client(
-            printer_ip=printer_object.ip_address or "",
+            # The proxy when one is configured, else the printer IP.
+            printer_ip=printer_object.connection_host or "",
             serial_number=printer_object.id or "",
             access_code=access_code,
             logger=LOGGER,
@@ -224,7 +226,18 @@ async def _async_test_connection(
             # Attempt connection with provided credentials
             connected = await cc2_client.connect_printer(printer_object)
             if not connected:
-                msg = f"Failed to authenticate with CC2 printer {printer_object.name}"
+                if printer_object.proxy_host:
+                    # Blaming the access code here would be wrong: the usual
+                    # cause is a proxy that is not running or not reachable.
+                    msg = (
+                        f"Cannot reach the proxy at "
+                        f"{printer_object.connection_host}:{CC2_MQTT_PORT} - "
+                        f"is it running?"
+                    )
+                else:
+                    msg = (
+                        f"Failed to authenticate with CC2 printer {printer_object.name}"
+                    )
                 raise ElegooConfigFlowConnectionError(msg)
 
             # Store the working password back to user_input for persistence
@@ -399,6 +412,11 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = CONFIG_VERSION_5
     MINOR_VERSION = 0
     _detected_canvas: bool | None = None
+    # The CC2 access code is a parameter of _attempt_cc2_connection, but a flow
+    # that pauses (serial prompt) must resume with it, so it is kept on the
+    # handler as well. Without this an access-code-protected printer would be
+    # retried with fallback passwords only, and fail.
+    _cc2_access_code: str | None = None
 
     def _cleanup_user_input(self, raw_ip: str) -> str | None:
         """
@@ -1044,6 +1062,107 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors=_errors,
         )
 
+    async def _async_auto_learn_serial(self, printer: Printer) -> str | None:
+        """
+        Learn the CC2 serial over MQTT when discovery was skipped.
+
+        Used only for proxy entries: a forward proxy does not answer UDP
+        discovery, so the serial that every CC2 topic embeds is otherwise
+        unknown. Best-effort — ``None`` means the caller should prompt.
+
+        Arguments:
+            printer: The printer being configured (updated in place on success).
+
+        Returns:
+            The learned serial, or None.
+
+        """
+        from .cc2.client import ElegooCC2Client  # noqa: PLC0415
+
+        client = ElegooCC2Client(
+            printer_ip=printer.connection_host or "",
+            # Deliberately empty: learning the serial is the whole point.
+            serial_number="",
+            access_code=self._cc2_access_code,
+            logger=LOGGER,
+            printer=printer,
+        )
+        try:
+            serial = await client.async_discover_serial()
+            if serial:
+                self._apply_serial(printer, serial)
+                LOGGER.info("Auto-learned CC2 serial %s via proxy", serial)
+            else:
+                LOGGER.info(
+                    "Could not auto-learn the CC2 serial via proxy %s - prompting",
+                    printer.proxy_host,
+                )
+            return serial
+        finally:
+            await client.disconnect()
+
+    def _apply_serial(self, printer: Printer, serial: str) -> None:
+        """
+        Record a learned/entered serial on both printer objects.
+
+        ``selected_printer`` is what the next attempt rebuilds from, so it has
+        to be updated too or the serial would be lost on a retry.
+
+        Arguments:
+            printer: The printer built for the current attempt.
+            serial: The serial number to record.
+
+        """
+        for target in (printer, self.selected_printer):
+            if target is not None:
+                target.id = serial
+                # CC2 uses the serial as its connection identifier.
+                target.connection = serial
+
+    async def async_step_cc2_serial_input(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """
+        Ask for the serial number when it could not be learned automatically.
+
+        Only reached for proxy entries whose serial could not be auto-learned.
+        Loop-safe: the resumed connection attempt only returns here while the
+        serial is still empty, so any submitted value breaks the loop.
+
+        Arguments:
+            user_input: The user input data.
+
+        Returns:
+            The result of the configuration flow step.
+
+        """
+        _errors = {}
+        if user_input is not None:
+            serial = (user_input.get(CONF_SERIAL) or "").strip()
+            if not serial:
+                _errors["base"] = "cc2_serial_required"
+            elif self.selected_printer is not None:
+                self._apply_serial(self.selected_printer, serial)
+                # Resume with the stored code, not None.
+                return await self._attempt_cc2_connection(
+                    access_code=self._cc2_access_code
+                )
+
+        return self.async_show_form(
+            step_id="cc2_serial_input",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_SERIAL): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                        ),
+                    ),
+                }
+            ),
+            errors=_errors,
+        )
+
     async def _attempt_cc2_connection(
         self,
         access_code: str | None,
@@ -1067,6 +1186,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if not self.selected_printer:
             return self.async_abort(reason="no_printer_selected_or_ip_provided")
 
+        # Remember the code so a flow that pauses (serial prompt) can resume
+        # with it instead of falling back to the default passwords.
+        self._cc2_access_code = access_code
+
         printer = Printer.from_dict(self.selected_printer.to_dict())
         printer.mqtt_broker_enabled = False
         printer.proxy_enabled = False
@@ -1074,6 +1197,12 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         # Preserve external_ip from manual IP entry if set
         if self.selected_printer.external_ip:
             printer.external_ip = self.selected_printer.external_ip
+
+        # A proxy entry skipped discovery, so the serial (which is part of every
+        # CC2 topic and required to register) is still unknown. Learn it, or ask.
+        needs_serial = bool(printer.proxy_host) and not printer.id
+        if needs_serial and not await self._async_auto_learn_serial(printer):
+            return await self.async_step_cc2_serial_input()
 
         # Prepare user_input with access code
         # Use explicit None check to allow empty strings
@@ -1138,7 +1267,15 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         )
                     }
                 ),
-                errors={"base": "cc2_authentication_failed"},
+                # An unreachable proxy is not a wrong access code; blaming the
+                # code would send the user hunting for a non-existent typo.
+                errors={
+                    "base": (
+                        "cc2_proxy_unreachable"
+                        if printer.proxy_host
+                        else "cc2_authentication_failed"
+                    )
+                },
             )
         except ElegooConfigFlowGeneralError as exception:
             LOGGER.error("No printer found: %s", exception)
