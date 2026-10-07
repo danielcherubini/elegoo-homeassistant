@@ -33,6 +33,7 @@ from .const import (
     CONF_MQTT_EXTERNAL_HOST,
     CONF_MQTT_EXTERNAL_PORT,
     CONF_PROXY_ENABLED,
+    CONF_PROXY_HOST,
     CONFIG_VERSION_5,
     DOMAIN,
     LOGGER,
@@ -42,7 +43,7 @@ from .sdcp.exceptions import (
     ElegooConfigFlowConnectionError,
     ElegooConfigFlowGeneralError,
 )
-from .sdcp.models.enums import PrinterType, TransportType
+from .sdcp.models.enums import PrinterType, ProtocolVersion, TransportType
 from .sdcp.models.printer import Printer
 from .websocket.client import ElegooPrinterClient
 from .websocket.server import ElegooPrinterServer
@@ -128,6 +129,13 @@ MANUAL_IP_SCHEMA = vol.Schema(
     {
         vol.Required(
             CONF_IP_ADDRESS,
+        ): selector.TextSelector(
+            selector.TextSelectorConfig(
+                type=selector.TextSelectorType.TEXT,
+            ),
+        ),
+        vol.Optional(
+            CONF_PROXY_HOST,
         ): selector.TextSelector(
             selector.TextSelectorConfig(
                 type=selector.TextSelectorType.TEXT,
@@ -377,6 +385,14 @@ async def _async_validate_input(  # noqa: PLR0912
     return {"printer": None, "errors": _errors}
 
 
+# The model a proxy-only CC2 is registered as when discovery was skipped.
+# `Printer.from_dict` recomputes `printer_type` from this string, and
+# `PrinterType.from_model` matches it on the "centauri" keyword, so it has to
+# be a real model name. The live model/name are synced from the printer's own
+# attributes once connected.
+CC2_PROXY_MODEL = "Centauri Carbon 2"
+
+
 class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Elegoo."""
 
@@ -594,6 +610,98 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors=_errors,
         )
 
+    def _build_cc2_printer_from_proxy_input(
+        self,
+        ip_address: str | None,
+        proxy_host: str,
+    ) -> Printer | None:
+        """
+        Construct a CC2 ``Printer`` for a proxy-only entry (no discovery).
+
+        A transparent forward proxy does not answer UDP discovery, so a user who
+        enters one cannot be discovered; the printer is described by hand
+        instead, mirroring ``CC2DiscoveredPrinter.to_printer()``. The serial is
+        deliberately left empty — it is acquired later in the CC2 flow.
+
+        Arguments:
+            ip_address: The printer's real IP (cleaned), or None if blank.
+            proxy_host: The forward proxy host to connect through.
+
+        Returns:
+            The constructed Printer, or None when no usable IP was given.
+
+        """
+        if not ip_address:
+            return None
+
+        printer = Printer()
+        # Name left empty on purpose: it is unknown without discovery, and the
+        # entry title falls back to "Elegoo Printer" as it does elsewhere. Both
+        # name and model are corrected from the printer's own attributes once
+        # the connection test runs.
+        printer.name = ""
+        printer.model = CC2_PROXY_MODEL
+        printer.ip_address = ip_address
+        printer.connection = ip_address
+        printer.protocol_version = ProtocolVersion.CC2
+        printer.transport_type = TransportType.CC2_MQTT
+        printer.printer_type = PrinterType.from_model(CC2_PROXY_MODEL)
+        printer.brand = "ELEGOO"
+        # The printer runs its own broker; nothing embedded is needed here.
+        printer.mqtt_broker_enabled = False
+        printer.proxy_host = proxy_host
+        return printer
+
+    async def _async_handle_proxy_entry(
+        self,
+        user_input: dict[str, Any],
+        ip_address: str | None,
+    ) -> config_entries.ConfigFlowResult | None:
+        """
+        Handle a manual-IP submission that names a forward proxy.
+
+        A forward proxy does not answer UDP discovery, so discovery is skipped
+        and the CC2 printer is described by hand. Returns ``None`` when no
+        proxy host was entered, meaning the caller should discover as before.
+
+        Arguments:
+            user_input: The manual-IP form input.
+            ip_address: The cleaned printer IP (None when blank).
+
+        Returns:
+            The next flow step, or None to continue with discovery.
+
+        """
+        proxy_host = (user_input.get(CONF_PROXY_HOST) or "").strip()
+        if not proxy_host:
+            return None
+
+        LOGGER.info(
+            "Manual IP entry: proxy_host set (%s) - skipping discovery",
+            proxy_host,
+        )
+        printer = self._build_cc2_printer_from_proxy_input(ip_address, proxy_host)
+        if printer is None:
+            LOGGER.warning(
+                "Manual IP entry: proxy_host %s set but no valid IP provided: %s",
+                proxy_host,
+                user_input.get(CONF_IP_ADDRESS),
+            )
+            return self.async_show_form(
+                step_id="manual_ip",
+                data_schema=self.add_suggested_values_to_schema(
+                    MANUAL_IP_SCHEMA, user_input
+                ),
+                errors={"base": "manual_ip_no_valid_ip"},
+            )
+
+        self.selected_printer = printer
+        self.selected_printer.external_ip = user_input.get(CONF_EXTERNAL_IP)
+        await self.async_set_unique_id(unique_id=printer.id)
+        self._abort_if_unique_id_configured()
+        LOGGER.info("Routing to CC2 auth flow for proxy entry")
+        return await self.async_step_cc2_auth_check()
+
     async def async_step_manual_ip(
         self,
         user_input: dict[str, Any] | None = None,
@@ -603,6 +711,9 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         Discovers the printer at the provided IP and routes to the appropriate
         configuration step based on the printer type (CC2, MQTT, FDM, or Resin).
+
+        When ``proxy_host`` is provided, discovery is skipped entirely and a CC2
+        printer is built directly (see :meth:`_async_handle_proxy_entry`).
 
         Arguments:
             user_input: The user input data.
@@ -615,6 +726,10 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             raw_ip = user_input[CONF_IP_ADDRESS]
             ip_address = self._cleanup_user_input(raw_ip)
+
+            proxy_result = await self._async_handle_proxy_entry(user_input, ip_address)
+            if proxy_result is not None:
+                return proxy_result
 
             LOGGER.info(
                 "Manual IP entry: attempting to discover printer at %s (original: %s)",
@@ -1255,6 +1370,14 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             else:
                 printer_data.pop(CONF_GCODE_PROXY_URL, None)
 
+            # Persist proxy_host unconditionally, *including* the empty string.
+            # The options flow merges data-first ({**entry.data, **entry.options}),
+            # so a key that only exists in entry.data cannot be removed here --
+            # only an empty-string override actually disables the proxy.
+            printer_data[CONF_PROXY_HOST] = (
+                user_input.get(CONF_PROXY_HOST) or ""
+            ).strip()
+
             return self.async_create_entry(
                 title=printer.name,
                 data=printer_data,
@@ -1278,6 +1401,9 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD),
             ),
             vol.Optional(CONF_GCODE_PROXY_URL, default=""): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
+            ),
+            vol.Optional(CONF_PROXY_HOST, default=""): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
             ),
         }
