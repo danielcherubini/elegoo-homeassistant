@@ -15,6 +15,12 @@ All notable changes to this project will be documented in this file.
 - New `start_print` service for the Centauri Carbon 2: start a G-code file already in the printer's storage from the Developer Tools UI or an automation, optionally on a chosen Canvas tray, with auto bed leveling on by default as in the slicer; the response reports whether the printer accepted the job.
 - New `update_ip` service: change a printer's IP address from the Developer Tools UI or an automation (e.g. an external IP-detection script) without deleting and re-adding the integration; the config entry reloads with the new address and the service reports whether the printer is reachable at it.
 - New **Proxy Host** option for the Centauri Carbon 2: point the whole integration at a forward proxy (e.g. [elegoo-printer-proxy](https://github.com/lantern-eight/elegoo-printer-proxy)) instead of only borrowing its parsed G-code data. MQTT control, G-code uploads and the camera all then go to the proxy on the printer's usual ports, which is what you want when Home Assistant can only reach the printer through the proxy (different network or VLAN) or when you would rather the camera came from the proxy too. It does not reduce the number of connections the printer sees — the proxy is a plain pass-through, one printer connection per client connection — so it is not a fix for the printer's connection limit. Discovery does not answer on a proxy, so it is skipped and the serial is learned from the printer's own MQTT status messages, with a prompt if the printer pushes nothing. Leave the field blank to connect directly, as before.
+- Filled in 21 previously-untranslated UI strings (proxy host, serial entry,
+     MQTT options, file-select entities) across all 17 non-English locales.
+     Machine-translated and structurally validated; not yet reviewed by native
+     speakers — corrections welcome (PR to the `translations/` directory).
+- Translation parity tests: every code-referenced error key must exist in
+     `en.json`, and all locale files must carry the same key set as `en.json`.
 
 ### Changed
 
@@ -28,6 +34,9 @@ All notable changes to this project will be documented in this file.
 - CC1 print status no longer sticks on a stale state for the remainder of a job when the printer holds an unmapped milestone code.
 - The Canvas auto-detection step in setup is bounded by a timeout, so a device that accepts connections but never answers can no longer hang the config flow.
 - `bed_leveling: false` on the CC2 now sends `printer_check: false` instead of leaving the key out. Measured on firmware 02.01.00.00: the printer remembers the last value it was given, so an omitted key means "carry on as before" rather than "off" - a job that omits it after one that sent true levels again, even with the bed temperature unchanged. An explicit false skips leveling (first layer at 180 s instead of 398 s). ElegooSlicer sends false the same way when its own bed-leveling box is unchecked.
+- The "invalid IP" error during manual IP entry now shows a proper message
+     instead of a raw translation key (the key was missing from the English base
+     and every locale).
 
 ### Breaking Changes
 
