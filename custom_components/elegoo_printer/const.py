@@ -47,6 +47,13 @@ VIDEO_ENDPOINT = "video"
 VIDEO_PORT = 3031
 WEBSOCKET_PORT = 3030
 
+# CC2 video stream, served by the printer's own MJPEG streamer and forwarded on
+# the same port by a forward proxy. Not the CC1 proxy's VIDEO_PORT/ENDPOINT
+# above: the proxy exposes the CC2 stream on 8080 only, so a CC2 URL built on
+# 3031 cannot be served through it.
+CC2_VIDEO_PORT = 8080
+CC2_VIDEO_PATH = "/?action=stream"
+
 # Firmware service settings
 FIRMWARE_SERVICE_BASE_URL = "https://mms.chituiot.com"
 FIRMWARE_UPDATE_ENDPOINT = "/mainboardVersionUpdate/getInfo.do7"

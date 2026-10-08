@@ -122,11 +122,21 @@ the proxy for **everything**, enter its address in the **Proxy Host** field
 instead (when adding the printer, or later in the CC2 options).
 
 Then MQTT control (1883), G-code uploads (80) and the camera (8080) all go to
-the proxy host rather than to the printer, so the printer sees Home Assistant
-as one more client of the proxy instead of a second set of connections of its
-own. This is what to use if the printer's connection limit is what forces you
-to power-cycle it, or if Home Assistant and the printer are on different
-networks and only the proxy can reach it.
+the proxy host rather than to the printer. Use this when Home Assistant and the
+printer are on different networks or VLANs and only the proxy can reach the
+printer, or when you would rather the camera came from the proxy too instead of
+needing a separate MJPEG entity alongside the integration's own.
+
+It is worth being clear about what this does *not* do. The proxy forwards each
+port as a plain TCP pass-through, one printer connection per client connection,
+so it does not reduce how many connections or MQTT sessions the printer sees —
+Home Assistant is still a separate client, arriving from the proxy's address
+instead of yours. If the printer's connection limit is what forces you to
+power-cycle it, routing Home Assistant through the proxy will not fix that; a
+camera-connection multiplexer in the proxy would, and that is being looked at
+upstream. See
+[#414](https://github.com/danielcherubini/elegoo-homeassistant/issues/414) for
+the current state of that.
 
 A few things to expect:
 

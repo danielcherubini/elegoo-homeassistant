@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 import aiomqtt
 
+from custom_components.elegoo_printer.const import CC2_VIDEO_PATH, CC2_VIDEO_PORT
 from custom_components.elegoo_printer.sdcp.exceptions import (
     PRINT_TRANSPORT_ERRORS,
     ElegooPrinterConnectionError,
@@ -1368,14 +1369,16 @@ class ElegooCC2Client:
         error_code = video_data.get("error_code", 0)
 
         # CC2 may return video_url directly or just success
-        # Construct URL for MJPEG stream on port 8080 if successful
+        # Construct URL for the MJPEG stream if successful
         video_url = video_data.get("video_url", "")
         if error_code == 0 and (self.printer.proxy_host or not video_url):
             # Proxy mode: always build from the proxy host and ignore the
             # printer-supplied URL (it embeds the printer's real IP, which a
             # transparent tunnel does not expose to Home Assistant).
             # No proxy: keep the existing fallback for a success without a URL.
-            video_url = f"http://{self.printer_ip}:8080/?action=stream"
+            # Shares its port and path with the camera entity's initial URL, so
+            # the two cannot drift apart.
+            video_url = f"http://{self.printer_ip}:{CC2_VIDEO_PORT}{CC2_VIDEO_PATH}"
 
         # Convert to format ElegooVideo expects
         converted_data = {

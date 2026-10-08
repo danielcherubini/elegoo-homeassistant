@@ -19,6 +19,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from propcache.api import cached_property
 
 from custom_components.elegoo_printer.const import (
+    CC2_VIDEO_PATH,
+    CC2_VIDEO_PORT,
     CONF_CAMERA_ENABLED,
     LOGGER,
     VIDEO_ENDPOINT,
@@ -509,12 +511,16 @@ class ElegooMjpegCamera(ElegooVideoStreamLifecycle, MjpegCamera):
             proxy_ip = PrinterData.get_local_ip(printer.ip_address, external_ip)
             # Use centralized proxy on port 3031 with MainboardID as query parameter
             mjpeg_url = f"http://{proxy_ip}:{VIDEO_PORT}/video?id={printer.id}"
+        elif printer.proxy_host:
+            # Through a forward proxy the CC2 stream is only reachable on the
+            # proxy's 8080 pass-through, so the CC1 proxy's 3031/`video` URL
+            # could never be served. This mirrors the URL the CC2 client builds
+            # once connected; it is a fallback either way, since
+            # _update_stream_url refreshes it before the URL is ever read.
+            mjpeg_url = f"http://{printer.proxy_host}:{CC2_VIDEO_PORT}{CC2_VIDEO_PATH}"
         else:
-            # Direct HTTP MJPEG stream from the printer (through the proxy host
-            # when one is configured, since connection_host derives it).
-            mjpeg_url = (
-                f"http://{printer.connection_host}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"
-            )
+            # Direct HTTP MJPEG stream from the printer
+            mjpeg_url = f"http://{printer.ip_address}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"
 
         MjpegCamera.__init__(
             self,

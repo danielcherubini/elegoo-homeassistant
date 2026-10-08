@@ -220,14 +220,40 @@ class TestElegooMjpegCameraInitialUrl:
         description.key = "camera"
         return ElegooMjpegCamera(MagicMock(), coordinator, description)
 
-    def test_proxy_host_wins_over_printer_ip(self) -> None:
-        """With proxy_host set, the stream URL points at the proxy."""
+    def test_proxy_host_builds_a_cc2_stream_url(self) -> None:
+        """
+        With proxy_host set, the URL targets the proxy's CC2 stream port.
+
+        Not the CC1 proxy's 3031/`video`: a forward proxy forwards the CC2
+        stream on 8080 only, so a 3031 URL could never be served through it.
+        """
         camera = self._camera_for("10.0.0.5")
 
-        assert camera._mjpeg_url == "http://10.0.0.5:3031/video"
+        assert camera._mjpeg_url == "http://10.0.0.5:8080/?action=stream"
 
     def test_printer_ip_used_without_proxy_host(self) -> None:
         """Without proxy_host the stream URL points at the printer itself."""
         camera = self._camera_for(None)
 
         assert camera._mjpeg_url == "http://10.0.0.9:3031/video"
+
+    def test_cc1_proxy_branch_is_untouched_by_proxy_host(self) -> None:
+        """
+        The CC1 local-proxy URL keeps its own host, port and query string.
+
+        proxy_host is a CC2-only field, so it must not perturb the
+        proxy_enabled branch that CC1 printers use.
+        """
+        printer = self._cc2_printer("10.0.0.5")
+        printer.proxy_enabled = True
+        coordinator = MagicMock()
+        coordinator.config_entry.runtime_data.api.printer = printer
+        coordinator.generate_unique_id.return_value = "unique-id"
+        description = MagicMock()
+        description.name = "Camera"
+        description.key = "camera"
+
+        camera = ElegooMjpegCamera(MagicMock(), coordinator, description)
+
+        assert camera._mjpeg_url.startswith("http://")
+        assert ":3031/video?id=" in camera._mjpeg_url
