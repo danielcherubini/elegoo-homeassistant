@@ -29,3 +29,46 @@ jobs:
           run: uv sync --all-extras --dev 
         - name: "Test"
           run: uv run pytest
+
+  # Part B of the HA-2026 spec (#419): a second leg that runs the suite against
+  # the *newest* Home Assistant on Python 3.14, so a future HA-2026 breakage
+  # cannot hide behind the 2025.4.0 dev pin the way #419 did. The primary leg
+  # above is unchanged and still pins 2025.4.0 on Python 3.13 - this job is
+  # forward-compat only and does not move the project's Python floor.
+  #
+  # It uses its own venv rather than `uv sync` (which would re-pin 2025.4.0).
+  # Once HA >= 2026.3, three modules our import chain needs are no longer HA
+  # *base* dependencies (HA installs component requirements lazily from
+  # manifest.json at runtime), so the job installs them explicitly. Production is
+  # unaffected: manifest.json declares the `ffmpeg` dependency, so a real HA
+  # loads it and installs these itself.
+  pytest-ha-latest:
+    name: "Pytest (newest HA, Python 3.14)"
+    runs-on: "ubuntu-latest"
+    steps:
+        - name: "Checkout the repository"
+          uses: "actions/checkout@v7"
+
+        - name: "Set up Python 3.14"
+          uses: actions/setup-python@v7
+          with:
+            python-version: "3.14"
+
+        - name: "Install uv"
+          uses: astral-sh/setup-uv@v7
+          with:
+            enable-cache: false
+
+        - name: "Install newest HA + runtime/test deps into an isolated venv"
+          run: |
+            uv venv .venv-ha-latest --python 3.14
+            uv pip install --python .venv-ha-latest/bin/python \
+              "homeassistant" \
+              "ha-ffmpeg" "numpy" "PyTurboJPEG" \
+              aiomqtt colorlog loguru websocket-client websockets \
+              amqtt paho-mqtt pytest pytest-asyncio
+
+        - name: "Test against newest HA"
+          env:
+            PYTHONPATH: "."
+          run: .venv-ha-latest/bin/python -m pytest
