@@ -20,6 +20,7 @@ from custom_components.elegoo_printer.const import (
     CONF_MQTT_EXTERNAL_HOST,
     CONF_MQTT_EXTERNAL_PORT,
     CONF_PROXY_ENABLED,
+    CONF_PROXY_HOST,
     DEFAULT_FALLBACK_IP,
     WEBSOCKET_PORT,
 )
@@ -165,6 +166,7 @@ class Printer:
     has_canvas: bool
     cc2_access_code: str | None
     cc2_token_status: int
+    proxy_host: str | None
 
     def __init__(  # noqa: PLR0915
         self,
@@ -248,6 +250,12 @@ class Printer:
         # CC2-specific settings
         self.cc2_access_code = config.get(CONF_CC2_ACCESS_CODE)
         self.cc2_token_status = config.get(CONF_CC2_TOKEN_STATUS, 0)
+        self.proxy_host = config.get(CONF_PROXY_HOST)
+
+    @property
+    def connection_host(self) -> str | None:
+        """The host to connect to: the proxy host when set, else the printer IP."""
+        return self.proxy_host or self.ip_address
 
     @staticmethod
     def _is_open_centauri(model: str | None, firmware: str | None) -> bool:
@@ -331,6 +339,7 @@ class Printer:
             "has_canvas": self.has_canvas,
             "cc2_access_code": self.cc2_access_code,
             "cc2_token_status": self.cc2_token_status,
+            "proxy_host": self.proxy_host,
         }
 
     def to_dict_safe(self) -> dict[str, Any]:
@@ -475,6 +484,7 @@ class Printer:
         printer.cc2_token_status = attrs.get(
             CONF_CC2_TOKEN_STATUS, attrs.get("cc2_token_status", 0)
         )
+        printer.proxy_host = attrs.get(CONF_PROXY_HOST, attrs.get("proxy_host"))
 
         return printer
 

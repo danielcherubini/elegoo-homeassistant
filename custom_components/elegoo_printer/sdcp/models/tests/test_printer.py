@@ -1,7 +1,13 @@
 """Tests for the Printer model."""
 
+from types import MappingProxyType
+
 import pytest
 
+from custom_components.elegoo_printer.const import (
+    CONF_PROXY_HOST,
+    CONF_SERIAL,
+)
 from custom_components.elegoo_printer.sdcp.models.attributes import PrinterAttributes
 from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
 from custom_components.elegoo_printer.sdcp.models.printer import Printer
@@ -192,3 +198,74 @@ class TestSyncFromAttributes:
         assert printer.model == "Saturn 3"
         assert printer.name == "My Printer"
         assert printer.brand == "Elegoo"
+
+
+class TestProxyHost:
+    """Test Printer.proxy_host and the derived connection_host property."""
+
+    def test_conf_proxy_host_and_serial_constants(self) -> None:
+        """Verify the CC2 config keys have the documented string values."""
+        assert CONF_PROXY_HOST == "proxy_host"
+        assert CONF_SERIAL == "serial"
+
+    def test_proxy_host_defaults_to_none_without_config(self) -> None:
+        """Verify proxy_host is None when no config provides it."""
+        printer = Printer()
+        assert printer.proxy_host is None
+
+    @pytest.mark.parametrize("proxy_host", [None, ""])
+    def test_connection_host_falls_back_to_ip_address(
+        self,
+        proxy_host: str | None,
+    ) -> None:
+        """Verify connection_host is the printer IP when proxy_host is unset."""
+        config = MappingProxyType({CONF_PROXY_HOST: proxy_host})
+        printer = Printer(config=config)
+        printer.ip_address = "192.168.1.50"
+
+        assert printer.proxy_host == proxy_host
+        assert printer.connection_host == "192.168.1.50"
+
+    def test_connection_host_prefers_proxy_host(self) -> None:
+        """Verify connection_host is the proxy host when proxy_host is set."""
+        config = MappingProxyType({CONF_PROXY_HOST: "10.0.0.9"})
+        printer = Printer(config=config)
+        printer.ip_address = "192.168.1.50"
+
+        assert printer.connection_host == "10.0.0.9"
+
+    def test_to_dict_includes_proxy_host(self) -> None:
+        """Verify to_dict persists the proxy_host value."""
+        config = MappingProxyType({CONF_PROXY_HOST: "10.0.0.9"})
+        printer = Printer(config=config)
+
+        assert printer.to_dict()["proxy_host"] == "10.0.0.9"
+
+    def test_to_dict_safe_keeps_proxy_host(self) -> None:
+        """Verify proxy_host is not redacted - a host is not a secret."""
+        config = MappingProxyType({CONF_PROXY_HOST: "10.0.0.9"})
+        printer = Printer(config=config)
+
+        assert printer.to_dict_safe()["proxy_host"] == "10.0.0.9"
+
+    def test_proxy_host_round_trips_through_to_dict_from_dict(self) -> None:
+        """Verify proxy_host and connection_host survive serialization."""
+        config = MappingProxyType({CONF_PROXY_HOST: "10.0.0.9"})
+        printer = Printer(config=config)
+        printer.ip_address = "192.168.1.50"
+
+        restored = Printer.from_dict(printer.to_dict())
+
+        assert restored.proxy_host == "10.0.0.9"
+        assert restored.ip_address == "192.168.1.50"
+        assert restored.connection_host == "10.0.0.9"
+
+    def test_connection_host_round_trips_without_proxy_host(self) -> None:
+        """Verify a printer without proxy_host still resolves to its IP."""
+        printer = Printer()
+        printer.ip_address = "192.168.1.50"
+
+        restored = Printer.from_dict(printer.to_dict())
+
+        assert restored.proxy_host is None
+        assert restored.connection_host == "192.168.1.50"

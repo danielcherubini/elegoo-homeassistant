@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 import aiomqtt
 
+from custom_components.elegoo_printer.const import CC2_VIDEO_PATH, CC2_VIDEO_PORT
 from custom_components.elegoo_printer.sdcp.exceptions import (
     PRINT_TRANSPORT_ERRORS,
     ElegooPrinterConnectionError,
@@ -71,6 +72,11 @@ from .const import (
     CC2_REG_OK,
     CC2_REG_TOO_MANY_CLIENTS,
     CC2_REGISTRATION_TIMEOUT,
+    CC2_SERIAL_DISCOVERY_TIMEOUT,
+    CC2_SERIAL_DISCOVERY_TOPIC,
+    CC2_STATUS_TOPIC,
+    CC2_STATUS_TOPIC_PARTS,
+    CC2_TOPIC_PREFIX,
     LOGGER,
 )
 from .models import CC2StatusMapper
@@ -268,7 +274,9 @@ class ElegooCC2Client:
         await self.disconnect()
 
         self.printer = printer
-        self.printer_ip = printer.ip_address or self.printer_ip
+        # connection_host is the proxy when one is configured, else the printer
+        # IP; every CC2 connection (MQTT broker, g-code upload, camera) targets it.
+        self.printer_ip = printer.connection_host or self.printer_ip
         self.serial_number = printer.id or self.serial_number
 
         self.logger.info(
@@ -347,6 +355,123 @@ class ElegooCC2Client:
             attempt_num,
         )
         return False
+
+    @staticmethod
+    def _serial_from_status_topic(topic: str) -> str | None:
+        """
+        Extract the printer serial from an ``elegoo/{sn}/api_status`` topic.
+
+        Arguments:
+            topic: The MQTT topic a message arrived on.
+
+        Returns:
+            The serial, or None when the topic is not a status topic.
+
+        """
+        parts = topic.split("/")
+        if (
+            len(parts) == CC2_STATUS_TOPIC_PARTS
+            and parts[0] == CC2_TOPIC_PREFIX
+            and parts[2] == CC2_STATUS_TOPIC
+        ):
+            return parts[1]
+        return None
+
+    @staticmethod
+    async def _await_serial_topic(client: Any, wait_timeout: float) -> str | None:
+        """
+        Read messages until a status topic reveals the serial, or time runs out.
+
+        Arguments:
+            client: The connected MQTT client to read from.
+            wait_timeout: Seconds to wait for a status push.
+
+        Returns:
+            The serial, or None on timeout or clean disconnect.
+
+        """
+        try:
+            async with asyncio.timeout(wait_timeout):
+                async for message in client.messages:
+                    serial = ElegooCC2Client._serial_from_status_topic(
+                        str(message.topic)
+                    )
+                    if serial:
+                        return serial
+        except TimeoutError:
+            return None
+        return None
+
+    async def async_discover_serial(
+        self, wait_timeout: float = CC2_SERIAL_DISCOVERY_TIMEOUT
+    ) -> str | None:
+        """
+        Best-effort learn the printer serial from an MQTT status push.
+
+        Used when discovery was skipped (a forward proxy does not answer UDP
+        discovery), so the serial — which is baked into every CC2 topic — is
+        unknown. Connects to the broker, subscribes to ``elegoo/+/api_status``
+        and returns the serial from the first matching status topic.
+
+        This is a *transient* probe: it deliberately does NOT register (an
+        empty serial would publish ``elegoo//api_register``), does not start the
+        message listener or heartbeat, and always disconnects on exit. It never
+        raises — a proxy that is down or a firmware that pushes nothing returns
+        ``None`` so the caller can fall back to prompting the user.
+
+        The bound is named ``wait_timeout`` rather than ``timeout`` because it
+        applies per password attempt: the outer caller cannot express that with a
+        single structured-concurrency scope around the whole loop.
+
+        Arguments:
+            wait_timeout: Seconds to wait for a status push, per password attempt.
+
+        Returns:
+            The learned serial, or None if none could be learned.
+
+        """
+        # Mirror connect_printer's password strategy exactly: an explicit access
+        # code is the only candidate, otherwise the usual fallbacks.
+        if self.access_code is not None:
+            passwords_to_try: list[str] = [self.access_code]
+        else:
+            passwords_to_try = ["", CC2_MQTT_DEFAULT_PASSWORD]
+
+        for password in passwords_to_try:
+            serial: str | None = None
+            try:
+                client_cls = self._client_factory or aiomqtt.Client
+                client = client_cls(
+                    hostname=self.printer_ip,
+                    port=CC2_MQTT_PORT,
+                    keepalive=CC2_MQTT_KEEPALIVE,
+                    username=CC2_MQTT_USERNAME,
+                    password=password,
+                    identifier=self._client_id,
+                )
+                # Explicit enter/exit (not `async with`) so disconnect() stays
+                # the only closer, exactly like _try_connect_with_password.
+                self.mqtt_client = client
+                await client.__aenter__()
+                await client.subscribe(CC2_SERIAL_DISCOVERY_TOPIC)
+                serial = await self._await_serial_topic(client, wait_timeout)
+            except (TimeoutError, OSError, aiomqtt.MqttError):
+                serial = None
+            finally:
+                await self.disconnect()
+
+            if serial:
+                self.logger.debug(
+                    "Learned CC2 serial %s from %s", serial, self.printer_ip
+                )
+                return serial
+
+        self.logger.info(
+            "Could not learn a CC2 serial from %s within %ss",
+            self.printer_ip,
+            wait_timeout,
+        )
+        return None
 
     async def _try_connect_with_password(self, password: str) -> bool:
         """
@@ -1244,11 +1369,16 @@ class ElegooCC2Client:
         error_code = video_data.get("error_code", 0)
 
         # CC2 may return video_url directly or just success
-        # Construct URL for MJPEG stream on port 8080 if successful
+        # Construct URL for the MJPEG stream if successful
         video_url = video_data.get("video_url", "")
-        if error_code == 0 and not video_url:
-            # No URL provided but success - construct default stream URL
-            video_url = f"http://{self.printer_ip}:8080/?action=stream"
+        if error_code == 0 and (self.printer.proxy_host or not video_url):
+            # Proxy mode: always build from the proxy host and ignore the
+            # printer-supplied URL (it embeds the printer's real IP, which a
+            # transparent tunnel does not expose to Home Assistant).
+            # No proxy: keep the existing fallback for a success without a URL.
+            # Shares its port and path with the camera entity's initial URL, so
+            # the two cannot drift apart.
+            video_url = f"http://{self.printer_ip}:{CC2_VIDEO_PORT}{CC2_VIDEO_PATH}"
 
         # Convert to format ElegooVideo expects
         converted_data = {
