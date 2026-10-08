@@ -19,17 +19,27 @@
         "data": {
           "ip_address": "Printer IP-adres",
           "cc2_access_code": "Toegangscode (optioneel)",
-          "gcode_proxy_url": "GCode proxy-URL (optioneel)"
+          "gcode_proxy_url": "GCode proxy-URL (optioneel)",
+          "proxy_host": "Proxy-host (optioneel)"
         },
         "data_description": {
-          "gcode_proxy_url": "Basis-URL van de elegoo-printer-proxy (host, host:poort of http(s)-URL; http wordt gebruikt als u het schema weglaat). Leeg laten om uit te schakelen."
+          "gcode_proxy_url": "Basis-URL van de elegoo-printer-proxy (host, host:poort of http(s)-URL; http wordt gebruikt als u het schema weglaat). Leeg laten om uit te schakelen.",
+          "proxy_host": "Host van een doorstuurproxy waarmee verbinding wordt gemaakt (IP of hostnaam). Leeg laten om direct met de printer te verbinden. Als ingesteld, worden MQTT-besturing, g-code uploads en de camera via de proxy gerouteerd."
         }
       },
       "mqtt_options": {
         "title": "MQTT Printer Opties",
         "description": "Configureer je MQTT printer-instellingen.",
         "data": {
-          "ip_address": "Printer IP-adres"
+          "ip_address": "Printer IP-adres",
+          "external_ip": "Extern adres (optioneel, voor geavanceerde netwerkopstellingen)",
+          "mqtt_external_host": "Externe MQTT-broker-host (optioneel)",
+          "mqtt_external_port": "Externe MQTT-brokerpoort (optioneel)"
+        },
+        "data_description": {
+          "external_ip": "Overschrijf automatisch gedetecteerd adres met een IP-adres of hostnaam. Laat leeg voor automatische detectie. Gebruik voor Kubernetes/Docker-opstellingen of achter een omgekeerde proxy. Poorten 3030 en 3031 worden automatisch toegevoegd.",
+          "mqtt_external_host": "Wijs naar een bestaande MQTT-broker (bijv. Mosquitto) in plaats van de ingebouwde op te starten. Leeg laten om de ingebouwde broker te gebruiken.",
+          "mqtt_external_port": "Poort voor de hierboven opgegeven externe MQTT-broker. Standaard 1883 als leeg gelaten."
         }
       },
       "websocket_options": {
@@ -65,10 +75,12 @@
         "description": "Voer het IP-adres van je Elegoo printer in. De integratie detecteert automatisch het printertype en leidt je door de geschikte opstellingsstappen.",
         "data": {
           "ip_address": "Printer IP-adres",
-          "external_ip": "Extern adres (optioneel, voor geavanceerde netwerkopstellingen)"
+          "external_ip": "Extern adres (optioneel, voor geavanceerde netwerkopstellingen)",
+          "proxy_host": "Proxy-host (optioneel)"
         },
         "data_description": {
-          "external_ip": "Overschrijf automatisch gedetecteerd adres met een IP-adres of hostnaam. Laat leeg voor automatische detectie. Gebruik voor Kubernetes/Docker-opstellingen of achter een omgekeerde proxy. Poorten 3030 en 3031 worden automatisch toegevoegd."
+          "external_ip": "Overschrijf automatisch gedetecteerd adres met een IP-adres of hostnaam. Laat leeg voor automatische detectie. Gebruik voor Kubernetes/Docker-opstellingen of achter een omgekeerde proxy. Poorten 3030 en 3031 worden automatisch toegevoegd.",
+          "proxy_host": "Host van een doorstuurproxy waarmee verbinding wordt gemaakt (IP of hostnaam, bijv. de elegoo-printer-proxy). Leeg laten om direct met de printer te verbinden. Als ingesteld, wordt detectie overgeslagen en roept de integratie MQTT-besturing, g-code uploads en de camera via de proxy aan op de gebruikelijke poorten van de printer."
         }
       },
       "fdm_options": {
@@ -106,6 +118,13 @@
         "data": {
           "cc2_access_code": "Toegangscode"
         }
+      },
+      "cc2_serial_input": {
+        "title": "Serienummer invoeren",
+        "description": "Het serienummer kon niet via de proxy worden gelezen.\n\nVoer het handmatig in — het staat op het label onder de printer en op de printer zelf bij Instellingen → Netwerk.",
+        "data": {
+          "serial": "Serienummer"
+        }
       }
     },
     "error": {
@@ -121,7 +140,11 @@
       "cc2_access_code_required": "Deze printer vereist een toegangscade voor authenticatie.",
       "cc2_authentication_failed": "Authenticatie mislukt. Controleer de toegangscode in de printerinstellingen: Instellingen → Netwerk → Toegangscode.",
       "gcode_proxy_unreachable": "Kan de GCode-proxyserver niet bereiken. Controleer het adres of de URL en of de proxy actief is.",
-      "gcode_proxy_invalid": "Ongeldig GCode-proxyadres. Gebruik een host of host:poort, of een http(s)-URL zonder dubbele schema's."
+      "gcode_proxy_invalid": "Ongeldig GCode-proxyadres. Gebruik een host of host:poort, of een http(s)-URL zonder dubbele schema's.",
+      "mqtt_external_port_invalid": "Ongeldige poort. Voer een geheel getal in tussen 1 en 65535.",
+      "cc2_serial_required": "Het serienummer is verplicht",
+      "cc2_proxy_unreachable": "Verbinding via de proxy kon niet worden opgezet. Controleer of deze draait en bereikbaar is, en of deze de poorten MQTT (1883), web (80) en camera (8080) van de printer doorstuurt",
+      "manual_ip_no_valid_ip": "Voer alstublieft een geldig IP-adres in."
     },
     "abort": {
       "already_configured": "Dit item is al geconfigureerd."
@@ -221,6 +244,22 @@
       },
       "end_time": {
         "name": "Einde Tijd"
+      }
+    },
+    "select": {
+      "print_file": {
+        "name": "Drukbestand"
+      },
+      "print_tray": {
+        "name": "Druktray"
+      }
+    },
+    "button": {
+      "refresh_file_list": {
+        "name": "Bestandlijst vernieuwen"
+      },
+      "print_selected_file": {
+        "name": "Geselecteerd bestand afdrukken"
       }
     }
   }

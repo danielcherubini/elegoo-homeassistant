@@ -19,17 +19,27 @@
         "data": {
           "ip_address": "打印机 IP 地址",
           "cc2_access_code": "访问码（可选）",
-          "gcode_proxy_url": "GCode 代理 URL（可选）"
+          "gcode_proxy_url": "GCode 代理 URL（可选）",
+          "proxy_host": "代理主机（可选）"
         },
         "data_description": {
-          "gcode_proxy_url": "elegoo-printer-proxy 的基础 URL（主机、主机:端口或 http(s) URL；省略协议时默认使用 http）。留空则禁用。"
+          "gcode_proxy_url": "elegoo-printer-proxy 的基础 URL（主机、主机:端口或 http(s) URL；省略协议时默认使用 http）。留空则禁用。",
+          "proxy_host": "用于连接的转发代理主机（IP 或主机名）。留空则直接连接打印机。设置后，MQTT 控制、g-code 上传和相机将通过代理路由。"
         }
       },
       "mqtt_options": {
         "title": "MQTT 打印机选项",
         "description": "配置您的 MQTT 打印机设置。",
         "data": {
-          "ip_address": "打印机 IP 地址"
+          "ip_address": "打印机 IP 地址",
+          "external_ip": "外部地址（可选，用于高级网络设置）",
+          "mqtt_external_host": "外部 MQTT Broker 主机（可选）",
+          "mqtt_external_port": "外部 MQTT Broker 端口（可选）"
+        },
+        "data_description": {
+          "external_ip": "用 IP 地址或主机名覆盖自动检测到的地址。留空以进行自动检测。用于 Kubernetes/Docker 设置或在反向代理后面。端口 3030 和 3031 将自动添加。",
+          "mqtt_external_host": "指向一个现有的 MQTT broker（例如 Mosquitto），而不是启动内置的那个。留空则使用内置 broker。",
+          "mqtt_external_port": "上述外部 MQTT broker 的端口。留空时默认为 1883。"
         }
       },
       "websocket_options": {
@@ -65,10 +75,12 @@
         "description": "输入您的 Elegoo 打印机的 IP 地址。集成将自动检测打印机类型并引导您通过适当的设置步骤。",
         "data": {
           "ip_address": "打印机 IP 地址",
-          "external_ip": "外部地址（可选，用于高级网络设置）"
+          "external_ip": "外部地址（可选，用于高级网络设置）",
+          "proxy_host": "代理主机（可选）"
         },
         "data_description": {
-          "external_ip": "用 IP 地址或主机名覆盖自动检测到的地址。留空以进行自动检测。用于 Kubernetes/Docker 设置或在反向代理后面。端口 3030 和 3031 将自动添加。"
+          "external_ip": "用 IP 地址或主机名覆盖自动检测到的地址。留空以进行自动检测。用于 Kubernetes/Docker 设置或在反向代理后面。端口 3030 和 3031 将自动添加。",
+          "proxy_host": "用于连接的转发代理主机（IP 或主机名，例如 elegoo-printer-proxy）。留空则直接连接打印机。设置后，将跳过发现流程，集成会通过代理在打印机的常规端口上路由 MQTT 控制、g-code 上传和相机。"
         }
       },
       "fdm_options": {
@@ -106,6 +118,13 @@
         "data": {
           "cc2_access_code": "访问码"
         }
+      },
+      "cc2_serial_input": {
+        "title": "输入序列号",
+        "description": "无法通过代理读取序列号。\n\n请手动输入 — 它显示在打印机下方的标签上，以及打印机本身的 设置 → 网络 中。",
+        "data": {
+          "serial": "序列号"
+        }
       }
     },
     "error": {
@@ -121,7 +140,11 @@
       "cc2_access_code_required": "此打印机需要访问码进行认证。",
       "cc2_authentication_failed": "认证失败。在打印机设置中检查访问码：设置 → 网络 → 访问码。",
       "gcode_proxy_unreachable": "无法连接到 GCode 代理服务器。请验证地址或 URL 并确认代理正在运行。",
-      "gcode_proxy_invalid": "GCode 代理地址无效。请使用主机或主机:端口，或不含重复协议前缀的 http(s) URL。"
+      "gcode_proxy_invalid": "GCode 代理地址无效。请使用主机或主机:端口，或不含重复协议前缀的 http(s) URL。",
+      "mqtt_external_port_invalid": "端口无效。请输入 1 到 65535 之间的整数。",
+      "cc2_serial_required": "序列号是必填项",
+      "cc2_proxy_unreachable": "无法通过代理连接。请检查代理是否正在运行且可访问，以及是否转发了打印机的 MQTT (1883)、网页 (80) 和相机 (8080) 端口",
+      "manual_ip_no_valid_ip": "请输入有效的 IP 地址。"
     },
     "abort": {
       "already_configured": "此条目已配置。"
@@ -221,6 +244,22 @@
       },
       "end_time": {
         "name": "结束时间"
+      }
+    },
+    "select": {
+      "print_file": {
+        "name": "打印文件"
+      },
+      "print_tray": {
+        "name": "打印托盘"
+      }
+    },
+    "button": {
+      "refresh_file_list": {
+        "name": "刷新文件列表"
+      },
+      "print_selected_file": {
+        "name": "打印选中的文件"
       }
     }
   }

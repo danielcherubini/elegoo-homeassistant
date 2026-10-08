@@ -19,17 +19,27 @@
         "data": {
           "ip_address": "プリンター IP アドレス",
           "cc2_access_code": "アクセスコード（オプション）",
-          "gcode_proxy_url": "GCode プロキシ URL（オプション）"
+          "gcode_proxy_url": "GCode プロキシ URL（オプション）",
+          "proxy_host": "プロキシホスト（オプション）"
         },
         "data_description": {
-          "gcode_proxy_url": "elegoo-printer-proxy のベース URL（ホスト、ホスト:ポート、または http(s) URL。スキームを省略すると http が使用されます）。無効にするには空白のままにしてください。"
+          "gcode_proxy_url": "elegoo-printer-proxy のベース URL（ホスト、ホスト:ポート、または http(s) URL。スキームを省略すると http が使用されます）。無効にするには空白のままにしてください。",
+          "proxy_host": "接続に使用するフォワードプロキシのホスト（IP またはホスト名）。プリンターに直接接続する場合は空白のままにしてください。設定すると、MQTT 制御、g-code アップロード、カメラがプロキシにルーティングされます。"
         }
       },
       "mqtt_options": {
         "title": "MQTT プリンターオプション",
         "description": "MQTT プリンターの設定を構成します。",
         "data": {
-          "ip_address": "プリンター IP アドレス"
+          "ip_address": "プリンター IP アドレス",
+          "external_ip": "外部アドレス（オプション、高度なネットワーク設定用）",
+          "mqtt_external_host": "外部 MQTT ブローカーホスト（オプション）",
+          "mqtt_external_port": "外部 MQTT ブローカーポート（オプション）"
+        },
+        "data_description": {
+          "external_ip": "自動検出されたアドレスを IP アドレスまたはホスト名で上書きします。自動検出のために空白のままにしてください。Kubernetes/Docker 設定やリバースプロキシの背後で使用します。ポート 3030 および 3031 が自動的に追加されます。",
+          "mqtt_external_host": "組み込みブローカーの代わりに既存の MQTT ブローカー（例: Mosquitto）を指定します。組み込みブローカーを使用する場合は空白のままにしてください。",
+          "mqtt_external_port": "上記で指定した外部 MQTT ブローカーのポート。空白の場合は 1883 がデフォルトで使われます。"
         }
       },
       "websocket_options": {
@@ -65,10 +75,12 @@
         "description": "Elegoo プリンターの IP アドレスを入力します。統合は自動的にプリンタータイプを検出し、適切な設定手順を案内します。",
         "data": {
           "ip_address": "プリンター IP アドレス",
-          "external_ip": "外部アドレス（オプション、高度なネットワーク設定用）"
+          "external_ip": "外部アドレス（オプション、高度なネットワーク設定用）",
+          "proxy_host": "プロキシホスト（オプション）"
         },
         "data_description": {
-          "external_ip": "自動検出されたアドレスを IP アドレスまたはホスト名で上書きします。自動検出のために空白のままにしてください。Kubernetes/Docker 設定やリバースプロキシの背後で使用します。ポート 3030 および 3031 が自動的に追加されます。"
+          "external_ip": "自動検出されたアドレスを IP アドレスまたはホスト名で上書きします。自動検出のために空白のままにしてください。Kubernetes/Docker 設定やリバースプロキシの背後で使用します。ポート 3030 および 3031 が自動的に追加されます。",
+          "proxy_host": "接続に使用するフォワードプロキシのホスト（IP またはホスト名。例: elegoo-printer-proxy）。プリンターに直接接続する場合は空白のままにしてください。設定すると、検出がスキップされ、統合が MQTT 制御、g-code アップロード、カメラをプリンターの通常ポート経由でプロキシにルーティングします。"
         }
       },
       "fdm_options": {
@@ -106,6 +118,13 @@
         "data": {
           "cc2_access_code": "アクセスコード"
         }
+      },
+      "cc2_serial_input": {
+        "title": "シリアル番号を入力",
+        "description": "プロキシ経由でシリアル番号を読み取ることができませんでした。\n\n手動で入力してください — プリンター下のラベルと、プリンター自体の「設定 → ネットワーク」に表示されています。",
+        "data": {
+          "serial": "シリアル番号"
+        }
       }
     },
     "error": {
@@ -121,7 +140,11 @@
       "cc2_access_code_required": "このプリンターには認証のためにアクセスコードが必要です。",
       "cc2_authentication_failed": "認証に失敗しました。プリンターの設定でアクセスコードを確認してください: 設定 → ネットワーク → アクセスコード。",
       "gcode_proxy_unreachable": "GCode プロキシサーバーに接続できません。アドレスまたは URL とプロキシが実行中であることを確認してください。",
-      "gcode_proxy_invalid": "GCode プロキシアドレスが無効です。ホストまたはホスト:ポート、もしくはスキームが重複していない http(s) URL を使用してください。"
+      "gcode_proxy_invalid": "GCode プロキシアドレスが無効です。ホストまたはホスト:ポート、もしくはスキームが重複していない http(s) URL を使用してください。",
+      "mqtt_external_port_invalid": "無効なポートです。1 から 65535 までの整数を入力してください。",
+      "cc2_serial_required": "シリアル番号は必須です",
+      "cc2_proxy_unreachable": "プロキシ経由で接続できませんでした。プロキシが実行されてかつ到達可能であること、およびプリンター用の MQTT (1883)、Web (80)、カメラ (8080) ポートが転送されることを確認してください",
+      "manual_ip_no_valid_ip": "有効な IP アドレスを入力してください。"
     },
     "abort": {
       "already_configured": "このエントリは既に構成されています。"
@@ -221,6 +244,22 @@
       },
       "end_time": {
         "name": "終了時間"
+      }
+    },
+    "select": {
+      "print_file": {
+        "name": "印刷ファイル"
+      },
+      "print_tray": {
+        "name": "印刷トレイ"
+      }
+    },
+    "button": {
+      "refresh_file_list": {
+        "name": "ファイルリストを更新"
+      },
+      "print_selected_file": {
+        "name": "選択したファイルを印刷"
       }
     }
   }

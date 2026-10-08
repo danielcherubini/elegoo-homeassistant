@@ -143,7 +143,8 @@
       "gcode_proxy_invalid": "Invalid GCode proxy address. Use a host or host:port, or an http(s) URL without duplicate schemes.",
       "mqtt_external_port_invalid": "Invalid port. Enter a whole number between 1 and 65535.",
       "cc2_serial_required": "The serial number is required",
-      "cc2_proxy_unreachable": "Could not connect through the proxy. Check that it is running and reachable, and that it forwards the printer's MQTT (1883), web (80) and camera (8080) ports"
+      "cc2_proxy_unreachable": "Could not connect through the proxy. Check that it is running and reachable, and that it forwards the printer's MQTT (1883), web (80) and camera (8080) ports",
+      "manual_ip_no_valid_ip": "Please enter a valid IP address."
     },
     "abort": {
       "already_configured": "This entry is already configured."

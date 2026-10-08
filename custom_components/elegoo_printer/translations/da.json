@@ -19,17 +19,27 @@
         "data": {
           "ip_address": "Printer IP-adresse",
           "cc2_access_code": "Adgangskode (valgfrit)",
-          "gcode_proxy_url": "GCode proxy-URL (valgfrit)"
+          "gcode_proxy_url": "GCode proxy-URL (valgfrit)",
+          "proxy_host": "Proxy vært (valgfrit)"
         },
         "data_description": {
-          "gcode_proxy_url": "Basis-URL for elegoo-printer-proxy (vært, vært:port eller http(s)-URL; http bruges hvis du udelader skemaet). Lad det stå tomt for at deaktivere."
+          "gcode_proxy_url": "Basis-URL for elegoo-printer-proxy (vært, vært:port eller http(s)-URL; http bruges hvis du udelader skemaet). Lad det stå tomt for at deaktivere.",
+          "proxy_host": "Vært for en fremadvendt proxy at forbinde igennem (IP eller hostname). Lad stå tomt for at forbinde direkte til printeren. Når den er angivet, rutes MQTT-styring, g-code-oploadsninger og kameraet gennem proxyen."
         }
       },
       "mqtt_options": {
         "title": "MQTT Printer Indstillinger",
         "description": "Konfigurer dine MQTT printerindstillinger.",
         "data": {
-          "ip_address": "Printer IP-adresse"
+          "ip_address": "Printer IP-adresse",
+          "external_ip": "Ekstern adresse (valgfrit, til avancerede netværksopsætninger)",
+          "mqtt_external_host": "Ekstern MQTT broker-vært (valgfrit)",
+          "mqtt_external_port": "Ekstern MQTT broker-port (valgfrit)"
+        },
+        "data_description": {
+          "external_ip": "Overskriv automatisk opdaget adresse med en IP-adresse eller hostname. Lad stå tomt for automatisk detektering. Brug til Kubernetes/Docker opsætning eller når du er bag en omvendt proxy. Portene 3030 og 3031 vil blive tilføjet automatisk.",
+          "mqtt_external_host": "Peg på en eksisterende MQTT broker (f.eks. Mosquitto) i stedet for at starte den indbyggede. Lad stå tomt for at bruge den indbyggede broker.",
+          "mqtt_external_port": "Port for den eksterne MQTT broker specificeret ovenfor. Standard til 1883, hvis den lades tom."
         }
       },
       "websocket_options": {
@@ -65,10 +75,12 @@
         "description": "Indtast IP-adressen til din Elegoo printer. Integrationen vil automatisk detektere printertypen og guide dig gennem de passende opsætnings trin.",
         "data": {
           "ip_address": "Printer IP-adresse",
-          "external_ip": "Ekstern adresse (valgfrit, til avancerede netværksopsætninger)"
+          "external_ip": "Ekstern adresse (valgfrit, til avancerede netværksopsætninger)",
+          "proxy_host": "Proxy vært (valgfrit)"
         },
         "data_description": {
-          "external_ip": "Overskriv automatisk opdaget adresse med en IP-adresse eller hostname. Lad stå tomt for automatisk detektering. Brug til Kubernetes/Docker opsætning eller når du er bag en omvendt proxy. Portene 3030 og 3031 vil blive tilføjet automatisk."
+          "external_ip": "Overskriv automatisk opdaget adresse med en IP-adresse eller hostname. Lad stå tomt for automatisk detektering. Brug til Kubernetes/Docker opsætning eller når du er bag en omvendt proxy. Portene 3030 og 3031 vil blive tilføjet automatisk.",
+          "proxy_host": "Vært for en fremadvendt proxy at forbinde igennem (IP eller hostname, f.eks. elegoo-printer-proxy). Lad stå tomt for at forbinde direkte til printeren. Når den er angivet, hoppes opdagelse over, og integrationen ruter MQTT-styring, g-code-oploadsninger og kameraet gennem proxyen på printerens sædvanlige porte."
         }
       },
       "fdm_options": {
@@ -106,6 +118,13 @@
         "data": {
           "cc2_access_code": "Adgangskode"
         }
+      },
+      "cc2_serial_input": {
+        "title": "Indtast Serienummer",
+        "description": "Serienummeret kunne ikke læses gennem proxyen.\n\nIndtast det manuelt — det fremgår af etiketten under printeren og på selve printeren under Indstillinger → Netværk.",
+        "data": {
+          "serial": "Serienummer"
+        }
       }
     },
     "error": {
@@ -121,7 +140,11 @@
       "cc2_access_code_required": "Denne printer kræver en adgangskode til autentificering.",
       "cc2_authentication_failed": "Autentificering mislykkedes. Verificer adgangskode i printerindstillinger: Indstillinger → Netværk → Adgangskode.",
       "gcode_proxy_unreachable": "Kan ikke nå GCode-proxyserveren. Bekræft adressen eller URL'en og at proxyen kører.",
-      "gcode_proxy_invalid": "Ugyldig GCode-proxyadresse. Brug en vært eller vært:port, eller en http(s)-URL uden dobbelte skemaer."
+      "gcode_proxy_invalid": "Ugyldig GCode-proxyadresse. Brug en vært eller vært:port, eller en http(s)-URL uden dobbelte skemaer.",
+      "mqtt_external_port_invalid": "Ugyldig port. Indtast et helt tal mellem 1 og 65535.",
+      "cc2_serial_required": "Serienummeret er påkrævet",
+      "cc2_proxy_unreachable": "Kunne ikke oprette forbindelse gennem proxyen. Tjek, at den kører og kan nås, og at den videresender printerens MQTT (1883), web (80) og kamera (8080) porte",
+      "manual_ip_no_valid_ip": "Indtast venligt en gyldig IP-adresse."
     },
     "abort": {
       "already_configured": "Dette indlæg er allerede konfigureret."
@@ -221,6 +244,22 @@
       },
       "end_time": {
         "name": "Sluttidspunkt"
+      }
+    },
+    "select": {
+      "print_file": {
+        "name": "Udskrivningsfil"
+      },
+      "print_tray": {
+        "name": "Printbakke"
+      }
+    },
+    "button": {
+      "refresh_file_list": {
+        "name": "Opdater fillisten"
+      },
+      "print_selected_file": {
+        "name": "Udskriv valgt fil"
       }
     }
   }
