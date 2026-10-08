@@ -19,17 +19,27 @@
         "data": {
           "ip_address": "Adres IP drukarki",
           "cc2_access_code": "Kod dostępu (opcjonalne)",
-          "gcode_proxy_url": "URL proxy GCode (opcjonalne)"
+          "gcode_proxy_url": "URL proxy GCode (opcjonalne)",
+          "proxy_host": "Host proxy (opcjonalne)"
         },
         "data_description": {
-          "gcode_proxy_url": "Bazowy URL elegoo-printer-proxy (host, host:port lub URL http(s); jeśli pominiesz schemat, zostanie użyty http). Pozostaw puste, aby wyłączyć."
+          "gcode_proxy_url": "Bazowy URL elegoo-printer-proxy (host, host:port lub URL http(s); jeśli pominiesz schemat, zostanie użyty http). Pozostaw puste, aby wyłączyć.",
+          "proxy_host": "Host proxy przekaźnikowego, przez które następuje połączenie (adres IP lub nazwa hosta). Pozostaw puste, aby połączyć się bezpośrednio z drukarką. Po ustawieniu sterowanie MQTT, wgrywanie g-kodu i kamera są kierowane przez proxy."
         }
       },
       "mqtt_options": {
         "title": "Opcje drukarki MQTT",
         "description": "Skonfiguruj ustawienia swojej drukarki MQTT.",
         "data": {
-          "ip_address": "Adres IP drukarki"
+          "ip_address": "Adres IP drukarki",
+          "external_ip": "Zewnętrzny adres (opcjonalne, zaawansowane ustawienia sieciowe)",
+          "mqtt_external_host": "Host zewnętrznego brokera MQTT (opcjonalne)",
+          "mqtt_external_port": "Port zewnętrznego brokera MQTT (opcjonalne)"
+        },
+        "data_description": {
+          "external_ip": "Nadpisz automatycznie wykryty adres adresem IP lub nazwą hosta. Pozostaw puste dla automatycznego wykrywania. Użyj do konfiguracji Kubernetes/Docker lub gdy jesteś za odwróconym proxy. Porty 3030 i 3031 zostaną dodane automatycznie.",
+          "mqtt_external_host": "Wskaż istniejącego brokera MQTT (np. Mosquitto) zamiast uruchamiać wbudowanego. Pozostaw puste, aby używać wbudowanego brokera.",
+          "mqtt_external_port": "Port zewnętrznego brokera MQTT podanego powyżej. Domyślnie 1883, jeśli pozostanie puste."
         }
       },
       "websocket_options": {
@@ -65,10 +75,12 @@
         "description": "Wpisz adres IP swojej drukarki Elegoo. Integracja automatycznie wykryje typ drukarki i poprowadzi przez odpowiednie kroki konfiguracji.",
         "data": {
           "ip_address": "Adres IP drukarki",
-          "external_ip": "Zewnętrzny adres (opcjonalne, zaawansowane ustawienia sieciowe)"
+          "external_ip": "Zewnętrzny adres (opcjonalne, zaawansowane ustawienia sieciowe)",
+          "proxy_host": "Host proxy (opcjonalne)"
         },
         "data_description": {
-          "external_ip": "Nadpisz automatycznie wykryty adres adresem IP lub nazwą hosta. Pozostaw puste dla automatycznego wykrywania. Użyj do konfiguracji Kubernetes/Docker lub gdy jesteś za odwróconym proxy. Porty 3030 i 3031 zostaną dodane automatycznie."
+          "external_ip": "Nadpisz automatycznie wykryty adres adresem IP lub nazwą hosta. Pozostaw puste dla automatycznego wykrywania. Użyj do konfiguracji Kubernetes/Docker lub gdy jesteś za odwróconym proxy. Porty 3030 i 3031 zostaną dodane automatycznie.",
+          "proxy_host": "Host proxy przekaźnikowego, przez które następuje połączenie (adres IP lub nazwa hosta, np. elegoo-printer-proxy). Pozostaw puste, aby połączyć się bezpośrednio z drukarką. Po ustawieniu pomijane jest wykrywanie, a integracja kieruje sterowanie MQTT, wgrywanie g-kodu i kamerę przez proxy na standardowe porty drukarki."
         }
       },
       "fdm_options": {
@@ -106,6 +118,13 @@
         "data": {
           "cc2_access_code": "Kod dostępu"
         }
+      },
+      "cc2_serial_input": {
+        "title": "Wpisz numer seryjny",
+        "description": "Nie udało się odczytać numeru seryjnego przez proxy.\n\nWpisz go ręcznie — znajduje się na etykiecie pod drukarką oraz na samej drukarce w Ustawieniach → Sieć.",
+        "data": {
+          "serial": "Numer seryjny"
+        }
       }
     },
     "error": {
@@ -121,7 +140,11 @@
       "cc2_access_code_required": "Ta drukarka wymaga kodu dostępu do uwierzytelniania.",
       "cc2_authentication_failed": "Uwierzytelnianie nie powiodło się. Sprawdź kod dostępu w ustawieniach drukarki: Ustawienia → Sieć → Kod dostępu.",
       "gcode_proxy_unreachable": "Nie można połączyć się z serwerem proxy GCode. Sprawdź adres lub URL i czy serwer proxy jest uruchomiony.",
-      "gcode_proxy_invalid": "Nieprawidłowy adres proxy GCode. Użyj hosta lub host:port, lub adresu URL http(s) bez zduplikowanych schematów."
+      "gcode_proxy_invalid": "Nieprawidłowy adres proxy GCode. Użyj hosta lub host:port, lub adresu URL http(s) bez zduplikowanych schematów.",
+      "mqtt_external_port_invalid": "Nieprawidłowy port. Wprowadź liczbę całkowitą między 1 a 65535.",
+      "cc2_serial_required": "Numer seryjny jest wymagany",
+      "cc2_proxy_unreachable": "Nie udało się połączyć przez proxy. Sprawdź, czy działa i jest osiągalne, oraz czy przekazuje porty drukarki MQTT (1883), web (80) i kamera (8080)",
+      "manual_ip_no_valid_ip": "Wprowadź poprawny adres IP."
     },
     "abort": {
       "already_configured": "Ten wpis jest już skonfigurowany."
@@ -221,6 +244,22 @@
       },
       "end_time": {
         "name": "Czas Końcowy"
+      }
+    },
+    "select": {
+      "print_file": {
+        "name": "Plik do wydruku"
+      },
+      "print_tray": {
+        "name": "Taca drukowania"
+      }
+    },
+    "button": {
+      "refresh_file_list": {
+        "name": "Odśwież listę plików"
+      },
+      "print_selected_file": {
+        "name": "Wydrukuj wybrany plik"
       }
     }
   }

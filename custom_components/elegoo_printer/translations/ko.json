@@ -19,17 +19,27 @@
         "data": {
           "ip_address": "프린터 IP 주소",
           "cc2_access_code": "액세스 코드 (선택사항)",
-          "gcode_proxy_url": "GCode 프록시 URL (선택 사항)"
+          "gcode_proxy_url": "GCode 프록시 URL (선택 사항)",
+          "proxy_host": "프록시 호스트 (선택 사항)"
         },
         "data_description": {
-          "gcode_proxy_url": "elegoo-printer-proxy의 기본 URL (호스트, 호스트:포트 또는 http(s) URL; 스킴을 생략하면 http가 사용됩니다). 비활성화하려면 비워 두세요."
+          "gcode_proxy_url": "elegoo-printer-proxy의 기본 URL (호스트, 호스트:포트 또는 http(s) URL; 스킴을 생략하면 http가 사용됩니다). 비활성화하려면 비워 두세요.",
+          "proxy_host": "통해 연결할 포워딩 프록시 호스트 (IP 또는 호스트명). 프린터에 직접 연결하려면 비워 두세요. 설정되면 MQTT 제어, g-code 업로드 및 카메라가 프록시를 통해 라우팅됩니다."
         }
       },
       "mqtt_options": {
         "title": "MQTT 프린터 옵션",
         "description": "MQTT 프린터 설정을 구성합니다.",
         "data": {
-          "ip_address": "프린터 IP 주소"
+          "ip_address": "프린터 IP 주소",
+          "external_ip": "외부 주소 (선택사항, 고급 네트워크 구성용)",
+          "mqtt_external_host": "외부 MQTT 브로커 호스트 (선택 사항)",
+          "mqtt_external_port": "외부 MQTT 브로커 포트 (선택 사항)"
+        },
+        "data_description": {
+          "external_ip": "자동 감지된 주소를 IP 주소 또는 호스트 이름으로 덮어쓰세요. 자동 감지를 위해 비워두세요. Kubernetes/Docker 설정이나 리버스 프록시 뒤에 사용할 때 사용하세요. 포트 3030 과 3031 이 자동으로 추가됩니다.",
+          "mqtt_external_host": "내장 브로커 대신 기존 MQTT 브로커(예: Mosquitto)를 지정합니다. 내장 브로커를 사용하려면 비워 두세요.",
+          "mqtt_external_port": "위에서 지정한 외부 MQTT 브로커의 포트. 비워 두면 기본값 1883이 사용됩니다."
         }
       },
       "websocket_options": {
@@ -65,10 +75,12 @@
         "description": "Elegoo 프린터의 IP 주소를 입력하세요. 통합은 자동으로 프린터 유형을 감지하고 적절한 구성 단계를 안내합니다.",
         "data": {
           "ip_address": "프린터 IP 주소",
-          "external_ip": "외부 주소 (선택사항, 고급 네트워크 구성용)"
+          "external_ip": "외부 주소 (선택사항, 고급 네트워크 구성용)",
+          "proxy_host": "프록시 호스트 (선택 사항)"
         },
         "data_description": {
-          "external_ip": "자동 감지된 주소를 IP 주소 또는 호스트 이름으로 덮어쓰세요. 자동 감지를 위해 비워두세요. Kubernetes/Docker 설정이나 리버스 프록시 뒤에 사용할 때 사용하세요. 포트 3030 과 3031 이 자동으로 추가됩니다."
+          "external_ip": "자동 감지된 주소를 IP 주소 또는 호스트 이름으로 덮어쓰세요. 자동 감지를 위해 비워두세요. Kubernetes/Docker 설정이나 리버스 프록시 뒤에 사용할 때 사용하세요. 포트 3030 과 3031 이 자동으로 추가됩니다.",
+          "proxy_host": "통해 연결할 포워딩 프록시 호스트 (IP 또는 호스트명, 예: elegoo-printer-proxy). 프린터에 직접 연결하려면 비워 두세요. 설정되면 발견이 건너뛰어지고, 통합이 MQTT 제어, g-code 업로드 및 카메라를 프린터의 기존 포트에서 프록시를 통해 라우팅합니다."
         }
       },
       "fdm_options": {
@@ -106,6 +118,13 @@
         "data": {
           "cc2_access_code": "액세스 코드"
         }
+      },
+      "cc2_serial_input": {
+        "title": "직렬 번호 입력",
+        "description": "프록시를 통해 직렬 번호를 읽을 수 없었습니다.\n\n수동으로 입력해 주세요 — 프린터 아래 라벨과 프린터 자체의 설정 → 네트워크에 표시됩니다.",
+        "data": {
+          "serial": "직렬 번호"
+        }
       }
     },
     "error": {
@@ -121,7 +140,11 @@
       "cc2_access_code_required": "이 프린터는 인증을 위해 액세스 코드가 필요합니다.",
       "cc2_authentication_failed": "인증에 실패했습니다. 프린터 설정에서 액세스 코드를 확인하세요: 설정 → 네트워크 → 액세스 코드.",
       "gcode_proxy_unreachable": "GCode 프록시 서버에 연결할 수 없습니다. 주소 또는 URL과 프록시 실행 여부를 확인하세요.",
-      "gcode_proxy_invalid": "잘못된 GCode 프록시 주소입니다. 호스트 또는 호스트:포트, 또는 중복 스킴 없는 http(s) URL을 사용하세요."
+      "gcode_proxy_invalid": "잘못된 GCode 프록시 주소입니다. 호스트 또는 호스트:포트, 또는 중복 스킴 없는 http(s) URL을 사용하세요.",
+      "mqtt_external_port_invalid": "잘못된 포트입니다. 1부터 65535까지의 정수를 입력하세요.",
+      "cc2_serial_required": "직렬 번호는 필수입니다",
+      "cc2_proxy_unreachable": "프록시를 통해 연결할 수 없습니다. 프록시가 실행 중이고 접근 가능한지, 그리고 프린터의 MQTT (1883), 웹 (80), 카메라 (8080) 포트가 포워딩되는지 확인하세요",
+      "manual_ip_no_valid_ip": "유효한 IP 주소를 입력해 주세요."
     },
     "abort": {
       "already_configured": "이 항목은 이미 구성되었습니다."
@@ -221,6 +244,22 @@
       },
       "end_time": {
         "name": "종료 시간"
+      }
+    },
+    "select": {
+      "print_file": {
+        "name": "인쇄 파일"
+      },
+      "print_tray": {
+        "name": "인쇄 트레이"
+      }
+    },
+    "button": {
+      "refresh_file_list": {
+        "name": "파일 목록 새로고침"
+      },
+      "print_selected_file": {
+        "name": "선택된 파일 인쇄"
       }
     }
   }

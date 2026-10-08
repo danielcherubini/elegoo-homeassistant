@@ -19,17 +19,27 @@
         "data": {
           "ip_address": "IP adresa tlačiarne",
           "cc2_access_code": "Prístupový kód (voliteľné)",
-          "gcode_proxy_url": "URL proxy GCode (voliteľné)"
+          "gcode_proxy_url": "URL proxy GCode (voliteľné)",
+          "proxy_host": "Hostiteľ proxy (voliteľné)"
         },
         "data_description": {
-          "gcode_proxy_url": "Základná URL elegoo-printer-proxy (hostiteľ, hostiteľ:port alebo http(s) URL; bez schémy sa použije http). Nechajte prázdne na deaktivovanie."
+          "gcode_proxy_url": "Základná URL elegoo-printer-proxy (hostiteľ, hostiteľ:port alebo http(s) URL; bez schémy sa použije http). Nechajte prázdne na deaktivovanie.",
+          "proxy_host": "Hostiteľ smerovaného proxy, cez ktoré sa pripojíte (IP adresa alebo názov hostiteľa). Nechajte prázdne pre priame pripojenie k tlačiarni. Keď je nastavené, ovládanie MQTT, nahrávanie g-code a kamera sa smerujú cez proxy."
         }
       },
       "mqtt_options": {
         "title": "Možnosti MQTT tlačiarne",
         "description": "Konfigurujte nastavenia svojej MQTT tlačiarne.",
         "data": {
-          "ip_address": "IP adresa tlačiarne"
+          "ip_address": "IP adresa tlačiarne",
+          "external_ip": "Externá adresa (voliteľné, pre pokročilé sieťové nastavenia)",
+          "mqtt_external_host": "Hostiteľ externého MQTT brokera (voliteľné)",
+          "mqtt_external_port": "Port externého MQTT brokera (voliteľné)"
+        },
+        "data_description": {
+          "external_ip": "Prepísať automaticky detegovanú adresu IP alebo názvom hostiteľa. Nechajte prázdne pre automatickú detekciu. Použite pre Kubernetes/Docker nastavenie alebo za reverzný proxy. Porty 3030 a 3031 budú pridané automaticky.",
+          "mqtt_external_host": "Ukazujte na existujúci MQTT broker (napr. Mosquitto) namiesto spustenia zabudovaného. Nechajte prázdne pre použitie zabudovaného brokera.",
+          "mqtt_external_port": "Port pre externý MQTT broker uvedený vyššie. Predvolenou hodnotou je 1883, ak zostane prázdny."
         }
       },
       "websocket_options": {
@@ -65,10 +75,12 @@
         "description": "Zadajte IP adresu svojej Elegoo tlačiarne. Integrácia automaticky deteguje typ tlačiarne a prevedie vás príslušnými krokmi nastavenia.",
         "data": {
           "ip_address": "IP adresa tlačiarne",
-          "external_ip": "Externá adresa (voliteľné, pre pokročilé sieťové nastavenia)"
+          "external_ip": "Externá adresa (voliteľné, pre pokročilé sieťové nastavenia)",
+          "proxy_host": "Hostiteľ proxy (voliteľné)"
         },
         "data_description": {
-          "external_ip": "Prepísať automaticky detegovanú adresu IP alebo názvom hostiteľa. Nechajte prázdne pre automatickú detekciu. Použite pre Kubernetes/Docker nastavenie alebo za reverzný proxy. Porty 3030 a 3031 budú pridané automaticky."
+          "external_ip": "Prepísať automaticky detegovanú adresu IP alebo názvom hostiteľa. Nechajte prázdne pre automatickú detekciu. Použite pre Kubernetes/Docker nastavenie alebo za reverzný proxy. Porty 3030 a 3031 budú pridané automaticky.",
+          "proxy_host": "Hostiteľ smerovaného proxy, cez ktoré sa pripojíte (IP adresa alebo názov hostiteľa, napr. elegoo-printer-proxy). Nechajte prázdne pre priame pripojenie k tlačiarni. Keď je nastavené, detekcia sa preskakuje a integrácia smeruje ovládanie MQTT, nahrávanie g-code a kameru cez proxy na bežné porty tlačiarne."
         }
       },
       "fdm_options": {
@@ -106,6 +118,13 @@
         "data": {
           "cc2_access_code": "Prístupový kód"
         }
+      },
+      "cc2_serial_input": {
+        "title": "Zadajte sériové číslo",
+        "description": "Sériové číslo sa nepodarilo načítať cez proxy.\n\nZadajte ho ručne — je uvedené na nálepke pod tlačiarnou a na samotnej tlačiarni v Nastavenia → Sieť.",
+        "data": {
+          "serial": "Sériové číslo"
+        }
       }
     },
     "error": {
@@ -121,7 +140,11 @@
       "cc2_access_code_required": "Táto tlačiareň vyžaduje prístupový kód na autentifikáciu.",
       "cc2_authentication_failed": "Autentifikácia zlyhala. Skontrolujte prístupový kód v nastaveniach tlačiarne: Nastavenia → Sieť → Prístupový kód.",
       "gcode_proxy_unreachable": "Nie je možné spojiť sa s proxy serverom GCode. Overte adresu alebo URL a skontrolujte, či proxy server beží.",
-      "gcode_proxy_invalid": "Neplatná adresa proxy GCode. Použite hostiteľa alebo hostiteľ:port, alebo http(s) URL bez duplicitných schém."
+      "gcode_proxy_invalid": "Neplatná adresa proxy GCode. Použite hostiteľa alebo hostiteľ:port, alebo http(s) URL bez duplicitných schém.",
+      "mqtt_external_port_invalid": "Neplatný port. Zadajte celé číslo medzi 1 a 65535.",
+      "cc2_serial_required": "Sériové číslo je povinné",
+      "cc2_proxy_unreachable": "Nepodarilo sa pripojiť cez proxy. Skontrolujte, či beží a je dostupné, a či prenáša porty tlačiarne MQTT (1883), web (80) a kamera (8080)",
+      "manual_ip_no_valid_ip": "Zadajte platnú IP adresu."
     },
     "abort": {
       "already_configured": "Tento záznam je už nakonfigurovaný."
@@ -221,6 +244,22 @@
       },
       "end_time": {
         "name": "Doba ukončenia"
+      }
+    },
+    "select": {
+      "print_file": {
+        "name": "Súbor na tlač"
+      },
+      "print_tray": {
+        "name": "Tlačiaca podložka"
+      }
+    },
+    "button": {
+      "refresh_file_list": {
+        "name": "Obnoviť zoznam súborov"
+      },
+      "print_selected_file": {
+        "name": "Vytlačiť vybraný súbor"
       }
     }
   }
