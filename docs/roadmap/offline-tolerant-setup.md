@@ -85,7 +85,7 @@ Four RED test files exist and are the acceptance criteria for Tasks 1–3 and 5.
   - Expect **3 passed, 6 failed**. The 3 passing are characterizations of today's behaviour (option-off paths). If a different number fails, stop and find out why before implementing.
 - [ ] Implement points 1–5 above.
 - [ ] Run `VIRTUAL_ENV=.venv uv run pytest custom_components/elegoo_printer/tests/test_offline_setup_api.py -q` → expect 9 passed.
-- [ ] Run `VIRTUAL_ENV=.venv uv run pytest -q` → expect **zero failures**. The `async_get_printer_data` gate is behaviour-visible for every transport, not just opt-in users; if any pre-existing test fails, it was relying on a disconnected client serving cached data — read it and fix the *test only if* it asserted the fabricated-data behaviour, otherwise fix the implementation.
+- [ ] Run `VIRTUAL_ENV=.venv uv run pytest -q` → **the 625 pre-existing tests still pass and this file is green**. `test_offline_setup_polling.py` (5), `test_offline_setup_entry.py` (6) and `test_offline_setup_options.py` (7) stay red — they belong to Tasks 2, 3 and 5; do not implement them here. The `async_get_printer_data` gate is behaviour-visible for every transport, not just opt-in users; if any **pre-existing** test fails, it was relying on a disconnected client serving cached data — read it and fix the *test only if* it asserted the fabricated-data behaviour, otherwise fix the implementation.
 - [ ] Run `make format && make lint` → both must succeed.
 - [ ] Commit: `feat(api): return an offline client when the entry tolerates a powered-off printer`
 
@@ -124,7 +124,7 @@ Separately: the Canvas (`coordinator.py:99`) and file-list (`coordinator.py:161`
   - Expect **9 failed, 1 passed**: 5 from the polling file (1 pass) + 4 from `TestOfflineStartOfTheCoordinator`, all `AttributeError: async_start_offline`. Anything else → investigate first.
 - [ ] Implement points 1–2.
 - [ ] Re-run the same command → all pass.
-- [ ] Run `VIRTUAL_ENV=.venv uv run pytest -q` → zero failures. `test_coordinator.py` pins existing refresh behaviour; if it breaks, the change is wrong, not the test.
+- [ ] Run `VIRTUAL_ENV=.venv uv run pytest -q` → the 625 pre-existing tests pass (`test_coordinator.py` pins existing refresh behaviour; if it breaks, the change is wrong, not the test). Only `test_offline_setup_entry.py` (2) and `test_offline_setup_options.py` (7) remain red, for Tasks 3 and 5.
 - [ ] Run `make format && make lint`.
 - [ ] Commit: `fix(coordinator): add async_start_offline and stop side-checks failing the update`
 
@@ -163,7 +163,7 @@ Note `async_setup_entry` currently merges `{**entry.data, **(entry.options or {}
   - Task 2 has landed, so expect **2 failed, 8 passed** — the two remaining failures are `test_offline_client_with_option_completes_setup` and `test_offline_path_skips_the_first_refresh`. Confirm both fail on `ConfigEntryNotReady`, not a harness error.
 - [ ] Implement points 1–3.
 - [ ] Re-run → all pass.
-- [ ] Run `VIRTUAL_ENV=.venv uv run pytest -q` → zero failures.
+- [ ] Run `VIRTUAL_ENV=.venv uv run pytest -q` → the 625 pre-existing tests pass; only `test_offline_setup_options.py` (7) remains red, for Task 5.
 - [ ] Run `make format && make lint`.
 - [ ] Commit: `feat: complete setup with a disconnected client when opted in`
 
@@ -208,7 +208,7 @@ Note `async_setup_entry` currently merges `{**entry.data, **(entry.options or {}
 **Acceptance criteria:**
 - [ ] Both selects add themselves without error when `coordinator.data is None` and a restorable state exists.
 - [ ] A restore still lands in `coordinator.data.selected_file` / `.selected_tray` when data exists.
-- [ ] `make test` green.
+- [ ] Run `VIRTUAL_ENV=.venv uv run pytest -q` → the 625 pre-existing tests pass; only `test_offline_setup_options.py` (7) remains red, for Task 5.
 
 ---
 
