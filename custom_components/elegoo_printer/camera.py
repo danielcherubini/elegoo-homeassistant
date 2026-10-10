@@ -54,6 +54,11 @@ IDLE_WATCHDOG_INTERVAL = 60  # seconds between idle checks
 # wait one reporting cycle and re-check, so a client that connected during our
 # own grab is reflected in the count and does not get cut off.
 STREAM_DISABLE_SETTLE_SECONDS = 3.0
+# When the entity is torn down while another client still holds the shared
+# video stream, a bounded background task keeps retrying the release so the
+# stream is not left enabled forever once that client leaves.
+CLEANUP_RETRY_INTERVAL_SECONDS = 60.0
+CLEANUP_RETRY_ATTEMPTS = 10  # roughly 10 minutes
 
 
 class ElegooCameraMjpeg(CameraMjpeg):
@@ -156,6 +161,7 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         self._stream_enabled = False
         self._last_activity = 0.0
         self._idle_watchdog_task = None
+        self._cleanup_retry_task = None
 
     def _is_over_capacity(self) -> bool:
         """Check if the printer is over capacity."""
@@ -233,25 +239,28 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
                 video.status,
             )
 
-    async def _disable_stream(self, *, force: bool = False) -> None:
+    async def _disable_stream(self) -> None:
         """
         Disable printer video.
 
         Skipped while the printer reports a connection we do not own
-        (another client is watching). The connection count is only
-        reported periodically and briefly keeps counting our own
-        just-finished grab, so always wait one reporting cycle before
-        trusting it — after that a lingering count is a real external
-        viewer. On failure, _stream_enabled stays True (video may still be
-        on printer) and the idle watchdog re-attempts. ``force`` releases
-        the stream unconditionally and is used when the entity is torn
-        down.
+        (another client is watching) or while a viewer of our own is
+        active. The connection count is only reported periodically and
+        briefly keeps counting our own just-finished grab, so always wait
+        one reporting cycle before trusting it — after that a lingering
+        count is a real external viewer, and a viewer of ours that started
+        during the wait is caught by the active-viewer re-check. On
+        failure, _stream_enabled stays True (video may still be on printer)
+        and the idle watchdog re-attempts.
         """
         if not self._stream_enabled:
             return
-        if not force and self._keep_stream_for_external_viewers:
+        if self._keep_stream_for_external_viewers:
             if STREAM_DISABLE_SETTLE_SECONDS > 0:
                 await asyncio.sleep(STREAM_DISABLE_SETTLE_SECONDS)
+            if self._has_active_viewers():
+                # One of our own viewers started during the wait.
+                return
             if self._has_external_video_viewers():
                 self._log_external_viewer_skip()
                 return
@@ -346,7 +355,34 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         self._active_mjpeg_streams = 0
         self._transient_viewers = 0
         self._native_stream_active = False
-        await self._disable_stream(force=True)
+        await self._disable_stream()
+        if self._stream_enabled:
+            # Another client is still watching: do not cut their feed, but
+            # keep retrying from a task that outlives this entity so the
+            # stream is not left enabled forever once they leave.
+            self._schedule_cleanup_retry()
+
+    def _schedule_cleanup_retry(self) -> None:
+        """Start the teardown retry task if it is not already running."""
+        if self._cleanup_retry_task is not None:
+            return
+        self._cleanup_retry_task = self.hass.async_create_task(
+            self._async_cleanup_retry()
+        )
+
+    async def _async_cleanup_retry(self) -> None:
+        """Release the shared stream once other viewers leave."""
+        try:
+            for _ in range(CLEANUP_RETRY_ATTEMPTS):
+                await asyncio.sleep(CLEANUP_RETRY_INTERVAL_SECONDS)
+                if not self._stream_enabled:
+                    return
+                if self._has_external_video_viewers():
+                    continue
+                await self._disable_stream()
+                return
+        finally:
+            self._cleanup_retry_task = None
 
     async def async_added_to_hass(self) -> None:
         """Start the idle watchdog when the entity is added."""

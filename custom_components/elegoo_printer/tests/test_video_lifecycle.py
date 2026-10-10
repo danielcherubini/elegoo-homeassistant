@@ -47,6 +47,7 @@ class _VideoLifecycleSubject(ElegooVideoStreamLifecycle):
         *,
         entity_id: str = "camera.test",
     ) -> None:
+        self.hass = MagicMock()
         self.entity_id = entity_id
         self._init_video_lifecycle(client)
 
@@ -215,19 +216,15 @@ class TestVideoLifecycleMixin:
 
         _run(run())
 
-    def test_disable_proceeds_when_all_connections_are_ours(self) -> None:
-        """Every reported connection being ours allows the disable."""
+    def test_external_viewer_detection_boundary(self) -> None:
+        """Only connections beyond our own tracked viewers are external."""
+        client, _ = _make_client(connected_streams=1, max_streams=5)
+        subject = _VideoLifecycleSubject(client)
+        subject._active_mjpeg_streams = 1
+        assert subject._has_external_video_viewers() is False
 
-        async def run() -> None:
-            client, _ = _make_client(connected_streams=1, max_streams=5)
-            subject = _VideoLifecycleSubject(client)
-            subject._stream_enabled = True
-            subject._active_mjpeg_streams = 1
-            await subject._disable_stream()
-            client.set_printer_video_stream.assert_called_once_with(enable=False)
-            assert subject._stream_enabled is False
-
-        _run(run())
+        client.printer_data.attributes.num_video_stream_connected = 2
+        assert subject._has_external_video_viewers() is True
 
     def test_watchdog_tick_keeps_stream_with_external_viewer(self) -> None:
         """The idle watchdog leaves the stream on while others use it."""
@@ -302,6 +299,73 @@ class TestVideoLifecycleMixin:
 
             task = asyncio.create_task(grab_connection_closes())
             await subject._disable_stream()
+            await task
+
+            client.set_printer_video_stream.assert_called_once_with(enable=False)
+            assert subject._stream_enabled is False
+
+        _run(run())
+
+    def test_disable_skips_when_own_viewer_arrives_during_settle(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A viewer of ours starting during the settle blocks the disable."""
+        monkeypatch.setattr(camera_module, "STREAM_DISABLE_SETTLE_SECONDS", 0.02)
+
+        async def run() -> None:
+            client, _ = _make_client()
+            subject = _VideoLifecycleSubject(client)
+            subject._stream_enabled = True
+
+            async def viewer_starts() -> None:
+                await asyncio.sleep(0)
+                subject._transient_viewers = 1
+
+            task = asyncio.create_task(viewer_starts())
+            await subject._disable_stream()
+            await task
+
+            client.set_printer_video_stream.assert_not_called()
+            assert subject._stream_enabled is True
+
+        _run(run())
+
+    def test_cleanup_keeps_stream_for_external_viewer(self) -> None:
+        """Teardown must not cut off another client that is still watching."""
+
+        async def run() -> None:
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            subject = _VideoLifecycleSubject(client)
+            subject._stream_enabled = True
+
+            await subject._cleanup_video_lifecycle()
+
+            client.set_printer_video_stream.assert_not_called()
+            assert subject._stream_enabled is True
+            # A background retry is scheduled to release it once they leave.
+            subject.hass.async_create_task.assert_called_once()
+            scheduled = subject.hass.async_create_task.call_args.args[0]
+            scheduled.close()
+
+        _run(run())
+
+    def test_cleanup_retry_disables_after_external_viewer_leaves(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The teardown retry releases the stream once the viewer leaves."""
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_INTERVAL_SECONDS", 0.01)
+
+        async def run() -> None:
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            subject = _VideoLifecycleSubject(client)
+            subject._stream_enabled = True
+
+            async def leaves() -> None:
+                await asyncio.sleep(0.02)
+                client.printer_data.attributes.num_video_stream_connected = 0
+
+            task = asyncio.create_task(leaves())
+            await subject._async_cleanup_retry()
             await task
 
             client.set_printer_video_stream.assert_called_once_with(enable=False)
