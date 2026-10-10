@@ -20,6 +20,7 @@ from PIL import UnidentifiedImageError
 from .cc2.client import ElegooCC2Client
 from .cc2.gcode_proxy import GCodeProxyClient
 from .const import (
+    CONF_ALLOW_PRINTER_OFFLINE,
     CONF_CC2_ACCESS_CODE,
     CONF_GCODE_PROXY_URL,
     CONF_MQTT_BROKER_ENABLED,
@@ -32,7 +33,10 @@ from .const import (
 from .mqtt.client import ElegooMQTTClient
 from .mqtt.const import MQTT_BROKER_PORT, MQTT_PORT
 from .mqtt.server import ElegooMQTTBroker
-from .sdcp.exceptions import ElegooPrinterConnectionError
+from .sdcp.exceptions import (
+    ElegooPrinterConnectionError,
+    ElegooPrinterNotConnectedError,
+)
 from .sdcp.models.elegoo_image import ElegooImage
 from .sdcp.models.enums import TransportType
 from .sdcp.models.printer import Printer, PrinterData
@@ -115,6 +119,10 @@ class ElegooPrinterApiClient:
         self._ip_address = printer.ip_address
         self._proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
         self._mqtt_broker_enabled: bool = config.get(CONF_MQTT_BROKER_ENABLED, False)
+        self._allow_offline: bool = config.get(CONF_ALLOW_PRINTER_OFFLINE, False)
+        # Set only when setup was *allowed* to complete with no connection at all
+        # (#171). It is never set by a lost connection after a successful setup.
+        self.offline_setup: bool = False
         self._logger = logger
         self.printer = printer
         self._hass_client = get_async_client(hass)
@@ -122,6 +130,25 @@ class ElegooPrinterApiClient:
         self.mqtt_broker: ElegooMQTTBroker | None = None
         self.hass: HomeAssistant = hass
         self._config_entry = config_entry
+
+    def _as_offline(self) -> ElegooPrinterApiClient:
+        """
+        Mark this client as intentionally offline and return it (#171).
+
+        The entry stays *loaded* with a disconnected client, so this helper
+        deliberately keeps every reference it has: it does not disconnect, does
+        not release the embedded broker or the proxy server, does not zero the
+        ``_proxy_server_enabled``/``_mqtt_broker_enabled`` flags and does not
+        clear ``self.server``/``self.mqtt_broker``. Releasing them here would
+        leak them -- ``async_unload_entry`` only releases what ``runtime_data.api``
+        still holds -- and would deny the printer its own reconnect path back to
+        a broker that is ours and still listening. Zeroing the proxy flag would
+        leave a proxy user who came up offline unable to re-establish the proxy
+        on reconnect. Each caller has already performed the teardown that is
+        correct for its own path.
+        """
+        self.offline_setup = True
+        return self
 
     async def _discover_printer_with_fallback(
         self,
@@ -203,7 +230,7 @@ class ElegooPrinterApiClient:
         return printer_reachable
 
     @classmethod
-    async def async_create(  # noqa: PLR0912, PLR0915
+    async def async_create(  # noqa: PLR0911, PLR0912, PLR0915  # each tolerated offline exit (#171) adds a return
         cls,
         config: MappingProxyType[str, Any],
         logger: Logger,
@@ -216,6 +243,11 @@ class ElegooPrinterApiClient:
         This method parses the configuration to construct a Printer object, optionally
         sets up a proxy server, and attempts to connect to the printer. It returns an
         initialized client instance on success, otherwise None.
+
+        When the entry tolerates a powered-off printer (``allow_printer_offline``),
+        an unreachable/refusing printer is not a failure: the disconnected client is
+        returned with ``offline_setup`` set so setup can complete (#171). Any other
+        failure — including a proxy or broker port already in use — still returns None.
         """
         printer = Printer.from_dict(dict(config), config=config)
         proxy_server_enabled: bool = config.get(CONF_PROXY_ENABLED, False)
@@ -372,6 +404,21 @@ class ElegooPrinterApiClient:
             printer_reachable = await self._discover_printer_with_fallback(printer)
 
         if not printer_reachable:
+            if self._allow_offline:
+                logger.info(
+                    "Printer %s at %s is not reachable — this entry tolerates a"
+                    " powered-off printer, so setup continues in offline mode."
+                    " Entities stay unavailable until the printer is reachable.",
+                    printer.name,
+                    printer.ip_address,
+                )
+                # This is probably unnecessary, but let's disconnect for completeness
+                await self.client.disconnect()
+                # The embedded broker reference is deliberately KEPT: the entry
+                # stays loaded, so async_unload_entry is the release point and the
+                # printer needs the broker to dial back in. Nothing has started the
+                # proxy yet, so there is no proxy reference to consider here.
+                return self._as_offline()
             logger.warning(
                 "Printer %s at %s is not reachable. Stopping any started services.",
                 printer.name,
@@ -415,6 +462,18 @@ class ElegooPrinterApiClient:
                     printer, proxy_enabled=proxy_server_enabled
                 )
             if not connected:
+                if self._allow_offline:
+                    logger.info(
+                        "Printer %s did not answer the connect handshake — this entry"
+                        " tolerates a powered-off printer, so setup continues in"
+                        " offline mode. Entities stay unavailable until the printer"
+                        " is reachable.",
+                        printer.name,
+                    )
+                    # The failed connect_printer() call already tore down its own
+                    # link. Keep the proxy/broker references and both *_enabled
+                    # flags so reconnect() can resume through them.
+                    return self._as_offline()
                 # Release only our proxy reference if any
                 if self.server:
                     await ElegooPrinterServer.release_reference()
@@ -434,6 +493,17 @@ class ElegooPrinterApiClient:
 
             return self  # noqa: TRY300
         except (ConnectionError, TimeoutError, ElegooPrinterConnectionError):
+            if self._allow_offline:
+                logger.info(
+                    "Connecting to printer %s failed — this entry tolerates a"
+                    " powered-off printer, so setup continues in offline mode."
+                    " Entities stay unavailable until the printer is reachable.",
+                    printer.name,
+                )
+                # Every transport tears down its own half-open link before raising,
+                # and reconnect() needs to see both *_enabled flags plus the
+                # proxy/broker references to resume through them — keep them all.
+                return self._as_offline()
             # Release only our proxy reference if any
             if self.server:
                 await ElegooPrinterServer.release_reference()
@@ -864,10 +934,22 @@ class ElegooPrinterApiClient:
         """
         Asynchronously retrieves and updates the printer's attribute data.
 
+        Raises:
+            ElegooPrinterNotConnectedError: if the client is not connected. The
+                MQTT and CC2 transports answer from a cache *without raising*, so
+                without this gate a poll of a powered-off printer would "succeed"
+                and every entity would render fabricated defaults as live truth.
+                Raising routes all three transports through the coordinator's
+                existing quiet failure branch, which reports the entities as
+                unavailable.
+
         Returns:
             PrinterData: The latest attribute information for the printer.
 
         """
+        if not self.is_connected:
+            msg = "Printer not connected, cannot fetch data."
+            raise ElegooPrinterNotConnectedError(msg)
         await self.async_get_attributes()
         await self.async_get_status()
         await self.async_get_print_history()
