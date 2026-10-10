@@ -8,6 +8,7 @@ the resin ElegooStreamCamera regression check.
 
 import asyncio
 import contextlib
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -225,6 +226,23 @@ class TestVideoLifecycleMixin:
 
         client.printer_data.attributes.num_video_stream_connected = 2
         assert subject._has_external_video_viewers() is True
+
+    def test_stream_enabled_state_is_shared_per_entry(self) -> None:
+        """Entities of the same config entry agree on the enabled flag."""
+        coordinator = MagicMock()
+        coordinator.config_entry = SimpleNamespace()
+        client_a, _ = _make_client()
+        client_b, _ = _make_client()
+        a = _VideoLifecycleSubject(client_a)
+        b = _VideoLifecycleSubject(client_b)
+        a.coordinator = coordinator
+        b.coordinator = coordinator
+
+        a._stream_enabled = True
+        assert b._stream_enabled is True
+
+        b._stream_enabled = False
+        assert a._stream_enabled is False
 
     def test_watchdog_tick_keeps_stream_with_external_viewer(self) -> None:
         """The idle watchdog leaves the stream on while others use it."""

@@ -158,7 +158,7 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         self._active_mjpeg_streams = 0
         self._transient_viewers = 0
         self._native_stream_active = False
-        self._stream_enabled = False
+        self._local_stream_state: dict[str, bool] = {"enabled": False}
         self._last_activity = 0.0
         self._idle_watchdog_task = None
         self._cleanup_retry_task = None
@@ -204,6 +204,34 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         except (TypeError, ValueError):
             return False
         return connected > self._own_video_viewer_count()
+
+    def _stream_state(self) -> dict[str, bool]:
+        """
+        Return the shared printer-video state for this config entry.
+
+        The printer video is a single resource shared with every client, so
+        the enabled flag is shared too: a teardown retry can outlive the
+        entity it was created for and act through the replacement camera's
+        client, and both must agree on whether the stream is on. The state
+        lives on the config entry, which survives a reload.
+        """
+        entry = getattr(getattr(self, "coordinator", None), "config_entry", None)
+        if entry is None:
+            return self._local_stream_state
+        state = getattr(entry, "_elegoo_video_state", None)
+        if state is None:
+            state = {"enabled": False}
+            setattr(entry, "_elegoo_video_state", state)  # noqa: B010
+        return state
+
+    @property
+    def _stream_enabled(self) -> bool:
+        """Whether the shared printer video is currently enabled."""
+        return self._stream_state()["enabled"]
+
+    @_stream_enabled.setter
+    def _stream_enabled(self, value: bool) -> None:
+        self._stream_state()["enabled"] = value
 
     async def _ensure_stream_enabled(self) -> None:
         """
