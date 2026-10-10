@@ -60,6 +60,52 @@ STREAM_DISABLE_SETTLE_SECONDS = 3.0
 CLEANUP_RETRY_INTERVAL_SECONDS = 60.0
 CLEANUP_RETRY_ATTEMPTS = 10  # roughly 10 minutes
 
+# Config entries whose shared printer video still owes a release, mapped to the
+# entity id that left it enabled.
+#
+# Unloading the integration tears the camera entity down *before* the printer
+# client is disconnected, so the only release that ever reaches the teardown
+# retry is one a foreign viewer is blocking. Once that retry loses its live
+# connection there is nothing left for the remaining attempts to act through, so
+# instead of spending them it parks the unpaid release here; the next camera
+# entity built for the same config entry adopts it and finishes the job through
+# its own connected client.
+#
+# It is module level because nothing else spans the gap between the unload that
+# records the debt and the setup that adopts it: the recording entity is gone and
+# the entry keeps no runtime data in between. It deliberately does NOT use
+# ``entry.async_on_unload()`` — core drains that callback list right after
+# ``async_unload_entry()`` returns, which is the very unload that records the
+# debt, so it would wipe the handover before any reload could use it.
+#
+# Nothing else has to reset it: the retry clears the entry once the stream is off
+# or once it gives up on a removed entry (removal is terminal and parks nothing),
+# the adopter clears it when the release lands, and an entry id is never reused,
+# so at most one short string is held per printer that is between connections.
+_pending_video_releases: dict[str, str] = {}
+
+
+def _record_pending_video_release(entry_id: str, entity_id: str) -> None:
+    """
+    Park an unpaid video release for the next entity of this entry.
+
+    Arguments:
+        entry_id: Config entry whose printer video is still enabled.
+        entity_id: Entity that left the stream enabled, for the log line.
+
+    """
+    _pending_video_releases[entry_id] = entity_id
+
+
+def _pending_video_release_entity(entry_id: str) -> str | None:
+    """Return the entity that owes a release for this entry, if any."""
+    return _pending_video_releases.get(entry_id)
+
+
+def _clear_pending_video_release(entry_id: str) -> None:
+    """Forget a pending release once it has been paid or given up on."""
+    _pending_video_releases.pop(entry_id, None)
+
 
 class ElegooCameraMjpeg(CameraMjpeg):
     """
@@ -138,6 +184,8 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
     - An idle watchdog re-attempts failed disables and clears stale
       native stream flags
     - Disables on entity removal to clean up residual state
+    - Hands a release that a foreign viewer still blocks to the next camera
+      entity of the same config entry (see _pending_video_releases)
 
     The mixin does not own entity state. Camera classes call
     ``_init_video_lifecycle(client)`` inside their own ``__init__`` once
@@ -210,6 +258,17 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
             return False
         return connected > self._own_video_viewer_count()
 
+    def _config_entry(self) -> "ElegooPrinterConfigEntry | None":
+        """
+        Return this entity's config entry, when it still has one.
+
+        Read through the coordinator rather than cached, so an entity whose
+        entry has been removed reports the entry it belonged to instead of a
+        stale runtime-data reference. Returns None for an entity that was
+        never attached to an entry (bare lifecycle subjects).
+        """
+        return getattr(getattr(self, "coordinator", None), "config_entry", None)
+
     def _stream_state(self) -> dict[str, bool]:
         """
         Return the shared printer-video state for this config entry.
@@ -220,7 +279,7 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         client, and both must agree on whether the stream is on. The state
         lives on the config entry, which survives a reload.
         """
-        entry = getattr(getattr(self, "coordinator", None), "config_entry", None)
+        entry = self._config_entry()
         if entry is None:
             return self._local_stream_state
         state = getattr(entry, "_elegoo_video_state", None)
@@ -386,6 +445,11 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
             with contextlib.suppress(asyncio.CancelledError):
                 await self._idle_watchdog_task
             self._idle_watchdog_task = None
+        # A retry started before this teardown would keep acting through an
+        # entity whose viewer counters and client are about to be reset, so it
+        # is dropped here. The retry scheduled below (if the stream is still
+        # held) is the only one allowed to outlive the entity.
+        self._cancel_pending_cleanup_retry()
         self._active_mjpeg_streams = 0
         self._transient_viewers = 0
         self._native_stream_active = False
@@ -397,12 +461,88 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
             self._schedule_cleanup_retry()
 
     def _schedule_cleanup_retry(self) -> None:
-        """Start the teardown retry task if it is not already running."""
+        """Start the shared-stream release retry if one is not running."""
         if self._cleanup_retry_task is not None:
             return
-        self._cleanup_retry_task = self.hass.async_create_task(
-            self._async_cleanup_retry()
+        # async_create_task() only keeps a weak reference to the task, so this
+        # deliberately long-lived (~10 minute) fire-and-forget retry can be
+        # garbage collected mid-flight and warn at shutdown. Background tasks
+        # are held by hass for their whole lifetime.
+        self._cleanup_retry_task = self.hass.async_create_background_task(
+            self._async_cleanup_retry(),
+            f"elegoo_video_cleanup_{self.entity_id}",
         )
+
+    def _cancel_pending_cleanup_retry(self) -> None:
+        """Drop a retry task this entity started earlier."""
+        task = self._cleanup_retry_task
+        self._cleanup_retry_task = None
+        if task is not None and not task.done():
+            task.cancel()
+
+    def _config_entry_id(self) -> str | None:
+        """Return this entity's config entry id, or None when detached."""
+        entry_id = getattr(self._config_entry(), "entry_id", None)
+        return entry_id if isinstance(entry_id, str) else None
+
+    def _config_entry_removed(self) -> bool:
+        """
+        Report whether nothing can hand this release a live client again.
+
+        Core drops the entry from ``hass.config_entries`` on removal (before
+        calling the removal hook), while a plain reload keeps it registered and
+        only clears its runtime data — so a missing entry is terminal, and a
+        present one means a reload may still bring a fresh connected client.
+        An entity with no resolvable entry has nothing to wait for either.
+        """
+        entry_id = self._config_entry_id()
+        if entry_id is None:
+            return True
+        entries = getattr(getattr(self, "hass", None), "config_entries", None)
+        get_entry = getattr(entries, "async_get_entry", None)
+        if not callable(get_entry):
+            return True
+        return get_entry(entry_id) is None
+
+    def _park_pending_video_release(self) -> None:
+        """Hand this unpaid release to the next entity of the config entry."""
+        entry_id = self._config_entry_id()
+        if entry_id is not None:
+            _record_pending_video_release(entry_id, self.entity_id)
+
+    def _clear_pending_video_release(self) -> None:
+        """Forget the entry's pending release once it no longer owes one."""
+        entry_id = self._config_entry_id()
+        if entry_id is not None:
+            _clear_pending_video_release(entry_id)
+
+    def _abandon_video_release(self) -> None:
+        """Stop chasing a release no live connection can ever pay."""
+        self._clear_pending_video_release()
+        LOGGER.warning(
+            "Giving up releasing the printer video stream for %s: the config "
+            "entry has been removed and there is no live printer connection "
+            "left to disable it with. The printer video may stay enabled until "
+            "the printer is rebooted or the integration is reloaded.",
+            self.entity_id,
+        )
+
+    def _adopt_pending_video_release(self) -> None:
+        """
+        Take over a release a torn-down entity could not pay.
+
+        A previous camera of this config entry left the shared video enabled
+        because a foreign viewer held it, and its retry ran out of live
+        connections when the integration unloaded the client. This entity was
+        just built with a freshly connected client, so it finishes the job —
+        through the same retry loop and therefore the exact same external /
+        active-viewer guard: while another client is still watching the stream
+        stays on and nothing is force-disabled.
+        """
+        entry_id = self._config_entry_id()
+        if entry_id is None or _pending_video_release_entity(entry_id) is None:
+            return
+        self._schedule_cleanup_retry()
 
     def _current_printer_client(self) -> "ElegooPrinterClient | None":
         """
@@ -413,7 +553,7 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         instead of caching it; fall back to the original client when the
         entry is unavailable. Returns None when nothing is connected.
         """
-        entry = getattr(getattr(self, "coordinator", None), "config_entry", None)
+        entry = self._config_entry()
         runtime = getattr(entry, "runtime_data", None)
         client = getattr(getattr(runtime, "api", None), "client", None)
         if client is None:
@@ -423,30 +563,58 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         return client
 
     async def _async_cleanup_retry(self) -> None:
-        """Release the shared stream once other viewers leave."""
+        """
+        Release the shared stream once other viewers leave.
+
+        The release can outlive both this entity and the client it was built
+        with, so a tick with no live connection decides instead of spinning:
+        while the config entry is still registered the release is parked for
+        the next camera entity of that entry (a reload hands it a connected
+        client) and the bounded wait continues; once the entry has been removed
+        there is nothing left to act through, so the retry gives up at once
+        with a single warning instead of burning every remaining attempt.
+        """
         try:
             for _ in range(CLEANUP_RETRY_ATTEMPTS):
                 await asyncio.sleep(CLEANUP_RETRY_INTERVAL_SECONDS)
                 if not self._stream_enabled:
+                    self._clear_pending_video_release()
                     return
                 client = self._current_printer_client()
                 if client is None:
-                    # No live connection right now; keep trying in case the
-                    # integration returns (reload) with a fresh client.
+                    if self._config_entry_removed():
+                        self._abandon_video_release()
+                        return
+                    # Unload disconnected the client; a reload will not hand it
+                    # back, so leave the release for the next entity instead of
+                    # retrying against a dead connection.
+                    self._park_pending_video_release()
                     continue
                 self._printer_client = client
                 if self._has_external_video_viewers():
                     continue
                 await self._disable_stream()
                 if not self._stream_enabled:
+                    self._clear_pending_video_release()
                     return
         finally:
-            self._cleanup_retry_task = None
+            task = asyncio.current_task()
+            # Only clear the slot when this task still owns it: teardown can
+            # cancel us and immediately schedule the next retry, and a retiring
+            # task must not drop the task its replacement just stored.
+            if self._cleanup_retry_task is task:
+                self._cleanup_retry_task = None
 
     async def async_added_to_hass(self) -> None:
-        """Start the idle watchdog when the entity is added."""
+        """
+        Start the idle watchdog and inherit any unpaid video release.
+
+        The watchdog is entity-local; the inherited release is the config
+        entry's business, so it runs through the shared retry loop.
+        """
         await super().async_added_to_hass()
         self._idle_watchdog_task = asyncio.create_task(self._idle_watchdog())
+        self._adopt_pending_video_release()
 
     async def async_will_remove_from_hass(self) -> None:
         """

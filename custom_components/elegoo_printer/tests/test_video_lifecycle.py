@@ -3,11 +3,15 @@ Tests for the video stream lifecycle management (documented in issue #399).
 
 Covers the shared ElegooVideoStreamLifecycle mixin, the FDM
 ElegooMjpegCamera (the class reported to leak video stream sessions), and
-the resin ElegooStreamCamera regression check.
+the resin ElegooStreamCamera regression check. Also covers what happens to a
+release a foreign viewer is still blocking when the entity, its client and
+eventually its config entry go away: the bounded teardown retry, the handover
+to the next camera entity of the entry, and the task that carries it.
 """
 
 import asyncio
 import contextlib
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -20,15 +24,29 @@ from custom_components.elegoo_printer.camera import (
     ElegooStreamCamera,
     ElegooVideoStreamLifecycle,
 )
+from custom_components.elegoo_printer.definitions import PRINTER_MJPEG_CAMERAS
 from custom_components.elegoo_printer.sdcp.models.enums import ElegooVideoStatus
 
 REQUEST = MagicMock()  # web.Request stand-in
+POLL_TIMEOUT_SECONDS = 2.0  # ceiling for waiting on a scheduled task to react
 
 
 @pytest.fixture(autouse=True)
 def _no_disable_settle(monkeypatch: pytest.MonkeyPatch) -> None:
     """Drop the disable settle to zero so tests stay fast and deterministic."""
     monkeypatch.setattr(camera_module, "STREAM_DISABLE_SETTLE_SECONDS", 0.0)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_pending_releases(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Give every test its own pending-release registry.
+
+    The handover registry is module level on purpose (it has to survive the
+    entity and the entry's runtime data), so tests must not inherit each
+    other's entries. Replacing the mapping keeps production code untouched.
+    """
+    monkeypatch.setattr(camera_module, "_pending_video_releases", {})
 
 
 def _run(coro):
@@ -106,6 +124,135 @@ def _resin_camera(client: MagicMock) -> ElegooStreamCamera:
     cam._active_mjpeg_processes: set = set()
     cam._init_video_lifecycle(client)
     return cam
+
+
+def _make_entry(entry_id: str = "entry-1") -> SimpleNamespace:
+    """
+    Build a config-entry double.
+
+    ``runtime_data`` starts unset (None), which is the state core leaves the
+    entry in once it has been unloaded — a reload has to set a brand-new one.
+    """
+    return SimpleNamespace(entry_id=entry_id, data={}, runtime_data=None)
+
+
+def _leave_stream_enabled(entry: SimpleNamespace) -> None:
+    """
+    Mark the shared printer video of an entry as enabled.
+
+    The enabled flag lives on the config entry so it survives an unload, while
+    its runtime data does not — pairing the two models the state a reload starts
+    from after a previous entity left the stream on.
+    """
+    setattr(entry, "_elegoo_video_state", {"enabled": True})  # noqa: B010
+
+
+def _make_printer() -> MagicMock:
+    """Build the printer description double the MJPEG camera reads in __init__."""
+    printer = MagicMock()
+    printer.proxy_enabled = False
+    printer.proxy_host = None
+    printer.ip_address = "192.168.1.50"
+    printer.id = "mainboard-1"
+    return printer
+
+
+def _attach_client(entry: SimpleNamespace, client: MagicMock) -> MagicMock:
+    """
+    Give an entry live runtime data around ``client``, as setup/reload does.
+
+    Returns:
+        The coordinator the camera entities of that entry are built with.
+
+    """
+    coordinator = MagicMock()
+    coordinator.config_entry = entry
+    coordinator.generate_unique_id = MagicMock(side_effect=lambda key: f"uid-{key}")
+    entry.runtime_data = SimpleNamespace(
+        api=SimpleNamespace(client=client, printer=_make_printer()),
+        coordinator=coordinator,
+    )
+    return coordinator
+
+
+def _make_hass(entry: SimpleNamespace | None) -> MagicMock:
+    """
+    Build a hass double that resolves the config entry and schedules tasks.
+
+    ``entry=None`` models a removed entry: core drops it from
+    ``hass.config_entries`` before calling the removal hook, so
+    ``async_get_entry`` stops finding it while a plain reload keeps it present.
+    ``async_create_background_task`` creates a real task so tests can inspect
+    and cancel what the lifecycle scheduled.
+    """
+    hass = MagicMock()
+    hass.config_entries.async_get_entry.return_value = entry
+
+    def _background_task(coro, name, **_kwargs: object):
+        # Mirrors hass, which starts background tasks immediately via
+        # create_eager_task(), and keeps a strong reference to them.
+        return asyncio.eager_task_factory(asyncio.get_running_loop(), coro, name=name)
+
+    hass.async_create_background_task.side_effect = _background_task
+    return hass
+
+
+def _lifecycle_subject(
+    client: MagicMock,
+    *,
+    entry: SimpleNamespace | None,
+    hass: MagicMock | None = None,
+    entity_id: str = "camera.test",
+) -> _VideoLifecycleSubject:
+    """Build a lifecycle subject attached to a config-entry double."""
+    subject = _VideoLifecycleSubject(client, entity_id=entity_id)
+    subject.hass = hass if hass is not None else _make_hass(entry)
+    if entry is not None:
+        coordinator = MagicMock()
+        coordinator.config_entry = entry
+        subject.coordinator = coordinator
+    return subject
+
+
+def _live_fdm_camera(entry: SimpleNamespace, hass: MagicMock) -> ElegooMjpegCamera:
+    """
+    Build a real FDM chamber camera entity for an entry with live runtime data.
+
+    Unlike ``_fdm_camera`` this runs the class constructor, so the entity is
+    attached to the coordinator and its client exactly as a reload would build
+    it — which is what the pending-release handover needs.
+    """
+    coordinator = entry.runtime_data.coordinator
+    cam = ElegooMjpegCamera(hass, coordinator, PRINTER_MJPEG_CAMERAS[0])
+    # Entities normally get hass from the platform when they are added.
+    cam.hass = hass
+    cam.entity_id = "camera.chamber_camera"
+    return cam
+
+
+async def _wait_for(predicate) -> bool:
+    """
+    Poll ``predicate`` until it holds or the deadline passes.
+
+    Returns:
+        Whether the predicate ended up holding.
+
+    """
+    deadline = asyncio.get_event_loop().time() + POLL_TIMEOUT_SECONDS
+    while not predicate():
+        if asyncio.get_event_loop().time() > deadline:
+            break
+        await asyncio.sleep(0.005)
+    return bool(predicate())
+
+
+async def _cancel(task) -> None:
+    """Cancel a scheduled task and collect it."""
+    if task is None:
+        return
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
 
 
 class TestVideoLifecycleMixin:
@@ -390,8 +537,11 @@ class TestVideoLifecycleMixin:
             client.set_printer_video_stream.assert_not_called()
             assert subject._stream_enabled is True
             # A background retry is scheduled to release it once they leave.
-            subject.hass.async_create_task.assert_called_once()
-            scheduled = subject.hass.async_create_task.call_args.args[0]
+            # It must be a *background* task: hass only keeps a weak reference
+            # to ordinary tasks, so a ~10 minute retry could be collected.
+            subject.hass.async_create_background_task.assert_called_once()
+            subject.hass.async_create_task.assert_not_called()
+            scheduled = subject.hass.async_create_background_task.call_args.args[0]
             scheduled.close()
 
         _run(run())
@@ -865,5 +1015,474 @@ class TestResinStreamCameraLifecycle:
             await cam.async_will_remove_from_hass()
             in_flight.close.assert_awaited_once()
             client.set_printer_video_stream.assert_called_once_with(enable=False)
+
+        _run(run())
+
+
+class TestTeardownRetryWithoutLiveClient:
+    """
+    Cover a retry that outlives the connection it was built with.
+
+    Unloading the integration removes the camera entity while the client is
+    still connected, so the only release that reaches the retry is one a
+    foreign viewer is blocking. After that the client is disconnected and the
+    entry either comes back on a reload or is gone for good — the retry has to
+    tell those apart instead of spending every attempt on a dead connection.
+    """
+
+    @staticmethod
+    def _fast_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+        """Shorten the retry interval so the loop is testable in milliseconds."""
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_INTERVAL_SECONDS", 0.01)
+
+    @staticmethod
+    def _warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+        """
+        Collect the warning messages logged for the test entity.
+
+        ``caplog`` is attached to the root logger, which the component LOGGER
+        (``custom_components.elegoo_printer``) propagates to.
+        """
+        return [
+            record.getMessage()
+            for record in caplog.records
+            if record.levelno == logging.WARNING
+            and "camera.test" in record.getMessage()
+        ]
+
+    @staticmethod
+    def _unloaded(old_client: MagicMock, entry: SimpleNamespace) -> None:
+        """Model the integration having finished unloading its client."""
+        old_client.is_connected = False
+        entry.runtime_data = None
+
+    def test_retry_gives_up_when_entry_removed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A removed entry ends the retry on the first tick, with one warning."""
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            # Teardown happens while a foreign viewer still holds the stream.
+            old_client, _ = _make_client(connected_streams=1, max_streams=2)
+            entry = _make_entry()
+            _attach_client(entry, old_client)
+            hass = _make_hass(None)  # core dropped the entry on removal
+            ticks: list[str] = []
+
+            def forget(entry_id: str) -> None:
+                ticks.append(entry_id)
+
+            hass.config_entries.async_get_entry.side_effect = forget
+            subject = _lifecycle_subject(old_client, entry=entry, hass=hass)
+            subject._stream_enabled = True
+
+            await subject._cleanup_video_lifecycle()
+            retry = subject._cleanup_retry_task
+            assert retry is not None
+
+            self._unloaded(old_client, entry)
+            await retry
+
+            # Gave up on the very first tick: the entry is consulted once per
+            # tick without a live client, so one lookup out of the full
+            # CLEANUP_RETRY_ATTEMPTS budget means it stopped instead of spinning.
+            assert ticks == ["entry-1"]
+            # Exactly one loud warning, naming the entity and the way out.
+            warnings = self._warnings(caplog)
+            assert len(warnings) == 1
+            assert "camera.test" in warnings[0]
+            assert "reboot" in warnings[0]
+            assert "reload" in warnings[0]
+            # Nothing was ever sent through the disconnected client.
+            old_client.set_printer_video_stream.assert_not_called()
+            assert subject._cleanup_retry_task is None
+            assert camera_module._pending_video_releases == {}
+
+        _run(run())
+
+    def test_retry_treats_unresolvable_entry_as_terminal(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """An entity with no config entry at all has nothing to wait for."""
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            client, _ = _make_client(connected=False)
+            subject = _VideoLifecycleSubject(client)
+            subject._stream_enabled = True
+            await subject._async_cleanup_retry()
+
+            warnings = self._warnings(caplog)
+            assert len(warnings) == 1
+            client.set_printer_video_stream.assert_not_called()
+
+        _run(run())
+
+    def test_retry_disables_through_the_reloaded_client(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A reload hands the retry a fresh connected client and it releases."""
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            old_client, _ = _make_client(connected_streams=1, max_streams=2)
+            entry = _make_entry()
+            _attach_client(entry, old_client)
+            subject = _lifecycle_subject(
+                old_client, entry=entry, hass=_make_hass(entry)
+            )
+            subject._stream_enabled = True
+            await subject._cleanup_video_lifecycle()
+            await _cancel(subject._cleanup_retry_task)
+
+            self._unloaded(old_client, entry)
+            # The entry survived the unload; a reload gives it new runtime data.
+            new_client, _ = _make_client(connected_streams=0, max_streams=2)
+            _attach_client(entry, new_client)
+
+            await subject._async_cleanup_retry()
+
+            new_client.set_printer_video_stream.assert_called_once_with(enable=False)
+            assert subject._printer_client is new_client
+            assert subject._stream_enabled is False
+            assert not self._warnings(caplog)
+
+        _run(run())
+
+    def test_retry_parks_the_release_for_the_next_entity(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A down client on a still-registered entry hands the release over."""
+        self._fast_retry(monkeypatch)
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_ATTEMPTS", 3)
+
+        async def run() -> None:
+            old_client, _ = _make_client(connected_streams=1, max_streams=2)
+            entry = _make_entry()
+            _attach_client(entry, old_client)
+            subject = _lifecycle_subject(
+                old_client, entry=entry, hass=_make_hass(entry)
+            )
+            subject._stream_enabled = True
+
+            self._unloaded(old_client, entry)
+            await subject._async_cleanup_retry()
+
+            assert camera_module._pending_video_releases == {
+                entry.entry_id: "camera.test"
+            }
+            old_client.set_printer_video_stream.assert_not_called()
+
+        _run(run())
+
+
+class TestPendingVideoReleaseHandover:
+    """A release the old entity could not pay is finished by the new one."""
+
+    @staticmethod
+    def _fast_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+        """Shorten the retry interval so a handover is testable in milliseconds."""
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_INTERVAL_SECONDS", 0.01)
+
+    @staticmethod
+    async def _stop(cam) -> None:
+        """Cancel what the entity scheduled so the test loop exits clean."""
+        await _cancel(cam._cleanup_retry_task)
+        await _cancel(cam._idle_watchdog_task)
+
+    def test_new_entity_completes_the_pending_release(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A fresh camera for the entry disables the stream it inherited."""
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            # A previous entity left the entry's shared stream enabled and its
+            # retry parked the release when the unload killed its connection.
+            camera_module._record_pending_video_release(
+                entry.entry_id, "camera.chamber_camera_old"
+            )
+            _leave_stream_enabled(entry)
+            assert entry.runtime_data is None  # unloaded: no live client
+
+            new_client, _ = _make_client(connected_streams=0, max_streams=2)
+            coordinator = _attach_client(entry, new_client)
+            assert coordinator.config_entry is entry
+            cam = _live_fdm_camera(entry, hass)
+            assert cam._stream_enabled is True  # inherited shared flag
+
+            await cam.async_added_to_hass()
+            try:
+                released = await _wait_for(
+                    lambda: new_client.set_printer_video_stream.await_count == 1
+                )
+                assert released, "the adopted release never reached the printer"
+                new_client.set_printer_video_stream.assert_awaited_once_with(
+                    enable=False
+                )
+                assert cam._stream_enabled is False
+                # The retry runs through hass' background-task API, not the
+                # weakly-referenced plain one.
+                hass.async_create_background_task.assert_called_once()
+                hass.async_create_task.assert_not_called()
+            finally:
+                await self._stop(cam)
+
+        _run(run())
+
+    def test_new_entity_waits_while_external_viewer_holds_stream(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The inherited release keeps the exact same guard: never force it."""
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            camera_module._record_pending_video_release(
+                entry.entry_id, "camera.chamber_camera_old"
+            )
+            _leave_stream_enabled(entry)
+
+            new_client, _ = _make_client(connected_streams=1, max_streams=2)
+            _attach_client(entry, new_client)
+            cam = _live_fdm_camera(entry, hass)
+
+            await cam.async_added_to_hass()
+            try:
+                assert await _wait_for(lambda: cam._cleanup_retry_task is not None)
+                # Several retry intervals pass with the slicer still watching.
+                await asyncio.sleep(0.05)
+                new_client.set_printer_video_stream.assert_not_called()
+                assert cam._stream_enabled is True
+                assert (
+                    camera_module._pending_video_release_entity(entry.entry_id)
+                    == "camera.chamber_camera_old"
+                )
+
+                # The foreign viewer leaves: the inherited release lands.
+                new_client.printer_data.attributes.num_video_stream_connected = 0
+                assert await _wait_for(
+                    lambda: new_client.set_printer_video_stream.await_count == 1
+                )
+                assert cam._stream_enabled is False
+            finally:
+                await self._stop(cam)
+
+        _run(run())
+
+    def test_completed_release_is_not_reattempted_by_a_later_entity(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The pending flag is cleared, so the next entity leaves it alone."""
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            camera_module._record_pending_video_release(
+                entry.entry_id, "camera.chamber_camera_old"
+            )
+            _leave_stream_enabled(entry)
+
+            first_client, _ = _make_client(connected_streams=0, max_streams=2)
+            _attach_client(entry, first_client)
+            first = _live_fdm_camera(entry, hass)
+            await first.async_added_to_hass()
+            try:
+                assert await _wait_for(
+                    lambda: first_client.set_printer_video_stream.await_count == 1
+                )
+            finally:
+                await self._stop(first)
+
+            assert camera_module._pending_video_releases == {}
+            assert hass.async_create_background_task.call_count == 1
+
+            # A later entity for the same entry adopts nothing: it must not
+            # re-disable a stream it never enabled.
+            second_client, _ = _make_client(connected_streams=0, max_streams=2)
+            _attach_client(entry, second_client)
+            second = _live_fdm_camera(entry, hass)
+            await second.async_added_to_hass()
+            try:
+                await asyncio.sleep(0.05)
+                assert second._cleanup_retry_task is None
+                assert hass.async_create_background_task.call_count == 1
+                second_client.set_printer_video_stream.assert_not_called()
+                assert second._stream_enabled is False
+            finally:
+                await self._stop(second)
+
+        _run(run())
+
+    def test_detached_entity_does_not_adopt_another_entrys_release(self) -> None:
+        """An entity with no resolvable config entry adopts nothing."""
+
+        async def run() -> None:
+            camera_module._record_pending_video_release("entry-1", "camera.other")
+            client, _ = _make_client()
+            subject = _VideoLifecycleSubject(client)
+            subject._adopt_pending_video_release()
+
+            await asyncio.sleep(0)
+            assert subject._cleanup_retry_task is None
+            subject.hass.async_create_background_task.assert_not_called()
+
+        _run(run())
+
+    def test_reload_sequence_releases_the_held_stream(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """End to end: unload with a foreign viewer, reload, stream released."""
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            old_client, _ = _make_client(connected_streams=1, max_streams=2)
+            _attach_client(entry, old_client)
+            old = _live_fdm_camera(entry, hass)
+            await old.async_added_to_hass()
+            # The integration enabled the shared video for a viewer of ours.
+            old._stream_enabled = True
+
+            # --- unload: entity goes first, then the client is disconnected ---
+            await old.async_will_remove_from_hass()
+            await _wait_for(lambda: old._cleanup_retry_task is not None)
+            old_client.is_connected = False
+            entry.runtime_data = None
+
+            # The held stream survives the unload; the retry parks the release
+            # instead of spending its attempts on the dead client.
+            assert await _wait_for(
+                lambda: camera_module._pending_video_release_entity(entry.entry_id)
+                is not None
+            )
+            old_client.set_printer_video_stream.assert_not_called()
+            assert old._stream_enabled is True
+            await self._stop(old)
+
+            # --- reload: a brand-new entity with a brand-new client ---
+            new_client, _ = _make_client(connected_streams=0, max_streams=2)
+            _attach_client(entry, new_client)
+            new = _live_fdm_camera(entry, hass)
+            await new.async_added_to_hass()
+            try:
+                assert await _wait_for(
+                    lambda: new_client.set_printer_video_stream.await_count == 1
+                )
+                assert new._stream_enabled is False
+                assert camera_module._pending_video_releases == {}
+                old_client.set_printer_video_stream.assert_not_called()
+
+                # The adopted release must not leave the new entity believing it
+                # enabled the video itself: neither its watchdog nor a later
+                # teardown may disable a stream it never turned on.
+                await new._idle_watchdog_tick()
+                await new.async_will_remove_from_hass()
+                new_client.set_printer_video_stream.assert_awaited_once_with(
+                    enable=False
+                )
+            finally:
+                await self._stop(new)
+
+        _run(run())
+
+
+class TestCleanupRetryTaskOwnership:
+    """The long-lived retry must survive GC and not outlive its purpose."""
+
+    def test_retry_is_a_named_background_task_and_is_not_duplicated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """hass keeps background tasks, and only one retry may run."""
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_INTERVAL_SECONDS", 0.05)
+
+        async def run() -> None:
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            entry = _make_entry()
+            _attach_client(entry, client)
+            hass = _make_hass(entry)
+            subject = _lifecycle_subject(client, entry=entry, hass=hass)
+            subject._stream_enabled = True
+
+            subject._schedule_cleanup_retry()
+            first = subject._cleanup_retry_task
+            assert first is not None
+            subject._schedule_cleanup_retry()
+
+            hass.async_create_background_task.assert_called_once()
+            hass.async_create_task.assert_not_called()
+            assert subject._cleanup_retry_task is first
+            name = hass.async_create_background_task.call_args.args[1]
+            assert subject.entity_id in name
+            await _cancel(first)
+            assert first.cancelled()
+
+        _run(run())
+
+    def test_teardown_cancels_a_retry_started_before_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Teardown drops a stale retry instead of leaving it acting blindly."""
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_INTERVAL_SECONDS", 0.05)
+
+        async def run() -> None:
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            entry = _make_entry()
+            _attach_client(entry, client)
+            subject = _lifecycle_subject(client, entry=entry, hass=_make_hass(entry))
+            subject._stream_enabled = True
+            subject._schedule_cleanup_retry()
+            stale = subject._cleanup_retry_task
+            assert stale is not None
+
+            await subject._cleanup_video_lifecycle()
+
+            # Collect the cancelled task: cancellation only lands once it runs.
+            with contextlib.suppress(asyncio.CancelledError):
+                await stale
+            assert stale.cancelled()
+            # Teardown re-armed a retry for the stream it could not release and
+            # the retiring task did not clear the slot its replacement owns.
+            retry = subject._cleanup_retry_task
+            assert retry is not None
+            assert retry is not stale
+            assert not retry.done()
+            await _cancel(retry)
+
+        _run(run())
+
+    def test_cancelled_retry_keeps_the_retry_its_replacement_scheduled(self) -> None:
+        """A retiring task must not clear the task slot owned by its successor."""
+
+        async def run() -> None:
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            entry = _make_entry()
+            _attach_client(entry, client)
+            hass = _make_hass(entry)
+            subject = _lifecycle_subject(client, entry=entry, hass=hass)
+            subject._stream_enabled = True
+            subject._schedule_cleanup_retry()
+            stale = subject._cleanup_retry_task
+            assert stale is not None
+            stale.cancel()
+            # A replacement takes the slot before the cancellation unwinds.
+            subject._cleanup_retry_task = None
+            subject._schedule_cleanup_retry()
+            replacement = subject._cleanup_retry_task
+            await asyncio.sleep(0)  # let the cancelled task run its finally
+
+            assert subject._cleanup_retry_task is replacement
+            assert not replacement.done()
+            await _cancel(replacement)
 
         _run(run())
