@@ -2,6 +2,9 @@
 
 import asyncio
 import contextlib
+import itertools
+import weakref
+from collections.abc import Iterable
 from http import HTTPStatus
 from typing import TYPE_CHECKING
 
@@ -65,11 +68,13 @@ CLEANUP_RETRY_ATTEMPTS = 10  # roughly 10 minutes
 #
 # Unloading the integration tears the camera entity down *before* the printer
 # client is disconnected, so the only release that ever reaches the teardown
-# retry is one a foreign viewer is blocking. Once that retry loses its live
-# connection there is nothing left for the remaining attempts to act through, so
-# instead of spending them it parks the unpaid release here; the next camera
-# entity built for the same config entry adopts it and finishes the job through
-# its own connected client.
+# retry is one a foreign viewer is blocking. That release can then be stranded
+# two ways, and both park it here rather than ending with the printer enabled:
+# the retry loses its live connection, so nothing is left for the remaining
+# attempts to act through, or it runs out of attempts while the viewer is still
+# holding the stream through a connection that stayed up. Either way the next
+# camera entity built for the same config entry adopts the debt and finishes the
+# job through its own connected client.
 #
 # It is module level because nothing else spans the gap between the unload that
 # records the debt and the setup that adopts it: the recording entity is gone and
@@ -98,6 +103,38 @@ CLEANUP_RETRY_ATTEMPTS = 10  # roughly 10 minutes
 # that is between connections.
 _pending_video_releases: dict[str, str] = {}
 
+# Camera entities currently attached to Home Assistant, grouped by config entry.
+#
+# Viewer counts are entity state (an MJPEG stream and an image grab belong to the
+# entity that served them) but the decision they gate is the config entry's: the
+# printer reports one connection count for the shared video stream, and the
+# teardown retry that releases it deliberately outlives the entity that started
+# it and acts through the replacement entity's client. Asked whether the stream
+# still has a viewer of ours, such a retry must be told about the viewers of the
+# entity that is now actually serving them — reading only its own counters, which
+# teardown has zeroed, would let it disable a stream the live entity is using.
+#
+# So this maps an entry to its live entities and the counters are read from the
+# entities themselves:
+# - the entities are stored weakly and dropped at teardown, so a torn-down entity
+#   is absent and contributes nothing (correct — it genuinely has no viewers),
+#   while the replacement entity registered at its own ``async_added_to_hass`` and
+#   is visible to the retry that outlived the old one, and
+# - no entity ever writes another entity's counters, only its own at enable and
+#   disable time, so one entity's teardown cannot clear a sibling's counts and
+#   quietly disarm the guard that protects the viewers that sibling is serving.
+#
+# Two paths keep it bounded, and neither holds an entity past its lifetime:
+# - an entity unregisters itself on teardown (see async_will_remove_from_hass),
+#   and the weak references drop anything that was removed without ever reaching
+#   that hook,
+# - and an entry that is removed has its whole group dropped by the integration's
+#   ``async_remove_entry`` hook, which calls forget_pending_video_release() below.
+#
+# So a group is never the only thing pointing at an entity, and an entity can
+# never be kept alive by being tracked here.
+_video_viewers_by_entry: dict[str, weakref.WeakSet["ElegooVideoStreamLifecycle"]] = {}
+
 
 def _record_pending_video_release(entry_id: str, entity_id: str) -> None:
     """
@@ -124,24 +161,32 @@ def _clear_pending_video_release(entry_id: str) -> None:
 @callback
 def forget_pending_video_release(entry_id: str) -> None:
     """
-    Forget a parked release for an entry that no longer exists.
+    Forget everything this integration parked for an entry that is gone.
 
-    The public edge of the handover registry, called by the integration's
-    ``async_remove_entry`` hook. A release parked for a removed config entry can
-    never be paid — there is no printer connection left to disable the stream
-    with, and no future entity for an entry id that is gone — so keeping the key
-    would only leak it. That is the case the teardown retry cannot see: once the
-    retry has exhausted its attempts nothing is left to observe the removal, and
-    removal is the only hook core guarantees for it.
+    The public edge of both per-entry registries, called by the integration's
+    ``async_remove_entry`` hook: the handover registry keeps the entry id, the
+    viewer registry keeps the group of camera entities that were live for it.
+
+    A release parked for a removed config entry can never be paid — there is no
+    printer connection left to disable the stream with, and no future entity for
+    an entry id that is gone — so keeping the key would only leak it. That is the
+    case the teardown retry cannot see: once the retry has exhausted its
+    attempts nothing is left to observe the removal, and removal is the only hook
+    core guarantees for it. The viewer group has the same shape of problem: an
+    entity is unregistered by its own teardown, but an entry whose entities were
+    torn down without that hook running would otherwise keep its (weak, so
+    entity-free) group key forever.
 
     Idempotent and side-effect free: an entry with nothing parked is a no-op, so
-    it is safe to call for every removal.
+    it is safe to call for every removal. It deliberately touches neither the
+    printer nor the entry's shared enabled flag — that is core's unload path.
 
     Arguments:
         entry_id: Config entry being removed.
 
     """
     _clear_pending_video_release(entry_id)
+    _video_viewers_by_entry.pop(entry_id, None)
 
 
 class ElegooCameraMjpeg(CameraMjpeg):
@@ -217,7 +262,10 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
       image grab, or native stream) appears
     - Disables it when the last viewer disconnects, but only once the
       printer reports no other (untracked) stream connection — a foreign
-      viewer such as the Elegoo Slicer must not be cut off
+      viewer such as the Elegoo Slicer must not be cut off. The viewers it
+      counts are the config entry's, across every live camera entity of that
+      entry, so a release never trusts the counters of an entity that has
+      already been replaced (see _video_viewers_by_entry)
     - An idle watchdog re-attempts failed disables and clears stale
       native stream flags
     - Disables on entity removal to clean up residual state
@@ -226,11 +274,12 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
 
     The mixin does not own entity state. Camera classes call
     ``_init_video_lifecycle(client)`` inside their own ``__init__`` once
-    ``self._printer_client`` is available.
+    ``self._printer_client`` is available, and the entity shares its viewers
+    from ``async_added_to_hass`` until it is removed.
     """
 
     # Opt-in: while set, the shared printer video is not disabled while the
-    # printer reports connections this entity does not own (see
+    # printer reports connections this config entry does not own (see
     # _has_external_video_viewers). Left off for the resin stream camera, whose
     # still-image path can leave one of its own RTSP sessions behind — that
     # session would otherwise be mistaken for an external viewer and never
@@ -261,20 +310,130 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         return num_connected >= max_allowed
 
     def _has_active_viewers(self) -> bool:
-        """Check if any viewer type is currently active."""
-        return (
-            self._active_mjpeg_streams > 0
-            or self._transient_viewers > 0
-            or self._native_stream_active
+        """
+        Check if any viewer type is active on this entity's config entry.
+
+        Viewers are counted across every live camera entity of the entry, not
+        just this one, so a release is never cut off because the entity asking
+        happens to be the one whose counters have already been reset (see
+        _entry_video_viewer_counts).
+        """
+        mjpeg_streams, transient_viewers, native_streams = (
+            self._entry_video_viewer_counts()
         )
+        return bool(mjpeg_streams or transient_viewers or native_streams)
 
     def _own_video_viewer_count(self) -> int:
-        """Count the video viewers this entity is currently tracking."""
-        return (
-            self._active_mjpeg_streams
-            + self._transient_viewers
-            + (1 if self._native_stream_active else 0)
+        """
+        Count the video viewers this config entry is currently tracking.
+
+        "Own" is per entry rather than per entity: the printer reports one
+        connection count for the shared stream, so every connection this entry's
+        live entities track is ours, whichever entity served it.
+        """
+        mjpeg_streams, transient_viewers, native_streams = (
+            self._entry_video_viewer_counts()
         )
+        return mjpeg_streams + transient_viewers + native_streams
+
+    def _local_video_viewer_counts(self) -> tuple[int, int, int]:
+        """
+        Return this entity's own (mjpeg, transient, native) viewer counts.
+
+        Read with getattr because the counts are looked up on entities this one
+        only knows as lifecycle peers; a subject that never ran the lifecycle
+        init simply tracks no viewers.
+        """
+        return (
+            getattr(self, "_active_mjpeg_streams", 0) or 0,
+            getattr(self, "_transient_viewers", 0) or 0,
+            1 if getattr(self, "_native_stream_active", False) else 0,
+        )
+
+    def _entry_video_viewer_entities(self) -> Iterable["ElegooVideoStreamLifecycle"]:
+        """
+        Return the live camera entities whose viewers this entry shares.
+
+        That is this entity plus every other entity still registered for its
+        config entry (see _video_viewers_by_entry), so:
+        - an entity that was never attached to an entry — a bare lifecycle
+          subject — keeps answering for its own viewers exactly as it always did,
+        - a live entity sees its own viewers and its siblings' as one shared
+          stream, counted once each, and
+        - an entity torn down before this one was removed is still registered
+          nowhere, so it contributes nothing on its own account; it is only
+          counted while it is the one asking, which is what lets a retry that
+          outlived it read the replacement entity's viewers instead of its own
+          zeroed counters.
+        """
+        entities: Iterable[ElegooVideoStreamLifecycle] = (self,)
+        entry_id = self._config_entry_id()
+        if entry_id is not None:
+            peers = _video_viewers_by_entry.get(entry_id)
+            if peers is not None:
+                if not peers:
+                    # Every entity of this group has been dropped, so the entry
+                    # has nothing left to share: the key goes now rather than
+                    # sitting empty until the entry is removed. An entity can be
+                    # untracked without ever reaching its teardown hook only if
+                    # core never removed it properly, which is why the read path
+                    # prunes instead of trusting the unregister path alone.
+                    _video_viewers_by_entry.pop(entry_id, None)
+                else:
+                    entities = itertools.chain(
+                        entities, (peer for peer in peers if peer is not self)
+                    )
+        return entities
+
+    def _entry_video_viewer_counts(self) -> tuple[int, int, int]:
+        """
+        Sum the (mjpeg, transient, native) viewers of this entry's live entities.
+
+        Every viewer count is read straight from the entity tracking it, so an
+        entity's teardown can only ever zero its own numbers: a sibling keeps
+        reporting the viewers it is actually serving. A released weak reference
+        is simply gone, and the sets prune themselves when they are read.
+        """
+        mjpeg_streams = transient_viewers = native_streams = 0
+        for entity in self._entry_video_viewer_entities():
+            local = entity._local_video_viewer_counts()  # noqa: SLF001
+            mjpeg_streams += local[0]
+            transient_viewers += local[1]
+            native_streams += local[2]
+        return mjpeg_streams, transient_viewers, native_streams
+
+    def _register_video_viewers(self) -> None:
+        """
+        Publish this entity's viewers to the rest of its config entry.
+
+        Called when the entity joins Home Assistant, so a retry that outlived a
+        previous entity of the same entry can see the viewers this one serves.
+        Detached entities have no entry to publish under and stay private.
+        """
+        entry_id = self._config_entry_id()
+        if entry_id is None:
+            return
+        _video_viewers_by_entry.setdefault(entry_id, weakref.WeakSet()).add(self)
+
+    def _unregister_video_viewers(self) -> None:
+        """
+        Stop publishing this entity's viewers, and tidy up once it was the last.
+
+        Only this entity's own group is touched; an entry whose remaining
+        entities still serve viewers keeps its group. The entry id is resolved
+        through the coordinator, so an entity whose entry is already gone has
+        nothing left to clean here — that is what the integration's
+        ``async_remove_entry`` hook forgets for the whole entry at once.
+        """
+        entry_id = self._config_entry_id()
+        if entry_id is None:
+            return
+        peers = _video_viewers_by_entry.get(entry_id)
+        if peers is None:
+            return
+        peers.discard(self)
+        if not peers:
+            _video_viewers_by_entry.pop(entry_id, None)
 
     def _has_external_video_viewers(self) -> bool:
         """
@@ -555,6 +714,28 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
             return True
         return get_entry(entry_id) is None
 
+    def _video_release_is_unpayable(self, client: "ElegooPrinterClient | None") -> bool:
+        """
+        Report whether no tick and no future entity can ever pay this release.
+
+        The release is chased for one of two reasons, and losing both at once is
+        what makes chasing it pointless:
+
+        * a config entry that is still registered — a reload can hand one of its
+          camera entities a live client, and that entity can adopt the parked
+          release, so only core having dropped the entry ends the chase;
+        * a live client to act through — which is all an entity that never had a
+          config entry has, since there is no entry to park the release on for a
+          future entity to inherit.
+
+        Unlike ``_config_entry_removed`` this deliberately keeps a
+        never-attached-but-connected entity chasing: it can still pay the debt
+        itself, and there is no entry whose removal could ever be observed.
+        """
+        if self._config_entry_id() is None:
+            return client is None
+        return self._config_entry_removed()
+
     def _park_pending_video_release(self) -> None:
         """Hand this unpaid release to the next entity of the config entry."""
         entry_id = self._config_entry_id()
@@ -613,24 +794,62 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
             return None
         return client
 
+    def _release_still_owed(self) -> bool:
+        """
+        Report whether this retry still owes the printer a video release.
+
+        Two things make a release owed: the shared video is still enabled (the
+        release has not landed, whether because a foreign viewer keeps blocking
+        it or because every attempt has been spent), and the config entry is
+        still registered, so a future camera entity of that entry could still be
+        handed a live client to pay it with. A removed entry owes nothing —
+        there is nothing left to act through and nobody left to inherit the debt.
+        """
+        return self._stream_enabled and not self._config_entry_removed()
+
+    def _park_unpaid_video_release(self) -> None:
+        """
+        Hand on the release this retry did not pay, if anyone can pay it.
+
+        The single place the retry gives up its claim on a release it failed to
+        land, so "the release did not land and the entry may come back ⇒ park it"
+        holds for every unpaid exit instead of only for the one branch that used
+        to notice it had no connection to act through. Nothing is parked for a
+        removed entry or for a stream that is already off: the first has no
+        future entity and the second is no longer a debt. The retry checks the
+        entry once per tick and gives up there, so the removed-entry guard here
+        only covers an entry core dropped between the last tick and an exit —
+        it stays silent on purpose, because the terminal path owns the warning.
+        """
+        if self._release_still_owed():
+            self._park_pending_video_release()
+
     async def _async_cleanup_retry(self) -> None:
         """
         Release the shared stream once other viewers leave.
 
         The release can outlive both this entity and the client it was built
-        with, so a tick with no live connection decides instead of spinning:
-        while the config entry is still registered the release is parked for
-        the next camera entity of that entry (a reload hands it a connected
-        client) and the bounded wait continues; once the entry has been removed
-        there is nothing left to act through, so the retry gives up at once
-        with a single warning instead of burning every remaining attempt.
+        with, so every exit except one that settled the debt hands it on: as
+        long as the shared video is still enabled and the config entry is still
+        registered the release is parked for the next camera entity of that
+        entry, whichever way the loop ended — a tick that found no live
+        connection (an unload disconnected the client the retry was acting
+        through), or all CLEANUP_RETRY_ATTEMPTS spent while a foreign viewer kept
+        holding the stream through a connection that stayed up. Only a removed
+        entry is treated as terminal, and it is checked once per tick before
+        anything else can park: a printer connection that outlives its entry is
+        not a reason to keep waiting, since there is nothing left to act through
+        and no future entity to inherit the debt, so the retry gives up at once
+        with a single warning and parks nothing.
 
-        Running out of attempts is not a leak: the loop returns through its
-        ``finally`` without touching the parked key, which is correct for an
-        entry that a reload can still revive and pay. If the entry is removed
-        instead, the integration's ``async_remove_entry`` hook forgets it — a
-        leftover key is therefore never the only thing remembering the debt, and
-        a teardown of its own either re-parks it or pays it.
+        Parking is what keeps an exhausted wait from being a leak. The key
+        survives on purpose for an entry a reload can still revive, and the
+        entity that adopts it starts its own retry through a client it knows is
+        connected — so the debt is chased by something that can pay it, and not
+        before the guard says the printer's other viewers have left. If the entry
+        is removed instead, the integration's ``async_remove_entry`` hook forgets
+        the key; a leftover key is therefore never the only thing remembering the
+        debt, and a teardown of its own either re-parks it or pays it.
         """
         try:
             for _ in range(CLEANUP_RETRY_ATTEMPTS):
@@ -639,14 +858,18 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
                     self._clear_pending_video_release()
                     return
                 client = self._current_printer_client()
+                # Removal is terminal whichever way a tick finds the connection:
+                # a client that outlives its entry is not a reason to keep
+                # waiting, and there is nothing further down this tick that may
+                # park, so checking it once here covers every path.
+                if self._video_release_is_unpayable(client):
+                    self._abandon_video_release()
+                    return
                 if client is None:
-                    if self._config_entry_removed():
-                        self._abandon_video_release()
-                        return
                     # Unload disconnected the client; a reload will not hand it
                     # back, so leave the release for the next entity instead of
                     # retrying against a dead connection.
-                    self._park_pending_video_release()
+                    self._park_unpaid_video_release()
                     continue
                 self._printer_client = client
                 if self._has_external_video_viewers():
@@ -655,6 +878,10 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
                 if not self._stream_enabled:
                     self._clear_pending_video_release()
                     return
+            # Out of attempts with the release unpaid (something kept blocking or
+            # keeping the stream): hand it on rather than ending here with the
+            # printer still enabled and nobody watching for the viewers to leave.
+            self._park_unpaid_video_release()
         finally:
             task = asyncio.current_task()
             # Only clear the slot when this task still owns it: teardown can
@@ -662,15 +889,23 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
             # task must not drop the task its replacement just stored.
             if self._cleanup_retry_task is task:
                 self._cleanup_retry_task = None
+            # A cancellation deliberately parks nothing: the only canceller is
+            # _cleanup_video_lifecycle, which pays the debt itself or replaces us
+            # with a retry that owns the handover. Parking here would hand on a
+            # debt that replacement is still chasing.
 
     async def async_added_to_hass(self) -> None:
         """
-        Start the idle watchdog and inherit any unpaid video release.
+        Share this entity's viewers, start the watchdog, inherit a release.
 
-        The watchdog is entity-local; the inherited release is the config
-        entry's business, so it runs through the shared retry loop.
+        Registration is first and entity-local: everything the watchdog and the
+        adopted release decide depends on who else in the entry is serving
+        viewers, so it has to be visible before either runs. The watchdog is
+        entity-local; the inherited release is the config entry's business, so it
+        runs through the shared retry loop.
         """
         await super().async_added_to_hass()
+        self._register_video_viewers()
         self._idle_watchdog_task = asyncio.create_task(self._idle_watchdog())
         self._adopt_pending_video_release()
 
@@ -678,10 +913,15 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         """
         Clean up when the entity is removed from Home Assistant.
 
-        Cancels the idle watchdog, resets stream state and disables the
-        printer video.
+        Unregisters the entity's viewers, then cancels the idle watchdog, resets
+        stream state and disables the printer video. Unregistering before the
+        release is what makes a retry this teardown schedules see the entry's
+        remaining live entities rather than the counters reset below — and a
+        release this teardown pays itself still sees them, because the entity
+        doing the paying counts its own viewers until it stops existing.
         """
         await super().async_will_remove_from_hass()
+        self._unregister_video_viewers()
         await self._cleanup_video_lifecycle()
 
 

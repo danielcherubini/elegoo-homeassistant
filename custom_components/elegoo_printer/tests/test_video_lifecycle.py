@@ -9,11 +9,19 @@ eventually its config entry go away: the bounded teardown retry, the handover
 to the next camera entity of the entry, the task that carries it, and the two
 places that settle a handed-over release for good — a teardown that pays it and
 the integration's config-entry removal hook.
+
+Both halves of that handover are the config entry's business, so they are
+checked as such: the viewers that gate a release are counted across every live
+camera entity of the entry (a retry that outlived its entity must not act on the
+counters its teardown reset), and every exit of the retry that leaves the release
+unpaid hands it on instead of ending with the printer still enabled.
 """
 
 import asyncio
 import contextlib
+import gc
 import logging
+import weakref
 from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -51,6 +59,18 @@ def _isolated_pending_releases(monkeypatch: pytest.MonkeyPatch) -> None:
     other's entries. Replacing the mapping keeps production code untouched.
     """
     monkeypatch.setattr(camera_module, "_pending_video_releases", {})
+
+
+@pytest.fixture(autouse=True)
+def _isolated_viewer_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Give every test its own live-entity registry.
+
+    Like the handover registry this one is module level because the entity it
+    tracks can outlive nothing but itself: it must not carry entities (or the
+    leftover groups of a previous test) across test boundaries.
+    """
+    monkeypatch.setattr(camera_module, "_video_viewers_by_entry", {})
 
 
 def _run(coro):
@@ -1730,5 +1750,524 @@ class TestEntryRemovalForgetsTheParkedRelease:
             hass.config_entries.async_get_entry.assert_not_called()
             hass.async_create_task.assert_not_called()
             hass.async_create_background_task.assert_not_called()
+
+        _run(run())
+
+
+class TestEntryWideViewerAccounting:
+    """
+    Cover whose viewers a release is allowed to see.
+
+    The viewer counters are entity state, but the resource they gate is the
+    config entry's: the printer reports a single connection count for the shared
+    video stream, and the teardown retry that releases it deliberately outlives
+    the entity that started it and re-binds to the replacement entity's client.
+    Read through the entity it was built for, those counters have already been
+    zeroed by teardown, so the retry would be comparing the printer's report
+    against nothing — and a stream the replacement entity is actively serving
+    looks like a stream nobody is watching.
+
+    The lifecycle therefore counts the viewers of every live camera entity of the
+    entry (see _video_viewers_by_entry), reading each entity's own counters so
+    that no entity can reset another's, and forgets an entity the moment it is
+    removed.
+    """
+
+    @staticmethod
+    def _fast_retry(monkeypatch: pytest.MonkeyPatch, attempts: int = 500) -> None:
+        """
+        Make the retry fast, and keep it alive across a multi-phase test.
+
+        The default budget is ~10 ticks; a phase test waits through several of
+        them, so the attempts are raised to stop the loop from ending early.
+        """
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_INTERVAL_SECONDS", 0.01)
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_ATTEMPTS", attempts)
+
+    @staticmethod
+    async def _stop(cam) -> None:
+        """Cancel what an entity scheduled so the test loop exits clean."""
+        await _cancel(cam._cleanup_retry_task)
+        await _cancel(cam._idle_watchdog_task)
+
+    @staticmethod
+    def _peers(entry_id: str) -> list:
+        """Return the entities the entry still shares viewers with."""
+        return list(camera_module._video_viewers_by_entry.get(entry_id, ()))
+
+    def test_retry_renamed_to_the_new_entitys_viewer(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A retry must not cut off the replacement entity's own viewer."""
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            # Teardown happens while a foreign viewer holds the stream, which is
+            # the only way a release reaches the retry at all.
+            old_client, _ = _make_client(connected_streams=1, max_streams=2)
+            _attach_client(entry, old_client)
+            old = _live_fdm_camera(entry, hass)
+            await old.async_added_to_hass()
+            old._stream_enabled = True
+            await old.async_will_remove_from_hass()
+            assert await _wait_for(lambda: old._cleanup_retry_task is not None)
+
+            # --- reload: a new entity, on a new client, that gets a viewer ---
+            new_client, _ = _make_client(connected_streams=1, max_streams=2)
+            _attach_client(entry, new_client)
+            new = _live_fdm_camera(entry, hass)
+            await new.async_added_to_hass()
+            new._active_mjpeg_streams = 1
+            try:
+                # The retry has re-bound to the live client, so it is now acting
+                # for the entry the new entity belongs to.
+                assert await _wait_for(lambda: old._printer_client is new_client)
+                await asyncio.sleep(0.05)
+                new_client.set_printer_video_stream.assert_not_called()
+                assert old._stream_enabled is True
+
+                # The slicer leaves. The printer's periodic report has not
+                # counted the new entity's own session yet, so it now reports
+                # nothing while the new entity is streaming — the exact state a
+                # retry may not read as "nobody is watching".
+                new_client.printer_data.attributes.num_video_stream_connected = 0
+                await asyncio.sleep(0.05)
+                new_client.set_printer_video_stream.assert_not_called()
+                assert old._stream_enabled is True
+                assert new._stream_enabled is True
+
+                # The new entity's viewer leaves too: the debt is finally paid.
+                new._active_mjpeg_streams = 0
+                assert await _wait_for(
+                    lambda: new_client.set_printer_video_stream.await_count == 1
+                )
+                new_client.set_printer_video_stream.assert_awaited_once_with(
+                    enable=False
+                )
+                assert old._stream_enabled is False
+            finally:
+                await self._stop(old)
+                await self._stop(new)
+
+        _run(run())
+
+    def test_retry_releases_once_the_new_entity_has_no_viewers(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The replacement's viewers block the release only while they exist."""
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            old_client, _ = _make_client(connected_streams=1, max_streams=2)
+            _attach_client(entry, old_client)
+            old = _live_fdm_camera(entry, hass)
+            await old.async_added_to_hass()
+            old._stream_enabled = True
+            await old.async_will_remove_from_hass()
+
+            new_client, _ = _make_client(connected_streams=0, max_streams=2)
+            _attach_client(entry, new_client)
+            new = _live_fdm_camera(entry, hass)
+            await new.async_added_to_hass()
+            try:
+                # A native stream on the new entity is a viewer of ours: with the
+                # printer reporting nothing, the guard would otherwise fire.
+                new._native_stream_active = True
+                assert new._has_active_viewers() is True
+                assert old._own_video_viewer_count() == 1
+                await asyncio.sleep(0.05)
+                new_client.set_printer_video_stream.assert_not_called()
+
+                # And so is a transient image grab.
+                new._native_stream_active = False
+                new._transient_viewers = 1
+                await asyncio.sleep(0.05)
+                new_client.set_printer_video_stream.assert_not_called()
+
+                # Nothing is watching any more, so the release lands.
+                new._transient_viewers = 0
+                assert await _wait_for(
+                    lambda: new_client.set_printer_video_stream.await_count == 1
+                )
+                assert old._stream_enabled is False
+            finally:
+                await self._stop(old)
+                await self._stop(new)
+
+        _run(run())
+
+    def test_teardown_of_one_entity_keeps_another_entitys_viewers(self) -> None:
+        """
+        A sibling's teardown must not erase the viewers this entity serves.
+
+        This is the stomping hazard: were the counters shared per entry and reset
+        by any teardown, removing one camera would disarm the guard for the whole
+        entry and the surviving camera's viewers would be cut off.
+        """
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            watched_client, _ = _make_client(connected_streams=0, max_streams=2)
+            _attach_client(entry, watched_client)
+            watched = _live_fdm_camera(entry, hass)
+            watched.entity_id = "camera.chamber_camera_watched"
+            await watched.async_added_to_hass()
+            watched._stream_enabled = True
+            watched._active_mjpeg_streams = 1  # someone is watching this camera
+
+            other_client, _ = _make_client(connected_streams=0, max_streams=2)
+            _attach_client(entry, other_client)
+            other = _live_fdm_camera(entry, hass)
+            other.entity_id = "camera.chamber_camera_other"
+            await other.async_added_to_hass()
+
+            assert other._own_video_viewer_count() == 1
+            assert other._has_active_viewers() is True
+
+            await other.async_will_remove_from_hass()
+
+            # The surviving entity still reports the viewer it is serving.
+            assert watched._active_mjpeg_streams == 1
+            assert watched._own_video_viewer_count() == 1
+            assert watched._has_active_viewers() is True
+            # The retired entity has dropped out of the entry's accounting.
+            assert self._peers(entry.entry_id) == [watched]
+            # And nothing it did on the way out disabled the watched stream.
+            watched_client.set_printer_video_stream.assert_not_called()
+            await watched._idle_watchdog_tick()
+            watched_client.set_printer_video_stream.assert_not_called()
+
+            # Once its own viewer is gone the entity releases the stream.
+            watched._active_mjpeg_streams = 0
+            await watched._idle_watchdog_tick()
+            watched_client.set_printer_video_stream.assert_called_once_with(
+                enable=False
+            )
+            await self._stop(watched)
+            await self._stop(other)
+
+        _run(run())
+
+    def test_live_entity_still_sees_its_own_viewers(self) -> None:
+        """Registering for the entry does not hide an entity from itself."""
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            client, _ = _make_client(connected_streams=0, max_streams=2)
+            _attach_client(entry, client)
+            cam = _live_fdm_camera(entry, hass)
+            await cam.async_added_to_hass()
+            try:
+                assert self._peers(entry.entry_id) == [cam]
+                cam._stream_enabled = True
+                cam._active_mjpeg_streams = 2
+                cam._transient_viewers = 1
+                assert cam._has_active_viewers() is True
+                assert cam._own_video_viewer_count() == 3
+                await cam._idle_watchdog_tick()
+                client.set_printer_video_stream.assert_not_called()
+                assert cam._stream_enabled is True
+            finally:
+                await self._stop(cam)
+
+        _run(run())
+
+    def test_detached_entity_still_counts_its_own_viewers(self) -> None:
+        """A subject with no entry has no peers, so it counts only itself."""
+        client, _ = _make_client(connected_streams=1, max_streams=5)
+        subject = _VideoLifecycleSubject(client)
+        subject._transient_viewers = 1
+        assert subject._has_active_viewers() is True
+        assert subject._own_video_viewer_count() == 1
+        # The boundary is unchanged: only connections beyond ours are external.
+        assert subject._has_external_video_viewers() is False
+        client.printer_data.attributes.num_video_stream_connected = 2
+        assert subject._has_external_video_viewers() is True
+        assert self._peers("entry-1") == []
+
+    def test_teardown_unregisters_the_entity_and_prunes_the_entry(self) -> None:
+        """The last entity out of an entry leaves no registry group behind."""
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            client, _ = _make_client()
+            _attach_client(entry, client)
+            cam = _live_fdm_camera(entry, hass)
+            await cam.async_added_to_hass()
+            assert self._peers(entry.entry_id) == [cam]
+
+            await cam.async_will_remove_from_hass()
+
+            assert camera_module._video_viewers_by_entry == {}
+            await self._stop(cam)
+
+        _run(run())
+
+    def test_registry_holds_no_strong_reference_to_an_entity(self) -> None:
+        """Being tracked must never keep a released entity alive."""
+
+        async def run() -> None:
+            entry = _make_entry()
+            client, _ = _make_client()
+            subject = _lifecycle_subject(client, entry=entry)
+            subject._register_video_viewers()
+            reference = weakref.ref(subject)
+            assert self._peers(entry.entry_id) == [subject]
+
+            del subject
+            gc.collect()
+
+            assert reference() is None
+            # The group is empty, and the next entity of the entry that asks
+            # drops the leftover key instead of carrying it: an entity can only
+            # be untracked without reaching its teardown hook if core never
+            # removed it properly, so the read path prunes for itself.
+            client_b, _ = _make_client()
+            peer = _lifecycle_subject(client_b, entry=entry)
+            assert peer._entry_video_viewer_counts() == (0, 0, 0)
+            assert camera_module._video_viewers_by_entry == {}
+
+        _run(run())
+
+
+class TestExhaustedRetryParksTheRelease:
+    """
+    Cover the retry running out of attempts while a client stayed connected.
+
+    The disconnected-client path has always parked a release a retry could not
+    pay. The connected one never did: the user disables the camera entity while a
+    foreign viewer still holds the stream, so ``self._printer_client`` stays up,
+    every tick takes the "someone else is watching, keep waiting" branch, and the
+    attempts simply run out. The ``finally`` only cleared the task slot, so the
+    stream was left enabled with no retry, no watchdog and no parked debt — the
+    printer stayed enabled until it was rebooted. Every exit that leaves the
+    release unpaid has to hand it on, because the alternative is a silent,
+    permanent leak; only a removed entry is terminal, and it parks nothing.
+    """
+
+    @staticmethod
+    def _fast_retry(monkeypatch: pytest.MonkeyPatch, attempts: int = 3) -> None:
+        """Shorten the retry window so exhaustion is reachable in milliseconds."""
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_INTERVAL_SECONDS", 0.01)
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_ATTEMPTS", attempts)
+
+    @staticmethod
+    async def _stop(cam) -> None:
+        """Cancel what an entity scheduled so the test loop exits clean."""
+        await _cancel(cam._cleanup_retry_task)
+        await _cancel(cam._idle_watchdog_task)
+
+    @staticmethod
+    def _warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+        """Collect the warning messages logged for the test entity."""
+        return [
+            record.getMessage()
+            for record in caplog.records
+            if record.levelno == logging.WARNING
+            and "camera.test" in record.getMessage()
+        ]
+
+    def test_connected_viewer_holding_the_stream_parks_the_release(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Attempts exhausted through a live client: the debt is handed on."""
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            # The client never disconnects and the viewer never leaves, so the
+            # release is blocked for the whole retry window — exactly the state
+            # the existing exhaustion test, which drives a disconnected client,
+            # could not catch.
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            _attach_client(entry, client)
+            subject = _lifecycle_subject(client, entry=entry, hass=hass)
+            subject._stream_enabled = True
+
+            await subject._async_cleanup_retry()
+
+            client.set_printer_video_stream.assert_not_called()
+            assert subject._stream_enabled is True
+            assert camera_module._pending_video_releases == {
+                entry.entry_id: "camera.test"
+            }
+            assert subject._cleanup_retry_task is None
+            # Giving up quietly is correct here: the debt was handed on, so only
+            # the terminal removed-entry path is allowed to warn about it.
+            assert not self._warnings(caplog)
+
+        _run(run())
+
+    def test_exhaustion_after_teardown_parks_through_the_real_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The reported shape: entity removed, viewer holding on, retries spent."""
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            _attach_client(entry, client)
+            cam = _live_fdm_camera(entry, hass)
+            await cam.async_added_to_hass()
+            cam._stream_enabled = True
+
+            # The user disables the camera entity while the slicer is watching.
+            await cam.async_will_remove_from_hass()
+            retry = cam._cleanup_retry_task
+            assert retry is not None
+            await retry
+
+            client.set_printer_video_stream.assert_not_called()
+            assert cam._stream_enabled is True
+            assert camera_module._pending_video_releases == {
+                entry.entry_id: "camera.chamber_camera"
+            }
+            await self._stop(cam)
+
+        _run(run())
+
+    def test_parked_release_from_exhaustion_is_adopted_and_paid(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The next entity of the entry finishes what the exhausted retry left."""
+        self._fast_retry(monkeypatch, attempts=500)
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            blocked_client, _ = _make_client(connected_streams=1, max_streams=2)
+            _attach_client(entry, blocked_client)
+            subject = _lifecycle_subject(blocked_client, entry=entry, hass=hass)
+            subject._stream_enabled = True
+            await subject._async_cleanup_retry()
+            assert camera_module._pending_video_releases == {
+                entry.entry_id: "camera.test"
+            }
+            # The parking retry is gone; only a new entity can pay now.
+            assert subject._cleanup_retry_task is None
+
+            # A fresh camera entity for the same entry adopts the debt. The
+            # viewer is still watching, so it waits instead of cutting them off.
+            new_client, _ = _make_client(connected_streams=1, max_streams=2)
+            _attach_client(entry, new_client)
+            cam = _live_fdm_camera(entry, hass)
+            await cam.async_added_to_hass()
+            try:
+                assert await _wait_for(lambda: cam._cleanup_retry_task is not None)
+                await asyncio.sleep(0.05)
+                new_client.set_printer_video_stream.assert_not_called()
+                assert cam._stream_enabled is True
+                # The adopter keeps chasing the debt rather than re-parking it.
+                assert camera_module._pending_video_release_entity(entry.entry_id)
+
+                # The foreign viewer finally leaves: the release lands.
+                new_client.printer_data.attributes.num_video_stream_connected = 0
+                assert await _wait_for(
+                    lambda: new_client.set_printer_video_stream.await_count == 1
+                )
+                new_client.set_printer_video_stream.assert_awaited_once_with(
+                    enable=False
+                )
+                assert cam._stream_enabled is False
+                assert camera_module._pending_video_releases == {}
+            finally:
+                await self._stop(cam)
+
+        _run(run())
+
+    def test_release_that_landed_parks_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A retry that starts on an already-disabled stream owes nothing."""
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            entry = _make_entry()
+            client, _ = _make_client()
+            subject = _lifecycle_subject(client, entry=entry)
+            subject._stream_enabled = False
+
+            await subject._async_cleanup_retry()
+
+            assert camera_module._pending_video_releases == {}
+            client.set_printer_video_stream.assert_not_called()
+
+        _run(run())
+
+    def test_removed_entry_gives_up_and_parks_nothing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """
+        Removal stays terminal even when the client outlives the entry.
+
+        The client here is still connected, so only the entry lookup can end the
+        retry: parking a debt for an entry that is gone would hand it to an
+        entity that can never exist.
+        """
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            entry = _make_entry()
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            _attach_client(entry, client)
+            hass = _make_hass(None)  # core has already dropped the entry
+            subject = _lifecycle_subject(client, entry=entry, hass=hass)
+            subject._stream_enabled = True
+
+            await subject._async_cleanup_retry()
+
+            assert camera_module._pending_video_releases == {}
+            assert subject._stream_enabled is True
+            client.set_printer_video_stream.assert_not_called()
+            warnings = self._warnings(caplog)
+            assert len(warnings) == 1
+            assert "reboot" in warnings[0]
+            assert "reload" in warnings[0]
+
+        _run(run())
+
+    def test_parking_leaves_the_entry_flag_the_adopter_reads(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        The parked debt and the shared enabled flag travel together.
+
+        Parking is only useful if the adopting entity can tell the stream is
+        still on; the flag is per entry, so a retry parking through a dead
+        entity still leaves it set for the entity that adopts.
+        """
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            _attach_client(entry, client)
+            subject = _lifecycle_subject(client, entry=entry, hass=hass)
+            subject._stream_enabled = True
+            # Driven to exhaustion in-process: every tick sees the foreign
+            # viewer still watching, so the loop spends its shortened budget and
+            # parks on the way out. Awaiting the retry directly (rather than
+            # letting async_added_to_hass arm it as a background task) keeps the
+            # test loop free of a task that would outlive it.
+            await subject._async_cleanup_retry()
+
+            assert camera_module._pending_video_release_entity(entry.entry_id)
+            assert entry._elegoo_video_state == {"enabled": True}
+            _attach_client(entry, _make_client(connected_streams=0, max_streams=2)[0])
+            cam = _live_fdm_camera(entry, hass)
+            assert cam._stream_enabled is True  # what makes adoption possible
 
         _run(run())
