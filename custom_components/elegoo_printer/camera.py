@@ -13,7 +13,7 @@ from homeassistant.components.ffmpeg import (
     async_get_image,
 )
 from homeassistant.components.mjpeg.camera import MjpegCamera
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_stream
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from propcache.api import cached_property
@@ -78,10 +78,24 @@ CLEANUP_RETRY_ATTEMPTS = 10  # roughly 10 minutes
 # ``async_unload_entry()`` returns, which is the very unload that records the
 # debt, so it would wipe the handover before any reload could use it.
 #
-# Nothing else has to reset it: the retry clears the entry once the stream is off
-# or once it gives up on a removed entry (removal is terminal and parks nothing),
-# the adopter clears it when the release lands, and an entry id is never reused,
-# so at most one short string is held per printer that is between connections.
+# Three paths keep it bounded, and together they cover every way a key can be
+# left behind:
+# - a release that lands clears the entry — both the retry (stream off) and a
+#   teardown that pays the debt itself (see _cleanup_video_lifecycle),
+# - a retry that gives up on a removed entry clears it (see _abandon_video_release),
+# - and an entry removed while its parked release is nobody's business any more —
+#   the retry already exhausted its attempts, so nothing is watching for the
+#   removal — is forgotten by the integration's async_remove_entry hook, which
+#   calls forget_pending_video_release() below.
+#
+# So a leftover key is never the only thing remembering the debt. An exhausted
+# retry leaves the entry registered (a reload can still revive it and pay), and
+# if that entry is later removed the hook forgets it; a teardown that cancels a
+# retry without releasing the stream either schedules the next one or leaves the
+# stream off, and in both cases a removal still goes through the hook.
+#
+# An entry id is never reused, so at most one short string is held per printer
+# that is between connections.
 _pending_video_releases: dict[str, str] = {}
 
 
@@ -105,6 +119,29 @@ def _pending_video_release_entity(entry_id: str) -> str | None:
 def _clear_pending_video_release(entry_id: str) -> None:
     """Forget a pending release once it has been paid or given up on."""
     _pending_video_releases.pop(entry_id, None)
+
+
+@callback
+def forget_pending_video_release(entry_id: str) -> None:
+    """
+    Forget a parked release for an entry that no longer exists.
+
+    The public edge of the handover registry, called by the integration's
+    ``async_remove_entry`` hook. A release parked for a removed config entry can
+    never be paid — there is no printer connection left to disable the stream
+    with, and no future entity for an entry id that is gone — so keeping the key
+    would only leak it. That is the case the teardown retry cannot see: once the
+    retry has exhausted its attempts nothing is left to observe the removal, and
+    removal is the only hook core guarantees for it.
+
+    Idempotent and side-effect free: an entry with nothing parked is a no-op, so
+    it is safe to call for every removal.
+
+    Arguments:
+        entry_id: Config entry being removed.
+
+    """
+    _clear_pending_video_release(entry_id)
 
 
 class ElegooCameraMjpeg(CameraMjpeg):
@@ -439,7 +476,13 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
                 LOGGER.exception("Idle watchdog error for %s", self.entity_id)
 
     async def _cleanup_video_lifecycle(self) -> None:
-        """Cancel the idle watchdog and release the video stream state."""
+        """
+        Cancel the idle watchdog and release the video stream state.
+
+        When the shared printer video ends this teardown switched off, the
+        config entry's parked release is forgotten here too: the debt has been
+        paid, and a paid release must not be handed to the next entity.
+        """
         if self._idle_watchdog_task is not None:
             self._idle_watchdog_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -459,6 +502,14 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
             # keep retrying from a task that outlives this entity so the
             # stream is not left enabled forever once they leave.
             self._schedule_cleanup_retry()
+            return
+        # The shared printer video is a per-config-entry singleton, so "it is
+        # off" means the entry no longer owes a release whoever paid it — this
+        # entity, a retry it inherited the debt from, or a sibling camera entity
+        # of the same entry. Clearing here is what stops a release that this
+        # teardown actually paid from being handed to the next entity of the
+        # entry, which would then re-disable a stream nobody has enabled.
+        self._clear_pending_video_release()
 
     def _schedule_cleanup_retry(self) -> None:
         """Start the shared-stream release retry if one is not running."""
@@ -573,6 +624,13 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         client) and the bounded wait continues; once the entry has been removed
         there is nothing left to act through, so the retry gives up at once
         with a single warning instead of burning every remaining attempt.
+
+        Running out of attempts is not a leak: the loop returns through its
+        ``finally`` without touching the parked key, which is correct for an
+        entry that a reload can still revive and pay. If the entry is removed
+        instead, the integration's ``async_remove_entry`` hook forgets it — a
+        leftover key is therefore never the only thing remembering the debt, and
+        a teardown of its own either re-parks it or pays it.
         """
         try:
             for _ in range(CLEANUP_RETRY_ATTEMPTS):

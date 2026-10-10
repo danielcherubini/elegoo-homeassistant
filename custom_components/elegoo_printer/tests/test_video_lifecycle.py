@@ -6,18 +6,22 @@ ElegooMjpegCamera (the class reported to leak video stream sessions), and
 the resin ElegooStreamCamera regression check. Also covers what happens to a
 release a foreign viewer is still blocking when the entity, its client and
 eventually its config entry go away: the bounded teardown retry, the handover
-to the next camera entity of the entry, and the task that carries it.
+to the next camera entity of the entry, the task that carries it, and the two
+places that settle a handed-over release for good — a teardown that pays it and
+the integration's config-entry removal hook.
 """
 
 import asyncio
 import contextlib
 import logging
+from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.components.mjpeg.camera import MjpegCamera
 
+import custom_components.elegoo_printer as integration_module
 import custom_components.elegoo_printer.camera as camera_module
 from custom_components.elegoo_printer.camera import (
     ElegooMjpegCamera,
@@ -543,6 +547,80 @@ class TestVideoLifecycleMixin:
             subject.hass.async_create_task.assert_not_called()
             scheduled = subject.hass.async_create_background_task.call_args.args[0]
             scheduled.close()
+
+        _run(run())
+
+    def test_cleanup_paying_the_debt_clears_the_parked_release(self) -> None:
+        """
+        A teardown that switches the shared video off settles the entry's debt.
+
+        The debt was parked for this entity by an earlier teardown, and this one
+        reaches the printer, so the key must not survive for the next entity to
+        chase a stream that is already off.
+        """
+
+        async def run() -> None:
+            entry = _make_entry()
+            client, _ = _make_client()
+            subject = _lifecycle_subject(client, entry=entry)
+            camera_module._record_pending_video_release(
+                entry.entry_id, "camera.chamber_camera_old"
+            )
+            subject._stream_enabled = True
+
+            await subject._cleanup_video_lifecycle()
+
+            client.set_printer_video_stream.assert_called_once_with(enable=False)
+            assert subject._stream_enabled is False
+            assert camera_module._pending_video_releases == {}
+
+        _run(run())
+
+    def test_cleanup_without_a_debt_to_pay_clears_nothing(self) -> None:
+        """
+        A teardown that never reaches the printer keeps the parked release.
+
+        This is the over-clearing guard: the stream is still held by a foreign
+        viewer, so the entry still owes the release. Teardown hands it to the
+        retry instead of forgetting it — an entity that pays a debt it does not
+        own would otherwise be erased by an unrelated entity's removal.
+        """
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            subject = _lifecycle_subject(client, entry=entry, hass=hass)
+            camera_module._record_pending_video_release(
+                entry.entry_id, "camera.chamber_camera_old"
+            )
+            subject._stream_enabled = True
+
+            await subject._cleanup_video_lifecycle()
+
+            client.set_printer_video_stream.assert_not_called()
+            assert subject._stream_enabled is True
+            assert camera_module._pending_video_releases == {
+                entry.entry_id: "camera.chamber_camera_old"
+            }
+            await _cancel(subject._cleanup_retry_task)
+
+        _run(run())
+
+    def test_cleanup_of_a_detached_entity_keeps_another_entrys_debt(self) -> None:
+        """A stream that was never on leaves an unrelated entry's debt alone."""
+
+        async def run() -> None:
+            camera_module._record_pending_video_release("entry-1", "camera.other")
+            client, _ = _make_client()
+            subject = _VideoLifecycleSubject(client)
+
+            await subject._cleanup_video_lifecycle()
+
+            # The detach guard is in _config_entry_id; the registry lookup never
+            # happens for an entity with no entry at all.
+            assert subject._config_entry_id() is None
+            assert camera_module._pending_video_releases == {"entry-1": "camera.other"}
 
         _run(run())
 
@@ -1338,6 +1416,58 @@ class TestPendingVideoReleaseHandover:
 
         _run(run())
 
+    def test_adopter_paying_the_debt_in_its_own_teardown_clears_the_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The entity that finally releases the stream settles the entry's debt."""
+        self._fast_retry(monkeypatch)
+
+        async def run() -> None:
+            entry = _make_entry()
+            hass = _make_hass(entry)
+            camera_module._record_pending_video_release(
+                entry.entry_id, "camera.chamber_camera_old"
+            )
+            _leave_stream_enabled(entry)
+
+            # The foreign viewer is still watching while the new entity starts,
+            # so its adopted retry can only wait.
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            _attach_client(entry, client)
+            cam = _live_fdm_camera(entry, hass)
+            await cam.async_added_to_hass()
+            assert await _wait_for(lambda: cam._cleanup_retry_task is not None)
+            await asyncio.sleep(0.05)
+            client.set_printer_video_stream.assert_not_called()
+            assert camera_module._pending_video_release_entity(entry.entry_id)
+
+            # The viewer leaves and this entity is torn down at the same time:
+            # its own teardown pays the debt instead of the retry's next tick.
+            # The retry is collected first (teardown cancels it anyway) so the
+            # release below can only have come from this entity's teardown.
+            await _cancel(cam._cleanup_retry_task)
+            client.printer_data.attributes.num_video_stream_connected = 0
+            await cam.async_will_remove_from_hass()
+
+            client.set_printer_video_stream.assert_awaited_once_with(enable=False)
+            assert cam._stream_enabled is False
+            assert camera_module._pending_video_releases == {}
+
+            # A later entity for the same entry adopts nothing: the release it
+            # would have inherited has already been paid.
+            later_client, _ = _make_client(connected_streams=0, max_streams=2)
+            _attach_client(entry, later_client)
+            later = _live_fdm_camera(entry, hass)
+            await later.async_added_to_hass()
+            try:
+                await asyncio.sleep(0.05)
+                assert later._cleanup_retry_task is None
+                later_client.set_printer_video_stream.assert_not_called()
+            finally:
+                await self._stop(later)
+
+        _run(run())
+
     def test_reload_sequence_releases_the_held_stream(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1484,5 +1614,121 @@ class TestCleanupRetryTaskOwnership:
             assert subject._cleanup_retry_task is replacement
             assert not replacement.done()
             await _cancel(replacement)
+
+        _run(run())
+
+
+class TestEntryRemovalForgetsTheParkedRelease:
+    """
+    Cover the integration's removal hook for a parked release.
+
+    A retry only ever notices a removal while it is still running. Once it has
+    exhausted its attempts — or once teardown left the key without a retry at all
+    — nothing is watching for the entry to disappear, so the integration's
+    ``async_remove_entry`` hook is what keeps the registry from holding the entry
+    id forever. Core calls it through ``hasattr(component, "async_remove_entry")``,
+    so these tests resolve it off the integration module the same way.
+    """
+
+    @staticmethod
+    def _hook() -> Callable[..., Awaitable[None]]:
+        """Resolve the removal hook off the integration module, as core does."""
+        assert hasattr(integration_module, "async_remove_entry"), (
+            "core only calls a component's async_remove_entry when it defines one"
+        )
+        return integration_module.async_remove_entry
+
+    def test_retry_exhaustion_then_removal_leaves_no_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Path A: an exhausted retry parks a key; removal forgets it."""
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_INTERVAL_SECONDS", 0.01)
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_ATTEMPTS", 3)
+
+        async def run() -> None:
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            entry = _make_entry()
+            _attach_client(entry, client)
+            hass = _make_hass(entry)
+            subject = _lifecycle_subject(client, entry=entry, hass=hass)
+            subject._stream_enabled = True
+            # The unload killed the connection the retry was acting through.
+            client.is_connected = False
+            entry.runtime_data = None
+
+            await subject._async_cleanup_retry()
+
+            # The retry ran out of attempts and left the debt parked: the entry
+            # is still registered, so a reload could still pay it.
+            assert camera_module._pending_video_releases == {
+                entry.entry_id: "camera.test"
+            }
+
+            # Removal is terminal and core has already dropped the entry by the
+            # time the hook runs (ConfigEntries.async_remove deletes it before
+            # calling the remove callback), which is what makes the parked key
+            # forgettable. The hook never consults hass, so the double is only
+            # here to stand in for that dropped-entry hass.
+            hass.config_entries.async_get_entry.return_value = None
+            await self._hook()(hass, entry)
+
+            assert camera_module._pending_video_releases == {}
+
+        _run(run())
+
+    def test_removal_is_idempotent_and_never_raises(self) -> None:
+        """Removing an entry that parked nothing is a silent no-op."""
+
+        async def run() -> None:
+            entry = _make_entry()
+            await self._hook()(MagicMock(), entry)
+            assert camera_module._pending_video_releases == {}
+            # A second removal (or a reload followed by one) changes nothing.
+            await self._hook()(MagicMock(), entry)
+            assert camera_module._pending_video_releases == {}
+
+        _run(run())
+
+    def test_removal_only_forgets_its_own_entry(self) -> None:
+        """Another printer's parked release survives this entry's removal."""
+
+        async def run() -> None:
+            removed = _make_entry("entry-removed")
+            other = _make_entry("entry-other")
+            camera_module._record_pending_video_release(
+                removed.entry_id, "camera.chamber_camera"
+            )
+            camera_module._record_pending_video_release(
+                other.entry_id, "camera.chamber_camera_other"
+            )
+
+            await self._hook()(MagicMock(), removed)
+
+            assert camera_module._pending_video_releases == {
+                other.entry_id: "camera.chamber_camera_other"
+            }
+
+        _run(run())
+
+    def test_removal_does_not_disturb_the_shared_stream_flag(self) -> None:
+        """The hook forgets the debt; it never touches the printer or its flags."""
+
+        async def run() -> None:
+            entry = _make_entry()
+            _leave_stream_enabled(entry)
+            camera_module._record_pending_video_release(
+                entry.entry_id, "camera.chamber_camera"
+            )
+            hass = MagicMock()
+
+            await self._hook()(hass, entry)
+
+            assert camera_module._pending_video_releases == {}
+            # The stream flag is the entry's own state and survives: only core's
+            # unload path talks to the printer.
+            assert entry._elegoo_video_state == {"enabled": True}
+            hass.config_entries.async_get_entry.assert_not_called()
+            hass.async_create_task.assert_not_called()
+            hass.async_create_background_task.assert_not_called()
 
         _run(run())
