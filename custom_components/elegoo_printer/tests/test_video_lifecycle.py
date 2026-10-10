@@ -133,12 +133,13 @@ class TestVideoLifecycleMixin:
         _run(run())
 
     def test_ensure_enabled_is_idempotent(self) -> None:
-        """Second call while enabled issues no further command."""
+        """Second call while enabled and refreshed issues no further command."""
 
         async def run() -> None:
             client, _ = _make_client()
             subject = _VideoLifecycleSubject(client)
             subject._stream_enabled = True
+            subject._stream_ready = True
             await subject._ensure_stream_enabled()
             client.get_printer_video.assert_not_called()
 
@@ -243,6 +244,34 @@ class TestVideoLifecycleMixin:
 
         b._stream_enabled = False
         assert a._stream_enabled is False
+
+    def test_new_camera_refreshes_url_despite_inherited_enabled(self) -> None:
+        """A shared enabled flag must not make a fresh entity trust its fallback."""
+        coordinator = MagicMock()
+        coordinator.config_entry = SimpleNamespace()
+
+        old_client, _ = _make_client()
+        old = _VideoLifecycleSubject(old_client)
+        old.coordinator = coordinator
+        old._stream_enabled = True  # left enabled by a previous entity
+
+        client, _ = _make_client()
+        cam = _fdm_camera(client)
+        cam.coordinator = coordinator
+        cam._mjpeg_url = "http://printer:3031/video"  # __init__ fallback
+        assert cam._stream_enabled is True  # inherited from the entry
+
+        async def run() -> None:
+            with patch.object(
+                MjpegCamera,
+                "async_camera_image",
+                new=AsyncMock(return_value=b"img"),
+            ):
+                await cam.async_camera_image()
+
+        _run(run())
+        client.get_printer_video.assert_called_once_with(enable=True)
+        assert cam._mjpeg_url == "http://127.0.0.1:8080/mjpeg"
 
     def test_watchdog_tick_keeps_stream_with_external_viewer(self) -> None:
         """The idle watchdog leaves the stream on while others use it."""

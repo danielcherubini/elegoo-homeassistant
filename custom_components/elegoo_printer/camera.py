@@ -159,6 +159,11 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         self._transient_viewers = 0
         self._native_stream_active = False
         self._local_stream_state: dict[str, bool] = {"enabled": False}
+        # Per-entity: the stream URL/video info has been fetched by this
+        # entity. The shared enabled flag can be inherited from a previous
+        # entity (reload), but a fresh entity must still refresh its own
+        # URL once instead of trusting its constructor fallback.
+        self._stream_ready = False
         self._last_activity = 0.0
         self._idle_watchdog_task = None
         self._cleanup_retry_task = None
@@ -240,7 +245,7 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         Idempotent — safe to call when already enabled.
         On failure, _stream_enabled is NOT set (may retry later).
         """
-        if self._stream_enabled:
+        if self._stream_enabled and self._stream_ready:
             return
         if not self._printer_client.is_connected:
             LOGGER.debug(
@@ -259,6 +264,7 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
             return
         if video.status == ElegooVideoStatus.SUCCESS:
             self._stream_enabled = True
+            self._stream_ready = True
             LOGGER.debug("Enabled printer video for %s", self.entity_id)
         else:
             LOGGER.warning(
@@ -725,8 +731,8 @@ class ElegooMjpegCamera(ElegooVideoStreamLifecycle, MjpegCamera):
         because an already-enabled stream tolerates a subsequent enable).
         Over-capacity/disconnected printers are left untouched.
         """
-        if self._stream_enabled and self._mjpeg_url:
-            # URL still valid from when the stream was enabled
+        if self._stream_enabled and self._mjpeg_url and self._stream_ready:
+            # URL already refreshed for this entity
             return
         if (not self._printer_client.is_connected) or self._is_over_capacity():
             self._mjpeg_url = None
@@ -734,6 +740,7 @@ class ElegooMjpegCamera(ElegooVideoStreamLifecycle, MjpegCamera):
         video = await self._printer_client.get_printer_video(enable=True)
         if video.status == ElegooVideoStatus.SUCCESS:
             self._stream_enabled = True
+            self._stream_ready = True
             video_url = self._normalize_video_url(video.video_url)
             self._mjpeg_url = video_url
             if not video_url:
@@ -743,6 +750,7 @@ class ElegooMjpegCamera(ElegooVideoStreamLifecycle, MjpegCamera):
         else:
             LOGGER.debug("stream_source: Failed to get video stream: %s", video.status)
             self._stream_enabled = False
+            self._stream_ready = False
             self._mjpeg_url = None
 
     async def async_camera_image(
