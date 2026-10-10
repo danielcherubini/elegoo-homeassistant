@@ -373,6 +373,31 @@ class TestVideoLifecycleMixin:
 
         _run(run())
 
+    def test_cleanup_retry_continues_after_failed_disable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A failed disable is retried instead of ending the cleanup."""
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_INTERVAL_SECONDS", 0.01)
+
+        async def run() -> None:
+            client, _ = _make_client(connected_streams=0, max_streams=2)
+            subject = _VideoLifecycleSubject(client)
+            subject._stream_enabled = True
+            client.set_printer_video_stream.side_effect = [RuntimeError("busy"), None]
+
+            await subject._async_cleanup_retry()
+
+            assert client.set_printer_video_stream.call_count == 2
+            assert subject._stream_enabled is False
+
+        _run(run())
+
+    def test_current_printer_client_none_when_disconnected(self) -> None:
+        """The retry client resolver reports no live connection when down."""
+        client, _ = _make_client(connected=False)
+        subject = _VideoLifecycleSubject(client)
+        assert subject._current_printer_client() is None
+
     def test_disable_failure_keeps_flag_for_watchdog(self) -> None:
         """A failed disable keeps the flag set (watchdog retries)."""
 

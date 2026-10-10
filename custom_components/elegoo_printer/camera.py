@@ -370,6 +370,24 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
             self._async_cleanup_retry()
         )
 
+    def _current_printer_client(self) -> "ElegooPrinterClient | None":
+        """
+        Return a live printer client, re-resolved from the config entry.
+
+        A teardown retry can outlive the client the entity was built with
+        (unload disconnects it), so look up the current one each time
+        instead of caching it; fall back to the original client when the
+        entry is unavailable. Returns None when nothing is connected.
+        """
+        entry = getattr(getattr(self, "coordinator", None), "config_entry", None)
+        runtime = getattr(entry, "runtime_data", None)
+        client = getattr(getattr(runtime, "api", None), "client", None)
+        if client is None:
+            client = self._printer_client
+        if not getattr(client, "is_connected", False):
+            return None
+        return client
+
     async def _async_cleanup_retry(self) -> None:
         """Release the shared stream once other viewers leave."""
         try:
@@ -377,10 +395,17 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
                 await asyncio.sleep(CLEANUP_RETRY_INTERVAL_SECONDS)
                 if not self._stream_enabled:
                     return
+                client = self._current_printer_client()
+                if client is None:
+                    # No live connection right now; keep trying in case the
+                    # integration returns (reload) with a fresh client.
+                    continue
+                self._printer_client = client
                 if self._has_external_video_viewers():
                     continue
                 await self._disable_stream()
-                return
+                if not self._stream_enabled:
+                    return
         finally:
             self._cleanup_retry_task = None
 
