@@ -46,6 +46,8 @@ def _make_client(
     *,
     connected: bool = True,
     over_capacity: bool = False,
+    connected_streams: int | None = None,
+    max_streams: int = 1,
 ) -> tuple[MagicMock, MagicMock]:
     """
     Build a mock printer client with a video object.
@@ -59,8 +61,11 @@ def _make_client(
     client.is_connected = connected
     client.printer_data = MagicMock()
     attrs = client.printer_data.attributes
-    attrs.num_video_stream_connected = 2 if over_capacity else 0
-    attrs.max_video_stream_allowed = 1
+    if connected_streams is not None:
+        attrs.num_video_stream_connected = connected_streams
+    else:
+        attrs.num_video_stream_connected = 2 if over_capacity else 0
+    attrs.max_video_stream_allowed = max_streams
     video = MagicMock()
     video.status = ElegooVideoStatus.SUCCESS
     video.video_url = "127.0.0.1:8080/mjpeg"
@@ -185,6 +190,46 @@ class TestVideoLifecycleMixin:
             subject = _VideoLifecycleSubject(client)
             await subject._disable_stream()
             client.set_printer_video_stream.assert_not_called()
+
+        _run(run())
+
+    def test_disable_skipped_when_external_viewer_connected(self) -> None:
+        """A foreign stream connection keeps the printer video enabled."""
+
+        async def run() -> None:
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            subject = _VideoLifecycleSubject(client)
+            subject._stream_enabled = True
+            await subject._disable_stream()
+            client.set_printer_video_stream.assert_not_called()
+            assert subject._stream_enabled is True
+
+        _run(run())
+
+    def test_disable_proceeds_when_all_connections_are_ours(self) -> None:
+        """Every reported connection being ours allows the disable."""
+
+        async def run() -> None:
+            client, _ = _make_client(connected_streams=1, max_streams=5)
+            subject = _VideoLifecycleSubject(client)
+            subject._stream_enabled = True
+            subject._active_mjpeg_streams = 1
+            await subject._disable_stream()
+            client.set_printer_video_stream.assert_called_once_with(enable=False)
+            assert subject._stream_enabled is False
+
+        _run(run())
+
+    def test_watchdog_tick_keeps_stream_with_external_viewer(self) -> None:
+        """The idle watchdog leaves the stream on while others use it."""
+
+        async def run() -> None:
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            subject = _VideoLifecycleSubject(client)
+            subject._stream_enabled = True
+            await subject._idle_watchdog_tick()
+            client.set_printer_video_stream.assert_not_called()
+            assert subject._stream_enabled is True
 
         _run(run())
 
@@ -325,6 +370,26 @@ class TestFdmMjpegCameraVideoLifecycle:
             client.set_printer_video_stream.assert_called_once_with(enable=False)
             assert cam._active_mjpeg_streams == 0
             assert cam._transient_viewers == 0
+
+        _run(run())
+
+    def test_camera_image_keeps_stream_when_external_viewer(self) -> None:
+        """A snapshot must not disable the stream while the Slicer is viewing."""
+
+        async def run() -> None:
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            cam = _fdm_camera(client)
+            with patch.object(
+                MjpegCamera,
+                "async_camera_image",
+                new=AsyncMock(return_value=b"img"),
+            ):
+                await cam.async_camera_image()
+            # The stream is enabled for the grab ...
+            client.get_printer_video.assert_called_once_with(enable=True)
+            # ... but not disabled, because another client is still connected
+            client.set_printer_video_stream.assert_not_called()
+            assert cam._stream_enabled is True
 
         _run(run())
 
