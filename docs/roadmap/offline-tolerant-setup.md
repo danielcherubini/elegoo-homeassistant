@@ -16,15 +16,16 @@ done-when: With "Printer is often switched off" ticked, a printer that is powere
 ## Facts the executor needs (all verified against this checkout)
 
 - `PRINT_TRANSPORT_ERRORS = (ElegooPrinterConnectionError, ElegooPrinterNotConnectedError)` (`sdcp/exceptions.py:33`). `ElegooPrinterTimeoutError` **subclasses** `ElegooPrinterConnectionError`, so that one tuple covers all three. Do not "add" `NotConnectedError` to it — it is already there.
-- Availability is automatic: `CoordinatorEntity.available == coordinator.last_update_success`, and HA computes `unavailable` **before** touching `self.state` or attributes (`helpers/entity.py:1079`). No platform needs an availability change.
-- `DataUpdateCoordinator.last_update_success` starts as `True`; `async_set_update_error(err)` sets it `False` and notifies listeners (`helpers/update_coordinator.py:494`).
-- `async_add_listener` arms the refresh timer **only for the first listener** (`update_coordinator.py:152`). So `async_start_offline` must not try to schedule refreshes itself — the first entity attaching arms it.
+- Availability is automatic: `CoordinatorEntity.available == coordinator.last_update_success`, and HA computes `unavailable` **before** touching `self.state` (`helpers/entity.py:1025-1028`, `_stringify_state` called from `__async_calculate_state` at `:1082`), and only reads attributes under `if available:` (`:1087-1089`). No platform needs an availability change.
+- `DataUpdateCoordinator.last_update_success` starts as `True`; `async_set_update_error(err)` sets it `False` and notifies listeners (`helpers/update_coordinator.py:490-497`) — **but it logs `logger.error(...)` when transitioning from success** (`:493-495`). At setup time it is still `True`, so calling it on the offline path would print `Error requesting <printer> data: Printer is off` — exactly the alarming ERROR this feature exists to stop. `async_start_offline` must therefore set `self.last_update_success = False` directly (a public attribute that `CoordinatorEntity.available` reads); there are no listeners yet at setup, so there is nothing to notify.
+- `async_add_listener` arms the refresh timer **only for the first listener** (`update_coordinator.py:152`). So `async_start_offline` must not try to schedule refreshes itself — the first entity attaching arms it. `_schedule_refresh` no-ops unless `update_interval` is already set (`:223-229`), so `async_start_offline` must set the 30 s interval **before** platforms are forwarded (it does: setup order). Polling is additionally skipped when the user has `pref_disable_polling` set on the entry — expected HA behaviour, not a bug.
 - `async_config_entry_first_refresh` raises `ConfigEntryNotReady` when the refresh fails. Never call it on the offline path.
 - MQTT/CC2 answer `get_printer_status`/`get_printer_attributes` **from cache without raising** (`mqtt/client.py:337,362`, `cc2/client.py:1514,1518`); WebSocket raises `ElegooPrinterNotConnectedError` (`sdcp/transport/base.py:209`). This is why the poll needs a connection gate.
-- For an MQTT printer, the reachability test probes **our own embedded broker** (`api.py:343`), which is listening — so the printer being off fails at `connect_printer` (`api.py:412/414`), not at reachability. Both exits need handling.
+- For an MQTT printer, the reachability test probes **our own embedded broker** (`api.py:349-350`; the CC2 probe is `:325-326`), which is listening — so the printer being off fails at `connect_printer` (`api.py:412/414`), not at reachability. Both exits need handling.
 - `Printer.to_dict()` does **not** round-trip unknown keys. `allow_printer_offline` must be written into the saved dict explicitly in every flow that saves.
 - `Printer.from_dict` ignores unknown keys — storing the flag in entry data/options is safe.
 - Translation **parity is tested in both directions** across all 18 locale files (`tests/test_translations.py`, `CONTEXT.md`). A key added to `en.json` must be added to all 17 others.
+- Saving options calls `async_update_entry(entry, options=...)`, which fires the entry's update listeners; `async_setup_entry` registers `async_reload_entry` as one, so **ticking the box reloads the entry immediately** — no manual restart, and the user sees the effect of the change right away.
 - Test harness: `pytest` with the `hass`/`entry` fixtures in `custom_components/elegoo_printer/conftest.py`; `entry.runtime_data.api` is a `MagicMock` with the async methods back-patched to `AsyncMock`.
 
 ## Already on disk (do not re-create)
@@ -44,7 +45,7 @@ Four RED test files exist and are the acceptance criteria for Tasks 1–3 and 5.
 
 ### Task 1: `async_create` returns a deliberately offline client
 
-**Context:** Today every unreachable-printer path in `ElegooPrinterApiClient.async_create` returns `None`, and `async_setup_entry` turns that into `ConfigEntryNotReady`. When the entry opts in, those paths must instead return the (disconnected) client so setup can complete. Two correctness details make this safe: the offline exit must **keep** the embedded MQTT broker reference (the entry stays loaded; `async_unload_entry` is the only other place that releases it, and the printer's reconnect path needs the broker), and it must **not** zero `_proxy_server_enabled`, or a proxy user who came up offline would never re-establish the proxy on reconnect.
+**Context:** Today every unreachable-printer path in `ElegooPrinterApiClient.async_create` returns `None`, and `async_setup_entry` turns that into `ConfigEntryNotReady`. When the entry opts in, those paths must instead return the (disconnected) client so setup can complete. Two correctness details make this safe: the offline exit must **keep** the embedded MQTT broker reference (while the entry stays loaded, `async_unload_entry` is the release point, and the printer's reconnect path needs the broker), and it must **not** zero `_proxy_server_enabled`, or a proxy user who came up offline would never re-establish the proxy on reconnect.
 
 `async_get_printer_data` also gains a connection gate: with a cached-data transport (MQTT/CC2) a poll of a printer that is off currently *succeeds*, so every entity would render fabricated `0 °C` / `idle` values as live truth — worse than today's red entry. Raising routes all three transports through the coordinator's existing quiet failure branch.
 
@@ -66,7 +67,7 @@ Four RED test files exist and are the acceptance criteria for Tasks 1–3 and 5.
    ```
    It sets `self.offline_setup = True` and returns `self`. **It must not** disconnect, release references, zero `_proxy_server_enabled`/`_mqtt_broker_enabled`, or clear `self.server`/`self.mqtt_broker` — the caller has already done whatever teardown is correct for its path.
 4. Use it at the **three** failure exits, each gated by `self._allow_offline`, and each with one INFO log naming the printer and that offline mode is active (INFO, never WARNING — this state is expected and may last for weeks):
-   - the `if not printer_reachable:` exit (`api.py:371`): keep the existing `disconnect()` + broker release **only when not `_allow_offline`**; when tolerant, `disconnect()` the client but **keep `self.mqtt_broker`**, and return `self._as_offline()`. Note this path runs before the proxy is ever set up, so there is no proxy reference to consider here.
+   - the `if not printer_reachable:` exit (`api.py:374`): keep the existing `disconnect()` + broker release **only when not `_allow_offline`**; when tolerant, `disconnect()` the client but **keep `self.mqtt_broker`**, and return `self._as_offline()`. Note this path runs before the proxy is ever set up, so there is no proxy reference to consider here.
    - the `if not connected:` exit (`api.py:417`) and the `except (ConnectionError, TimeoutError, ElegooPrinterConnectionError):` exit (`api.py:436`): same shape — keep proxy/broker references and the two `_enabled` flags, return `self._as_offline()`.
    - Do **not** change the `_setup_proxy_if_enabled` / `_setup_mqtt_broker_if_enabled` failures (port already in use): those are real misconfigurations and must still return `None`.
 5. At the top of `async_get_printer_data` (`api.py:863`), before any client call:
@@ -113,14 +114,14 @@ Separately: the Canvas (`coordinator.py:99`) and file-list (`coordinator.py:161`
 1. Add a `@callback` method `async_start_offline(self) -> None`:
    - `self.online = False`
    - `self.update_interval = timedelta(seconds=30)`
-   - `self.async_set_update_error(ElegooPrinterNotConnectedError("Printer is off"))`
+   - `self.last_update_success = False` — **assign directly, do NOT call `async_set_update_error`**: that helper logs `logger.error("Error requesting %s data: %s")` when transitioning from success, and `last_update_success` is still `True` at setup, so it would print the exact ERROR this feature exists to remove. Nothing is listening yet, so there is no notification to send.
    - Docstring must say why this is not `async_config_entry_first_refresh` (it raises `ConfigEntryNotReady`) and that it performs **no I/O** — the first entity listener arms the refresh and the normal poll reconnects.
 2. Replace both side-check `except (ElegooPrinterConnectionError, ElegooPrinterTimeoutError)` clauses with `except PRINT_TRANSPORT_ERRORS`, keeping the `LOGGER.debug` bodies and the `finally:` rate-limit blocks. Import `PRINT_TRANSPORT_ERRORS` (already imported) and drop now-unused names from the import list if ruff complains.
 3. **Do not** gate the side-checks on `api.is_connected` — Task 1's poll gate already prevents them from running while disconnected. **Do not** change the `except OSError` branch, the 2 s/30 s logic, or `_replay_cc2_print_status_transitions`.
 
 **Steps:**
 - [ ] Run `VIRTUAL_ENV=.venv uv run pytest custom_components/elegoo_printer/tests/test_offline_setup_polling.py "custom_components/elegoo_printer/tests/test_offline_setup_entry.py::TestOfflineStartOfTheCoordinator" -q`
-  - Expect **5 failed** (the polling file: 5 failures / 1 pass) and **3 failed** (the coordinator class, `AttributeError: async_start_offline`). Anything else → investigate first.
+  - Expect **9 failed, 1 passed**: 5 from the polling file (1 pass) + 4 from `TestOfflineStartOfTheCoordinator`, all `AttributeError: async_start_offline`. Anything else → investigate first.
 - [ ] Implement points 1–2.
 - [ ] Re-run the same command → all pass.
 - [ ] Run `VIRTUAL_ENV=.venv uv run pytest -q` → zero failures. `test_coordinator.py` pins existing refresh behaviour; if it breaks, the change is wrong, not the test.
@@ -159,7 +160,7 @@ Note `async_setup_entry` currently merges `{**entry.data, **(entry.options or {}
 
 **Steps:**
 - [ ] Run `VIRTUAL_ENV=.venv uv run pytest custom_components/elegoo_printer/tests/test_offline_setup_entry.py -q`
-  - Expect **5 failed, 3 passed** (the 3 already-passing ones are Task 2's coordinator class if it runs with it; within this file alone expect the 5 `TestSetupEntryOfflinePath`-family failures). Confirm each failure is `ConfigEntryNotReady` or a missing `async_start_offline` call, not a harness error.
+  - Task 2 has landed, so expect **2 failed, 8 passed** — the two remaining failures are `test_offline_client_with_option_completes_setup` and `test_offline_path_skips_the_first_refresh`. Confirm both fail on `ConfigEntryNotReady`, not a harness error.
 - [ ] Implement points 1–3.
 - [ ] Re-run → all pass.
 - [ ] Run `VIRTUAL_ENV=.venv uv run pytest -q` → zero failures.
@@ -234,6 +235,7 @@ Note `async_setup_entry` currently merges `{**entry.data, **(entry.options or {}
    - Do **not** weaken the gcode-proxy health check; a bad proxy URL still re-shows the form.
    - Do **not** change `async_step_manual_ip` or any *config* (add-a-printer) step: adding a printer still requires reaching it once.
 5. Add a one-line comment in the offline-save branch explaining why the printer's identity comes from stored settings (it cannot be re-queried).
+   - If ruff complains about returns/complexity in the closure, extract the branch into a method (`_async_save_offline(printer, user_input, proxy_url)`) returning a `ConfigFlowResult | None` — the same shape `cc2-proxy-host` used for the identical problem.
 
 **Steps:**
 - [ ] Run `VIRTUAL_ENV=.venv uv run pytest custom_components/elegoo_printer/tests/test_offline_setup_options.py -q`
