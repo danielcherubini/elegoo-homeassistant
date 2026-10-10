@@ -99,6 +99,9 @@ class TestOfflineStartOfTheCoordinator:
         entry.runtime_data.api.async_get_firmware_update_info = AsyncMock(
             return_value=None
         )
+        # reconnect must be an AsyncMock for assert_not_awaited below to be a
+        # real assertion — a plain MagicMock child has no await history.
+        entry.runtime_data.api.reconnect = AsyncMock()
         entry.async_on_unload = MagicMock()
         entry.pref_disable_polling = False
         return ElegooDataUpdateCoordinator(hass, entry=entry)
