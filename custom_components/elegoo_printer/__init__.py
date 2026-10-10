@@ -562,6 +562,41 @@ async def async_unload_entry(
     return unload_ok
 
 
+async def async_remove_entry(
+    hass: HomeAssistant,  # noqa: ARG001
+    entry: ElegooPrinterConfigEntry,
+) -> None:
+    """
+    Forget a video release parked for a config entry that is being removed.
+
+    A camera entity that could not release the shared printer video (a foreign
+    viewer was holding it) hands the debt to the next camera entity of the same
+    config entry. Once the entry is removed there is no next entity and no live
+    printer connection, so the parked entry id would be kept forever. This hook
+    is the only place that observes a real removal independently of a still
+    running teardown retry: a retry that has already exhausted its attempts is
+    gone by the time core drops the entry, so nothing else would ever notice.
+
+    Removal is terminal, so this forgets and parks nothing. It is deliberately
+    the only thing it does — the client is already disconnected and the MQTT
+    broker stopped by ``async_unload_entry``, which core always runs first.
+
+    ``hass`` is part of the hook's signature but unused; the registry is keyed by
+    entry id alone.
+
+    Arguments:
+        hass: The Home Assistant instance (unused).
+        entry: The config entry being removed.
+
+    """
+    # Deferred import: the camera platform drags in the camera component and
+    # ffmpeg, and this hook must not make the integration's own import depend on
+    # them (same reason the config flow imports its clients lazily).
+    from .camera import forget_pending_video_release  # noqa: PLC0415
+
+    forget_pending_video_release(entry.entry_id)
+
+
 async def async_reload_entry(
     hass: HomeAssistant,
     entry: ElegooPrinterConfigEntry,
