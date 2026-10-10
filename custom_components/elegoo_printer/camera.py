@@ -49,6 +49,11 @@ FFMPEG_QUIT_TIMEOUT = 10  # seconds to wait after sending 'q' to ffmpeg
 FFMPEG_TERMINATE_TIMEOUT = 5  # seconds to wait after SIGTERM before SIGKILL
 NATIVE_STREAM_IDLE_TIMEOUT = 600  # 10 minutes — clear native stream flag after idle
 IDLE_WATCHDOG_INTERVAL = 60  # seconds between idle checks
+# The printer reports its video stream connections periodically (about every
+# two seconds on both transports). Before releasing the shared video stream,
+# wait one reporting cycle and re-check, so a client that connected during our
+# own grab is reflected in the count and does not get cut off.
+STREAM_DISABLE_SETTLE_SECONDS = 3.0
 
 
 class ElegooCameraMjpeg(CameraMjpeg):
@@ -122,7 +127,7 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
 
     - Enables the video when the first viewer (MJPEG stream, transient
       image grab, or native stream) appears
-    - Disables it when the last viewer disconnects, but only when the
+    - Disables it when the last viewer disconnects, but only once the
       printer reports no other (untracked) stream connection — a foreign
       viewer such as the Elegoo Slicer must not be cut off
     - An idle watchdog re-attempts failed disables and clears stale
@@ -133,6 +138,14 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
     ``_init_video_lifecycle(client)`` inside their own ``__init__`` once
     ``self._printer_client`` is available.
     """
+
+    # Opt-in: while set, the shared printer video is not disabled while the
+    # printer reports connections this entity does not own (see
+    # _has_external_video_viewers). Left off for the resin stream camera, whose
+    # still-image path can leave one of its own RTSP sessions behind — that
+    # session would otherwise be mistaken for an external viewer and never
+    # released.
+    _keep_stream_for_external_viewers = False
 
     def _init_video_lifecycle(self, client: "ElegooPrinterClient") -> None:
         """Initialize stream lifecycle state on this camera entity."""
@@ -220,23 +233,28 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
                 video.status,
             )
 
-    async def _disable_stream(self) -> None:
+    async def _disable_stream(self, *, force: bool = False) -> None:
         """
         Disable printer video.
 
-        Skipped while the printer still reports a connection we do not
-        own (another client is watching). On failure, _stream_enabled
-        stays True (video may still be on printer). The idle watchdog
-        will re-attempt on subsequent intervals.
+        Skipped while the printer reports a connection we do not own
+        (another client is watching). The connection count is only
+        reported periodically and briefly keeps counting our own
+        just-finished grab, so always wait one reporting cycle before
+        trusting it — after that a lingering count is a real external
+        viewer. On failure, _stream_enabled stays True (video may still be
+        on printer) and the idle watchdog re-attempts. ``force`` releases
+        the stream unconditionally and is used when the entity is torn
+        down.
         """
         if not self._stream_enabled:
             return
-        if self._has_external_video_viewers():
-            LOGGER.debug(
-                "Not disabling printer video for %s: other viewer(s) connected",
-                self.entity_id,
-            )
-            return
+        if not force and self._keep_stream_for_external_viewers:
+            if STREAM_DISABLE_SETTLE_SECONDS > 0:
+                await asyncio.sleep(STREAM_DISABLE_SETTLE_SECONDS)
+            if self._has_external_video_viewers():
+                self._log_external_viewer_skip()
+                return
         try:
             await self._printer_client.set_printer_video_stream(enable=False)
         except Exception as e:  # noqa: BLE001
@@ -249,6 +267,13 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
             return
         self._stream_enabled = False
         LOGGER.debug("Disabled printer video for %s", self.entity_id)
+
+    def _log_external_viewer_skip(self) -> None:
+        """Log that the disable was skipped for another client's benefit."""
+        LOGGER.debug(
+            "Not disabling printer video for %s: other viewer(s) connected",
+            self.entity_id,
+        )
 
     async def _get_stream_url(self) -> str | None:
         """
@@ -321,7 +346,7 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
         self._active_mjpeg_streams = 0
         self._transient_viewers = 0
         self._native_stream_active = False
-        await self._disable_stream()
+        await self._disable_stream(force=True)
 
     async def async_added_to_hass(self) -> None:
         """Start the idle watchdog when the entity is added."""
@@ -524,6 +549,10 @@ class ElegooStreamCamera(ElegooVideoStreamLifecycle, Camera):
 
 class ElegooMjpegCamera(ElegooVideoStreamLifecycle, MjpegCamera):
     """Representation of an MjpegCamera."""
+
+    # The FDM chamber camera shares its MJPEG stream with the printer's own
+    # clients (e.g. the Elegoo Slicer), so keep it enabled while they watch.
+    _keep_stream_for_external_viewers = True
 
     def __init__(
         self,

@@ -24,6 +24,12 @@ from custom_components.elegoo_printer.sdcp.models.enums import ElegooVideoStatus
 REQUEST = MagicMock()  # web.Request stand-in
 
 
+@pytest.fixture(autouse=True)
+def _no_disable_settle(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Drop the disable settle to zero so tests stay fast and deterministic."""
+    monkeypatch.setattr(camera_module, "STREAM_DISABLE_SETTLE_SECONDS", 0.0)
+
+
 def _run(coro):
     """Run an async coroutine to completion (fresh loop)."""
     asyncio.run(coro)
@@ -31,6 +37,9 @@ def _run(coro):
 
 class _VideoLifecycleSubject(ElegooVideoStreamLifecycle):
     """Bare lifecycle subject, bypassing entity/camera machinery."""
+
+    # Behave like the FDM camera so the external-viewer guard is exercised.
+    _keep_stream_for_external_viewers = True
 
     def __init__(
         self,
@@ -230,6 +239,73 @@ class TestVideoLifecycleMixin:
             await subject._idle_watchdog_tick()
             client.set_printer_video_stream.assert_not_called()
             assert subject._stream_enabled is True
+
+        _run(run())
+
+    def test_watchdog_tick_disables_after_external_viewer_leaves(self) -> None:
+        """Once the external viewer disconnects the watchdog releases the stream."""
+
+        async def run() -> None:
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            subject = _VideoLifecycleSubject(client)
+            subject._stream_enabled = True
+            await subject._idle_watchdog_tick()
+            client.set_printer_video_stream.assert_not_called()
+            # External viewer disconnects
+            client.printer_data.attributes.num_video_stream_connected = 0
+            await subject._idle_watchdog_tick()
+            client.set_printer_video_stream.assert_called_once_with(enable=False)
+            assert subject._stream_enabled is False
+
+        _run(run())
+
+    def test_disable_waits_for_refreshed_count(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A viewer appearing during the settle window blocks the disable."""
+        monkeypatch.setattr(camera_module, "STREAM_DISABLE_SETTLE_SECONDS", 0.02)
+
+        async def run() -> None:
+            client, _ = _make_client()
+            subject = _VideoLifecycleSubject(client)
+            subject._stream_enabled = True
+
+            async def viewer_connects() -> None:
+                # Lands while _disable_stream is waiting its settle window.
+                await asyncio.sleep(0)
+                client.printer_data.attributes.num_video_stream_connected = 1
+
+            task = asyncio.create_task(viewer_connects())
+            await subject._disable_stream()
+            await task
+
+            client.set_printer_video_stream.assert_not_called()
+            assert subject._stream_enabled is True
+
+        _run(run())
+
+    def test_disable_ignores_own_connection_after_settle(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Our own just-finished grab is not mistaken for an external viewer."""
+        monkeypatch.setattr(camera_module, "STREAM_DISABLE_SETTLE_SECONDS", 0.02)
+
+        async def run() -> None:
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            subject = _VideoLifecycleSubject(client)
+            subject._stream_enabled = True
+
+            async def grab_connection_closes() -> None:
+                # Drop the transient count while the settle window is running.
+                await asyncio.sleep(0)
+                client.printer_data.attributes.num_video_stream_connected = 0
+
+            task = asyncio.create_task(grab_connection_closes())
+            await subject._disable_stream()
+            await task
+
+            client.set_printer_video_stream.assert_called_once_with(enable=False)
+            assert subject._stream_enabled is False
 
         _run(run())
 
