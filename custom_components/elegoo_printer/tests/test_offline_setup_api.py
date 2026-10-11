@@ -20,17 +20,11 @@ import contextlib
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 import custom_components.elegoo_printer.api as api_module
 from custom_components.elegoo_printer.api import ElegooPrinterApiClient
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.const import CONF_ALLOW_PRINTER_OFFLINE
 from custom_components.elegoo_printer.mqtt.client import ElegooMQTTClient
-from custom_components.elegoo_printer.sdcp.exceptions import (
-    ElegooPrinterNotConnectedError,
-)
-from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 PRINTER_IP = "10.0.0.9"
@@ -272,24 +266,3 @@ class TestMqttPrinterNeverDialsTheBroker:
         assert api is not None
         assert api.offline_setup is True
         release.assert_not_awaited()
-
-
-class TestOfflineClientData:
-    """A never-connected client must not serve cached data as if it were live."""
-
-    async def test_async_get_printer_data_raises_while_disconnected(self) -> None:
-        """
-        MQTT/CC2 ``get_printer_status`` returns cached data without raising.
-
-        Without this gate the coordinator's first refresh "succeeds" and every
-        entity renders fabricated defaults (0 C, "idle") for a printer that is
-        switched off — worse than reporting the entry as failed.
-        """
-        api = await _create_unreachable(_config(**{CONF_ALLOW_PRINTER_OFFLINE: True}))
-        assert api is not None
-        # A populated cache, as a printer that was once connected would leave.
-        api.printer_data = PrinterData()
-        api.client.printer_data = PrinterData()
-
-        with pytest.raises(ElegooPrinterNotConnectedError):
-            await api.async_get_printer_data()

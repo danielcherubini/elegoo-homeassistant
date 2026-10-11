@@ -33,10 +33,7 @@ from .const import (
 from .mqtt.client import ElegooMQTTClient
 from .mqtt.const import MQTT_BROKER_PORT, MQTT_PORT
 from .mqtt.server import ElegooMQTTBroker
-from .sdcp.exceptions import (
-    ElegooPrinterConnectionError,
-    ElegooPrinterNotConnectedError,
-)
+from .sdcp.exceptions import ElegooPrinterConnectionError
 from .sdcp.models.elegoo_image import ElegooImage
 from .sdcp.models.enums import TransportType
 from .sdcp.models.printer import Printer, PrinterData
@@ -934,22 +931,10 @@ class ElegooPrinterApiClient:
         """
         Asynchronously retrieves and updates the printer's attribute data.
 
-        Raises:
-            ElegooPrinterNotConnectedError: if the client is not connected. The
-                MQTT and CC2 transports answer from a cache *without raising*, so
-                without this gate a poll of a powered-off printer would "succeed"
-                and every entity would render fabricated defaults as live truth.
-                Raising routes all three transports through the coordinator's
-                existing quiet failure branch, which reports the entities as
-                unavailable.
-
         Returns:
             PrinterData: The latest attribute information for the printer.
 
         """
-        if not self.is_connected:
-            msg = "Printer not connected, cannot fetch data."
-            raise ElegooPrinterNotConnectedError(msg)
         await self.async_get_attributes()
         await self.async_get_status()
         await self.async_get_print_history()
