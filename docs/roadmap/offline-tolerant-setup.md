@@ -39,6 +39,13 @@ done-when: With "Printer is often switched off" ticked, a printer that is powere
    in the PR description and CHANGELOG): an MQTT/CC2 printer that drops off mid-session now goes
    `unavailable` instead of continuing to serve cached values (0 °C, "idle") as live truth. It is
    a bug fix — stale-as-live was worse — but it is user-visible.
+   **Scope correction from the #171 review:** the gate fires when a transport reports
+   `is_connected == False`, and for MQTT that flag tracks the link to the **broker**, not to the
+   printer. It therefore catches a WebSocket drop, a CC2 power-off (whose broker *is* the printer)
+   and an external broker going away, but NOT a plain-MQTT printer that stops answering while its
+   broker outlives it — including this integration's own embedded broker, which the printer dials
+   into rather than hosts. That case keeps serving cached values exactly as it did before this
+   branch; see the follow-up at the end of this document, and the CHANGELOG says so in those words.
 3. **Task 5 — `_websocket_options_schema` carries defaults the plan did not ask for:**
    `default=""` on `CONF_IP_ADDRESS` and `default=False` on `CONF_PROXY_ENABLED`. Both fields stay
    `required: True` in the rendered form, so **UI behaviour is unchanged** — the form always submits
@@ -342,6 +349,18 @@ Things the review raised that were consciously left out, so the next reader does
   `tests/test_offline_setup_polling.py` pins the coordinator boundary for CC2, MQTT and WebSocket,
   and the `unavailable` rendering itself is Home Assistant's `CoordinatorEntity.available` rule —
   re-testing it per platform would test Home Assistant, not this integration.
+- **No printer-side liveness rule for plain MQTT (broker outlives the printer).** Raised as P1 in
+  the #171 review, and the review is right about the gap: `ElegooMQTTClient.is_connected` follows
+  our link to the broker, so a printer that goes silent without breaking that link passes the
+  coordinator's poll gate and `get_printer_status()` answers from its cache. Neither the CC2 pong
+  heartbeat nor a TCP close helps — the frame is answered by the broker, not the printer.
+  Deliberately not guessed at here: the candidates are the broker's own `connected_clients` map
+  (keyed by the CONNECT packet's client id, so it needs a printer-to-client-id rule) or a
+  last-frame-seen timeout (the client asks for a 2 s status push, so silence is meaningful — but
+  a firmware that ignores that command, or a broker that only forwards on change, would make an
+  arbitrary timeout mark a healthy printer unavailable). Picking either needs a printer to measure
+  against, and a false `unavailable` is the failure this whole feature exists to avoid.
+
 - **Pre-existing proxy leak, left as found:** unloading the **last** entry that uses the shared
   proxy server does not stop it. `remove_printer_from_server` returns `should_stop=True` once the
   registry is empty, and `async_unload_entry` only calls `release_reference()` on the

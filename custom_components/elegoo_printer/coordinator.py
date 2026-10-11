@@ -100,6 +100,14 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         30 s cadence, reconnect attempted. The side-checks never see a
         disconnected client, so they need no gate of their own.
 
+        The gate sees what a transport can see. For WebSocket that is the link to
+        the printer; a CC2 hosts its own broker, so powering it off drops our
+        link too. A plain MQTT printer is the exception: ``is_connected`` tracks
+        our link to the *broker*, so a printer that goes silent while its broker
+        outlives it — including the broker this integration hosts itself — keeps
+        answering from cache. That case behaves as it always has and is recorded
+        as a follow-up in ``docs/roadmap/offline-tolerant-setup.md``.
+
         Raises:
             ElegooPrinterNotConnectedError: if the client is not connected.
 
