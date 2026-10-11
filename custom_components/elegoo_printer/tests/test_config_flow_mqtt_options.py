@@ -30,6 +30,10 @@ def _make_options_flow() -> ElegooOptionsFlowHandler:
     entry.options = {}
     flow = ElegooOptionsFlowHandler(entry)
     flow.hass = MagicMock()
+    # HA >= 2025.12 resolves ``OptionsFlow.config_entry`` through the config-entry
+    # registry; the 2025.4 floor short-circuits on the ``_config_entry`` attribute,
+    # so this stub is inert there.
+    flow.hass.config_entries.async_get_known_entry.return_value = entry
     flow.flow_id = "options-test-flow"
     flow.handler = "elegoo_printer"
     return flow

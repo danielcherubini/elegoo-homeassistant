@@ -19,6 +19,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from custom_components.elegoo_printer.config_flow import ElegooOptionsFlowHandler
 from custom_components.elegoo_printer.const import (
     CONF_ALLOW_PRINTER_OFFLINE,
+    CONF_GCODE_PROXY_URL,
     CONF_PROXY_ENABLED,
 )
 from custom_components.elegoo_printer.sdcp.exceptions import (
@@ -63,6 +64,10 @@ def _make_options_flow(data: dict[str, Any]) -> ElegooOptionsFlowHandler:
     entry.options = {}
     flow = ElegooOptionsFlowHandler(entry)
     flow.hass = MagicMock()
+    # HA >= 2025.12 resolves ``OptionsFlow.config_entry`` through the config-entry
+    # registry; the 2025.4 floor short-circuits on the ``_config_entry`` attribute,
+    # so this stub is inert there.
+    flow.hass.config_entries.async_get_known_entry.return_value = entry
     flow.flow_id = "options-test-flow"
     flow.handler = "elegoo_printer"
     return flow
@@ -145,6 +150,44 @@ class TestSaveWhilePrinterIsOff:
 
         assert result["type"] == FlowResultType.CREATE_ENTRY
         assert result["data"][CONF_ALLOW_PRINTER_OFFLINE] is True
+
+    async def test_a_bad_gcode_proxy_url_still_blocks_an_offline_save(self) -> None:
+        """
+        The offline escape hatch must not bypass the gcode-proxy health check.
+
+        Ticking "allow printer offline" only skips the *printer* connection
+        test. A proxy URL the user typed is validated before that, so a proxy
+        that cannot be reached re-shows the form with the error on the URL field
+        instead of saving a broken proxy address while the printer happens to be
+        off. This is the invariant that lets the offline save sit after the
+        proxy check in ``_process_websocket_options_input``.
+        """
+        flow = _make_options_flow(WEBSOCKET_ENTRY_DATA)
+        with (
+            patch(
+                "custom_components.elegoo_printer.config_flow._async_test_connection",
+                new=AsyncMock(
+                    side_effect=ElegooConfigFlowConnectionError("printer is off")
+                ),
+            ),
+            patch.object(
+                ElegooOptionsFlowHandler,
+                "_async_validate_gcode_proxy",
+                new=AsyncMock(return_value=(None, "gcode_proxy_unreachable")),
+            ),
+        ):
+            result = await flow.async_step_websocket_options(
+                user_input={
+                    CONF_IP_ADDRESS: _DOC_IP,
+                    CONF_PROXY_ENABLED: False,
+                    CONF_ALLOW_PRINTER_OFFLINE: True,
+                    CONF_GCODE_PROXY_URL: "192.0.2.99:8080",
+                }
+            )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "websocket_options"
+        assert result["errors"][CONF_GCODE_PROXY_URL] == "gcode_proxy_unreachable"
 
     async def test_saving_offline_keeps_the_stored_printer_identity(self) -> None:
         """The printer cannot be re-queried, so the stored values must survive."""
