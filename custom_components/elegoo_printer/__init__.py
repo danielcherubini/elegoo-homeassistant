@@ -476,7 +476,9 @@ async def async_setup_entry(
     Initializes the data update coordinator and printer API client,
     performs the first data refresh, forwards setup to supported platforms,
     and registers a listener for entry updates.
-    Raises ConfigEntryNotReady if the printer cannot be reached.
+    Raises ConfigEntryNotReady if the printer cannot be reached, unless the
+    entry tolerates a powered-off printer (CONF_ALLOW_PRINTER_OFFLINE), in which
+    case setup completes offline and entities stay unavailable until reachable.
 
     Returns:
         bool: True if the integration is set up successfully.
@@ -507,18 +509,39 @@ async def async_setup_entry(
     )
 
     # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
-    try:
-        await coordinator.async_config_entry_first_refresh()
-    except Exception:
-        # If first refresh fails, clean up the client resources
+    # The entry tolerates a powered-off printer and the api deliberately came up
+    # offline (#171). The first refresh cannot be used here: it raises
+    # ConfigEntryNotReady on a failed refresh — undoing the option — and its
+    # cleanup would release the broker/proxy references the offline client keeps
+    # on purpose. async_start_offline() only marks state; the first entity
+    # listener arms the 30 s retry poll that reconnects the client.
+    #
+    # Branching on offline_setup and not on is_connected is deliberate: any
+    # failure path that did not opt into offline setup keeps today's fail-loud
+    # behaviour (a first refresh that raises ConfigEntryNotReady).
+    if client.offline_setup:
+        LOGGER.info(
+            "Setting up %s without a connection: the printer was not reachable."
+            " All entities stay unavailable until it is reachable again — if it"
+            " never comes back, check its IP address.",
+            entry.title,
+        )
+        coordinator.async_start_offline()
+    else:
         try:
-            await client.elegoo_disconnect()
-            await client.elegoo_stop_mqtt_broker()
-            if client.server:
-                await ElegooPrinterServer.release_reference()
-        except Exception as cleanup_error:  # noqa: BLE001
-            LOGGER.warning("Error during cleanup after failed setup: %s", cleanup_error)
-        raise
+            await coordinator.async_config_entry_first_refresh()
+        except Exception:
+            # If first refresh fails, clean up the client resources
+            try:
+                await client.elegoo_disconnect()
+                await client.elegoo_stop_mqtt_broker()
+                if client.server:
+                    await ElegooPrinterServer.release_reference()
+            except Exception as cleanup_error:  # noqa: BLE001
+                LOGGER.warning(
+                    "Error during cleanup after failed setup: %s", cleanup_error
+                )
+            raise
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
