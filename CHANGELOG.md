@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Begin Time no longer shows "1 January 1970" when the printer reports a 1970 start time (seen on a Centauri Carbon after a restart). It is now worked out from the elapsed print time, and a 1970 End Time reads as unknown.
 - A failed firmware check (e.g. Elegoo's server unreachable) no longer resets Firmware Update Available to "no update" until the next check 12 hours later; the last known result is kept.
 - WebSocket discovery now recognizes hostnames by their resolved IPv4 address, and options updates validate the newly submitted address.
 - CC1 print status no longer sticks on a stale state for the remainder of a job when the printer holds an unmapped milestone code.
