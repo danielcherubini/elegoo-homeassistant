@@ -167,10 +167,11 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                 self.update_interval = timedelta(seconds=2)
             return self.data  # noqa: TRY300
         except PRINT_TRANSPORT_ERRORS as e:
+            # One INFO line per live-to-offline transition, DEBUG for every
+            # consecutive failure after it (see ``_log_failed_poll``).
+            was_online = self.online
             self.online = False
-            LOGGER.info(
-                "Connection to Elegoo printer lost: %s. Attempting to reconnect.", e
-            )
+            self._log_failed_poll(e, was_online=was_online)
             if self.update_interval != timedelta(seconds=30):
                 self.update_interval = timedelta(seconds=30)
 
@@ -190,6 +191,39 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             )
             msg = f"Unexpected Error: {e.strerror}"
             raise UpdateFailed(msg) from e
+
+    def _log_failed_poll(self, error: Exception, *, was_online: bool) -> None:
+        """
+        Report a failed poll once, at the volume the outage deserves.
+
+        ``INFO`` only on the live-to-offline transition — the moment a user
+        wants to hear about — and ``DEBUG`` for every consecutive failure after
+        it. A printer that is simply switched off is polled every 30 s, so
+        repeating the line would print ~2,880 lines a day, which is the exact
+        complaint #171 exists to answer.
+
+        The wording follows the two cases: a printer that was up has *lost* a
+        connection, while one that came up offline (``async_start_offline``
+        leaves ``online`` false) never had one to lose and is only "not
+        reachable yet".
+
+        Arguments:
+            error: The transport error that failed the poll.
+            was_online: Whether the previous poll had reached the printer.
+
+        """
+        if was_online:
+            LOGGER.info(
+                "Connection to printer %s lost, attempting to reconnect: %s",
+                self.name,
+                error,
+            )
+        else:
+            LOGGER.debug(
+                "Printer %s is not reachable yet, attempting to reconnect: %s",
+                self.name,
+                error,
+            )
 
     async def _refresh_file_list_if_due(self, api: Any, now: datetime) -> None:
         """

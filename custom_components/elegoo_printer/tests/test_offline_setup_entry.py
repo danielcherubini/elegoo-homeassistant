@@ -28,7 +28,11 @@ from homeassistant.exceptions import ConfigEntryNotReady
 
 from custom_components.elegoo_printer import async_setup_entry
 from custom_components.elegoo_printer.api import ElegooPrinterApiClient
-from custom_components.elegoo_printer.const import CONF_ALLOW_PRINTER_OFFLINE, DOMAIN
+from custom_components.elegoo_printer.const import (
+    CONF_ALLOW_PRINTER_OFFLINE,
+    CONF_IP,
+    DOMAIN,
+)
 from custom_components.elegoo_printer.coordinator import ElegooDataUpdateCoordinator
 
 
@@ -219,8 +223,21 @@ class TestSetupEntryOfflinePath:
         coordinator.async_config_entry_first_refresh.assert_awaited_once()
         coordinator.async_start_offline.assert_not_called()
 
-    async def test_option_in_entry_options_reaches_the_api_factory(self) -> None:
-        """The options flow writes ``entry.options``; the factory must see them."""
+    async def test_entry_options_reach_the_factory_and_override_entry_data(
+        self,
+    ) -> None:
+        """
+        The factory is handed ``entry.data`` overlaid with ``entry.options``.
+
+        The options flow writes to ``entry.options`` while ``entry.data`` keeps
+        the values captured at setup, so the merge has a direction: options win
+        on a conflicting key, otherwise a printer whose address was edited after
+        setup would be polled at its stale IP. Every other data key must still
+        ride along.
+        """
+        entry = _entry(
+            {CONF_ALLOW_PRINTER_OFFLINE: True, CONF_IP: "10.0.0.50"},
+        )
         create = AsyncMock(return_value=None)
         with (
             patch.object(ElegooPrinterApiClient, "async_create", new=create),
@@ -230,8 +247,13 @@ class TestSetupEntryOfflinePath:
             ),
             pytest.raises(ConfigEntryNotReady),
         ):
-            await async_setup_entry(_hass(), _entry({CONF_ALLOW_PRINTER_OFFLINE: True}))
+            await async_setup_entry(_hass(), entry)
 
-        passed = dict(create.await_args.kwargs["config"])
-        assert isinstance(create.await_args.kwargs["config"], MappingProxyType | dict)
-        assert passed[CONF_ALLOW_PRINTER_OFFLINE] is True
+        config = create.await_args.kwargs["config"]
+        assert isinstance(config, MappingProxyType | dict)
+        assert dict(config) == {**entry.data, **entry.options}
+        # The direction of the merge, spelled out: options beat data, and the
+        # keys only entry.data carries are not dropped.
+        assert config[CONF_IP] == "10.0.0.50"
+        assert config["id"] == "SERIAL123"
+        assert config[CONF_ALLOW_PRINTER_OFFLINE] is True
