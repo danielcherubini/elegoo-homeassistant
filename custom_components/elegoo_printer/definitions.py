@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.binary_sensor import (
@@ -28,7 +29,6 @@ from homeassistant.const import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from datetime import datetime
 
     from homeassistant.helpers.typing import StateType
 
@@ -49,6 +49,38 @@ _RESIN_PRINT_STATUS_OPTIONS: list[str] = [
     s.name.lower() for s in ElegooPrintStatus if s.value < _FDM_STATUS_THRESHOLD
 ]
 _FDM_PRINT_STATUS_OPTIONS: list[str] = [s.name.lower() for s in ElegooPrintStatus]
+
+
+# The printer sometimes reports job times near 1970 (seen on a Centauri Carbon
+# after a restart). Job times before this are treated as unset.
+_MIN_VALID_JOB_TIME = datetime(2000, 1, 1, tzinfo=UTC)
+
+
+def _valid_job_time(value: datetime | None) -> datetime | None:
+    """Return a job timestamp, or None when the printer clock was unset."""
+    return value if value and value >= _MIN_VALID_JOB_TIME else None
+
+
+def _get_begin_time(printer_data: PrinterData) -> datetime | None:
+    """Begin time of the current job, derived from elapsed time if unset."""
+    job = printer_data.current_job
+    if not job:
+        return None
+    if begin := _valid_job_time(job.begin_time):
+        return begin
+    derived = printer_data.derived_begin_time
+    if derived and derived[0] == job.task_id:
+        # Worked out once per job: the printer keeps its final elapsed time
+        # after the print ends, so recomputing would move it every minute.
+        return derived[1]
+    ticks = printer_data.status.print_info.current_ticks
+    if not ticks:
+        return None
+    # Rounded to the minute, like the end time.
+    begin = datetime.now(UTC) - timedelta(milliseconds=ticks)
+    begin = printer_data.round_minute(begin + timedelta(seconds=30), 1)
+    printer_data.derived_begin_time = (job.task_id, begin)
+    return begin
 
 
 def _has_valid_current_coords(printer_data: PrinterData) -> bool:
@@ -698,7 +730,9 @@ def _build_status_timing_sensor_descriptions() -> list[
             icon="mdi:clock",
             device_class=SensorDeviceClass.TIMESTAMP,
             value_fn=lambda printer_data: (
-                printer_data.current_job.end_time if printer_data.current_job else None
+                _valid_job_time(printer_data.current_job.end_time)
+                if printer_data.current_job
+                else None
             ),
         ),
         ElegooPrinterSensorEntityDescription(
@@ -706,11 +740,7 @@ def _build_status_timing_sensor_descriptions() -> list[
             name="Begin Time",
             icon="mdi:clock-start",
             device_class=SensorDeviceClass.TIMESTAMP,
-            value_fn=lambda printer_data: (
-                printer_data.current_job.begin_time
-                if printer_data.current_job
-                else None
-            ),
+            value_fn=_get_begin_time,
         ),
     ]
 

@@ -537,6 +537,9 @@ class PrinterData:
         self.printer: Printer = printer or Printer()
         self.print_history: dict[str, PrintHistoryDetail | None] = print_history or {}
         self.current_job: PrintHistoryDetail | None = None
+        # (task_id, begin) worked out from elapsed time when the printer's own
+        # begin time is unusable; kept so it does not move once the job ends.
+        self.derived_begin_time: tuple[str | None, datetime] | None = None
         self.video: ElegooVideo = ElegooVideo()
         self.firmware_update_info: FirmwareUpdateInfo = {
             "update_available": False,
