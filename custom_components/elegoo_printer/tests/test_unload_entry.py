@@ -299,3 +299,55 @@ class TestUnloadDeregistersAPrinterThatAlreadyGaveItsReferenceBack:
         assert ElegooPrinterServer._reference_count == 1
         assert ElegooPrinterServer._instance is server
         assert proxy.stop.await_count == 0
+
+
+class TestUnloadOnAnAddressTwoPrintersShare:
+    """
+    The registry is keyed by IP, so an IP is not proof of ownership (#171 review).
+
+    Two config entries can hold the same address: a duplicate left behind for a
+    printer that was replaced, or a DHCP lease that moved from one machine to the
+    other. Looking a printer up by address alone therefore lets the entry being
+    unloaded deregister *the other* printer, and a printer with no registry entry
+    is no longer routed or broadcast at by the shared proxy — its own entry is
+    live and healthy, and its printer simply stops answering the slicer.
+    The mainboard id is what identifies the machine, so the registry lookup is
+    checked against it before anything is removed.
+    """
+
+    async def test_unload_does_not_deregister_a_different_printer_sharing_the_ip(
+        self, proxy: SimpleNamespace
+    ) -> None:
+        """Unloading the stale duplicate must leave the live printer registered."""
+        hass = _hass()
+        # A is live and registered at .1 under its own mainboard id.
+        await _online_client(_printer("10.0.0.1", "AAA"), hass)
+        server = ElegooPrinterServer._instance
+        assert server is not None
+        # B is a different printer that currently answers on A's address.
+        stale_duplicate = _client(_printer("10.0.0.1", "BBB"), server=None)
+
+        assert await async_unload_entry(hass, _entry(stale_duplicate)) is True
+
+        registered = server.printer_registry.get_printer_by_ip("10.0.0.1")
+        assert registered is not None, "A was deregistered by B's unload"
+        assert registered.id == "AAA"
+        assert server.printer_registry.count() == 1
+        assert ElegooPrinterServer._reference_count == 1
+        assert proxy.stop.await_count == 0
+
+    async def test_the_registration_is_still_removed_when_the_mainboard_matches(
+        self, proxy: SimpleNamespace
+    ) -> None:
+        """The guard must not stop an entry clearing its *own* registration."""
+        hass = _hass()
+        await _online_client(_printer("10.0.0.1", "AAA"), hass)
+        server = ElegooPrinterServer._instance
+        assert server is not None
+        same_printer_at_the_same_ip = _client(_printer("10.0.0.1", "AAA"), server=None)
+
+        assert (
+            await async_unload_entry(hass, _entry(same_printer_at_the_same_ip)) is True
+        )
+
+        assert server.printer_registry.get_printer_by_ip("10.0.0.1") is None

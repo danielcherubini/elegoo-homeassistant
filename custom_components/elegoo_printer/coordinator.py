@@ -185,7 +185,14 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
 
             try:
                 await self.config_entry.runtime_data.api.reconnect()
-            except (ConnectionError, TimeoutError) as recon_e:
+            except (ConnectionError, TimeoutError, *PRINT_TRANSPORT_ERRORS) as recon_e:
+                # A transport must never reach Home Assistant's catch-all from
+                # here: it reports anything that escapes the poll as
+                # "Unexpected error fetching <printer> data" with a full
+                # traceback, for a printer that is simply switched off. A
+                # ``reconnect()`` that behaves returns False instead of raising
+                # (see ``ElegooPrinterApiClient.reconnect``); this is the net that
+                # catches one that does not.
                 LOGGER.warning("Error during reconnect attempt: %s", recon_e)
 
             msg = f"Failed to communicate with printer: {e}"

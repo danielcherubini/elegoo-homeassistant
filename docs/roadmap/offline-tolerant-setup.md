@@ -8,6 +8,11 @@ done-when: With "Printer is often switched off" ticked, a printer that is powere
 > that branch into `main`. The deliberate departures from the plan are numbered under
 > "Deviations from the plan (found while executing)" below.
 >
+> A second review round found a blocking bug **in the reconnect path itself** — a failed reconnect
+> left the client half-open, so the *next* poll served the empty cache as live data and the entry
+> never retried. That is fixed (see "Round 2 of the #171 review — the reconnect path" at the end of
+> this document); the "up to two polls" wording above is unaffected.
+>
 > One correction to the recovery wording: the front matter's "within one poll" is **superseded**
 > (historical plan text, left intact as written), and this plan's own wording was corrected —
 > coming back after the printer is powered on takes **up to two polls (~1 minute)**, not one.
@@ -367,3 +372,58 @@ Things the review raised that were consciously left out, so the next reader does
   `should_stop=False` branch — so the last reference is never released and the server keeps
   running. It predates #171 (which only made the offline entry stop touching a proxy it never
   acquired); worth its own issue.
+
+## Round 2 of the #171 review — the reconnect path
+
+**Fixed.** `ElegooMQTTClient.connect_printer` raises `_is_connected` *before* the handshake
+(`mqtt/client.py:273`) and its own `except` names only `(asyncio.TimeoutError, OSError,
+aiomqtt.MqttError)`, so an unanswered handshake leaves the flag raised and the broker link open while
+`ElegooPrinterTimeoutError` propagates (`sdcp/transport/base.py:253`). `ElegooPrinterApiClient.reconnect`
+called it unguarded, so the error also escaped `reconnect()` and then escaped the coordinator's
+`except (ConnectionError, TimeoutError)` around the reconnect call — Home Assistant's catch-all logged
+`Unexpected error fetching <printer> data` with a traceback, and the half-open client passed the poll
+gate on the *next* poll, served its empty cache as live data and was never reconnected again. The
+printer was "healthy" at 0 °C and idle forever, for the exact audience that ticked the option.
+
+- `ElegooPrinterApiClient.reconnect` now wraps both `connect_printer` call sites (MQTT/CC2 and the
+  proxy-enabled WebSocket variant) in the same guard the tolerated offline exits of `async_create`
+  use — close the half-open transport, return `False` — and closes defensively when a transport
+  returns `False` without having torn its own link down (the CC2 password loop breaks out of its
+  attempts without disconnecting when a user-supplied access code fails auth).
+- The coordinator's guard around the `reconnect()` call covers `PRINT_TRANSPORT_ERRORS` as well as the
+  two builtins, so no transport error can reach Home Assistant's traceback path even if a future
+  `reconnect()` regresses.
+- The probe-unreachable offline exit of `async_create` goes through `_close_half_open_transport` like
+  its two siblings; a teardown that raised there used to escape `async_create` and put the entry in
+  `SETUP_ERROR` instead of the tolerated offline state.
+- Pinned by `custom_components/elegoo_printer/tests/test_failed_reconnect_keeps_offline.py`, which
+  drives a real api client over a real MQTT transport with only the socket faked and never mocks
+  `api.reconnect` — the earlier polling suite mocked it, which is why this slipped through.
+- **Cost, stated plainly:** tearing the half-open link down goes through the transport's normal
+  `disconnect()`, whose polite goodbye is a printer command. A powered-off printer cannot answer it, so
+  a failed reconnect for an MQTT printer now costs one `SDCP_COMMAND_TIMEOUT` (10 s) on top of the one
+  the handshake attempt already cost, on the 30 s retry cadence. It is awaited, not blocking, and the
+  alternative is the bug above. Avoiding it needs a transport-level "close without asking the
+  printer" — `mqtt/client.py` is a bigger change than this round, so it is left alone.
+
+**Left as a follow-up.**
+
+- **The proxy registry is still keyed by IP address, so two entries on one address cannot both be
+  registered.** `PrinterRegistry.add_printer` stores `printer.ip_address -> Printer`, and
+  `get_printer_by_ip` answers with whichever printer was registered last. The #171 review found the
+  removal half of that: unloading a stale duplicate entry for printer `BBB` at `10.0.0.1` used to
+  delete the registration of the *live* printer `AAA` sitting at that same address (duplicate entry
+  for a replaced machine, or a DHCP lease that moved between printers), and a printer with no
+  registry entry stops being routed to and broadcast at by the proxy. That half is fixed —
+  `ElegooPrinterServer._registration_of` matches the registered mainboard id (`id`, case-insensitive,
+  via the registry) before `is_printer_registered` or `remove_printer_from_server` will act on an
+  address, and a registration with no id is still treated as a match so nothing that used to be
+  cleaned up starts leaking.
+  **Still open, and deliberately not redesigned here:** the collision itself. Registering `BBB` at
+  `10.0.0.1` overwrites `AAA`'s slot, so the *live* entry silently loses its registration while its
+  reference count stays where it was, and `get_printer_by_ip` cannot represent either printer
+  correctly afterwards. A real fix keys the registry by mainboard id (or refuses a second printer on
+  an occupied address in the config flow), which touches the discovery, routing and broadcast paths
+  that all resolve printers by address today — far more than a few lines, and out of scope for a
+  bug-fix round. Worth its own issue. `tests/test_unload_entry.py`
+  (`TestUnloadOnAnAddressTwoPrintersShare`) pins the removal path that was fixed.

@@ -28,7 +28,10 @@ from custom_components.elegoo_printer.api import ElegooPrinterApiClient
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.const import CONF_ALLOW_PRINTER_OFFLINE
 from custom_components.elegoo_printer.mqtt.client import ElegooMQTTClient
-from custom_components.elegoo_printer.sdcp.exceptions import ElegooPrinterTimeoutError
+from custom_components.elegoo_printer.sdcp.exceptions import (
+    ElegooPrinterNotConnectedError,
+    ElegooPrinterTimeoutError,
+)
 from custom_components.elegoo_printer.tests.fakes import FakeAiomqttClient
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
@@ -147,6 +150,37 @@ class TestUnreachablePrinter:
         assert api is not None
         assert api.server is None
         create_server.assert_not_awaited()
+
+    async def test_with_option_a_failing_teardown_still_completes_offline(self) -> None:
+        """
+        The probe-unreachable exit may not let its teardown raise (#171 review).
+
+        Of the three tolerated offline exits this one was the only one still
+        calling ``client.disconnect()`` bare; the other two go through
+        ``_close_half_open_transport``, which swallows what a teardown of a client
+        that never finished connecting can raise. An exception escaping
+        ``async_create`` is not an offline printer, it is an unhandled error: the
+        entry goes to ``SETUP_ERROR`` and stays there until the user reloads it by
+        hand -- the permanent error state the option exists to remove.
+        """
+        with (
+            _offline_websocket(),
+            patch.object(
+                ElegooPrinterClient,
+                "disconnect",
+                new=AsyncMock(side_effect=ElegooPrinterNotConnectedError("no link")),
+            ),
+        ):
+            api = await ElegooPrinterApiClient.async_create(
+                _config(**{CONF_ALLOW_PRINTER_OFFLINE: True}),
+                MagicMock(),
+                _hass(),
+                None,
+            )
+
+        assert api is not None
+        assert api.offline_setup is True
+        assert api.is_connected is False
 
 
 class TestUnreachableCc2:

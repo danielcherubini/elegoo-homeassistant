@@ -34,7 +34,11 @@ from .const import (
 from .mqtt.client import ElegooMQTTClient
 from .mqtt.const import MQTT_BROKER_PORT, MQTT_PORT
 from .mqtt.server import ElegooMQTTBroker
-from .sdcp.exceptions import ElegooPrinterConnectionError, ElegooSDCPError
+from .sdcp.exceptions import (
+    PRINT_TRANSPORT_ERRORS,
+    ElegooPrinterConnectionError,
+    ElegooSDCPError,
+)
 from .sdcp.models.elegoo_image import ElegooImage
 from .sdcp.models.enums import TransportType
 from .sdcp.models.printer import Printer, PrinterData
@@ -170,7 +174,10 @@ class ElegooPrinterApiClient:
         back in still finds it listening. On MQTT the polite goodbye costs one
         command timeout (10 s) because a powered-off printer cannot answer it —
         the same teardown the fail-loud path beside it has always done, and less
-        than the cost of getting the flag wrong.
+        than the cost of getting the flag wrong. It is worth knowing that this is
+        now also the cost of every failed reconnect for an MQTT printer, which the
+        30 s retry cadence makes a recurring 10 s; skipping the polite goodbye
+        would need a transport-level "do not ask the printer" disconnect.
         """
         with contextlib.suppress(ElegooSDCPError, OSError, TimeoutError):
             await self.client.disconnect()
@@ -447,8 +454,12 @@ class ElegooPrinterApiClient:
                     printer.name,
                     printer.ip_address,
                 )
-                # This is probably unnecessary, but let's disconnect for completeness
-                await self.client.disconnect()
+                # Close whatever the failed probe left behind — through the
+                # helper, like the two offline exits below: tearing down a client
+                # that never connected can raise, and an exception escaping here
+                # would put the entry in SETUP_ERROR rather than the tolerated
+                # offline state this branch is producing.
+                await self._close_half_open_transport()
                 # The embedded broker reference is deliberately KEPT: the entry
                 # stays loaded, so async_unload_entry is the release point and the
                 # printer needs the broker to dial back in. Nothing has started the
@@ -590,6 +601,14 @@ class ElegooPrinterApiClient:
         """
         Asynchronously attempts to reconnect to the printer, using a proxy server if enabled.
 
+        Never raises for a printer that is simply not there: a failed attempt is
+        reported as ``False``, with the transport the attempt left behind closed.
+        ``is_connected`` is the only signal the rest of the integration has that a
+        client is offline, so a client that came back from a failed reconnect with
+        its flag still raised would pass the coordinator's poll gate, answer from
+        an empty cache and be published as a live reading — and nothing would ever
+        reconnect it again (#171).
+
         Returns:
             bool: True if reconnection is successful, False otherwise.
 
@@ -652,19 +671,48 @@ class ElegooPrinterApiClient:
             self._proxy_server_enabled and self.server is not None,
         )
         # MQTT/CC2 doesn't support proxy mode yet, only WebSocket does
-        if isinstance(self.client, (ElegooMQTTClient, ElegooCC2Client)):
-            connected = await self.client.connect_printer(printer)
-        else:
-            connected = await self.client.connect_printer(
-                printer,
-                proxy_enabled=self._proxy_server_enabled and self.server is not None,
+        try:
+            if isinstance(self.client, (ElegooMQTTClient, ElegooCC2Client)):
+                connected = await self.client.connect_printer(printer)
+            else:
+                connected = await self.client.connect_printer(
+                    printer,
+                    proxy_enabled=self._proxy_server_enabled
+                    and self.server is not None,
+                )
+        except (ConnectionError, TimeoutError, *PRINT_TRANSPORT_ERRORS):
+            # ``connect_printer`` can raise with its own ``is_connected`` already
+            # raised: MQTT sets the flag *before* the handshake, and the
+            # ``ElegooPrinterTimeoutError`` an unanswered handshake raises is not
+            # one of the errors its own ``except`` covers
+            # (``mqtt/client.py:220-296``). Letting it escape here — as the
+            # coordinator's poll used to let it escape to Home Assistant — both
+            # prints a traceback for a printer that is merely switched off and
+            # leaves the entry convinced it is connected. Same handling as the
+            # tolerated offline exits of ``async_create``: close the link, report
+            # the failure, keep the proxy/broker references for the next attempt.
+            self._logger.debug(
+                "Reconnect attempt to printer %s raised, leaving it offline",
+                printer.name,
+                exc_info=True,
             )
+            await self._close_half_open_transport()
+            return False
 
         # Update config entry with fresh printer data if reconnection was successful
         if connected:
             await self._update_config_entry_if_needed(printer)
+            return True
 
-        return connected
+        # A transport that answers a plain "no" is expected to have torn its own
+        # link down, and MQTT and the WebSocket client do — but the CC2 password
+        # loop breaks out of its attempts *without* disconnecting when a
+        # user-provided access code fails authentication
+        # (``cc2/client.py:340-356``), so close defensively: an offline client
+        # left reporting ``is_connected`` passes the poll gate and serves its
+        # cache as a live reading, which is the bug #171 removes.
+        await self._close_half_open_transport()
+        return False
 
     async def async_get_status(self) -> PrinterData:
         """
