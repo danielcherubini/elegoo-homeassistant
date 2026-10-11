@@ -1,5 +1,14 @@
 {
   "options": {
+    "error": {
+      "connection": "プリンターに接続できません。",
+      "unknown": "不明なエラーが発生しました。",
+      "init_no_printer_found": "初期化に失敗: プリンターが見つかりませんでした。",
+      "gcode_proxy_unreachable": "GCode プロキシサーバーに接続できません。アドレスまたは URL とプロキシが実行中であることを確認してください。",
+      "gcode_proxy_invalid": "GCode プロキシアドレスが無効です。ホストまたはホスト:ポート、もしくはスキームが重複していない http(s) URL を使用してください。",
+      "mqtt_external_port_invalid": "無効なポートです。1 から 65535 までの整数を入力してください。",
+      "manual_ip_no_valid_ip": "有効な IP アドレスを入力してください。"
+    },
     "step": {
       "init": {
         "description": "設定に関するヘルプについては、プロジェクトの GitHub ページをご覧ください。",

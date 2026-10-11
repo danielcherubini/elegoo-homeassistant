@@ -8,8 +8,10 @@ done-when: With "Printer is often switched off" ticked, a printer that is powere
 > that branch into `main`. The deliberate departures from the plan are numbered under
 > "Deviations from the plan (found while executing)" below.
 >
-> One correction to the recovery wording in the front matter and in this plan: coming back after
-> the printer is powered on takes **up to two polls (~1 minute)**, not one. The failed poll that
+> One correction to the recovery wording: the front matter's "within one poll" is **superseded**
+> (historical plan text, left intact as written), and this plan's own wording was corrected —
+> coming back after the printer is powered on takes **up to two polls (~1 minute)**, not one.
+> The failed poll that
 > calls `api.reconnect()` still ends by raising `UpdateFailed`, so the poll that succeeds in
 > reconnecting produces no data and the first good poll is the *next* one, 30 s later. The
 > README and CHANGELOG say "a minute or so (a couple of polls)" for that reason.
@@ -325,7 +327,7 @@ Note `async_setup_entry` currently merges `{**entry.data, **(entry.options or {}
 
 - **No dedicated reconnect task.** The coordinator's existing retry loop already reconnects and recovers; a second mechanism would race it.
 - **No new device-registry or per-entity `unavailable` plumbing.** Coordinator availability is the single source.
-- **No log-cadence work while offline** (the per-30 s INFO at `coordinator.py:118`, the ~5 s UDP broadcast inside `discover_printer`, the M66666 broadcast every 30 s for MQTT). Chosen to keep this PR reviewable; follow up separately if users still report noise. *Partly superseded by the review loop: the per-30 s INFO is now logged once per live-to-offline transition (`_log_failed_poll`), which was the half users actually complained about. The UDP/M66666 broadcast cadence is still out of scope.*
+- **No log-cadence work while offline** (the per-30 s INFO in `coordinator.py`, the ~5 s UDP broadcast inside `discover_printer`, the M66666 broadcast every 30 s for MQTT). Chosen to keep this PR reviewable; follow up separately if users still report noise. *Partly superseded by the review loop: the per-30 s INFO is now logged once per live-to-offline transition (`_log_failed_poll`), which was the half users actually complained about. The UDP/M66666 broadcast cadence is still out of scope.*
 - **No config-entry version bump** — the flag lives in `entry.options`.
 
 ## Review-loop follow-ups deliberately not done

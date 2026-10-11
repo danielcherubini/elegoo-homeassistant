@@ -1,5 +1,14 @@
 {
   "options": {
+    "error": {
+      "connection": "Nepodarilo sa pripojiť k tlačiarni.",
+      "unknown": "Došlo k neznámej chybe.",
+      "init_no_printer_found": "Inicializácia zlyhala: nebola nájdená žiadna tlačiareň.",
+      "gcode_proxy_unreachable": "Nie je možné spojiť sa s proxy serverom GCode. Overte adresu alebo URL a skontrolujte, či proxy server beží.",
+      "gcode_proxy_invalid": "Neplatná adresa proxy GCode. Použite hostiteľa alebo hostiteľ:port, alebo http(s) URL bez duplicitných schém.",
+      "mqtt_external_port_invalid": "Neplatný port. Zadajte celé číslo medzi 1 a 65535.",
+      "manual_ip_no_valid_ip": "Zadajte platnú IP adresu."
+    },
     "step": {
       "init": {
         "description": "Pre pomoc s konfiguráciou, navštívte stránku GitHub projektu.",

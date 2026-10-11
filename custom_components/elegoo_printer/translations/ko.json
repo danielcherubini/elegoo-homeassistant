@@ -1,5 +1,14 @@
 {
   "options": {
+    "error": {
+      "connection": "프린터에 연결할 수 없습니다.",
+      "unknown": "알 수 없는 오류가 발생했습니다.",
+      "init_no_printer_found": "초기화 실패: 프린터가 발견되지 않았습니다.",
+      "gcode_proxy_unreachable": "GCode 프록시 서버에 연결할 수 없습니다. 주소 또는 URL과 프록시 실행 여부를 확인하세요.",
+      "gcode_proxy_invalid": "잘못된 GCode 프록시 주소입니다. 호스트 또는 호스트:포트, 또는 중복 스킴 없는 http(s) URL을 사용하세요.",
+      "mqtt_external_port_invalid": "잘못된 포트입니다. 1부터 65535까지의 정수를 입력하세요.",
+      "manual_ip_no_valid_ip": "유효한 IP 주소를 입력해 주세요."
+    },
     "step": {
       "init": {
         "description": "구성을 위한 도움말은 프로젝트의 GitHub 페이지를 참조하세요.",

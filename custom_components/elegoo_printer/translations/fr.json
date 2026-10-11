@@ -1,5 +1,14 @@
 {
   "options": {
+    "error": {
+      "connection": "Impossible de se connecter à l'imprimante.",
+      "unknown": "Une erreur inconnue s'est produite.",
+      "init_no_printer_found": "Initialisation échouée : l'imprimante n'a pas pu être trouvée.",
+      "gcode_proxy_unreachable": "Impossible d'atteindre le serveur proxy GCode. Vérifiez l'adresse ou l'URL et que le proxy est en cours d'exécution.",
+      "gcode_proxy_invalid": "Adresse du proxy GCode invalide. Utilisez un hôte ou hôte:port, ou une URL http(s) sans schéma en double.",
+      "mqtt_external_port_invalid": "Port invalide. Saisissez un nombre entier compris entre 1 et 65535.",
+      "manual_ip_no_valid_ip": "Veuillez saisir une adresse IP valide."
+    },
     "step": {
       "init": {
         "description": "Pour de l'aide sur la configuration, veuillez consulter la page GitHub du projet.",

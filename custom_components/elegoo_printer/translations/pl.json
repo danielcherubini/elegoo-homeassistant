@@ -1,5 +1,14 @@
 {
   "options": {
+    "error": {
+      "connection": "Nie udało się połączyć z drukarką.",
+      "unknown": "Wystąpił nieznany błąd.",
+      "init_no_printer_found": "Inicjalizacja nie powiodła się: drukarka nie została znaleziona.",
+      "gcode_proxy_unreachable": "Nie można połączyć się z serwerem proxy GCode. Sprawdź adres lub URL i czy serwer proxy jest uruchomiony.",
+      "gcode_proxy_invalid": "Nieprawidłowy adres proxy GCode. Użyj hosta lub host:port, lub adresu URL http(s) bez zduplikowanych schematów.",
+      "mqtt_external_port_invalid": "Nieprawidłowy port. Wprowadź liczbę całkowitą między 1 a 65535.",
+      "manual_ip_no_valid_ip": "Wprowadź poprawny adres IP."
+    },
     "step": {
       "init": {
         "description": "W celu pomocy przy konfiguracji, zobacz stronę projektu GitHub.",

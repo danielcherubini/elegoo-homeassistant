@@ -1,5 +1,14 @@
 {
   "options": {
+    "error": {
+      "connection": "Kunne ikke oprette forbindelse til printer.",
+      "unknown": "Ukendt fejl opstod.",
+      "init_no_printer_found": "Initialisering mislykkedes: Printer kunne ikke findes.",
+      "gcode_proxy_unreachable": "Kan ikke nå GCode-proxyserveren. Bekræft adressen eller URL'en og at proxyen kører.",
+      "gcode_proxy_invalid": "Ugyldig GCode-proxyadresse. Brug en vært eller vært:port, eller en http(s)-URL uden dobbelte skemaer.",
+      "mqtt_external_port_invalid": "Ugyldig port. Indtast et helt tal mellem 1 og 65535.",
+      "manual_ip_no_valid_ip": "Indtast venligt en gyldig IP-adresse."
+    },
     "step": {
       "init": {
         "description": "For hjælp til konfiguration, se venligst projektets GitHub-side.",
