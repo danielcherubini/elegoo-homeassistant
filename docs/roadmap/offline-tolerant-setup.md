@@ -1,7 +1,18 @@
 ---
-status: committed
+status: implemented
 done-when: With "Printer is often switched off" ticked, a printer that is powered off at Home Assistant startup leaves the integration **loaded** (not "Failed setup, will retry"), every entity **unavailable** (not fabricated values), nothing above INFO in the log, and the entities recover on their own within one poll when the printer is powered on — without a restart or reload. Unticked, behaviour is byte-for-byte what it is today.
 ---
+
+> **Implemented** (all six tasks, plus the fixes from the code review, on
+> `feature/171-unavailable-when-printer-off`). The PR for issue #171 is the **squash-merge** of
+> that branch into `main`. The deliberate departures from the plan are numbered under
+> "Deviations from the plan (found while executing)" below.
+>
+> One correction to the recovery wording in the front matter and in this plan: coming back after
+> the printer is powered on takes **up to two polls (~1 minute)**, not one. The failed poll that
+> calls `api.reconnect()` still ends by raising `UpdateFailed`, so the poll that succeeds in
+> reconnecting produces no data and the first good poll is the *next* one, 30 s later. The
+> README and CHANGELOG say "a minute or so (a couple of polls)" for that reason.
 
 # Offline-tolerant setup for switched-off printers (#171) — Plan
 
@@ -26,6 +37,12 @@ done-when: With "Printer is often switched off" ticked, a printer that is powere
    in the PR description and CHANGELOG): an MQTT/CC2 printer that drops off mid-session now goes
    `unavailable` instead of continuing to serve cached values (0 °C, "idle") as live truth. It is
    a bug fix — stale-as-live was worse — but it is user-visible.
+3. **Task 5 — `_websocket_options_schema` carries defaults the plan did not ask for:**
+   `default=""` on `CONF_IP_ADDRESS` and `default=False` on `CONF_PROXY_ENABLED`. Both fields stay
+   `required: True` in the rendered form, so **UI behaviour is unchanged** — the form always submits
+   both — and the defaults only give a partial (non-UI) validation pass something to fall back to
+   on a field that caller had no reason to send. A blank address is
+   now rejected *before* anything is saved, so the empty default can never reach `entry.options`.
 
 ## Facts the executor needs (all verified against this checkout)
 
@@ -108,7 +125,7 @@ Four RED test files exist and are the acceptance criteria for Tasks 1–3 and 5.
 - [ ] With the flag on, WebSocket / CC2 (probe refused) and MQTT (`connect_printer` returning `False` **and** raising) all return a client with `offline_setup is True` and `is_connected is False`.
 - [ ] With the flag on for an MQTT printer, `ElegooMQTTBroker.release_instance` is **not** awaited and `api.mqtt_broker` is still set; with the flag off it **is** awaited.
 - [ ] A dead printer never starts the proxy server.
-- [ ] `async_get_printer_data` raises `ElegooPrinterNotConnectedError` while disconnected, even with a populated cache.
+- [ ] `async_get_printer_data` raises `ElegooPrinterNotConnectedError` while disconnected, even with a populated cache. *(Superseded by Deviation 1: the guard belongs to the coordinator, so this is pinned at the coordinator boundary — a disconnected client with a populated cache fails `_async_update_data` on every transport — in `tests/test_offline_setup_polling.py`.)*
 
 ---
 
@@ -308,5 +325,24 @@ Note `async_setup_entry` currently merges `{**entry.data, **(entry.options or {}
 
 - **No dedicated reconnect task.** The coordinator's existing retry loop already reconnects and recovers; a second mechanism would race it.
 - **No new device-registry or per-entity `unavailable` plumbing.** Coordinator availability is the single source.
-- **No log-cadence work while offline** (the per-30 s INFO at `coordinator.py:118`, the ~5 s UDP broadcast inside `discover_printer`, the M66666 broadcast every 30 s for MQTT). Chosen to keep this PR reviewable; follow up separately if users still report noise.
+- **No log-cadence work while offline** (the per-30 s INFO at `coordinator.py:118`, the ~5 s UDP broadcast inside `discover_printer`, the M66666 broadcast every 30 s for MQTT). Chosen to keep this PR reviewable; follow up separately if users still report noise. *Partly superseded by the review loop: the per-30 s INFO is now logged once per live-to-offline transition (`_log_failed_poll`), which was the half users actually complained about. The UDP/M66666 broadcast cadence is still out of scope.*
 - **No config-entry version bump** — the flag lives in `entry.options`.
+
+## Review-loop follow-ups deliberately not done
+
+Things the review raised that were consciously left out, so the next reader does not mistake them for oversights:
+
+- **No Home Assistant *repairs* issue for the offline state.** Suggested in review as a UI-facing
+  "this printer is offline" surface; deferred. The one INFO line `async_setup_entry` logs is the
+  documented clue for now, and a repair that fires for a printer the user switched off on purpose
+  would be noise for exactly the audience the option exists for.
+- **No per-platform end-to-end `unavailable` integration test.** Covered compositionally instead:
+  `tests/test_offline_setup_polling.py` pins the coordinator boundary for CC2, MQTT and WebSocket,
+  and the `unavailable` rendering itself is Home Assistant's `CoordinatorEntity.available` rule —
+  re-testing it per platform would test Home Assistant, not this integration.
+- **Pre-existing proxy leak, left as found:** unloading the **last** entry that uses the shared
+  proxy server does not stop it. `remove_printer_from_server` returns `should_stop=True` once the
+  registry is empty, and `async_unload_entry` only calls `release_reference()` on the
+  `should_stop=False` branch — so the last reference is never released and the server keeps
+  running. It predates #171 (which only made the offline entry stop touching a proxy it never
+  acquired); worth its own issue.
