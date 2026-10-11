@@ -13,6 +13,20 @@ done-when: With "Printer is often switched off" ticked, a printer that is powere
 
 **Rationale / rejected alternatives:** [docs/decisions/0002-offline-tolerant-setup.md](../decisions/0002-offline-tolerant-setup.md).
 
+## Deviations from the plan (found while executing)
+
+1. **Task 1 step 5 / Task 2 — the poll gate belongs to the coordinator only.** Task 1 added the
+   `is_connected` guard to `async_get_printer_data` *and* Task 2's tests needed it in
+   `_async_update_data`; with both, the api copy is unreachable (the coordinator is the only
+   production caller and checks one line earlier). Decision (maintainer): the **coordinator owns
+   the rule** — `_ensure_connected` in `coordinator.py`; the api-level guard was removed in
+   `dfab854`. Where this plan says the guard is in `async_get_printer_data`, read "in
+   `_async_update_data`".
+2. **Accepted behaviour change for ALL users, not just opt-in** (maintainer decision, must appear
+   in the PR description and CHANGELOG): an MQTT/CC2 printer that drops off mid-session now goes
+   `unavailable` instead of continuing to serve cached values (0 °C, "idle") as live truth. It is
+   a bug fix — stale-as-live was worse — but it is user-visible.
+
 ## Facts the executor needs (all verified against this checkout)
 
 - `PRINT_TRANSPORT_ERRORS = (ElegooPrinterConnectionError, ElegooPrinterNotConnectedError)` (`sdcp/exceptions.py:33`). `ElegooPrinterTimeoutError` **subclasses** `ElegooPrinterConnectionError`, so that one tuple covers all three. Do not "add" `NotConnectedError` to it — it is already there.
@@ -272,7 +286,7 @@ Note `async_setup_entry` currently merges `{**entry.data, **(entry.options or {}
    `"allow_printer_offline": "Set up even when the printer can't be reached. All entities stay \"Unavailable\" until it is powered on, instead of the integration reporting a failed setup. Note: a wrong IP address or unreachable printer then looks the same as a switched-off one."`
    Translate both strings for the other 17 locales (`ar cs da de el es fr it ja ko nl pl pt ru sk th zh-Hans`), matching the tone and terminology already used in each file (e.g. `zh-Hans.json` uses 打印机, `de.json` uses Drucker). Keep the escaped quotes valid JSON.
 2. README: add the option to the Configuration section as a short subsection — what it does, when to use it, and the trade-off sentence above. Mention it applies to every printer type.
-3. CHANGELOG: one entry under the unreleased/current section describing the option and crediting the reporter by name (`@oblivioncth`, issue #171).
+3. CHANGELOG: one entry under the unreleased/current section describing the option and crediting the reporter by name (`@oblivioncth`, issue #171), **and explicitly calling out the always-on fix**: MQTT/CC2 printers that drop off mid-session now go `unavailable` instead of reporting cached values as live (see Deviations #2 — users must not be surprised). The same call-out belongs in the PR description.
 
 **Steps:**
 - [ ] Write the `en.json` keys, then the 17 translations.
