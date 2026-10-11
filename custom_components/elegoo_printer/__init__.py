@@ -562,18 +562,29 @@ async def async_unload_entry(
         except (asyncio.CancelledError, ClientError, OSError, RuntimeError) as e:
             LOGGER.warning("Error disconnecting client: %s", e, exc_info=True)
 
-        # Remove this specific printer from proxy server registry
-        try:
-            should_stop = await asyncio.shield(
-                ElegooPrinterServer.remove_printer_from_server(client.printer, LOGGER)
-            )
-            if not should_stop:
-                # Server continues with other printers, just decrement reference count
-                await asyncio.shield(ElegooPrinterServer.release_reference())
-        except (asyncio.CancelledError, OSError, RuntimeError) as e:
-            LOGGER.warning(
-                "Error removing printer from proxy server: %s", e, exc_info=True
-            )
+        # Remove this specific printer from proxy server registry, and release
+        # our reference — but only if this client actually holds one. ``server``
+        # is set by every acquire and cleared by every release path in the api
+        # client, so it is the record of ownership. An entry that came up offline
+        # (#171) never started the proxy: releasing anyway would decrement another
+        # entry's reference and stop the shared server under a live entry.
+        if client.server is not None:
+            try:
+                should_stop = await asyncio.shield(
+                    ElegooPrinterServer.remove_printer_from_server(
+                        client.printer, LOGGER
+                    )
+                )
+                if not should_stop:
+                    # Server continues with other printers, just decrement ref count
+                    await asyncio.shield(ElegooPrinterServer.release_reference())
+                # NOTE: should_stop is True only once the registry is empty, and
+                # nothing stops the server or releases its reference here — a
+                # pre-existing leak, deliberately out of scope for #171.
+            except (asyncio.CancelledError, OSError, RuntimeError) as e:
+                LOGGER.warning(
+                    "Error removing printer from proxy server: %s", e, exc_info=True
+                )
 
         # Stop MQTT broker if it was started by this client
         # Don't use shield here - we want this to be cancellable
