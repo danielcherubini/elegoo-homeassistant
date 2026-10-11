@@ -20,11 +20,13 @@
           "ip_address": "IP adresa tiskárny",
           "cc2_access_code": "Přístupový kód (volitelné)",
           "gcode_proxy_url": "URL proxy GCode (volitelné)",
-          "proxy_host": "Hostitel proxy (volitelné)"
+          "proxy_host": "Hostitel proxy (volitelné)",
+          "allow_printer_offline": "Tiskárna je často vypnutá"
         },
         "data_description": {
           "gcode_proxy_url": "Základní URL elegoo-printer-proxy (hostitel, hostitel:port nebo http(s) URL; bez schématu se použije http). Nechte prázdné pro deaktivaci.",
-          "proxy_host": "Hostitel směrovacího proxy, přes který se připojíte (IP adresa nebo název hostitele). Nechte prázdné pro přímé připojení k tiskárně. Pokud je nastaveno, řízení MQTT, nahrávání g-code a kamera se směřují přes proxy."
+          "proxy_host": "Hostitel směrovacího proxy, přes který se připojíte (IP adresa nebo název hostitele). Nechte prázdné pro přímé připojení k tiskárně. Pokud je nastaveno, řízení MQTT, nahrávání g-code a kamera se směřují přes proxy.",
+          "allow_printer_offline": "Dokončit nastavení, i když je tiskárna nedostupná. Všechny entity zůstanou \"Unavailable\" (nedostupné), dokud se tiskárna nezapne, místo aby integrace hlásila neúspěšné nastavení. Poznámka: špatná IP adresa nebo nedostupná tiskárna pak vypadá úplně stejně jako vypnutá tiskárna."
         }
       },
       "mqtt_options": {
@@ -34,12 +36,14 @@
           "ip_address": "IP adresa tiskárny",
           "external_ip": "Externí adresa (volitelné, pro pokročilé sítě)",
           "mqtt_external_host": "Externí hostitel MQTT brokeru (volitelné)",
-          "mqtt_external_port": "Externí port MQTT brokeru (volitelné)"
+          "mqtt_external_port": "Externí port MQTT brokeru (volitelné)",
+          "allow_printer_offline": "Tiskárna je často vypnutá"
         },
         "data_description": {
           "external_ip": "Přepsat automaticky detekovanou adresu IP nebo názvem hostitele. Nechat prázdné pro automatickou detekci. Použít pro Kubernetes/Docker nastavení nebo za reverzním proxy. Porty 3030 a 3031 budou přidány automaticky.",
           "mqtt_external_host": "Namířte na existující MQTT broker (např. Mosquitto) místo spuštění vestavěného. Nechte prázdné pro použití vestavěného brokeru.",
-          "mqtt_external_port": "Port externího MQTT brokeru uvedeného výše. Pokud zůstane prázdné, použije se výchozí 1883."
+          "mqtt_external_port": "Port externího MQTT brokeru uvedeného výše. Pokud zůstane prázdné, použije se výchozí 1883.",
+          "allow_printer_offline": "Dokončit nastavení, i když je tiskárna nedostupná. Všechny entity zůstanou \"Unavailable\" (nedostupné), dokud se tiskárna nezapne, místo aby integrace hlásila neúspěšné nastavení. Poznámka: špatná IP adresa nebo nedostupná tiskárna pak vypadá úplně stejně jako vypnutá tiskárna."
         }
       },
       "websocket_options": {
@@ -50,13 +54,15 @@
           "proxy_enabled": "Povolit proxy server",
           "has_canvas": "Canvas/AMS nainstalováno",
           "gcode_proxy_url": "URL proxy GCode (volitelné)",
-          "external_ip": "Externí adresa (volitelné, pro pokročilé sítě)"
+          "external_ip": "Externí adresa (volitelné, pro pokročilé sítě)",
+          "allow_printer_offline": "Tiskárna je často vypnutá"
         },
         "data_description": {
           "proxy_enabled": "Směruje příkazy tiskárny a stream kamery přes jedno připojení v Home Assistant, čímž obchází limit tiskárny na současná připojení.",
           "has_canvas": "Povolí entity filamentů pro každý slot připojené jednotky Canvas (AMS) pro více materiálů.",
           "gcode_proxy_url": "Základní URL elegoo-printer-proxy (hostitel, hostitel:port nebo http(s) URL. Bez schématu se použije HTTP). Nechte prázdné pro deaktivaci.",
-          "external_ip": "Používá se pouze vestavěným proxy serverem: adresa, kterou by ostatní zařízení měla použít pro přístup. Nechte prázdné pro automatickou detekci adresy Home Assistant. Pro Kubernetes/Docker nebo reverzní proxy nastavení. Porty 3030 a 3031 budou přidány automaticky."
+          "external_ip": "Používá se pouze vestavěným proxy serverem: adresa, kterou by ostatní zařízení měla použít pro přístup. Nechte prázdné pro automatickou detekci adresy Home Assistant. Pro Kubernetes/Docker nebo reverzní proxy nastavení. Porty 3030 a 3031 budou přidány automaticky.",
+          "allow_printer_offline": "Dokončit nastavení, i když je tiskárna nedostupná. Všechny entity zůstanou \"Unavailable\" (nedostupné), dokud se tiskárna nezapne, místo aby integrace hlásila neúspěšné nastavení. Poznámka: špatná IP adresa nebo nedostupná tiskárna pak vypadá úplně stejně jako vypnutá tiskárna."
         }
       }
     }

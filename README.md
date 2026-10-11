@@ -176,6 +176,12 @@ The recommended way to install this integration is through the [Home Assistant C
 
 **Note:** If **auto-discovery** didn't work, you may need some [advanced network setup](https://github.com/danielcherubini/elegoo-homeassistant/wiki/Connecting-Elegoo-Printers-to-Home-Assistant-Across-Different-Networks).
 
+### Printer is often switched off
+
+A printer that is normally powered down — off at the wall, or switched by a **smart plug** when it isn't printing — used to leave the integration stuck on **"Failed setup, will retry"** until it came back. Every printer's **options** now carry a **"Printer is often switched off"** checkbox for exactly that case. Tick it and setup finishes even when the printer can't be reached: the entities stay **"Unavailable"** rather than reporting a failed setup, and they return on their own within one poll once the printer is powered on. It applies to **every supported printer type** (WebSocket, MQTT and Centauri Carbon 2), and you can tick it **while the printer is switched off** — no need to power it on just to change the setting. Saving the options reloads the entry straight away.
+
+**The trade-off:** with this option on, a **wrong IP address or an unreachable printer looks exactly like a switched-off one**. If a printer never comes back after you power it on, search the Home Assistant log for **`without a connection`** — the integration logs that line once, at setup, and it is your only clue that the address may simply be wrong.
+
 ### ⚠️ Firmware v1.1.29 Bug Notice
 Elegoo firmware **v1.1.29** contains a bug preventing remote control of lights and temperatures **while a print is in progress**. This is a firmware limitation; if you require these features during prints, consider using v1.1.25 if available for your model.
 

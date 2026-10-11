@@ -20,11 +20,13 @@
           "ip_address": "Adresse IP de l'imprimante",
           "cc2_access_code": "Code d'accès (optionnel)",
           "gcode_proxy_url": "URL du proxy GCode (optionnel)",
-          "proxy_host": "Hôte du proxy (facultatif)"
+          "proxy_host": "Hôte du proxy (facultatif)",
+          "allow_printer_offline": "L'imprimante est souvent éteinte"
         },
         "data_description": {
           "gcode_proxy_url": "URL de base du elegoo-printer-proxy (hôte, hôte:port ou URL http(s) ; http est utilisé si vous omettez le schéma). Laisser vide pour désactiver.",
-          "proxy_host": "Hôte d'un proxy de transfert à travers lequel se connecter (adresse IP ou nom d'hôte). Laisser vide pour se connecter directement à l'imprimante. Une fois défini, la commande MQTT, le téléversement des g-code et la caméra sont acheminés via le proxy."
+          "proxy_host": "Hôte d'un proxy de transfert à travers lequel se connecter (adresse IP ou nom d'hôte). Laisser vide pour se connecter directement à l'imprimante. Une fois défini, la commande MQTT, le téléversement des g-code et la caméra sont acheminés via le proxy.",
+          "allow_printer_offline": "Terminer la configuration même si l'imprimante est injoignable. Toutes les entités restent \"Unavailable\" (indisponibles) jusqu'à sa mise sous tension, au lieu que l'intégration signale un échec de configuration. À noter : une adresse IP erronée ou une imprimante injoignable ressemble alors exactement à une imprimante éteinte."
         }
       },
       "mqtt_options": {
@@ -34,12 +36,14 @@
           "ip_address": "Adresse IP de l'imprimante",
           "external_ip": "Adresse externe (optionnel, pour des configurations réseau avancées)",
           "mqtt_external_host": "Hôte du courtier MQTT externe (facultatif)",
-          "mqtt_external_port": "Port du courtier MQTT externe (facultatif)"
+          "mqtt_external_port": "Port du courtier MQTT externe (facultatif)",
+          "allow_printer_offline": "L'imprimante est souvent éteinte"
         },
         "data_description": {
           "external_ip": "Remplacer l'adresse détectée automatiquement par une adresse IP ou un nom d'hôte. Laisser vide pour la détection automatique. À utiliser pour les configurations Kubernetes/Docker ou derrière un proxy inverse. Les ports 3030 et 3031 seront ajoutés automatiquement.",
           "mqtt_external_host": "Pointer vers un courtier MQTT existant (p. ex. Mosquitto) au lieu de démarrer le courtier intégré. Laisser vide pour utiliser le courtier intégré.",
-          "mqtt_external_port": "Port du courtier MQTT externe spécifié ci-dessus. Passe à 1883 par défaut s'il est laissé vide."
+          "mqtt_external_port": "Port du courtier MQTT externe spécifié ci-dessus. Passe à 1883 par défaut s'il est laissé vide.",
+          "allow_printer_offline": "Terminer la configuration même si l'imprimante est injoignable. Toutes les entités restent \"Unavailable\" (indisponibles) jusqu'à sa mise sous tension, au lieu que l'intégration signale un échec de configuration. À noter : une adresse IP erronée ou une imprimante injoignable ressemble alors exactement à une imprimante éteinte."
         }
       },
       "websocket_options": {
@@ -50,13 +54,15 @@
           "proxy_enabled": "Activer le serveur proxy",
           "has_canvas": "Canvas/AMS installé",
           "gcode_proxy_url": "URL du proxy GCode (optionnel)",
-          "external_ip": "Adresse externe (optionnel, pour des configurations réseau avancées)"
+          "external_ip": "Adresse externe (optionnel, pour des configurations réseau avancées)",
+          "allow_printer_offline": "L'imprimante est souvent éteinte"
         },
         "data_description": {
           "proxy_enabled": "Achemine les commandes de l'imprimante et le flux caméra via une connexion unique dans Home Assistant, contournant la limite de connexions simultanées de l'imprimante.",
           "has_canvas": "Active les entités de filament par emplacement pour une unité Canvas (AMS) multi-matériaux connectée.",
           "gcode_proxy_url": "URL de base du elegoo-printer-proxy (hôte, hôte:port ou URL http(s). HTTP est utilisé si vous omettez le schéma). Laisser vide pour désactiver.",
-          "external_ip": "Utilisé uniquement par le serveur proxy intégré : l'adresse que les autres appareils doivent utiliser pour l'atteindre. Laisser vide pour détecter automatiquement l'adresse de Home Assistant. Pour les configurations Kubernetes/Docker ou proxy inverse. Les ports 3030 et 3031 sont ajoutés automatiquement."
+          "external_ip": "Utilisé uniquement par le serveur proxy intégré : l'adresse que les autres appareils doivent utiliser pour l'atteindre. Laisser vide pour détecter automatiquement l'adresse de Home Assistant. Pour les configurations Kubernetes/Docker ou proxy inverse. Les ports 3030 et 3031 sont ajoutés automatiquement.",
+          "allow_printer_offline": "Terminer la configuration même si l'imprimante est injoignable. Toutes les entités restent \"Unavailable\" (indisponibles) jusqu'à sa mise sous tension, au lieu que l'intégration signale un échec de configuration. À noter : une adresse IP erronée ou une imprimante injoignable ressemble alors exactement à une imprimante éteinte."
         }
       }
     }

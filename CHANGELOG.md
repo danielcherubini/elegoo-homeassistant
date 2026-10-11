@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
      speakers — corrections welcome (PR to the `translations/` directory).
 - Translation parity tests: every code-referenced error key must exist in
      `en.json`, and all locale files must carry the same key set as `en.json`.
+- New **"Printer is often switched off"** option in every printer's options (WebSocket, MQTT and Centauri Carbon 2 alike), for a printer that is normally powered down — off at the wall, or switched by a smart plug between prints. Ticking it lets setup finish even when the printer can't be reached: instead of **"Failed setup, will retry"**, the entities sit at **"Unavailable"** and come back on their own within one poll once the printer is powered on — no restart, no reload. The box can be ticked **while the printer is switched off**, so a printer you power on once a month is no longer locked out of its own settings, and saving the options reloads the entry immediately. Left unticked, which is the default, behaviour is exactly as before. Accepted trade-off: a wrong IP address or dead hardware then looks identical to a switched-off printer, so if it never comes back, check the single `without a connection` line the integration logs once at setup. Reported by @oblivioncth in #171.
 
 ### Changed
 
@@ -37,6 +38,7 @@ All notable changes to this project will be documented in this file.
 - The "invalid IP" error during manual IP entry now shows a proper message
      instead of a raw translation key (the key was missing from the English base
      and every locale).
+- **Applies to all users, with or without the new option:** an MQTT or Centauri Carbon 2 printer that drops off mid-session now goes **"Unavailable"** instead of carrying on with cached values — 0 °C, "idle", fans off — served as though they were live readings. Those transports answer a status request from cache without complaining, so a poll of a printer that has gone away used to "succeed" and every entity rendered fabricated defaults as fact. A default is not a measurement, and acting on one (a bed that will never heat, a print that looks finished because the state reads idle) was worse than an honest greyed-out entity. This is a bug fix, but it is a visible change for anyone whose printer connects and disconnects. Reported by @oblivioncth in #171.
 
 ### Breaking Changes
 
