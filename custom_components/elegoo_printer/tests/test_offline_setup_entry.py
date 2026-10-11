@@ -20,13 +20,13 @@ import contextlib
 import logging
 from datetime import timedelta
 from types import MappingProxyType, SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from custom_components.elegoo_printer import async_setup_entry
+from custom_components.elegoo_printer import async_setup_entry, async_unload_entry
 from custom_components.elegoo_printer.api import ElegooPrinterApiClient
 from custom_components.elegoo_printer.const import (
     CONF_ALLOW_PRINTER_OFFLINE,
@@ -34,6 +34,10 @@ from custom_components.elegoo_printer.const import (
     DOMAIN,
 )
 from custom_components.elegoo_printer.coordinator import ElegooDataUpdateCoordinator
+from custom_components.elegoo_printer.websocket.server.proxy import ElegooPrinterServer
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 def _entry(options: dict[str, Any] | None = None) -> SimpleNamespace:
@@ -50,17 +54,30 @@ def _entry(options: dict[str, Any] | None = None) -> SimpleNamespace:
     )
 
 
-def _client(*, offline: bool) -> MagicMock:
+def _client(*, offline: bool, server: Any | None = None) -> MagicMock:
+    """
+    Build an api-client double.
+
+    ``server`` is the proxy-ownership token and defaults to ``None`` — the state
+    of a client that never acquired a reference. Tests that exercise a release
+    path must pass a non-None sentinel, because that is the only state in which
+    the code under test has anything to give back.
+    """
     client = MagicMock()
     client.is_connected = False
     client.offline_setup = offline
-    client.server = None
+    client.server = server
+    # Real async methods: awaited by both the failed-setup cleanup and the
+    # unload, where a plain MagicMock child would raise in ``await``.
+    client.elegoo_disconnect = AsyncMock()
+    client.elegoo_stop_mqtt_broker = AsyncMock()
     return client
 
 
 def _hass() -> MagicMock:
     hass = MagicMock()
     hass.config_entries.async_forward_entry_setups = AsyncMock()
+    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     return hass
 
 
@@ -257,3 +274,103 @@ class TestSetupEntryOfflinePath:
         assert config[CONF_IP] == "10.0.0.50"
         assert config["id"] == "SERIAL123"
         assert config[CONF_ALLOW_PRINTER_OFFLINE] is True
+
+
+@contextlib.asynccontextmanager
+async def _failed_first_refresh() -> AsyncIterator[Any]:
+    """
+    Drive ``async_setup_entry`` down the failing-first-refresh path.
+
+    The proxy classmethods stay patched while the caller runs, so a follow-up
+    ``async_unload_entry`` for the SAME entry is observable in the same mock.
+    The ``ConfigEntryNotReady`` that production re-raises is consumed here.
+    """
+    hass = _hass()
+    entry = _entry()
+    # A proxy-enabled client that DOES hold a reference: ``server`` is the
+    # ownership token the cleanup pairs with the release.
+    client = _client(offline=False, server=MagicMock(name="proxy-server"))
+    coordinator = _coordinator_double()  # first refresh raises ConfigEntryNotReady
+    with (
+        _patch_setup(client, coordinator),
+        patch.object(
+            ElegooPrinterServer, "release_reference", new=AsyncMock()
+        ) as release,
+        patch.object(
+            ElegooPrinterServer,
+            "remove_printer_from_server",
+            new=AsyncMock(return_value=False),
+        ) as remove,
+    ):
+        # Consume the ConfigEntryNotReady production re-raises, but stay inside
+        # the patches: the caller's ``async_unload_entry`` must be observed by
+        # the very same mocks that recorded the setup cleanup.
+        with pytest.raises(ConfigEntryNotReady):
+            await async_setup_entry(hass, entry)
+        yield SimpleNamespace(
+            hass=hass, entry=entry, client=client, release=release, remove=remove
+        )
+
+
+class TestFailedFirstRefreshCleanup:
+    """
+    A failed first refresh must hand back the proxy reference it holds.
+
+    Before re-raising ``ConfigEntryNotReady``, the online setup path releases
+    its reference on the shared ``ElegooPrinterServer`` AND nulls
+    ``client.server``. The pairing is the whole point: ``server`` is the record
+    of ownership that ``async_unload_entry`` gates on, and every release path in
+    the api client pairs its release with ``None`` for exactly that reason (see
+    ``ElegooPrinterApiClient.reconnect``). A cleanup that released but left the
+    token behind would leave that client looking like it still owns a reference
+    it has given back — the double-decrement that stops the shared proxy under a
+    live printer. Proxy ownership is this branch's recurring bug class, hence
+    the explicit pin.
+
+    Every other client double in this file presets ``server = None`` (nothing to
+    release), which is why this behaviour was unpinned; here the double carries
+    a non-None server sentinel.
+    """
+
+    async def test_failed_first_refresh_releases_once_and_drops_the_token(
+        self,
+    ) -> None:
+        """Exactly one release, and no ownership token left behind."""
+        async with _failed_first_refresh() as ctx:
+            ctx.release.assert_awaited_once()
+            assert ctx.client.server is None
+            # The cleanup ran to completion instead of being swallowed by its
+            # best-effort try/except: without this, a cleanup that died on the
+            # first await would make "released once" fail for the wrong reason.
+            ctx.client.elegoo_disconnect.assert_awaited_once()
+            ctx.client.elegoo_stop_mqtt_broker.assert_awaited_once()
+
+    async def test_unload_after_failed_setup_does_not_release_again(self) -> None:
+        """
+        A client whose cleanup already released gives nothing back on unload.
+
+        Reachability, stated straight: HA core short-circuits
+        ``ConfigEntry.async_unload`` for any entry that is not LOADED, so a
+        ``SETUP_RETRY`` entry does not reach our ``async_unload_entry`` today.
+        What this pins is the contract between the two functions — the cleanup
+        must leave the client in exactly the state the unload gate reads as
+        "holds nothing" — so the reference cannot be decremented twice once a
+        gate is dropped or another path drives that client through the unload.
+        """
+        async with _failed_first_refresh() as ctx:
+            assert ctx.release.await_count == 1, "setup cleanup did not run"
+            assert ctx.client.server is None
+
+            assert await async_unload_entry(ctx.hass, ctx.entry) is True
+
+            assert ctx.release.await_count == 1, (
+                "async_unload_entry released a reference the failed setup had "
+                "already given back: the shared proxy loses another entry's "
+                "reference"
+            )
+            # Deregistering is gated on the same ownership token.
+            ctx.remove.assert_not_awaited()
+            # What the entry does own is still cleaned up: disconnect ran again
+            # (once in the cleanup, once here) and the broker was stopped.
+            assert ctx.client.elegoo_disconnect.await_count == 2
+            ctx.client.elegoo_stop_mqtt_broker.assert_awaited()
