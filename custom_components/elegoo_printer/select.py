@@ -153,8 +153,13 @@ class ElegooPrintFileSelect(ElegooPrinterEntity, RestoreEntity, SelectEntity):
         """Restore the last choice; it is validated against the options when read."""
         await super().async_added_to_hass()
         last = await self.async_get_last_state()
-        if last and last.state not in (None, "unknown", "unavailable"):
-            self.coordinator.data.selected_file = last.state
+        # data is None when setup finished while the printer was off (#171):
+        # there is nothing to restore a choice into until the first poll.
+        if self.coordinator.data is None or last is None:
+            return
+        if last.state in (None, "unknown", "unavailable"):
+            return
+        self.coordinator.data.selected_file = last.state
 
     @property
     def options(self) -> list[str]:
@@ -213,7 +218,11 @@ class ElegooPrintTraySelect(ElegooPrinterEntity, RestoreEntity, SelectEntity):
         """Restore the last choice."""
         await super().async_added_to_hass()
         last = await self.async_get_last_state()
-        if last and last.state in PRINT_TRAY_OPTIONS:
+        # data is None when setup finished while the printer was off (#171):
+        # there is nothing to restore a choice into until the first poll.
+        if self.coordinator.data is None or last is None:
+            return
+        if last.state in PRINT_TRAY_OPTIONS:
             self.coordinator.data.selected_tray = PRINT_TRAY_OPTIONS[last.state]
 
     @property
