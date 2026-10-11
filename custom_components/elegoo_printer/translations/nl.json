@@ -1,5 +1,14 @@
 {
   "options": {
+    "error": {
+      "connection": "Verbinding met de printer kon niet tot stand worden gebracht.",
+      "unknown": "Onbekende fout opgetreden.",
+      "init_no_printer_found": "Initialisatie mislukt: de printer kon niet worden gevonden.",
+      "gcode_proxy_unreachable": "Kan de GCode-proxyserver niet bereiken. Controleer het adres of de URL en of de proxy actief is.",
+      "gcode_proxy_invalid": "Ongeldig GCode-proxyadres. Gebruik een host of host:poort, of een http(s)-URL zonder dubbele schema's.",
+      "mqtt_external_port_invalid": "Ongeldige poort. Voer een geheel getal in tussen 1 en 65535.",
+      "manual_ip_no_valid_ip": "Voer alstublieft een geldig IP-adres in."
+    },
     "step": {
       "init": {
         "description": "Voor hulp bij configuratie, zie de GitHub-pagina van het project.",
@@ -20,11 +29,13 @@
           "ip_address": "Printer IP-adres",
           "cc2_access_code": "Toegangscode (optioneel)",
           "gcode_proxy_url": "GCode proxy-URL (optioneel)",
-          "proxy_host": "Proxy-host (optioneel)"
+          "proxy_host": "Proxy-host (optioneel)",
+          "allow_printer_offline": "Printer is vaak uitgeschakeld"
         },
         "data_description": {
           "gcode_proxy_url": "Basis-URL van de elegoo-printer-proxy (host, host:poort of http(s)-URL; http wordt gebruikt als u het schema weglaat). Leeg laten om uit te schakelen.",
-          "proxy_host": "Host van een doorstuurproxy waarmee verbinding wordt gemaakt (IP of hostnaam). Leeg laten om direct met de printer te verbinden. Als ingesteld, worden MQTT-besturing, g-code uploads en de camera via de proxy gerouteerd."
+          "proxy_host": "Host van een doorstuurproxy waarmee verbinding wordt gemaakt (IP of hostnaam). Leeg laten om direct met de printer te verbinden. Als ingesteld, worden MQTT-besturing, g-code uploads en de camera via de proxy gerouteerd.",
+          "allow_printer_offline": "Voltooi de installatie ook als de printer niet bereikbaar is. Alle entiteiten blijven \"Unavailable\" (niet beschikbaar) tot hij wordt ingeschakeld, in plaats van dat de integratie een mislukte installatie meldt. Let op: een verkeerd IP-adres of een onbereikbare printer lijkt dan exact op een uitgeschakelde printer."
         }
       },
       "mqtt_options": {
@@ -34,12 +45,14 @@
           "ip_address": "Printer IP-adres",
           "external_ip": "Extern adres (optioneel, voor geavanceerde netwerkopstellingen)",
           "mqtt_external_host": "Externe MQTT-broker-host (optioneel)",
-          "mqtt_external_port": "Externe MQTT-brokerpoort (optioneel)"
+          "mqtt_external_port": "Externe MQTT-brokerpoort (optioneel)",
+          "allow_printer_offline": "Printer is vaak uitgeschakeld"
         },
         "data_description": {
           "external_ip": "Overschrijf automatisch gedetecteerd adres met een IP-adres of hostnaam. Laat leeg voor automatische detectie. Gebruik voor Kubernetes/Docker-opstellingen of achter een omgekeerde proxy. Poorten 3030 en 3031 worden automatisch toegevoegd.",
           "mqtt_external_host": "Wijs naar een bestaande MQTT-broker (bijv. Mosquitto) in plaats van de ingebouwde op te starten. Leeg laten om de ingebouwde broker te gebruiken.",
-          "mqtt_external_port": "Poort voor de hierboven opgegeven externe MQTT-broker. Standaard 1883 als leeg gelaten."
+          "mqtt_external_port": "Poort voor de hierboven opgegeven externe MQTT-broker. Standaard 1883 als leeg gelaten.",
+          "allow_printer_offline": "Voltooi de installatie ook als de printer niet bereikbaar is. Alle entiteiten blijven \"Unavailable\" (niet beschikbaar) tot hij wordt ingeschakeld, in plaats van dat de integratie een mislukte installatie meldt. Let op: een verkeerd IP-adres of een onbereikbare printer lijkt dan exact op een uitgeschakelde printer."
         }
       },
       "websocket_options": {
@@ -50,13 +63,15 @@
           "proxy_enabled": "Proxyserver activeren",
           "has_canvas": "Canvas/AMS geïnstalleerd",
           "gcode_proxy_url": "GCode proxy-URL (optioneel)",
-          "external_ip": "Extern adres (optioneel, voor geavanceerde netwerkopstellingen)"
+          "external_ip": "Extern adres (optioneel, voor geavanceerde netwerkopstellingen)",
+          "allow_printer_offline": "Printer is vaak uitgeschakeld"
         },
         "data_description": {
           "proxy_enabled": "Routeert printeropdrachten en de camerastream via een enkele verbinding in Home Assistant, om de limiet op gelijktijdige verbindingen van de printer te omzeilen.",
           "has_canvas": "Activeert filament-entiteiten per slot voor een aangesloten Canvas (AMS) multi-materiaal eenheid.",
           "gcode_proxy_url": "Basis-URL van de elegoo-printer-proxy (host, host:poort of http(s)-URL. HTTP wordt gebruikt als u het schema weglaat). Leeg laten om uit te schakelen.",
-          "external_ip": "Wordt alleen gebruikt door de ingebouwde proxyserver: het adres dat andere apparaten moeten gebruiken om deze te bereiken. Laat leeg om het adres van Home Assistant automatisch te detecteren. Voor Kubernetes/Docker of reverse-proxy opstellingen. Poorten 3030 en 3031 worden automatisch toegevoegd."
+          "external_ip": "Wordt alleen gebruikt door de ingebouwde proxyserver: het adres dat andere apparaten moeten gebruiken om deze te bereiken. Laat leeg om het adres van Home Assistant automatisch te detecteren. Voor Kubernetes/Docker of reverse-proxy opstellingen. Poorten 3030 en 3031 worden automatisch toegevoegd.",
+          "allow_printer_offline": "Voltooi de installatie ook als de printer niet bereikbaar is. Alle entiteiten blijven \"Unavailable\" (niet beschikbaar) tot hij wordt ingeschakeld, in plaats van dat de integratie een mislukte installatie meldt. Let op: een verkeerd IP-adres of een onbereikbare printer lijkt dan exact op een uitgeschakelde printer."
         }
       }
     }

@@ -471,6 +471,69 @@ class ElegooPrinterServer:
                 LOGGER.debug("Force stop completed")
 
     @classmethod
+    def _registration_of(cls, printer: Printer) -> Printer | None:
+        """
+        Return the shared registry's entry for *this* printer, matched by identity.
+
+        The registry is keyed by IP address, and an address is not proof of
+        ownership: two config entries can name the same one — a duplicate kept for
+        a printer that was since replaced, or a DHCP lease that moved from one
+        machine to the other. The mainboard id is what identifies the machine, so
+        an address hit only counts as this printer's registration while the
+        registered id agrees with it. A registration that carries no id cannot be
+        contradicted and is accepted, so nothing that used to be cleaned up starts
+        leaking.
+
+        Arguments:
+            printer: The printer to look up by address, narrowed by mainboard id.
+
+        Returns:
+            The registered ``Printer`` owned by ``printer``, or None.
+
+        """
+        if cls._instance is None:
+            return None
+
+        registered = cls._instance.printer_registry.get_printer_by_ip(
+            printer.ip_address
+        )
+        if registered is None:
+            return None
+
+        if registered.id and printer.id and registered.id.lower() != printer.id.lower():
+            LOGGER.warning(
+                "Address %s is registered to printer %s, not %s: leaving that"
+                " printer's registration to its own entry",
+                printer.ip_address,
+                registered.id,
+                printer.id,
+            )
+            return None
+
+        return registered
+
+    @classmethod
+    def is_printer_registered(cls, printer: Printer) -> bool:
+        """
+        Report whether this printer is currently in the shared proxy registry.
+
+        Registry membership and proxy-reference ownership are two different
+        facts: ``ElegooPrinterApiClient.reconnect`` gives the reference back as
+        soon as the printer stops answering, while the registration stays (the
+        printer may dial back in). ``async_unload_entry`` needs the first to know
+        whether it still owes the registry a removal, and the second to know
+        whether it still owes a reference.
+
+        Arguments:
+            printer: The printer to look up by address, narrowed by mainboard id.
+
+        Returns:
+            True if a running shared server has this printer registered.
+
+        """
+        return cls._registration_of(printer) is not None
+
+    @classmethod
     async def remove_printer_from_server(cls, printer: Printer, logger: Any) -> bool:
         """
         Remove a printer from the server registry.
@@ -482,6 +545,23 @@ class ElegooPrinterServer:
         """
         if cls._instance is None:
             return False  # No server to remove from
+
+        at_this_address = cls._instance.printer_registry.get_printer_by_ip(
+            printer.ip_address
+        )
+        if at_this_address is not None and cls._registration_of(printer) is None:
+            # Somebody else's printer holds this address. Removing it would cut a
+            # live entry's printer out of the proxy that still routes to it, and
+            # the count below would then reflect a registry this entry no longer
+            # controls, so leave the server alone as well.
+            logger.warning(
+                "Printer %s not removed from proxy server registry: %s is registered"
+                " there as %s",
+                printer.ip_address,
+                printer.name,
+                at_this_address.id,
+            )
+            return False
 
         removed = cls._instance.printer_registry.remove_printer(printer.ip_address)
         if removed:

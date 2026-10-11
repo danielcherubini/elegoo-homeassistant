@@ -103,6 +103,68 @@ def test_restores_the_last_choice() -> None:
     assert select.current_option == CLIP
 
 
+def _add_with_restored_state(
+    select: ElegooPrintFileSelect | ElegooPrintTraySelect, last_state: str
+) -> None:
+    """
+    Run ``async_added_to_hass`` as Home Assistant would when restoring `last_state`.
+
+    Both ``async_added_to_hass`` parents are stubbed: the coordinator listener and
+    the restore-state cache are Home Assistant plumbing, not what is under test.
+    """
+    with (
+        patch(
+            "custom_components.elegoo_printer.select.RestoreEntity.async_added_to_hass",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.elegoo_printer.entity.ElegooPrinterEntity.async_added_to_hass",
+            new=AsyncMock(),
+        ),
+        patch.object(
+            select,
+            "async_get_last_state",
+            new=AsyncMock(return_value=MagicMock(state=last_state)),
+        ),
+    ):
+        asyncio.run(select.async_added_to_hass())
+
+
+def test_file_select_restore_without_data_is_skipped() -> None:
+    """A printer that was off at setup has no data yet; the restore must be skipped."""
+    select = _select([BENCHY, CLIP])
+    select.coordinator.data = None
+    _add_with_restored_state(select, BENCHY)
+    assert select.coordinator.data is None
+    assert select.options == []
+    assert select.current_option is None
+
+
+def test_tray_select_restore_without_data_is_skipped() -> None:
+    """Same for the tray select: no data, no crash, no fabricated choice."""
+    select = _tray_select()
+    select.coordinator.data = None
+    _add_with_restored_state(select, "A2")
+    assert select.coordinator.data is None
+    assert select.current_option == "Automatic"
+
+
+def test_tray_select_still_restores_when_data_exists() -> None:
+    """The guard must not swallow the normal restart case."""
+    select = _tray_select()
+    _add_with_restored_state(select, "A2")
+    assert select.coordinator.data.selected_tray == PRINT_TRAY_OPTIONS["A2"] == 1
+    assert select.current_option == "A2"
+
+
+def test_tray_select_restore_ignores_a_state_that_is_not_a_tray() -> None:
+    """A stale/odd restored state leaves the choice at Automatic."""
+    select = _tray_select()
+    _add_with_restored_state(select, "A9")
+    assert select.coordinator.data.selected_tray is None
+    assert select.current_option == "Automatic"
+
+
 def _client(
     files: list[str], chosen: str | None, status: ElegooMachineStatus
 ) -> MagicMock:

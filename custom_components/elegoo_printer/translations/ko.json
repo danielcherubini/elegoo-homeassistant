@@ -1,5 +1,14 @@
 {
   "options": {
+    "error": {
+      "connection": "프린터에 연결할 수 없습니다.",
+      "unknown": "알 수 없는 오류가 발생했습니다.",
+      "init_no_printer_found": "초기화 실패: 프린터가 발견되지 않았습니다.",
+      "gcode_proxy_unreachable": "GCode 프록시 서버에 연결할 수 없습니다. 주소 또는 URL과 프록시 실행 여부를 확인하세요.",
+      "gcode_proxy_invalid": "잘못된 GCode 프록시 주소입니다. 호스트 또는 호스트:포트, 또는 중복 스킴 없는 http(s) URL을 사용하세요.",
+      "mqtt_external_port_invalid": "잘못된 포트입니다. 1부터 65535까지의 정수를 입력하세요.",
+      "manual_ip_no_valid_ip": "유효한 IP 주소를 입력해 주세요."
+    },
     "step": {
       "init": {
         "description": "구성을 위한 도움말은 프로젝트의 GitHub 페이지를 참조하세요.",
@@ -20,11 +29,13 @@
           "ip_address": "프린터 IP 주소",
           "cc2_access_code": "액세스 코드 (선택사항)",
           "gcode_proxy_url": "GCode 프록시 URL (선택 사항)",
-          "proxy_host": "프록시 호스트 (선택 사항)"
+          "proxy_host": "프록시 호스트 (선택 사항)",
+          "allow_printer_offline": "프린터가 자주 꺼져 있음"
         },
         "data_description": {
           "gcode_proxy_url": "elegoo-printer-proxy의 기본 URL (호스트, 호스트:포트 또는 http(s) URL; 스킴을 생략하면 http가 사용됩니다). 비활성화하려면 비워 두세요.",
-          "proxy_host": "통해 연결할 포워딩 프록시 호스트 (IP 또는 호스트명). 프린터에 직접 연결하려면 비워 두세요. 설정되면 MQTT 제어, g-code 업로드 및 카메라가 프록시를 통해 라우팅됩니다."
+          "proxy_host": "통해 연결할 포워딩 프록시 호스트 (IP 또는 호스트명). 프린터에 직접 연결하려면 비워 두세요. 설정되면 MQTT 제어, g-code 업로드 및 카메라가 프록시를 통해 라우팅됩니다.",
+          "allow_printer_offline": "프린터에 연결할 수 없어도 설정을 완료합니다. 통합이 설정 실패를 보고하는 대신, 전원이 켜질 때까지 모든 엔티티가 \"Unavailable\"(사용 불가) 상태로 유지됩니다. 참고: 잘못된 IP 주소나 연결되지 않는 프린터는 꺼져 있는 프린터와 구분할 수 없게 됩니다."
         }
       },
       "mqtt_options": {
@@ -34,12 +45,14 @@
           "ip_address": "프린터 IP 주소",
           "external_ip": "외부 주소 (선택사항, 고급 네트워크 구성용)",
           "mqtt_external_host": "외부 MQTT 브로커 호스트 (선택 사항)",
-          "mqtt_external_port": "외부 MQTT 브로커 포트 (선택 사항)"
+          "mqtt_external_port": "외부 MQTT 브로커 포트 (선택 사항)",
+          "allow_printer_offline": "프린터가 자주 꺼져 있음"
         },
         "data_description": {
           "external_ip": "자동 감지된 주소를 IP 주소 또는 호스트 이름으로 덮어쓰세요. 자동 감지를 위해 비워두세요. Kubernetes/Docker 설정이나 리버스 프록시 뒤에 사용할 때 사용하세요. 포트 3030 과 3031 이 자동으로 추가됩니다.",
           "mqtt_external_host": "내장 브로커 대신 기존 MQTT 브로커(예: Mosquitto)를 지정합니다. 내장 브로커를 사용하려면 비워 두세요.",
-          "mqtt_external_port": "위에서 지정한 외부 MQTT 브로커의 포트. 비워 두면 기본값 1883이 사용됩니다."
+          "mqtt_external_port": "위에서 지정한 외부 MQTT 브로커의 포트. 비워 두면 기본값 1883이 사용됩니다.",
+          "allow_printer_offline": "프린터에 연결할 수 없어도 설정을 완료합니다. 통합이 설정 실패를 보고하는 대신, 전원이 켜질 때까지 모든 엔티티가 \"Unavailable\"(사용 불가) 상태로 유지됩니다. 참고: 잘못된 IP 주소나 연결되지 않는 프린터는 꺼져 있는 프린터와 구분할 수 없게 됩니다."
         }
       },
       "websocket_options": {
@@ -50,13 +63,15 @@
           "proxy_enabled": "프록시 서버 활성화",
           "has_canvas": "Canvas/AMS 설치됨",
           "gcode_proxy_url": "GCode 프록시 URL (선택 사항)",
-          "external_ip": "외부 주소 (선택사항, 고급 네트워크 구성용)"
+          "external_ip": "외부 주소 (선택사항, 고급 네트워크 구성용)",
+          "allow_printer_offline": "프린터가 자주 꺼져 있음"
         },
         "data_description": {
           "proxy_enabled": "프린터 명령과 카메라 스트림을 Home Assistant 내 단일 연결을 통해 라우팅하여 프린터의 동시 연결 제한을 우회합니다.",
           "has_canvas": "연결된 Canvas (AMS) 멀티 소재 장치의 슬롯별 필라멘트 엔티티를 활성화합니다.",
           "gcode_proxy_url": "elegoo-printer-proxy의 기본 URL (호스트, 호스트:포트 또는 http(s) URL. 스킴을 생략하면 HTTP가 사용됩니다). 비활성화하려면 비워 두세요.",
-          "external_ip": "내장 프록시 서버에서만 사용: 다른 장치가 액세스할 때 사용해야 하는 주소. Home Assistant 주소 자동 감지를 위해 비워두세요. Kubernetes/Docker 또는 리버스 프록시 설정용. 포트 3030과 3031이 자동으로 추가됩니다."
+          "external_ip": "내장 프록시 서버에서만 사용: 다른 장치가 액세스할 때 사용해야 하는 주소. Home Assistant 주소 자동 감지를 위해 비워두세요. Kubernetes/Docker 또는 리버스 프록시 설정용. 포트 3030과 3031이 자동으로 추가됩니다.",
+          "allow_printer_offline": "프린터에 연결할 수 없어도 설정을 완료합니다. 통합이 설정 실패를 보고하는 대신, 전원이 켜질 때까지 모든 엔티티가 \"Unavailable\"(사용 불가) 상태로 유지됩니다. 참고: 잘못된 IP 주소나 연결되지 않는 프린터는 꺼져 있는 프린터와 구분할 수 없게 됩니다."
         }
       }
     }

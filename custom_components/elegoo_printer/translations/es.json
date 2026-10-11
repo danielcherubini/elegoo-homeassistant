@@ -1,5 +1,14 @@
 {
   "options": {
+    "error": {
+      "connection": "No se pudo conectar con la impresora.",
+      "unknown": "Ocurrió un error desconocido.",
+      "init_no_printer_found": "Inicialización fallida: la impresora no pudo ser encontrada.",
+      "gcode_proxy_unreachable": "No se puede alcanzar el servidor proxy GCode. Verifique la dirección o URL y que el proxy esté en ejecución.",
+      "gcode_proxy_invalid": "Dirección del proxy GCode no válida. Use un host o host:puerto, o una URL http(s) sin esquemas duplicados.",
+      "mqtt_external_port_invalid": "Puerto no válido. Introduzca un número entero entre 1 y 65535.",
+      "manual_ip_no_valid_ip": "Introduzca una dirección IP válida."
+    },
     "step": {
       "init": {
         "description": "Para ayuda con la configuración, por favor vea la página GitHub del proyecto.",
@@ -20,11 +29,13 @@
           "ip_address": "Dirección IP de la Impresora",
           "cc2_access_code": "Código de acceso (opcional)",
           "gcode_proxy_url": "URL del proxy GCode (opcional)",
-          "proxy_host": "Host del proxy (opcional)"
+          "proxy_host": "Host del proxy (opcional)",
+          "allow_printer_offline": "La impresora está apagada con frecuencia"
         },
         "data_description": {
           "gcode_proxy_url": "URL base del elegoo-printer-proxy (host, host:puerto o URL http(s); se usa http si omite el esquema). Dejar en blanco para desactivar.",
-          "proxy_host": "Host de un proxy hacia adelante para conectar a través de él (dirección IP o nombre de host). Dejar en blanco para conectar directamente con la impresora. Cuando se establezca, el control MQTT, las cargas de g-code y la cámara se enrutarán a través del proxy."
+          "proxy_host": "Host de un proxy hacia adelante para conectar a través de él (dirección IP o nombre de host). Dejar en blanco para conectar directamente con la impresora. Cuando se establezca, el control MQTT, las cargas de g-code y la cámara se enrutarán a través del proxy.",
+          "allow_printer_offline": "Completar la configuración aunque no se pueda acceder a la impresora. Todas las entidades quedan \"Unavailable\" (no disponibles) hasta que se encienda, en lugar de que la integración informe un error de configuración. Nota: una dirección IP incorrecta o una impresora inaccesible parecen entonces exactamente una impresora apagada."
         }
       },
       "mqtt_options": {
@@ -34,12 +45,14 @@
           "ip_address": "Dirección IP de la Impresora",
           "external_ip": "Dirección externa (opcional, para configuraciones de red avanzadas)",
           "mqtt_external_host": "Host del broker MQTT externo (opcional)",
-          "mqtt_external_port": "Puerto del broker MQTT externo (opcional)"
+          "mqtt_external_port": "Puerto del broker MQTT externo (opcional)",
+          "allow_printer_offline": "La impresora está apagada con frecuencia"
         },
         "data_description": {
           "external_ip": "Sobreescribir la dirección detectada automáticamente con una dirección IP o nombre de host. Deje en blanco para detección automática. Utilice para configuraciones de Kubernetes/Docker o cuando esté detrás de un proxy inverso. Los puertos 3030 y 3031 se agregarán automáticamente.",
           "mqtt_external_host": "Apunte a un broker MQTT existente (p. ej. Mosquitto) en lugar de iniciar el integrado. Dejar en blanco para usar el broker integrado.",
-          "mqtt_external_port": "Puerto para el broker MQTT externo especificado anteriormente. El valor predeterminado es 1883 si se deja en blanco."
+          "mqtt_external_port": "Puerto para el broker MQTT externo especificado anteriormente. El valor predeterminado es 1883 si se deja en blanco.",
+          "allow_printer_offline": "Completar la configuración aunque no se pueda acceder a la impresora. Todas las entidades quedan \"Unavailable\" (no disponibles) hasta que se encienda, en lugar de que la integración informe un error de configuración. Nota: una dirección IP incorrecta o una impresora inaccesible parecen entonces exactamente una impresora apagada."
         }
       },
       "websocket_options": {
@@ -50,13 +63,15 @@
           "proxy_enabled": "Activar el servidor proxy",
           "has_canvas": "Canvas/AMS instalado",
           "gcode_proxy_url": "URL del proxy GCode (opcional)",
-          "external_ip": "Dirección externa (opcional, para configuraciones de red avanzadas)"
+          "external_ip": "Dirección externa (opcional, para configuraciones de red avanzadas)",
+          "allow_printer_offline": "La impresora está apagada con frecuencia"
         },
         "data_description": {
           "proxy_enabled": "Enruta los comandos de la impresora y la transmisión de cámara a través de una única conexión dentro de Home Assistant, evitando el límite de conexiones simultáneas de la impresora.",
           "has_canvas": "Habilita entidades de filamento por ranura para una unidad Canvas (AMS) multimaterial conectada.",
           "gcode_proxy_url": "URL base del elegoo-printer-proxy (host, host:puerto o URL http(s). Se usa HTTP si omite el esquema). Dejar en blanco para desactivar.",
-          "external_ip": "Solo lo usa el servidor proxy integrado: la dirección que otros dispositivos deben usar para acceder a él. Dejar en blanco para detectar automáticamente la dirección de Home Assistant. Para configuraciones de Kubernetes/Docker o proxy inverso. Los puertos 3030 y 3031 se agregan automáticamente."
+          "external_ip": "Solo lo usa el servidor proxy integrado: la dirección que otros dispositivos deben usar para acceder a él. Dejar en blanco para detectar automáticamente la dirección de Home Assistant. Para configuraciones de Kubernetes/Docker o proxy inverso. Los puertos 3030 y 3031 se agregan automáticamente.",
+          "allow_printer_offline": "Completar la configuración aunque no se pueda acceder a la impresora. Todas las entidades quedan \"Unavailable\" (no disponibles) hasta que se encienda, en lugar de que la integración informe un error de configuración. Nota: una dirección IP incorrecta o una impresora inaccesible parecen entonces exactamente una impresora apagada."
         }
       }
     }

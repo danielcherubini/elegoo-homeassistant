@@ -25,6 +25,7 @@ from .cc2.const import CC2_CONFIG_FLOW_DISCOVERY_TIMEOUT, CC2_MQTT_PORT
 from .cc2.discovery import CC2Discovery
 from .cc2.gcode_proxy import GCodeProxyClient
 from .const import (
+    CONF_ALLOW_PRINTER_OFFLINE,
     CONF_CAMERA_ENABLED,
     CONF_CC2_ACCESS_CODE,
     CONF_EXTERNAL_IP,
@@ -1483,6 +1484,22 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             printer: Printer,
             _errors: dict[str, str],
         ) -> config_entries.ConfigFlowResult | None:
+            typed_ip = user_input.get(CONF_IP_ADDRESS)
+            if typed_ip is not None and not typed_ip.strip():
+                # A cleared address is a typo, not a switched-off printer. This
+                # step saves without any connection test, so without this refusal
+                # the form persists ``ip_address: ""`` -- an entry that can never
+                # connect (#171 review).
+                _errors[CONF_IP_ADDRESS] = "manual_ip_no_valid_ip"
+                return self.async_show_form(
+                    step_id="cc2_options",
+                    data_schema=self.add_suggested_values_to_schema(
+                        vol.Schema(self._cc2_options_schema()),
+                        suggested_values=user_input,
+                    ),
+                    errors=_errors,
+                )
+
             printer.ip_address = user_input.get(CONF_IP_ADDRESS, printer.ip_address)
             printer_data = printer.to_dict()
             access_code = user_input.get(CONF_CC2_ACCESS_CODE)
@@ -1515,6 +1532,10 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 user_input.get(CONF_PROXY_HOST) or ""
             ).strip()
 
+            printer_data[CONF_ALLOW_PRINTER_OFFLINE] = bool(
+                user_input.get(CONF_ALLOW_PRINTER_OFFLINE, False)
+            )
+
             return self.async_create_entry(
                 title=printer.name,
                 data=printer_data,
@@ -1543,6 +1564,9 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional(CONF_PROXY_HOST, default=""): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
             ),
+            vol.Required(
+                CONF_ALLOW_PRINTER_OFFLINE, default=False
+            ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
         }
 
     @staticmethod
@@ -1575,6 +1599,9 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Optional(CONF_MQTT_EXTERNAL_PORT): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
             ),
+            vol.Required(
+                CONF_ALLOW_PRINTER_OFFLINE, default=False
+            ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
         }
 
         async def _process_mqtt_options_input(
@@ -1582,6 +1609,22 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             printer: Printer,
             _errors: dict[str, str],
         ) -> config_entries.ConfigFlowResult | None:
+            typed_ip = user_input.get(CONF_IP_ADDRESS)
+            if typed_ip is not None and not typed_ip.strip():
+                # A cleared address is a typo, not a switched-off printer. This
+                # step saves without any connection test, so without this refusal
+                # the form persists ``ip_address: ""`` -- an entry that can never
+                # connect (#171 review).
+                _errors[CONF_IP_ADDRESS] = "manual_ip_no_valid_ip"
+                return self.async_show_form(
+                    step_id="mqtt_options",
+                    data_schema=self.add_suggested_values_to_schema(
+                        vol.Schema(data_schema),
+                        suggested_values=user_input,
+                    ),
+                    errors=_errors,
+                )
+
             printer.ip_address = user_input.get(CONF_IP_ADDRESS, printer.ip_address)
             printer.external_ip = user_input.get(CONF_EXTERNAL_IP)
             printer.mqtt_external_host = user_input.get(CONF_MQTT_EXTERNAL_HOST)
@@ -1604,9 +1647,14 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             else:
                 printer.mqtt_external_port = None
 
+            printer_data = printer.to_dict()
+            printer_data[CONF_ALLOW_PRINTER_OFFLINE] = bool(
+                user_input.get(CONF_ALLOW_PRINTER_OFFLINE, False)
+            )
+
             return self.async_create_entry(
                 title=printer.name,
-                data=printer.to_dict(),
+                data=printer_data,
             )
 
         return await self._async_step_transport_options(
@@ -1640,6 +1688,25 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             printer: Printer,
             _errors: dict[str, str],
         ) -> config_entries.ConfigFlowResult | None:
+            if not (user_input.get(CONF_IP_ADDRESS) or "").strip():
+                # A blank address is a typo, not a switched-off printer, so this
+                # refusal is independent of the offline option: the offline save
+                # below would otherwise persist ``ip_address: ""``, an entry that
+                # can never connect and that -- per the documented trade-off of
+                # the option -- then fails silently.
+                _errors[CONF_IP_ADDRESS] = "manual_ip_no_valid_ip"
+                return self.async_show_form(
+                    step_id="websocket_options",
+                    data_schema=self.add_suggested_values_to_schema(
+                        vol.Schema(_websocket_options_schema_for(printer)),
+                        suggested_values=user_input,
+                    ),
+                    errors=_errors,
+                    description_placeholders=_websocket_description_placeholders(
+                        printer
+                    ),
+                )
+
             printer.ip_address = user_input[CONF_IP_ADDRESS]
             proxy_url, proxy_error = await self._async_validate_gcode_proxy(
                 user_input.get(CONF_GCODE_PROXY_URL)
@@ -1662,6 +1729,19 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                 printer.proxy_websocket_port = None
                 printer.proxy_video_port = None
 
+            allow_offline = bool(user_input.get(CONF_ALLOW_PRINTER_OFFLINE, False))
+            # ``allow_offline`` picks the log level, never the outcome. For an
+            # entry that opted into offline tolerance a powered-off printer is an
+            # *expected* condition, not an error (#171): the failed connection
+            # test that precedes the offline save is recorded at DEBUG (and
+            # without the OSError traceback) so the log does not spam exactly the
+            # user the option exists for. Without the option the failure is a
+            # real problem, so it keeps being logged as an error.
+            log_failure = LOGGER.debug if allow_offline else LOGGER.error
+            log_failure_with_traceback = (
+                LOGGER.debug if allow_offline else LOGGER.exception
+            )
+
             try:
                 tested_printer = await _async_test_connection(
                     self.hass, printer, user_input
@@ -1675,22 +1755,28 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
                     printer_data[CONF_GCODE_PROXY_URL] = proxy_url
                 else:
                     printer_data.pop(CONF_GCODE_PROXY_URL, None)
+                printer_data[CONF_ALLOW_PRINTER_OFFLINE] = allow_offline
                 return self.async_create_entry(
                     title=tested_printer.name,
                     data=printer_data,
                 )
             except ElegooConfigFlowConnectionError as exception:
-                LOGGER.error("Connection error: %s", exception)
+                log_failure("Connection error: %s", exception)
                 _errors["base"] = "connection"
             except ElegooConfigFlowGeneralError as exception:
-                LOGGER.error("No printer found: %s", exception)
+                log_failure("No printer found: %s", exception)
                 _errors["base"] = "init_no_printer_found"
             except PlatformNotReady as exception:
-                LOGGER.error(exception)
+                log_failure("%s", exception)
                 _errors["base"] = "connection"
             except OSError as exception:
-                LOGGER.exception(exception)
+                log_failure_with_traceback("%s", exception)
                 _errors["base"] = "unknown"
+
+            # Reaching here means the connection test raised: every except
+            # branch above recorded an error and fell through.
+            if allow_offline:
+                return self._offline_options_result(printer, user_input, proxy_url)
             # A failed connection test re-shows the form instead.
             return None
 
@@ -1703,14 +1789,58 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             description_placeholders=_websocket_description_placeholders,
         )
 
+    def _offline_options_result(
+        self,
+        printer: Printer,
+        user_input: dict[str, Any],
+        proxy_url: str | None,
+    ) -> config_entries.ConfigFlowResult:
+        """
+        Save WebSocket options after a failed connection test (#171).
+
+        The printer is switched off, so it cannot be re-queried: the identity
+        the tested printer would have supplied (id, model, name, firmware,
+        connection) is taken from the stored settings the ``printer`` argument
+        was built from, and only the values the user typed are applied.
+
+        Arguments:
+            printer: The printer built from the stored (data + options) settings.
+            user_input: The submitted form values.
+            proxy_url: The already health-checked gcode proxy URL, if any.
+
+        Returns:
+            The ``async_create_entry`` result saving the options.
+
+        """
+        # ``ip_address`` was already applied by the caller; ``proxy_enabled`` is
+        # re-applied here rather than trusted from ``_async_test_connection``,
+        # which may have raised before it got as far as setting it.
+        printer.proxy_enabled = user_input[CONF_PROXY_ENABLED]
+        printer.has_canvas = user_input.get(CONF_HAS_CANVAS, False)
+        printer.external_ip = user_input.get(CONF_EXTERNAL_IP)
+        printer_data = printer.to_dict()
+        if proxy_url:
+            printer_data[CONF_GCODE_PROXY_URL] = proxy_url
+        else:
+            printer_data.pop(CONF_GCODE_PROXY_URL, None)
+        printer_data[CONF_ALLOW_PRINTER_OFFLINE] = bool(
+            user_input.get(CONF_ALLOW_PRINTER_OFFLINE, False)
+        )
+        return self.async_create_entry(
+            title=printer.name,
+            data=printer_data,
+        )
+
     @staticmethod
     def _websocket_options_schema(*, is_fdm: bool) -> dict:
         """Build the WebSocket/SDCP options schema; Canvas fields are FDM-only."""
         schema: dict = {
-            vol.Required(CONF_IP_ADDRESS): selector.TextSelector(
+            # Both keep ``required: True`` in the rendered form; the defaults only
+            # mean a partial (non-UI) validation pass has something to fall back to.
+            vol.Required(CONF_IP_ADDRESS, default=""): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
             ),
-            vol.Required(CONF_PROXY_ENABLED): selector.BooleanSelector(
+            vol.Required(CONF_PROXY_ENABLED, default=False): selector.BooleanSelector(
                 selector.BooleanSelectorConfig(),
             ),
         }
@@ -1725,5 +1855,8 @@ class ElegooOptionsFlowHandler(config_entries.OptionsFlow):
             )
         schema[vol.Optional(CONF_EXTERNAL_IP)] = selector.TextSelector(
             selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT),
+        )
+        schema[vol.Required(CONF_ALLOW_PRINTER_OFFLINE, default=False)] = (
+            selector.BooleanSelector(selector.BooleanSelectorConfig())
         )
         return schema

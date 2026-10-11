@@ -24,6 +24,10 @@ CONF_PROXY_ENABLED = "proxy_enabled"
 CONF_PROXY_WEBSOCKET_PORT = "proxy_websocket_port"
 CONF_PROXY_VIDEO_PORT = "proxy_video_port"
 
+# Offline tolerance (#171): when a printer is switched off most of the time, a
+# failed connection at setup is expected, not an error. See README.
+CONF_ALLOW_PRINTER_OFFLINE = "allow_printer_offline"
+
 # MQTT settings
 CONF_MQTT_BROKER_ENABLED = "mqtt_broker_enabled"
 CONF_MQTT_EXTERNAL_HOST = "mqtt_external_host"

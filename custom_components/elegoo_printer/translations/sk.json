@@ -1,5 +1,14 @@
 {
   "options": {
+    "error": {
+      "connection": "Nepodarilo sa pripojiť k tlačiarni.",
+      "unknown": "Došlo k neznámej chybe.",
+      "init_no_printer_found": "Inicializácia zlyhala: nebola nájdená žiadna tlačiareň.",
+      "gcode_proxy_unreachable": "Nie je možné spojiť sa s proxy serverom GCode. Overte adresu alebo URL a skontrolujte, či proxy server beží.",
+      "gcode_proxy_invalid": "Neplatná adresa proxy GCode. Použite hostiteľa alebo hostiteľ:port, alebo http(s) URL bez duplicitných schém.",
+      "mqtt_external_port_invalid": "Neplatný port. Zadajte celé číslo medzi 1 a 65535.",
+      "manual_ip_no_valid_ip": "Zadajte platnú IP adresu."
+    },
     "step": {
       "init": {
         "description": "Pre pomoc s konfiguráciou, navštívte stránku GitHub projektu.",
@@ -20,11 +29,13 @@
           "ip_address": "IP adresa tlačiarne",
           "cc2_access_code": "Prístupový kód (voliteľné)",
           "gcode_proxy_url": "URL proxy GCode (voliteľné)",
-          "proxy_host": "Hostiteľ proxy (voliteľné)"
+          "proxy_host": "Hostiteľ proxy (voliteľné)",
+          "allow_printer_offline": "Tlačiareň je často vypnutá"
         },
         "data_description": {
           "gcode_proxy_url": "Základná URL elegoo-printer-proxy (hostiteľ, hostiteľ:port alebo http(s) URL; bez schémy sa použije http). Nechajte prázdne na deaktivovanie.",
-          "proxy_host": "Hostiteľ smerovaného proxy, cez ktoré sa pripojíte (IP adresa alebo názov hostiteľa). Nechajte prázdne pre priame pripojenie k tlačiarni. Keď je nastavené, ovládanie MQTT, nahrávanie g-code a kamera sa smerujú cez proxy."
+          "proxy_host": "Hostiteľ smerovaného proxy, cez ktoré sa pripojíte (IP adresa alebo názov hostiteľa). Nechajte prázdne pre priame pripojenie k tlačiarni. Keď je nastavené, ovládanie MQTT, nahrávanie g-code a kamera sa smerujú cez proxy.",
+          "allow_printer_offline": "Dokončiť nastavenie, aj keď je tlačiareň nedostupná. Všetky entity ostanú \"Unavailable\" (nedostupné), kým sa nezapne, namiesto toho, aby integrácia hlásila neúspešné nastavenie. Poznámka: zlá IP adresa alebo nedostupná tlačiareň potom vyzerajú presne ako vypnutá tlačiareň."
         }
       },
       "mqtt_options": {
@@ -34,12 +45,14 @@
           "ip_address": "IP adresa tlačiarne",
           "external_ip": "Externá adresa (voliteľné, pre pokročilé sieťové nastavenia)",
           "mqtt_external_host": "Hostiteľ externého MQTT brokera (voliteľné)",
-          "mqtt_external_port": "Port externého MQTT brokera (voliteľné)"
+          "mqtt_external_port": "Port externého MQTT brokera (voliteľné)",
+          "allow_printer_offline": "Tlačiareň je často vypnutá"
         },
         "data_description": {
           "external_ip": "Prepísať automaticky detegovanú adresu IP alebo názvom hostiteľa. Nechajte prázdne pre automatickú detekciu. Použite pre Kubernetes/Docker nastavenie alebo za reverzný proxy. Porty 3030 a 3031 budú pridané automaticky.",
           "mqtt_external_host": "Ukazujte na existujúci MQTT broker (napr. Mosquitto) namiesto spustenia zabudovaného. Nechajte prázdne pre použitie zabudovaného brokera.",
-          "mqtt_external_port": "Port pre externý MQTT broker uvedený vyššie. Predvolenou hodnotou je 1883, ak zostane prázdny."
+          "mqtt_external_port": "Port pre externý MQTT broker uvedený vyššie. Predvolenou hodnotou je 1883, ak zostane prázdny.",
+          "allow_printer_offline": "Dokončiť nastavenie, aj keď je tlačiareň nedostupná. Všetky entity ostanú \"Unavailable\" (nedostupné), kým sa nezapne, namiesto toho, aby integrácia hlásila neúspešné nastavenie. Poznámka: zlá IP adresa alebo nedostupná tlačiareň potom vyzerajú presne ako vypnutá tlačiareň."
         }
       },
       "websocket_options": {
@@ -50,13 +63,15 @@
           "proxy_enabled": "Povoliť proxy server",
           "has_canvas": "Canvas/AMS nainštalované",
           "gcode_proxy_url": "URL proxy GCode (voliteľné)",
-          "external_ip": "Externá adresa (voliteľné, pre pokročilé sieťové nastavenia)"
+          "external_ip": "Externá adresa (voliteľné, pre pokročilé sieťové nastavenia)",
+          "allow_printer_offline": "Tlačiareň je často vypnutá"
         },
         "data_description": {
           "proxy_enabled": "Smeruje príkazy tlačiarne a stream kamery cez jedno pripojenie v Home Assistant, čím obchádza limit tlačiarne na súčasné pripojenia.",
           "has_canvas": "Povolí entity filamentov pre každý slot pripojenej jednotky Canvas (AMS) pre viaceré materiály.",
           "gcode_proxy_url": "Základná URL elegoo-printer-proxy (hostiteľ, hostiteľ:port alebo http(s) URL. Bez schémy sa použije HTTP). Nechajte prázdne na deaktivovanie.",
-          "external_ip": "Používa sa len vstavaným proxy serverom: adresa, ktorú by mali ostatné zariadenia použiť na prístup. Nechajte prázdne pre automatickú detekciu adresy Home Assistant. Pre Kubernetes/Docker alebo reverzný proxy nastavenia. Porty 3030 a 3031 budú pridané automaticky."
+          "external_ip": "Používa sa len vstavaným proxy serverom: adresa, ktorú by mali ostatné zariadenia použiť na prístup. Nechajte prázdne pre automatickú detekciu adresy Home Assistant. Pre Kubernetes/Docker alebo reverzný proxy nastavenia. Porty 3030 a 3031 budú pridané automaticky.",
+          "allow_printer_offline": "Dokončiť nastavenie, aj keď je tlačiareň nedostupná. Všetky entity ostanú \"Unavailable\" (nedostupné), kým sa nezapne, namiesto toho, aby integrácia hlásila neúspešné nastavenie. Poznámka: zlá IP adresa alebo nedostupná tlačiareň potom vyzerajú presne ako vypnutá tlačiareň."
         }
       }
     }

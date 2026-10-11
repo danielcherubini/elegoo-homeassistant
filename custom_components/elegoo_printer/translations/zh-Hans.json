@@ -1,5 +1,14 @@
 {
   "options": {
+    "error": {
+      "connection": "无法连接到打印机。",
+      "unknown": "发生未知错误。",
+      "init_no_printer_found": "初始化失败：找不到打印机。",
+      "gcode_proxy_unreachable": "无法连接到 GCode 代理服务器。请验证地址或 URL 并确认代理正在运行。",
+      "gcode_proxy_invalid": "GCode 代理地址无效。请使用主机或主机:端口，或不含重复协议前缀的 http(s) URL。",
+      "mqtt_external_port_invalid": "端口无效。请输入 1 到 65535 之间的整数。",
+      "manual_ip_no_valid_ip": "请输入有效的 IP 地址。"
+    },
     "step": {
       "init": {
         "description": "如需配置帮助，请查看项目 GitHub 页面。",
@@ -20,11 +29,13 @@
           "ip_address": "打印机 IP 地址",
           "cc2_access_code": "访问码（可选）",
           "gcode_proxy_url": "GCode 代理 URL（可选）",
-          "proxy_host": "代理主机（可选）"
+          "proxy_host": "代理主机（可选）",
+          "allow_printer_offline": "打印机经常处于关机状态"
         },
         "data_description": {
           "gcode_proxy_url": "elegoo-printer-proxy 的基础 URL（主机、主机:端口或 http(s) URL；省略协议时默认使用 http）。留空则禁用。",
-          "proxy_host": "用于连接的转发代理主机（IP 或主机名）。留空则直接连接打印机。设置后，MQTT 控制、g-code 上传和相机将通过代理路由。"
+          "proxy_host": "用于连接的转发代理主机（IP 或主机名）。留空则直接连接打印机。设置后，MQTT 控制、g-code 上传和相机将通过代理路由。",
+          "allow_printer_offline": "即使无法访问打印机也完成设置。所有实体将保持 \"Unavailable\"（不可用），直到打印机通电，而不是由集成报告设置失败。注意：填错的 IP 地址或无法访问的打印机，看起来与已关机的打印机完全相同。"
         }
       },
       "mqtt_options": {
@@ -34,12 +45,14 @@
           "ip_address": "打印机 IP 地址",
           "external_ip": "外部地址（可选，用于高级网络设置）",
           "mqtt_external_host": "外部 MQTT Broker 主机（可选）",
-          "mqtt_external_port": "外部 MQTT Broker 端口（可选）"
+          "mqtt_external_port": "外部 MQTT Broker 端口（可选）",
+          "allow_printer_offline": "打印机经常处于关机状态"
         },
         "data_description": {
           "external_ip": "用 IP 地址或主机名覆盖自动检测到的地址。留空以进行自动检测。用于 Kubernetes/Docker 设置或在反向代理后面。端口 3030 和 3031 将自动添加。",
           "mqtt_external_host": "指向一个现有的 MQTT broker（例如 Mosquitto），而不是启动内置的那个。留空则使用内置 broker。",
-          "mqtt_external_port": "上述外部 MQTT broker 的端口。留空时默认为 1883。"
+          "mqtt_external_port": "上述外部 MQTT broker 的端口。留空时默认为 1883。",
+          "allow_printer_offline": "即使无法访问打印机也完成设置。所有实体将保持 \"Unavailable\"（不可用），直到打印机通电，而不是由集成报告设置失败。注意：填错的 IP 地址或无法访问的打印机，看起来与已关机的打印机完全相同。"
         }
       },
       "websocket_options": {
@@ -50,13 +63,15 @@
           "proxy_enabled": "启用代理服务器",
           "has_canvas": "已安装 Canvas/AMS",
           "gcode_proxy_url": "GCode 代理 URL（可选）",
-          "external_ip": "外部地址（可选，用于高级网络设置）"
+          "external_ip": "外部地址（可选，用于高级网络设置）",
+          "allow_printer_offline": "打印机经常处于关机状态"
         },
         "data_description": {
           "proxy_enabled": "通过 Home Assistant 内的单一连接路由打印机命令和摄像头流，绕过打印机的同时连接限制。",
           "has_canvas": "为已连接的 Canvas (AMS) 多材料单元启用每个插槽的耗材实体。",
           "gcode_proxy_url": "elegoo-printer-proxy 的基础 URL（主机、主机:端口或 http(s) URL。省略协议时默认使用 HTTP）。留空则禁用。",
-          "external_ip": "仅由内置代理服务器使用：其他设备访问它时应使用的地址。留空以自动检测 Home Assistant 的地址。用于 Kubernetes/Docker 或反向代理设置。端口 3030 和 3031 会自动添加。"
+          "external_ip": "仅由内置代理服务器使用：其他设备访问它时应使用的地址。留空以自动检测 Home Assistant 的地址。用于 Kubernetes/Docker 或反向代理设置。端口 3030 和 3031 会自动添加。",
+          "allow_printer_offline": "即使无法访问打印机也完成设置。所有实体将保持 \"Unavailable\"（不可用），直到打印机通电，而不是由集成报告设置失败。注意：填错的 IP 地址或无法访问的打印机，看起来与已关机的打印机完全相同。"
         }
       }
     }
