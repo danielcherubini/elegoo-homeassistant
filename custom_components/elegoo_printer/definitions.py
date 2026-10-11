@@ -68,12 +68,19 @@ def _get_begin_time(printer_data: PrinterData) -> datetime | None:
         return None
     if begin := _valid_job_time(job.begin_time):
         return begin
+    derived = printer_data.derived_begin_time
+    if derived and derived[0] == job.task_id:
+        # Worked out once per job: the printer keeps its final elapsed time
+        # after the print ends, so recomputing would move it every minute.
+        return derived[1]
     ticks = printer_data.status.print_info.current_ticks
     if not ticks:
         return None
-    # Rounded to the minute, like the end time, so it is stable between polls.
+    # Rounded to the minute, like the end time.
     begin = datetime.now(UTC) - timedelta(milliseconds=ticks)
-    return printer_data.round_minute(begin + timedelta(seconds=30), 1)
+    begin = printer_data.round_minute(begin + timedelta(seconds=30), 1)
+    printer_data.derived_begin_time = (job.task_id, begin)
+    return begin
 
 
 def _has_valid_current_coords(printer_data: PrinterData) -> bool:

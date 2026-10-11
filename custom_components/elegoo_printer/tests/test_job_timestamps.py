@@ -64,3 +64,35 @@ def test_valid_clock_times_pass_through() -> None:
     assert _value("end_time", printer_data) == datetime.fromtimestamp(
         begin_ts + 5100, tz=UTC
     )
+
+
+def test_derived_begin_time_stays_put_after_the_print_ends() -> None:
+    """
+    The printer keeps its final elapsed time after a print ends.
+
+    Begin time must not move forward as the clock runs on.
+    """
+    printer_data = _printer_data(begin=84720, end=0, elapsed_ms=641_000)
+    printer_data.current_job.task_id = "job-1"
+    begin = _value("begin_time", printer_data)
+
+    # Recomputing now minus a different elapsed time would give another
+    # answer, so an unchanged result shows the first one is kept.
+    printer_data.status.print_info.current_ticks = 7_200_000
+    assert _value("begin_time", printer_data) == begin
+
+
+def test_derived_begin_time_is_worked_out_again_for_a_new_job() -> None:
+    """A new job does not reuse the previous job's derived begin time."""
+    printer_data = _printer_data(begin=84720, end=0, elapsed_ms=641_000)
+    printer_data.current_job.task_id = "job-1"
+    first = _value("begin_time", printer_data)
+
+    printer_data.current_job = PrintHistoryDetail(
+        {"BeginTime": 84720, "TaskId": "job-2"}
+    )
+    printer_data.status.print_info.current_ticks = 7_200_000
+
+    second = _value("begin_time", printer_data)
+    assert second is not None
+    assert first - second >= timedelta(hours=1)
