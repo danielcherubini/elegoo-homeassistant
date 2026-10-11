@@ -537,6 +537,11 @@ async def async_setup_entry(
                 await client.elegoo_stop_mqtt_broker()
                 if client.server:
                     await ElegooPrinterServer.release_reference()
+                    # Nulling the token is what makes ``server`` the record of
+                    # ownership that ``async_unload_entry`` gates on: an entry
+                    # that never got past this cleanup must not have the unload
+                    # release a reference it no longer holds.
+                    client.server = None
             except Exception as cleanup_error:  # noqa: BLE001
                 LOGGER.warning(
                     "Error during cleanup after failed setup: %s", cleanup_error

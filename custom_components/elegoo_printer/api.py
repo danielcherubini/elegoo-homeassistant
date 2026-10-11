@@ -529,12 +529,6 @@ class ElegooPrinterApiClient:
         """Disconnect from the printer by closing the WebSocket connection."""
         await self.client.disconnect()
 
-    async def elegoo_stop_proxy(self) -> None:
-        """Release the proxy server reference if it is running."""
-        # Release reference instead of forcing shutdown
-        await ElegooPrinterServer.release_reference()
-        self.server = None
-
     async def elegoo_stop_mqtt_broker(self) -> None:
         """Release the MQTT broker reference if it is running."""
         if self.mqtt_broker:

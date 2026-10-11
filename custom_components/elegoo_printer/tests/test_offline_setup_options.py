@@ -80,6 +80,9 @@ def _connection_failures() -> list[Exception]:
 
 
 _CONNECTION_FAILURES = _connection_failures()
+# Named ids so a CI failure names the ``except`` branch that regressed instead of
+# an opaque ``[failure2]``.
+_CONNECTION_FAILURE_IDS = [type(failure).__name__ for failure in _CONNECTION_FAILURES]
 
 
 def _make_options_flow(data: dict[str, Any]) -> ElegooOptionsFlowHandler:
@@ -213,6 +216,48 @@ class TestSaveWhilePrinterIsOff:
         assert result["step_id"] == "websocket_options"
         assert result["errors"][CONF_GCODE_PROXY_URL] == "gcode_proxy_unreachable"
 
+    async def test_a_valid_gcode_proxy_url_survives_an_offline_save(self) -> None:
+        """
+        The offline save must carry the proxy URL the user typed into storage.
+
+        A proxy that passes ``_async_validate_gcode_proxy`` has just been
+        health-checked, so it is exactly the value worth keeping. The offline
+        branch rebuilds the saved data from the *stored* printer rather than from
+        a freshly tested one, so without the explicit copy the URL a healthy
+        proxy was confirmed at would silently vanish from the entry while every
+        other field survived.
+        """
+        flow = _make_options_flow(WEBSOCKET_ENTRY_DATA)
+        with (
+            patch(
+                "custom_components.elegoo_printer.config_flow._async_test_connection",
+                new=AsyncMock(
+                    side_effect=ElegooConfigFlowConnectionError("printer is off")
+                ),
+            ),
+            # The real validator runs; only the proxy's own health endpoint is
+            # stubbed, so this pins "accepted URL -> persisted URL" end to end.
+            patch(
+                "custom_components.elegoo_printer.config_flow.async_get_clientsession",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "custom_components.elegoo_printer.config_flow.GCodeProxyClient",
+            ) as proxy_client_cls,
+        ):
+            proxy_client_cls.return_value.check_health = AsyncMock(return_value=True)
+            result = await flow.async_step_websocket_options(
+                user_input={
+                    CONF_IP_ADDRESS: _DOC_IP,
+                    CONF_PROXY_ENABLED: False,
+                    CONF_ALLOW_PRINTER_OFFLINE: True,
+                    CONF_GCODE_PROXY_URL: "192.0.2.99:8080",
+                }
+            )
+
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert result["data"][CONF_GCODE_PROXY_URL] == "http://192.0.2.99:8080"
+
     async def test_saving_offline_keeps_the_stored_printer_identity(self) -> None:
         """The printer cannot be re-queried, so the stored values must survive."""
         flow = _make_options_flow(WEBSOCKET_ENTRY_DATA)
@@ -257,7 +302,9 @@ class TestSaveWhilePrinterIsOff:
 
         assert result["type"] == FlowResultType.FORM
 
-    @pytest.mark.parametrize("failure", _CONNECTION_FAILURES)
+    @pytest.mark.parametrize(
+        "failure", _CONNECTION_FAILURES, ids=_CONNECTION_FAILURE_IDS
+    )
     async def test_an_offline_save_logs_nothing_above_info(
         self, caplog: pytest.LogCaptureFixture, failure: Exception
     ) -> None:
@@ -295,7 +342,9 @@ class TestSaveWhilePrinterIsOff:
         ]  # downgraded, not deleted
         assert notes, f"{failure!r} vanished from the log"
 
-    @pytest.mark.parametrize("failure", _CONNECTION_FAILURES)
+    @pytest.mark.parametrize(
+        "failure", _CONNECTION_FAILURES, ids=_CONNECTION_FAILURE_IDS
+    )
     async def test_a_blocked_save_still_logs_the_error(
         self, caplog: pytest.LogCaptureFixture, failure: Exception
     ) -> None:
