@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import re
 import socket
 from io import BytesIO
@@ -33,7 +34,7 @@ from .const import (
 from .mqtt.client import ElegooMQTTClient
 from .mqtt.const import MQTT_BROKER_PORT, MQTT_PORT
 from .mqtt.server import ElegooMQTTBroker
-from .sdcp.exceptions import ElegooPrinterConnectionError
+from .sdcp.exceptions import ElegooPrinterConnectionError, ElegooSDCPError
 from .sdcp.models.elegoo_image import ElegooImage
 from .sdcp.models.enums import TransportType
 from .sdcp.models.printer import Printer, PrinterData
@@ -142,10 +143,37 @@ class ElegooPrinterApiClient:
         a broker that is ours and still listening. Zeroing the proxy flag would
         leave a proxy user who came up offline unable to re-establish the proxy
         on reconnect. Each caller has already performed the teardown that is
-        correct for its own path.
+        correct for its own path, and every exit that ran a connect attempt goes
+        through :meth:`_close_half_open_transport` first.
         """
         self.offline_setup = True
         return self
+
+    async def _close_half_open_transport(self) -> None:
+        """
+        Close the transport a failed connect attempt left half-open (#171).
+
+        ``is_connected`` is the only signal the rest of the integration has that
+        a client is offline: the coordinator's poll gate refuses to poll while it
+        is false, and the poll's failure branch is what retries every 30 s. A
+        client that comes up offline while its transport still reports
+        ``is_connected`` would therefore pass that gate, answer from an empty
+        cache and be published as a live reading — the exact stale-as-live bug
+        #171 removes — and nothing would ever reconnect it.
+
+        This is not hypothetical for MQTT: ``ElegooMQTTClient.connect_printer``
+        sets ``_is_connected`` *before* the handshake and its own ``except``
+        covers only the transport errors, so an unanswered handshake raises
+        ``ElegooPrinterTimeoutError`` with the flag raised and the broker link
+        still open. Disconnecting closes our link only; the embedded broker is a
+        separate reference and is deliberately kept, so the printer that dials
+        back in still finds it listening. On MQTT the polite goodbye costs one
+        command timeout (10 s) because a powered-off printer cannot answer it —
+        the same teardown the fail-loud path beside it has always done, and less
+        than the cost of getting the flag wrong.
+        """
+        with contextlib.suppress(ElegooSDCPError, OSError, TimeoutError):
+            await self.client.disconnect()
 
     async def _discover_printer_with_fallback(
         self,
@@ -364,7 +392,13 @@ class ElegooPrinterApiClient:
                     self._mqtt_port,
                 )
             except (asyncio.TimeoutError, ConnectionRefusedError, OSError) as e:
-                logger.warning(
+                # A powered-off CC2 fails exactly here: its broker is the
+                # printer itself. With the offline option that is the expected
+                # case, so it is recorded like the other tolerated exits (#171);
+                # without the option it stays a warning, because then an
+                # unreachable printer genuinely is a fault to look at.
+                log_probe = logger.info if self._allow_offline else logger.warning
+                log_probe(
                     "CC2 MQTT broker at %s:%s not reachable for printer %s: %s",
                     self._mqtt_host,
                     self._mqtt_port,
@@ -388,7 +422,11 @@ class ElegooPrinterApiClient:
                     self._mqtt_port,
                 )
             except (asyncio.TimeoutError, ConnectionRefusedError, OSError) as e:
-                logger.warning(
+                # Same rule as the CC2 probe above: tolerated downtime is not a
+                # fault (#171). This probe answers even when the printer is off
+                # (the broker is ours), so it only fires for a broker problem.
+                log_probe = logger.info if self._allow_offline else logger.warning
+                log_probe(
                     "MQTT broker at %s:%s is not reachable for printer %s: %s",
                     self._mqtt_host,
                     self._mqtt_port,
@@ -467,9 +505,11 @@ class ElegooPrinterApiClient:
                         " is reachable.",
                         printer.name,
                     )
-                    # The failed connect_printer() call already tore down its own
-                    # link. Keep the proxy/broker references and both *_enabled
-                    # flags so reconnect() can resume through them.
+                    # Close the link the failed attempt left behind (it is not
+                    # guaranteed to have torn itself down) and keep the
+                    # proxy/broker references plus both *_enabled flags so
+                    # reconnect() can resume through them.
+                    await self._close_half_open_transport()
                     return self._as_offline()
                 # Release only our proxy reference if any
                 if self.server:
@@ -497,9 +537,14 @@ class ElegooPrinterApiClient:
                     " Entities stay unavailable until the printer is reachable.",
                     printer.name,
                 )
-                # Every transport tears down its own half-open link before raising,
-                # and reconnect() needs to see both *_enabled flags plus the
-                # proxy/broker references to resume through them — keep them all.
+                # The transports do NOT all tear down their own link before
+                # raising (MQTT raises the handshake timeout with `_is_connected`
+                # still true), and an offline client that still reports
+                # `is_connected` slips past the coordinator's poll gate and
+                # serves its cache as a live reading. Close the link, keep the
+                # *_enabled flags and the proxy/broker references reconnect()
+                # needs to resume through them.
+                await self._close_half_open_transport()
                 return self._as_offline()
             # Release only our proxy reference if any
             if self.server:

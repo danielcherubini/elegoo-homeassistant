@@ -471,6 +471,31 @@ class ElegooPrinterServer:
                 LOGGER.debug("Force stop completed")
 
     @classmethod
+    def is_printer_registered(cls, printer: Printer) -> bool:
+        """
+        Report whether this printer is currently in the shared proxy registry.
+
+        Registry membership and proxy-reference ownership are two different
+        facts: ``ElegooPrinterApiClient.reconnect`` gives the reference back as
+        soon as the printer stops answering, while the registration stays (the
+        printer may dial back in). ``async_unload_entry`` needs the first to know
+        whether it still owes the registry a removal, and the second to know
+        whether it still owes a reference.
+
+        Arguments:
+            printer: The printer to look up by address.
+
+        Returns:
+            True if a running shared server has this printer registered.
+
+        """
+        return (
+            cls._instance is not None
+            and cls._instance.printer_registry.get_printer_by_ip(printer.ip_address)
+            is not None
+        )
+
+    @classmethod
     async def remove_printer_from_server(cls, printer: Printer, logger: Any) -> bool:
         """
         Remove a printer from the server registry.

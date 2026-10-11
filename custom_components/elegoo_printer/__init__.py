@@ -567,22 +567,33 @@ async def async_unload_entry(
         except (asyncio.CancelledError, ClientError, OSError, RuntimeError) as e:
             LOGGER.warning("Error disconnecting client: %s", e, exc_info=True)
 
-        # Remove this specific printer from proxy server registry, and release
-        # our reference — but only if this client actually holds one. ``server``
-        # is set by every acquire and cleared by every release path in the api
-        # client, so it is the record of ownership. An entry that came up offline
-        # (#171) never started the proxy: releasing anyway would decrement another
-        # entry's reference and stop the shared server under a live entry.
-        if client.server is not None:
+        # Two different debts are settled here, and conflating them was a bug
+        # (#171 review):
+        #   * the registry entry — ``reconnect()`` gives the proxy reference back
+        #     as soon as the printer stops answering but leaves the printer
+        #     registered, so ownership of the reference is NOT the record of
+        #     membership. A printer left in the registry keeps being routed to
+        #     and broadcast at by the shared proxy after its entry is gone.
+        #   * the proxy reference — an entry that came up offline (#171) never
+        #     acquired one, and releasing one anyway would decrement another
+        #     entry's count and stop the shared server under a live entry.
+        registered = ElegooPrinterServer.is_printer_registered(client.printer)
+        if registered or client.server is not None:
             try:
-                should_stop = await asyncio.shield(
-                    ElegooPrinterServer.remove_printer_from_server(
-                        client.printer, LOGGER
+                server_continues = True
+                if registered:
+                    should_stop = await asyncio.shield(
+                        ElegooPrinterServer.remove_printer_from_server(
+                            client.printer, LOGGER
+                        )
                     )
-                )
-                if not should_stop:
+                    server_continues = not should_stop
+                if server_continues and client.server is not None:
                     # Server continues with other printers, just decrement ref count
                     await asyncio.shield(ElegooPrinterServer.release_reference())
+                    # Keep ``server`` honest as the ownership record: it has been
+                    # given back, so nothing downstream may release it twice.
+                    client.server = None
                 # NOTE: should_stop is True only once the registry is empty, and
                 # nothing stops the server or releases its reference here — a
                 # pre-existing leak, deliberately out of scope for #171.

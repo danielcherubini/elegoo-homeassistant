@@ -17,15 +17,23 @@ path back to the broker.
 from __future__ import annotations
 
 import contextlib
-from typing import Any
+import logging
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import aiomqtt
 
 import custom_components.elegoo_printer.api as api_module
 from custom_components.elegoo_printer.api import ElegooPrinterApiClient
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.const import CONF_ALLOW_PRINTER_OFFLINE
 from custom_components.elegoo_printer.mqtt.client import ElegooMQTTClient
+from custom_components.elegoo_printer.sdcp.exceptions import ElegooPrinterTimeoutError
+from custom_components.elegoo_printer.tests.fakes import FakeAiomqttClient
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
+
+if TYPE_CHECKING:
+    import pytest
 
 PRINTER_IP = "10.0.0.9"
 EMBEDDED_BROKER_PORT = 1884
@@ -43,6 +51,11 @@ class _Writer:
 
 def _writer() -> _Writer:
     return _Writer()
+
+
+def caplog_logger() -> logging.Logger:
+    """Return a real logger, so ``caplog`` sees what ``async_create`` writes."""
+    return logging.getLogger("custom_components.elegoo_printer.test_offline_setup_api")
 
 
 _BASE_CONFIG: dict[str, Any] = {
@@ -87,11 +100,22 @@ def _offline_websocket() -> Any:
         yield
 
 
-async def _create_unreachable(config: dict[str, Any]) -> ElegooPrinterApiClient | None:
-    """Run ``async_create`` against a printer that answers nothing."""
+async def _create_unreachable(
+    config: dict[str, Any],
+    logger: Any | None = None,
+) -> ElegooPrinterApiClient | None:
+    """
+    Run ``async_create`` against a printer that answers nothing.
+
+    ``logger`` defaults to a mock; pass a real logger when the test inspects log
+    volume (a mock swallows every record, so ``caplog`` would stay empty).
+    """
     with _offline_websocket():
         return await ElegooPrinterApiClient.async_create(
-            config, MagicMock(), _hass(), None
+            config,
+            logger if logger is not None else MagicMock(),
+            _hass(),
+            None,
         )
 
 
@@ -155,6 +179,44 @@ class TestUnreachableCc2:
         assert isinstance(api.client, ElegooCC2Client)
         assert api.offline_setup is True
         assert api.is_connected is False
+
+    async def test_with_option_logs_the_refused_probe_as_information(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """
+        A powered-off CC2 is the expected case here, not a fault (#171 review).
+
+        The broker probe logs before the tolerated-offline branch is reached, so
+        without this the entry that opted out of error noise still gets a
+        ``WARNING ... not reachable`` line for doing exactly what it was told to
+        tolerate. Without the option the warning stays, because then an
+        unreachable printer genuinely is a problem.
+        """
+        with (
+            patch("asyncio.open_connection", side_effect=ConnectionRefusedError),
+            caplog.at_level(logging.DEBUG),
+        ):
+            await _create_unreachable(
+                self._config(**{CONF_ALLOW_PRINTER_OFFLINE: True}),
+                logger=caplog_logger(),
+            )
+        loud = [r for r in caplog.records if r.levelno > logging.INFO]
+        assert not loud, [f"{r.levelname}: {r.getMessage()}" for r in loud]
+
+    async def test_without_option_still_warns_about_the_refused_probe(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Default behaviour (and its log volume) is unchanged."""
+        with (
+            patch("asyncio.open_connection", side_effect=ConnectionRefusedError),
+            caplog.at_level(logging.DEBUG),
+        ):
+            assert (
+                await _create_unreachable(self._config(), logger=caplog_logger())
+                is None
+            )
+
+        assert [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
 class TestMqttPrinterNeverDialsTheBroker:
@@ -265,4 +327,53 @@ class TestMqttPrinterNeverDialsTheBroker:
 
         assert api is not None
         assert api.offline_setup is True
+        release.assert_not_awaited()
+
+    async def test_with_option_a_handshake_timeout_leaves_it_disconnected(
+        self,
+    ) -> None:
+        """
+        The tolerated *exception* exit must hand back a genuinely offline client.
+
+        This is the real MQTT power-off sequence, not a stubbed ``connect_printer``:
+        the broker is ours so the transport opens, ``connect_printer`` sets
+        ``_is_connected`` before the handshake, and the unanswered handshake then
+        raises ``ElegooPrinterTimeoutError`` — which the transport's own
+        ``except`` does not cover, so the flag survives and the transport is
+        never torn down.
+
+        It matters because every consumer of #171 keys off ``is_connected``: the
+        coordinator's poll gate (``_ensure_connected``) and the reconnect path.
+        A client that still reports ``is_connected`` after a refused handshake
+        would pass the gate, serve the empty cache as a live reading and never
+        try to reconnect — reviving the stale-as-live bug this PR removes.
+        """
+        release = AsyncMock()
+        fake = FakeAiomqttClient()
+        with (
+            self._patches(release),
+            patch.object(aiomqtt, "Client", return_value=fake),
+            patch.object(
+                ElegooMQTTClient,
+                "_send_printer_cmd",
+                new=AsyncMock(side_effect=ElegooPrinterTimeoutError("no handshake")),
+            ),
+        ):
+            api = await ElegooPrinterApiClient.async_create(
+                self._config(
+                    ip_address="",  # no UDP redirect preamble: the printer is off
+                    **{CONF_ALLOW_PRINTER_OFFLINE: True},
+                ),
+                MagicMock(),
+                _hass(),
+                None,
+            )
+
+        assert api is not None
+        assert api.offline_setup is True
+        assert api.client.is_connected is False
+        assert api.is_connected is False
+        assert api.client.mqtt_client is None, "half-open transport was closed"
+        # The entry stays loaded, so the broker reference is still its own.
+        assert api.mqtt_broker is not None
         release.assert_not_awaited()
