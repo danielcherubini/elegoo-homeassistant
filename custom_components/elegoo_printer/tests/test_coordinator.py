@@ -13,7 +13,6 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
-from homeassistant.config_entries import current_entry as _current_entry_var
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 if TYPE_CHECKING:
@@ -42,16 +41,12 @@ def _make_coordinator(
     """
     Build a coordinator on top of the conftest entry double.
 
-    The coordinator's ``super().__init__`` resolves ``config_entry`` from
-    HA's ``current_entry`` contextvar (as in production setup), so the
-    entry must be set there before construction.
+    ``config_entry`` is passed explicitly to the base class (as in production),
+    so no ``current_entry`` contextvar needs to be set first. The shim supplies
+    the entry attributes the base class touches during ``__init__`` and refresh.
     """
     _ensure_entry_shim(entry)
-    token = _current_entry_var.set(entry)
-    try:
-        return ElegooDataUpdateCoordinator(hass, entry=entry)
-    finally:
-        _current_entry_var.reset(token)
+    return ElegooDataUpdateCoordinator(hass, entry=entry)
 
 
 async def test_refresh_happy_path_updates_data_and_interval(
@@ -211,6 +206,28 @@ async def test_firmware_check_is_rate_limited_across_refreshes(
     # Follow-up refresh within the 12h window skips the firmware endpoint.
     await coordinator.async_refresh()
     entry.runtime_data.api.async_get_firmware_update_info.assert_awaited_once()
+
+
+async def test_failed_firmware_check_keeps_the_last_result(
+    hass: MagicMock,
+    entry: SimpleNamespace,
+) -> None:
+    """An empty result from a failed check leaves the known update in place."""
+    printer_data = PrinterData()
+    entry.runtime_data.api.async_get_printer_data.return_value = printer_data
+    known = {"update_available": True, "current_version": "V1.1.40"}
+    entry.runtime_data.api.async_get_firmware_update_info.return_value = known
+
+    coordinator = _make_coordinator(hass, entry)
+    await coordinator.async_refresh()
+    assert coordinator.data.firmware_update_info == known
+
+    # Next due check fails: the API returns {}.
+    entry.runtime_data.api.async_get_firmware_update_info.return_value = {}
+    coordinator._last_firmware_check = None
+    await coordinator.async_refresh()
+
+    assert coordinator.data.firmware_update_info == known
 
 
 async def test_refresh_fetches_the_file_list_for_cc2_once_per_interval(

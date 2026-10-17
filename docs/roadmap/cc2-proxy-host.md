@@ -1,7 +1,28 @@
 ---
-status: committed
+status: implemented
 done-when: A CC2 can be added and fully driven (MQTT control, g-code upload, camera) through a user-hosted forward proxy by setting `proxy_host`; discovery is skipped when `proxy_host` is set; the serial is auto-learned or prompted; the camera streams through the proxy; runtime setup (api.py) connects through the proxy; unset `proxy_host` behaves exactly as today.
 ---
+
+> **Implemented** (all six tasks, on `stack/cc2-proxy-model`). Deviations from the
+> plan, all deliberate:
+>
+> 1. **Task 3** — the proxy short-circuit is a method (`_async_handle_proxy_entry`)
+>    returning `None` for "no proxy entered", not inline: the inline version
+>    pushed `async_step_manual_ip` over `PLR0911`.
+> 2. **Task 3** — the constructed printer's `name` is left **empty**, not
+>    `"Elegoo CC2"`. Every other path titles from `printer.name or "Elegoo Printer"`,
+>    and `sync_from_attributes` fills in the printer's real `hostname` on the first
+>    attributes poll — verified end to end, so the entry ends up correctly named.
+>    `model` stays the literal `"Centauri Carbon 2"` because `PrinterType.from_model`
+>    derives `printer_type` from it.
+> 3. **Task 4** — the bound parameter is `wait_timeout`, not `timeout` (`ASYNC109`
+>    bans `timeout=` on async defs, and the rule's structured-concurrency premise
+>    genuinely does not hold: the bound is *per password attempt*). The wait uses
+>    `async with asyncio.timeout()` in an extracted `_await_serial_topic`, which
+>    also avoids a `B023` closure-over-loop-variable bug in the plan's snippet.
+> 4. **Task 5** — `_apply_serial` is a helper, because both the attempt's printer
+>    **and** `selected_printer` need the serial: the next attempt rebuilds from the
+>    latter, so setting only the local copy silently loses it on a retry.
 
 # CC2 `proxy_host` — connect the integration through a forward proxy — Plan
 
@@ -133,7 +154,8 @@ The camera also needs an explicit **override** in `_handle_video_response`: it c
    - Change `api.py:244` `printer_ip=printer.ip_address or ""` → `printer_ip=printer.connection_host or ""`.
    - The reachability checks at `api.py:326`/`api.py:350` already use `self._mqtt_host`, so they now target the proxy automatically. Do NOT change those lines.
    - Do NOT change the non-CC2 branches (`api.py:115`, `api.py:138-206` use `printer.ip_address` for CC1/FDM/resin discovery — those are not CC2 and stay as-is).
-4. `camera.py` — the initial `mjpeg_url`, non-`proxy_enabled` branch (currently `mjpeg_url = f"http://{printer.ip_address}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"`): change `printer.ip_address` → `printer.connection_host`. Leave the `proxy_enabled` (CC1) branch unchanged.
+4. `camera.py` — the initial `mjpeg_url`, non-`proxy_enabled` branch (currently `mjpeg_url = f"http://{printer.ip_address}:{VIDEO_PORT}/{VIDEO_ENDPOINT}"`).
+   **Corrected during implementation.** This step originally said "change `printer.ip_address` → `printer.connection_host`", and the acceptance criterion below specified `http://{proxy}:{VIDEO_PORT}/{VIDEO_ENDPOINT}`. That was wrong: `VIDEO_PORT` is 3031, which is the **CC1** proxy's stream port, and a forward proxy exposes the CC2 stream on **8080 only** — it has no 3031 listener. Implemented instead as a third branch: `proxy_host` set → `http://{proxy_host}:8080/?action=stream` (`CC2_VIDEO_PORT`/`CC2_VIDEO_PATH`, shared with `cc2/client.py` so the two cannot drift); no proxy → the original 3031 URL, byte-identical. Harmless in practice either way, because `_update_stream_url()` overwrites `_mjpeg_url` before any of the three consumers read it — which is exactly why the unit test pinned it without anything breaking.
 5. What NOT to change: do not change the `8080`/`?action=stream` port or query; do not change non-proxy behavior; do not touch `upload_gcode`'s `UploadTarget` construction (it already uses `self.printer_ip`); do not change the runtime `_mjpeg_url` update logic in `camera.py`.
 
 **Steps:**
@@ -148,7 +170,7 @@ The camera also needs an explicit **override** in `_handle_video_response`: it c
     - `async_create` with a CC2 `Printer(proxy_host="10.0.0.5", ip_address="10.0.0.9")` opens the connectivity socket to `10.0.0.5` (the proxy), not `10.0.0.9` (assert via a mocked `asyncio.open_connection` / captured `_mqtt_host`).
     - `async_create` with `proxy_host` unset targets `ip_address` (unchanged).
   - In `custom_components/elegoo_printer/tests/test_camera.py`:
-    - A camera built from a real `Printer(proxy_host="10.0.0.5", ip_address="10.0.0.9", proxy_enabled=False)` has an initial `mjpeg_url` of `http://10.0.0.5:{VIDEO_PORT}/{VIDEO_ENDPOINT}`.
+    - A camera built from a real `Printer(proxy_host="10.0.0.5", ip_address="10.0.0.9", proxy_enabled=False)` has an initial `mjpeg_url` of `http://10.0.0.5:8080/?action=stream` (**corrected** — the original criterion said `{VIDEO_PORT}/{VIDEO_ENDPOINT}`, i.e. 3031/`video`, which a CC2 proxy does not serve).
     - A camera built from `Printer(proxy_host=None, ip_address="10.0.0.9", proxy_enabled=False)` has `http://10.0.0.9:{VIDEO_PORT}/{VIDEO_ENDPOINT}`.
     - IMPORTANT: the `entry` fixture in `conftest.py` supplies a `MagicMock` api whose `printer` is a `MagicMock` (so `printer.proxy_enabled` is truthy and the CC1 branch is taken). To exercise the CC2 branch, attach a **real** `Printer` (with `proxy_enabled=False` and the `proxy_host` under test) to `entry.runtime_data.api.printer` before constructing the camera entity.
 - [ ] Run `make test`
@@ -164,7 +186,7 @@ The camera also needs an explicit **override** in `_handle_video_response`: it c
 - [ ] `connect_printer` sets `self.printer_ip` from `printer.connection_host`; MQTT hostname, `upload_gcode` `UploadTarget.host`, and the fallback camera URL all use the proxy when `proxy_host` is set.
 - [ ] `_handle_video_response` builds the camera URL from the proxy and ignores the printer-supplied `video_url` when `proxy_host` is set (success only); behavior is unchanged when unset.
 - [ ] `api.py` runtime setup (`_mqtt_host`, client construction, and the `open_connection` reachability checks) targets `connection_host`.
-- [ ] The camera initial `mjpeg_url` uses `connection_host`.
+- [ ] The camera initial `mjpeg_url` points at the proxy when `proxy_host` is set — on `proxy_host` directly with the CC2 stream port, since `connection_host` alone would carry the CC1 stream port (see the correction in step 4 above).
 - [ ] `make test`, `make format`, `make lint` all pass.
 
 ---
@@ -484,7 +506,15 @@ Tasks 3 and 5 introduce user-facing strings that must exist in `translations/en.
 ---
 
 ## Follow-ups (NOT in this plan)
-- Mux (N→1 connection-count reduction) — a separate, larger project.
+- Mux (N→1 connection-count reduction) — a separate, larger project. Confirmed as
+  still required after implementation: `elegoo-printer-proxy/src/tcp_proxy.py`
+  opens one upstream connection per downstream connection (`_handle` →
+  `asyncio.open_connection`), so routing Home Assistant through the proxy leaves
+  the printer's MQTT session count unchanged. The first draft of the README and
+  CHANGELOG implied the feature relieved the printer's connection limit; it does
+  not, and both were corrected before merge. @lantern-eight predicted this on the
+  issue and has offered to build the mux in the proxy, which is also where the CC1
+  camera-through-proxy request belongs.
 - Non-standard port support for `proxy_host`.
 - Runtime serial re-learning on reconnect (setup-only here).
 - `gcode_proxy_url` — untouched.

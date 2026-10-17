@@ -1,8 +1,9 @@
 """
-Characterization tests: entity platform setup for the 8 untested platforms.
+Characterization tests: entity platform setup for the 9 untested platforms.
 
-The component's 9 platforms are
-``binary_sensor, button, fan, image, light, number, select, sensor, camera``;
+The component's 10 platforms are
+``binary_sensor, button, fan, image, light, number, select, sensor, update,
+camera``;
 ``camera`` is covered by ``tests/test_camera.py``. Each platform is a
 top-level module whose ``async_setup_entry(hass, entry, async_add_entities)``
 takes the add-entities callback as the third argument (HA 2025.4 — the
@@ -37,6 +38,7 @@ PLATFORMS = [
     "number",
     "select",
     "sensor",
+    "update",
 ]
 
 
@@ -127,6 +129,7 @@ FDM_ENTITY_COUNTS = {
     "number": 2,
     "select": 1,
     "sensor": 34,
+    "update": 1,
 }
 
 
@@ -134,7 +137,7 @@ FDM_ENTITY_COUNTS = {
 async def test_platform_setups_fdm_entities(
     hass: MagicMock, entry: SimpleNamespace, platform: str
 ) -> None:
-    """Each of the 8 platforms adds the recorded number of FDM V3 entities."""
+    """Each of the 9 platforms adds the recorded number of FDM V3 entities."""
     printer = _fdm_printer()
     assert printer.printer_type == PrinterType.FDM
     _wire_entry(entry, printer)
@@ -145,9 +148,9 @@ async def test_platform_setups_fdm_entities(
 
 async def test_camera_platform_not_included() -> None:
     """
-    camera is the 9th platform (covered by tests/test_camera.py).
+    camera is the 10th platform (covered by tests/test_camera.py).
 
-    Pins the platform set: exactly the 8 listed in PLATFORMS + camera.
+    Pins the platform set: exactly the 9 listed in PLATFORMS + camera.
     """
     assert set(PLATFORMS) == {
         "binary_sensor",
@@ -158,6 +161,7 @@ async def test_camera_platform_not_included() -> None:
         "number",
         "select",
         "sensor",
+        "update",
     }
 
 

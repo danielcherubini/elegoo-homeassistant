@@ -6,14 +6,14 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import httpx
+from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
 from custom_components.elegoo_printer.const import CONF_HAS_CANVAS, LOGGER
 from custom_components.elegoo_printer.sdcp.exceptions import (
     PRINT_TRANSPORT_ERRORS,
-    ElegooPrinterConnectionError,
-    ElegooPrinterTimeoutError,
+    ElegooPrinterNotConnectedError,
 )
 from custom_components.elegoo_printer.sdcp.models.enums import TransportType
 
@@ -46,9 +46,75 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         super().__init__(
             hass,
             LOGGER,
+            config_entry=entry,
             name=f"{entry.title}",
             update_interval=timedelta(seconds=2),
         )
+
+    @callback
+    def async_start_offline(self) -> None:
+        """
+        Start the coordinator against a printer that is switched off (#171).
+
+        Used instead of ``async_config_entry_first_refresh`` on the offline path
+        of ``async_setup_entry``: that helper raises ``ConfigEntryNotReady`` when
+        its refresh fails, which would put the entry straight back into the
+        "Failed setup, will retry" state the option exists to avoid. Nothing can
+        be refreshed here anyway — there is no connection — so this only marks
+        the state a lost connection already produces, and entities render as
+        ``unavailable`` instead of as live data.
+
+        It performs **no I/O at all**: no refresh, no reconnect attempt, no
+        scheduling. Arming the retry timer is ``async_add_listener``'s job (it
+        schedules a refresh only for its very first listener, which the first
+        entity added after platform forwarding is), and reconnecting is the
+        existing poll's job — a failed refresh already drops to the 30 s cadence
+        and calls ``api.reconnect()``, so a powered-on printer recovers by
+        itself. A second reconnect mechanism would only race that one.
+
+        The interval is set *before* any listener attaches, because
+        ``_schedule_refresh`` no-ops while ``update_interval`` is unset and this
+        runs before setup forwards the platforms.
+
+        ``last_update_success`` is assigned rather than routed through
+        ``async_set_update_error``: that helper logs at ERROR on the
+        success-to-failure transition, and the attribute is still ``True`` at
+        setup, so it would print "Error requesting <printer> data" for a printer
+        the user has simply switched off — the exact noise this feature removes.
+        Nothing is listening yet, so there is no notification to send either.
+        """
+        self.online = False
+        self.update_interval = timedelta(seconds=30)
+        self.last_update_success = False
+
+    def _ensure_connected(self, api: Any) -> None:
+        """
+        Refuse to poll a client that is not connected (#171).
+
+        MQTT and CC2 answer ``get_printer_status``/``get_printer_attributes``
+        from a cache *without raising*, so a poll of a powered-off printer would
+        "succeed" and every entity would render fabricated defaults (0 C,
+        "idle", fans off) as live truth. Raising here instead of asking the
+        transports to be honest covers all three of them the same way, and sends
+        the poll down the existing failure branch below: entities unavailable,
+        30 s cadence, reconnect attempted. The side-checks never see a
+        disconnected client, so they need no gate of their own.
+
+        The gate sees what a transport can see. For WebSocket that is the link to
+        the printer; a CC2 hosts its own broker, so powering it off drops our
+        link too. A plain MQTT printer is the exception: ``is_connected`` tracks
+        our link to the *broker*, so a printer that goes silent while its broker
+        outlives it — including the broker this integration hosts itself — keeps
+        answering from cache. That case behaves as it always has and is recorded
+        as a follow-up in ``docs/roadmap/offline-tolerant-setup.md``.
+
+        Raises:
+            ElegooPrinterNotConnectedError: if the client is not connected.
+
+        """
+        if not api.is_connected:
+            msg = "Printer not connected, cannot fetch data."
+            raise ElegooPrinterNotConnectedError(msg)
 
     async def _async_update_data(self) -> Any:
         """
@@ -64,12 +130,11 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
 
         """  # noqa: E501
         try:
-            self.data = (
-                await self.config_entry.runtime_data.api.async_get_printer_data()
-            )
+            api = self.config_entry.runtime_data.api
+            self._ensure_connected(api)
+            self.data = await api.async_get_printer_data()
 
             # Get API reference for periodic checks
-            api = self.config_entry.runtime_data.api
             now = datetime.now(UTC)
 
             # Check if we need to update firmware info
@@ -95,10 +160,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                 LOGGER.debug("Checking Canvas/AMS status")
                 try:
                     await api.async_get_canvas_status()
-                except (
-                    ElegooPrinterConnectionError,
-                    ElegooPrinterTimeoutError,
-                ):
+                except PRINT_TRANSPORT_ERRORS:
                     LOGGER.debug("Canvas status check failed")
                 finally:
                     # Rate-limit even on failure to avoid hammering the endpoint
@@ -113,16 +175,24 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
                 self.update_interval = timedelta(seconds=2)
             return self.data  # noqa: TRY300
         except PRINT_TRANSPORT_ERRORS as e:
+            # One INFO line per live-to-offline transition, DEBUG for every
+            # consecutive failure after it (see ``_log_failed_poll``).
+            was_online = self.online
             self.online = False
-            LOGGER.info(
-                "Connection to Elegoo printer lost: %s. Attempting to reconnect.", e
-            )
+            self._log_failed_poll(e, was_online=was_online)
             if self.update_interval != timedelta(seconds=30):
                 self.update_interval = timedelta(seconds=30)
 
             try:
                 await self.config_entry.runtime_data.api.reconnect()
-            except (ConnectionError, TimeoutError) as recon_e:
+            except (ConnectionError, TimeoutError, *PRINT_TRANSPORT_ERRORS) as recon_e:
+                # A transport must never reach Home Assistant's catch-all from
+                # here: it reports anything that escapes the poll as
+                # "Unexpected error fetching <printer> data" with a full
+                # traceback, for a printer that is simply switched off. A
+                # ``reconnect()`` that behaves returns False instead of raising
+                # (see ``ElegooPrinterApiClient.reconnect``); this is the net that
+                # catches one that does not.
                 LOGGER.warning("Error during reconnect attempt: %s", recon_e)
 
             msg = f"Failed to communicate with printer: {e}"
@@ -136,6 +206,39 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             )
             msg = f"Unexpected Error: {e.strerror}"
             raise UpdateFailed(msg) from e
+
+    def _log_failed_poll(self, error: Exception, *, was_online: bool) -> None:
+        """
+        Report a failed poll once, at the volume the outage deserves.
+
+        ``INFO`` only on the live-to-offline transition — the moment a user
+        wants to hear about — and ``DEBUG`` for every consecutive failure after
+        it. A printer that is simply switched off is polled every 30 s, so
+        repeating the line would print ~2,880 lines a day, which is the exact
+        complaint #171 exists to answer.
+
+        The wording follows the two cases: a printer that was up has *lost* a
+        connection, while one that came up offline (``async_start_offline``
+        leaves ``online`` false) never had one to lose and is only "not
+        reachable yet".
+
+        Arguments:
+            error: The transport error that failed the poll.
+            was_online: Whether the previous poll had reached the printer.
+
+        """
+        if was_online:
+            LOGGER.info(
+                "Connection to printer %s lost, attempting to reconnect: %s",
+                self.name,
+                error,
+            )
+        else:
+            LOGGER.debug(
+                "Printer %s is not reachable yet, attempting to reconnect: %s",
+                self.name,
+                error,
+            )
 
     async def _refresh_file_list_if_due(self, api: Any, now: datetime) -> None:
         """
@@ -157,7 +260,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         LOGGER.debug("Refreshing the printer's file list")
         try:
             await api.async_get_file_list()
-        except (ElegooPrinterConnectionError, ElegooPrinterTimeoutError):
+        except PRINT_TRANSPORT_ERRORS:
             LOGGER.debug("File list refresh failed")
         finally:
             self._last_file_list_check = now

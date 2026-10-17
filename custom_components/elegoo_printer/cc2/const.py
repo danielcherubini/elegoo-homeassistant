@@ -14,6 +14,11 @@ CC2_DISCOVERY_RETRIES = 2  # Number of broadcast attempts
 # config-flow step long enough for the frontend to abort with "Unknown error".
 CC2_CONFIG_FLOW_DISCOVERY_TIMEOUT = 3  # seconds, single attempt (retries=0)
 
+# Bound for learning the serial from an MQTT status push when discovery was
+# skipped (a proxy does not answer it). Setup-only: a firmware that pushes
+# nothing must fail fast into the config flow's manual-serial prompt.
+CC2_SERIAL_DISCOVERY_TIMEOUT = 5.0  # seconds, per password attempt
+
 # MQTT settings (printer runs broker)
 CC2_MQTT_PORT = 1883
 CC2_MQTT_KEEPALIVE = 60
@@ -41,6 +46,14 @@ CC2_PRINT_STATUS_TRANSITION_QUEUE_MAX = 32
 # elegoo/<sn>/<client_id>/api_request - Commands (publish)
 # elegoo/<sn>/<client_id>/api_response - Responses (subscribe)
 # elegoo/<sn>/api_status - Status updates (subscribe)
+# elegoo/+/api_status - Wildcard, used only to learn <sn> when unknown
+# (built from CC2_TOPIC_PREFIX / CC2_STATUS_TOPIC below)
+CC2_TOPIC_PREFIX = "elegoo"
+CC2_STATUS_TOPIC = "api_status"
+# Segment count of an ``elegoo/<sn>/api_status`` topic.
+CC2_STATUS_TOPIC_PARTS = 3
+# Wildcard, used only to learn <sn> when unknown
+CC2_SERIAL_DISCOVERY_TOPIC = f"{CC2_TOPIC_PREFIX}/+/{CC2_STATUS_TOPIC}"
 
 # Command IDs (from elegoo-link COMMAND_MAPPING_TABLE)
 CC2_CMD_GET_ATTRIBUTES = 1001

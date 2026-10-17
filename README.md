@@ -115,6 +115,44 @@ and change count when the slicer provides them. See
 [SPOOLMAN.md](SPOOLMAN.md) for automations that push this data to
 Spoolman for spool weight tracking.
 
+**Optional: connect a Centauri Carbon 2 *through* the proxy:** the capture
+option above only borrows the proxy's parsed G-code data — Home Assistant
+still talks to the printer directly. If you would rather the integration use
+the proxy for **everything**, enter its address in the **Proxy Host** field
+instead (when adding the printer, or later in the CC2 options).
+
+Then MQTT control (1883), G-code uploads (80) and the camera (8080) all go to
+the proxy host rather than to the printer. Use this when Home Assistant and the
+printer are on different networks or VLANs and only the proxy can reach the
+printer, or when you would rather the camera came from the proxy too instead of
+needing a separate MJPEG entity alongside the integration's own.
+
+It is worth being clear about what this does *not* do. The proxy forwards each
+port as a plain TCP pass-through, one printer connection per client connection,
+so it does not reduce how many connections or MQTT sessions the printer sees —
+Home Assistant is still a separate client, arriving from the proxy's address
+instead of yours. If the printer's connection limit is what forces you to
+power-cycle it, routing Home Assistant through the proxy will not fix that; a
+camera-connection multiplexer in the proxy would, and that is being looked at
+upstream. See
+[#414](https://github.com/danielcherubini/elegoo-homeassistant/issues/414) for
+the current state of that.
+
+A few things to expect:
+
+- The proxy does not answer printer discovery, so discovery is skipped and the
+  printer is set up as a Centauri Carbon 2 directly. Its name and model are
+  read from the printer itself once connected.
+- The serial number is normally found by discovery. Without it, the
+  integration listens on the proxy's MQTT for the printer's own status
+  messages and learns it; if the printer pushes nothing within a few seconds,
+  it asks you to type it (label under the printer, or Settings → Network).
+- Leave **Proxy Host** blank to connect directly, exactly as before. It is
+  separate from the **GCode proxy URL** field above, and from the CC1 "local
+  proxy server".
+- This is a *forward* proxy — Home Assistant dials it, and it must forward the
+  printer's own ports. A field on a printer that is not a CC2 has no effect.
+
 See [CC2 Protocol Documentation](docs/CC2_PROTOCOL.md) for technical details.
 
 ---
@@ -137,6 +175,12 @@ The recommended way to install this integration is through the [Home Assistant C
 4. If no printer is found, select **"Configure manually"** and enter your printer's IP address or hostname.
 
 **Note:** If **auto-discovery** didn't work, you may need some [advanced network setup](https://github.com/danielcherubini/elegoo-homeassistant/wiki/Connecting-Elegoo-Printers-to-Home-Assistant-Across-Different-Networks).
+
+### Printer is often switched off
+
+A printer that is normally powered down — off at the wall, or switched by a **smart plug** when it isn't printing — used to leave the integration stuck on **"Failed setup, will retry"** until it came back. Every printer's **options** now carry a **"Printer is often switched off"** checkbox for exactly that case. Tick it and setup finishes even when the printer can't be reached: the entities stay **"Unavailable"** rather than reporting a failed setup, and they return on their own **within a minute or so** (a couple of the 30-second polls) once the printer is powered on. It applies to **every supported printer type** (WebSocket, MQTT and Centauri Carbon 2), and you can tick it **while the printer is switched off** — no need to power it on just to change the setting. Saving the options reloads the entry straight away.
+
+**The trade-off:** with this option on, a **wrong IP address or an unreachable printer looks exactly like a switched-off one**. If a printer never comes back after you power it on, search the Home Assistant log for **`without a connection`** — the integration logs that line once, at setup, and it is your only clue that the address may simply be wrong.
 
 ### ⚠️ Firmware v1.1.29 Bug Notice
 Elegoo firmware **v1.1.29** contains a bug preventing remote control of lights and temperatures **while a print is in progress**. This is a firmware limitation; if you require these features during prints, consider using v1.1.25 if available for your model.
@@ -202,6 +246,8 @@ data:
 
 ## 📊 Entities
 The integration provides a comprehensive set of entities including **Live Camera**, **Print Thumbnails**, **Control Buttons** (Stop/Pause/Resume), and a full suite of **Sensors** (Progress, Temps, Layers, Z-Height, etc.).
+
+**Firmware update (SDCP V3 printers):** a **Firmware** update entity shows new printer firmware in **Settings → Updates**, with Elegoo's changelog as release notes. It is read-only — SDCP has no command to install firmware, so install it from the printer's screen.
 
 **Filament / Canvas A1–A4 sensors (CC1 and CC2):** Gcode file-detail and optional proxy sensors are created at setup time (proxy extras are only added when a proxy URL is configured). They stay **available** between prints; when there is no current job data they report **unknown** rather than becoming **unavailable**, so automations and history are not disrupted each time a print ends.
 

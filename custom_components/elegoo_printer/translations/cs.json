@@ -1,5 +1,14 @@
 {
   "options": {
+    "error": {
+      "connection": "Nepodařilo se připojit k tiskárně.",
+      "unknown": "Došlo k neznámé chybě.",
+      "init_no_printer_found": "Inicializace selhala: nebyla nalezena žádná tiskárna.",
+      "gcode_proxy_unreachable": "Nelze se připojit k proxy serveru GCode. Ověřte adresu nebo URL a zda proxy server běží.",
+      "gcode_proxy_invalid": "Neplatná adresa proxy GCode. Použijte hostitele nebo hostitel:port, nebo http(s) URL bez duplicitních schémat.",
+      "mqtt_external_port_invalid": "Neplatný port. Zadejte celé číslo mezi 1 a 65535.",
+      "manual_ip_no_valid_ip": "Prosím zadejte platnou IP adresu."
+    },
     "step": {
       "init": {
         "description": "Pro pomoc s konfigurací, prosím navštivte stránku GitHub projektu.",
@@ -19,17 +28,31 @@
         "data": {
           "ip_address": "IP adresa tiskárny",
           "cc2_access_code": "Přístupový kód (volitelné)",
-          "gcode_proxy_url": "URL proxy GCode (volitelné)"
+          "gcode_proxy_url": "URL proxy GCode (volitelné)",
+          "proxy_host": "Hostitel proxy (volitelné)",
+          "allow_printer_offline": "Tiskárna je často vypnutá"
         },
         "data_description": {
-          "gcode_proxy_url": "Základní URL elegoo-printer-proxy (hostitel, hostitel:port nebo http(s) URL; bez schématu se použije http). Nechte prázdné pro deaktivaci."
+          "gcode_proxy_url": "Základní URL elegoo-printer-proxy (hostitel, hostitel:port nebo http(s) URL; bez schématu se použije http). Nechte prázdné pro deaktivaci.",
+          "proxy_host": "Hostitel směrovacího proxy, přes který se připojíte (IP adresa nebo název hostitele). Nechte prázdné pro přímé připojení k tiskárně. Pokud je nastaveno, řízení MQTT, nahrávání g-code a kamera se směřují přes proxy.",
+          "allow_printer_offline": "Dokončit nastavení, i když je tiskárna nedostupná. Všechny entity zůstanou \"Unavailable\" (nedostupné), dokud se tiskárna nezapne, místo aby integrace hlásila neúspěšné nastavení. Poznámka: špatná IP adresa nebo nedostupná tiskárna pak vypadá úplně stejně jako vypnutá tiskárna."
         }
       },
       "mqtt_options": {
         "title": "Možnosti MQTT tiskárny",
         "description": "Konfigurujte nastavení své MQTT tiskárny.",
         "data": {
-          "ip_address": "IP adresa tiskárny"
+          "ip_address": "IP adresa tiskárny",
+          "external_ip": "Externí adresa (volitelné, pro pokročilé sítě)",
+          "mqtt_external_host": "Externí hostitel MQTT brokeru (volitelné)",
+          "mqtt_external_port": "Externí port MQTT brokeru (volitelné)",
+          "allow_printer_offline": "Tiskárna je často vypnutá"
+        },
+        "data_description": {
+          "external_ip": "Přepsat automaticky detekovanou adresu IP nebo názvem hostitele. Nechat prázdné pro automatickou detekci. Použít pro Kubernetes/Docker nastavení nebo za reverzním proxy. Porty 3030 a 3031 budou přidány automaticky.",
+          "mqtt_external_host": "Namířte na existující MQTT broker (např. Mosquitto) místo spuštění vestavěného. Nechte prázdné pro použití vestavěného brokeru.",
+          "mqtt_external_port": "Port externího MQTT brokeru uvedeného výše. Pokud zůstane prázdné, použije se výchozí 1883.",
+          "allow_printer_offline": "Dokončit nastavení, i když je tiskárna nedostupná. Všechny entity zůstanou \"Unavailable\" (nedostupné), dokud se tiskárna nezapne, místo aby integrace hlásila neúspěšné nastavení. Poznámka: špatná IP adresa nebo nedostupná tiskárna pak vypadá úplně stejně jako vypnutá tiskárna."
         }
       },
       "websocket_options": {
@@ -40,13 +63,15 @@
           "proxy_enabled": "Povolit proxy server",
           "has_canvas": "Canvas/AMS nainstalováno",
           "gcode_proxy_url": "URL proxy GCode (volitelné)",
-          "external_ip": "Externí adresa (volitelné, pro pokročilé sítě)"
+          "external_ip": "Externí adresa (volitelné, pro pokročilé sítě)",
+          "allow_printer_offline": "Tiskárna je často vypnutá"
         },
         "data_description": {
           "proxy_enabled": "Směruje příkazy tiskárny a stream kamery přes jedno připojení v Home Assistant, čímž obchází limit tiskárny na současná připojení.",
           "has_canvas": "Povolí entity filamentů pro každý slot připojené jednotky Canvas (AMS) pro více materiálů.",
           "gcode_proxy_url": "Základní URL elegoo-printer-proxy (hostitel, hostitel:port nebo http(s) URL. Bez schématu se použije HTTP). Nechte prázdné pro deaktivaci.",
-          "external_ip": "Používá se pouze vestavěným proxy serverem: adresa, kterou by ostatní zařízení měla použít pro přístup. Nechte prázdné pro automatickou detekci adresy Home Assistant. Pro Kubernetes/Docker nebo reverzní proxy nastavení. Porty 3030 a 3031 budou přidány automaticky."
+          "external_ip": "Používá se pouze vestavěným proxy serverem: adresa, kterou by ostatní zařízení měla použít pro přístup. Nechte prázdné pro automatickou detekci adresy Home Assistant. Pro Kubernetes/Docker nebo reverzní proxy nastavení. Porty 3030 a 3031 budou přidány automaticky.",
+          "allow_printer_offline": "Dokončit nastavení, i když je tiskárna nedostupná. Všechny entity zůstanou \"Unavailable\" (nedostupné), dokud se tiskárna nezapne, místo aby integrace hlásila neúspěšné nastavení. Poznámka: špatná IP adresa nebo nedostupná tiskárna pak vypadá úplně stejně jako vypnutá tiskárna."
         }
       }
     }
@@ -65,10 +90,12 @@
         "description": "Zadejte IP adresu své Elegoo tiskárny. Integrace automaticky detekuje typ tiskárny a provede vás příslušnými kroky nastavení.",
         "data": {
           "ip_address": "IP adresa tiskárny",
-          "external_ip": "Externí adresa (volitelné, pro pokročilé sítě)"
+          "external_ip": "Externí adresa (volitelné, pro pokročilé sítě)",
+          "proxy_host": "Hostitel proxy (volitelné)"
         },
         "data_description": {
-          "external_ip": "Přepsat automaticky detekovanou adresu IP nebo názvem hostitele. Nechat prázdné pro automatickou detekci. Použít pro Kubernetes/Docker nastavení nebo za reverzním proxy. Porty 3030 a 3031 budou přidány automaticky."
+          "external_ip": "Přepsat automaticky detekovanou adresu IP nebo názvem hostitele. Nechat prázdné pro automatickou detekci. Použít pro Kubernetes/Docker nastavení nebo za reverzním proxy. Porty 3030 a 3031 budou přidány automaticky.",
+          "proxy_host": "Hostitel směrovacího proxy, přes který se připojíte (IP adresa nebo název hostitele, např. elegoo-printer-proxy). Nechte prázdné pro přímé připojení k tiskárně. Pokud je nastaveno, detekce se přeskočí a integrace řídí MQTT, nahrávání g-code a kameru přes proxy na obvyklých portech tiskárny."
         }
       },
       "fdm_options": {
@@ -106,6 +133,13 @@
         "data": {
           "cc2_access_code": "Přístupový kód"
         }
+      },
+      "cc2_serial_input": {
+        "title": "Zadat sériové číslo",
+        "description": "Sériové číslo se nepodařilo načíst přes proxy.\n\nZadejte ho ručně — je uvedeno na štítku pod tiskárnou a na samotné tiskárně v Nastavení → Síť.",
+        "data": {
+          "serial": "Sériové číslo"
+        }
       }
     },
     "error": {
@@ -121,7 +155,11 @@
       "cc2_access_code_required": "Tato tiskárna vyžaduje přístupový kód pro autentizaci.",
       "cc2_authentication_failed": "Autentizace selhala. Zkontrolujte přístupový kód v nastavení tiskárny: Nastavení → Síť → Přístupový kód.",
       "gcode_proxy_unreachable": "Nelze se připojit k proxy serveru GCode. Ověřte adresu nebo URL a zda proxy server běží.",
-      "gcode_proxy_invalid": "Neplatná adresa proxy GCode. Použijte hostitele nebo hostitel:port, nebo http(s) URL bez duplicitních schémat."
+      "gcode_proxy_invalid": "Neplatná adresa proxy GCode. Použijte hostitele nebo hostitel:port, nebo http(s) URL bez duplicitních schémat.",
+      "mqtt_external_port_invalid": "Neplatný port. Zadejte celé číslo mezi 1 a 65535.",
+      "cc2_serial_required": "Sériové číslo je vyžadováno",
+      "cc2_proxy_unreachable": "Nepodařilo se připojit přes proxy. Zkontrolujte, že běží a je dosažitelné, a že předává porty tiskárny MQTT (1883), web (80) a kamera (8080)",
+      "manual_ip_no_valid_ip": "Prosím zadejte platnou IP adresu."
     },
     "abort": {
       "already_configured": "Tento záznam je již nakonfigurován."
@@ -221,6 +259,22 @@
       },
       "end_time": {
         "name": "Doba ukončení"
+      }
+    },
+    "select": {
+      "print_file": {
+        "name": "Soubor tisku"
+      },
+      "print_tray": {
+        "name": "Tisková podložka"
+      }
+    },
+    "button": {
+      "refresh_file_list": {
+        "name": "Obnovit seznam souborů"
+      },
+      "print_selected_file": {
+        "name": "Tisknout vybraný soubor"
       }
     }
   }

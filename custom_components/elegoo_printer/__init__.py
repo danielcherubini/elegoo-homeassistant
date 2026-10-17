@@ -77,6 +77,7 @@ PLATFORMS: list[Platform] = [
     Platform.FAN,
     Platform.SELECT,
     Platform.NUMBER,
+    Platform.UPDATE,
 ]
 
 SERVICE_UPDATE_IP = "update_ip"
@@ -477,7 +478,9 @@ async def async_setup_entry(
     Initializes the data update coordinator and printer API client,
     performs the first data refresh, forwards setup to supported platforms,
     and registers a listener for entry updates.
-    Raises ConfigEntryNotReady if the printer cannot be reached.
+    Raises ConfigEntryNotReady if the printer cannot be reached, unless the
+    entry tolerates a powered-off printer (CONF_ALLOW_PRINTER_OFFLINE), in which
+    case setup completes offline and entities stay unavailable until reachable.
 
     Returns:
         bool: True if the integration is set up successfully.
@@ -508,18 +511,44 @@ async def async_setup_entry(
     )
 
     # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
-    try:
-        await coordinator.async_config_entry_first_refresh()
-    except Exception:
-        # If first refresh fails, clean up the client resources
+    # The entry tolerates a powered-off printer and the api deliberately came up
+    # offline (#171). The first refresh cannot be used here: it raises
+    # ConfigEntryNotReady on a failed refresh — undoing the option — and its
+    # cleanup would release the broker/proxy references the offline client keeps
+    # on purpose. async_start_offline() only marks state; the first entity
+    # listener arms the 30 s retry poll that reconnects the client.
+    #
+    # Branching on offline_setup and not on is_connected is deliberate: any
+    # failure path that did not opt into offline setup keeps today's fail-loud
+    # behaviour (a first refresh that raises ConfigEntryNotReady).
+    if client.offline_setup:
+        LOGGER.info(
+            "Setting up %s without a connection: the printer was not reachable."
+            " All entities stay unavailable until it is reachable again — if it"
+            " never comes back, check its IP address.",
+            entry.title,
+        )
+        coordinator.async_start_offline()
+    else:
         try:
-            await client.elegoo_disconnect()
-            await client.elegoo_stop_mqtt_broker()
-            if client.server:
-                await ElegooPrinterServer.release_reference()
-        except Exception as cleanup_error:  # noqa: BLE001
-            LOGGER.warning("Error during cleanup after failed setup: %s", cleanup_error)
-        raise
+            await coordinator.async_config_entry_first_refresh()
+        except Exception:
+            # If first refresh fails, clean up the client resources
+            try:
+                await client.elegoo_disconnect()
+                await client.elegoo_stop_mqtt_broker()
+                if client.server:
+                    await ElegooPrinterServer.release_reference()
+                    # Nulling the token is what makes ``server`` the record of
+                    # ownership that ``async_unload_entry`` gates on: an entry
+                    # that never got past this cleanup must not have the unload
+                    # release a reference it no longer holds.
+                    client.server = None
+            except Exception as cleanup_error:  # noqa: BLE001
+                LOGGER.warning(
+                    "Error during cleanup after failed setup: %s", cleanup_error
+                )
+            raise
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
@@ -540,18 +569,40 @@ async def async_unload_entry(
         except (asyncio.CancelledError, ClientError, OSError, RuntimeError) as e:
             LOGGER.warning("Error disconnecting client: %s", e, exc_info=True)
 
-        # Remove this specific printer from proxy server registry
-        try:
-            should_stop = await asyncio.shield(
-                ElegooPrinterServer.remove_printer_from_server(client.printer, LOGGER)
-            )
-            if not should_stop:
-                # Server continues with other printers, just decrement reference count
-                await asyncio.shield(ElegooPrinterServer.release_reference())
-        except (asyncio.CancelledError, OSError, RuntimeError) as e:
-            LOGGER.warning(
-                "Error removing printer from proxy server: %s", e, exc_info=True
-            )
+        # Two different debts are settled here, and conflating them was a bug
+        # (#171 review):
+        #   * the registry entry — ``reconnect()`` gives the proxy reference back
+        #     as soon as the printer stops answering but leaves the printer
+        #     registered, so ownership of the reference is NOT the record of
+        #     membership. A printer left in the registry keeps being routed to
+        #     and broadcast at by the shared proxy after its entry is gone.
+        #   * the proxy reference — an entry that came up offline (#171) never
+        #     acquired one, and releasing one anyway would decrement another
+        #     entry's count and stop the shared server under a live entry.
+        registered = ElegooPrinterServer.is_printer_registered(client.printer)
+        if registered or client.server is not None:
+            try:
+                server_continues = True
+                if registered:
+                    should_stop = await asyncio.shield(
+                        ElegooPrinterServer.remove_printer_from_server(
+                            client.printer, LOGGER
+                        )
+                    )
+                    server_continues = not should_stop
+                if server_continues and client.server is not None:
+                    # Server continues with other printers, just decrement ref count
+                    await asyncio.shield(ElegooPrinterServer.release_reference())
+                    # Keep ``server`` honest as the ownership record: it has been
+                    # given back, so nothing downstream may release it twice.
+                    client.server = None
+                # NOTE: should_stop is True only once the registry is empty, and
+                # nothing stops the server or releases its reference here — a
+                # pre-existing leak, deliberately out of scope for #171.
+            except (asyncio.CancelledError, OSError, RuntimeError) as e:
+                LOGGER.warning(
+                    "Error removing printer from proxy server: %s", e, exc_info=True
+                )
 
         # Stop MQTT broker if it was started by this client
         # Don't use shield here - we want this to be cancellable
@@ -561,6 +612,41 @@ async def async_unload_entry(
             LOGGER.warning("Error stopping MQTT broker: %s", e, exc_info=True)
 
     return unload_ok
+
+
+async def async_remove_entry(
+    hass: HomeAssistant,  # noqa: ARG001
+    entry: ElegooPrinterConfigEntry,
+) -> None:
+    """
+    Forget a video release parked for a config entry that is being removed.
+
+    A camera entity that could not release the shared printer video (a foreign
+    viewer was holding it) hands the debt to the next camera entity of the same
+    config entry. Once the entry is removed there is no next entity and no live
+    printer connection, so the parked entry id would be kept forever. This hook
+    is the only place that observes a real removal independently of a still
+    running teardown retry: a retry that has already exhausted its attempts is
+    gone by the time core drops the entry, so nothing else would ever notice.
+
+    Removal is terminal, so this forgets and parks nothing. It is deliberately
+    the only thing it does — the client is already disconnected and the MQTT
+    broker stopped by ``async_unload_entry``, which core always runs first.
+
+    ``hass`` is part of the hook's signature but unused; the registry is keyed by
+    entry id alone.
+
+    Arguments:
+        hass: The Home Assistant instance (unused).
+        entry: The config entry being removed.
+
+    """
+    # Deferred import: the camera platform drags in the camera component and
+    # ffmpeg, and this hook must not make the integration's own import depend on
+    # them (same reason the config flow imports its clients lazily).
+    from .camera import forget_pending_video_release  # noqa: PLC0415
+
+    forget_pending_video_release(entry.entry_id)
 
 
 async def async_reload_entry(
