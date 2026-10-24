@@ -468,6 +468,175 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             LOGGER.debug("CC1 Canvas detection failed — assuming no Canvas")
         return False
 
+    async def _async_probe_websocket_printer(self, ip_address: str) -> Printer | None:
+        """
+        Describe a WebSocket printer over the connection the integration uses.
+
+        Used only when both UDP discovery protocols came back empty for an IP
+        the user typed by hand. Discovery and reachability are different
+        questions: a CC1 that cannot ping its default gateway stops answering
+        SDCP discovery while TCP 3030 stays open the whole time (#431), so the
+        printer is asked who it is over the socket it is already known to
+        accept, and described from what **it reports about itself**.
+
+        Identity is not invented. ``printer.id`` doubles as the config entry's
+        unique id, the device identifier and the entity unique-id prefix, and
+        nothing repairs it later: with no id, ``_abort_if_unique_id_configured``
+        early-returns on ``None`` and duplicate protection is silently off while
+        ``coordinator.generate_unique_id`` raises ``TypeError`` for every entity;
+        and an id that is present but not a non-empty string fails the same way
+        (``123 + "_"`` is a ``TypeError``) after passing a bare truthiness
+        check. So a printer that pushes no attributes frame, no
+        ``MainboardID``, or a ``MainboardID`` that is not a usable string is
+        REFUSED — ``None``, which the caller reports as ``no_printer_found`` —
+        rather than entered with an id that cannot work.
+
+        Never raises for anything the printer controls. HA's
+        ``data_entry_flow._async_handle_step`` catches only ``AbortFlow``, so an
+        exception escaping here reaches the UI as the generic "Config flow could
+        not be loaded" — strictly worse than the error this replaces. The frame
+        loop is total by construction: every value taken out of the frame is
+        type-checked before use, so no device-controlled frame can make it
+        raise. ``Printer.from_dict`` is not exception-safe for shapes it did not
+        anticipate (measured: ``AttributeError`` for a non-string
+        ``MachineName``/``ProtocolVersion``/``FirmwareVersion``, ``ValueError``
+        for an unknown ``transport_type``), so the parse is guarded, and the
+        guard ends in a declared broad ``except Exception`` because the input is
+        a frame the printer chooses to send and the cost of missing a class is
+        the crash this section exists to prevent. It is ``Exception``, not
+        ``BaseException``: ``asyncio.CancelledError`` must still propagate so HA
+        can cancel the flow.
+
+        Arguments:
+            ip_address: The address the user typed (already cleaned).
+
+        Returns:
+            The printer as it described itself, or None when nothing usable
+            could be read from it.
+
+        """
+        import aiohttp  # noqa: PLC0415
+
+        ws_url = f"ws://{ip_address}:{WEBSOCKET_PORT}/websocket"
+        session = async_get_clientsession(self.hass)
+        attributes: dict[str, Any] | None = None
+        try:
+            # The timeout must cover ws_connect too, for the same reason
+            # _async_detect_canvas says it: a device that accepts TCP but never
+            # completes the WS handshake would otherwise hang the flow on HA's
+            # shared session (no handshake timeout).
+            async with (
+                asyncio.timeout(_CANVAS_DETECT_TIMEOUT),
+                session.ws_connect(ws_url) as ws,
+            ):
+                async for msg in ws:
+                    if msg.type != aiohttp.WSMsgType.TEXT:
+                        break
+                    frame = json.loads(msg.data)
+                    # Everything below is read from a frame the printer chose
+                    # to send, so each value is type-checked before it is used.
+                    if not isinstance(frame, dict):
+                        continue
+                    topic = frame.get("Topic", "")
+                    if not isinstance(topic, str) or "attributes" not in topic:
+                        continue
+                    # Two attributes shapes exist in this repo's own evidence
+                    # and they disagree: scripts/test_server.py pushes
+                    # {Data: {Attributes: ...}} while the conformance test and
+                    # the MQTT client's "WebSocket fallback format" comment use
+                    # {Attributes: ...} at the frame root. Which one a real CC1
+                    # sends is UNVERIFIED, so both are read.
+                    candidate: Any = frame.get("Attributes")
+                    if not isinstance(candidate, dict):
+                        data = frame.get("Data")
+                        candidate = (
+                            data.get("Attributes") if isinstance(data, dict) else None
+                        )
+                    if not isinstance(candidate, dict):
+                        continue
+                    attributes = candidate
+                    break
+        except (TimeoutError, aiohttp.ClientError, json.JSONDecodeError):
+            # The narrow set this integration already uses for its own
+            # connectivity probes (see _async_detect_canvas). Deliberately not
+            # widened: a printer cannot cause anything else here, and swallowing
+            # more would hide real bugs.
+            LOGGER.debug(
+                "Live probe of %s:%s failed — no usable attributes frame",
+                ip_address,
+                WEBSOCKET_PORT,
+            )
+            return None
+
+        if attributes is None:
+            LOGGER.warning(
+                "Nothing at %s:%s described itself: no attributes frame was"
+                " received, so no printer identity could be read",
+                ip_address,
+                WEBSOCKET_PORT,
+            )
+            return None
+
+        try:
+            printer = Printer.from_dict(attributes)
+        except (AttributeError, TypeError, ValueError):
+            # The measured classes a device-controlled attributes frame can
+            # raise out of Printer.from_dict.
+            LOGGER.warning(
+                "Printer at %s:%s sent an attributes frame this integration"
+                " cannot parse: %s",
+                ip_address,
+                WEBSOCKET_PORT,
+                attributes,
+            )
+            return None
+        except Exception:  # noqa: BLE001  # declared, see the docstring
+            # Declared judgement, not a derived fact: the input is a frame the
+            # printer controls and from_dict grows keys, so an unanticipated
+            # class must end in a refusal, not in HA's "Config flow could not be
+            # loaded". Logged as an exception so it stays a findable bug to
+            # narrow rather than silence.
+            LOGGER.exception(
+                "Unexpected error parsing the attributes frame from %s:%s",
+                ip_address,
+                WEBSOCKET_PORT,
+            )
+            return None
+
+        # "The printer reported an id" is not "the id is usable as a unique id":
+        # require the second claim. A truthy non-string (123, True, 1.5, ["a"])
+        # or an all-whitespace string passes a bare `if not id:` and then breaks
+        # every entity's unique id and the entry's device identity for good.
+        candidate_id = printer.id
+        if not (isinstance(candidate_id, str) and candidate_id.strip()):
+            LOGGER.warning(
+                "Printer at %s:%s reported no usable mainboard id (got %r),"
+                " refusing it rather than creating an entry that cannot work",
+                ip_address,
+                WEBSOCKET_PORT,
+                candidate_id,
+            )
+            return None
+
+        # The address the user typed wins over MainboardIP: a printer behind NAT
+        # or reporting a stale address must not overwrite what the integration
+        # dials. `connection` mirrors what discovery itself does (Printer sets
+        # it from the frame's Id) and what _apply_serial does for CC2.
+        printer.ip_address = ip_address
+        printer.connection = ip_address
+        printer.brand = printer.brand or "ELEGOO"
+        # WebSocket printers never run the embedded broker.
+        printer.mqtt_broker_enabled = False
+        LOGGER.info(
+            "Probed %s over TCP %s without discovery: found %s (%s, id=%s)",
+            ip_address,
+            WEBSOCKET_PORT,
+            printer.name or printer.model or "printer",
+            printer.printer_type,
+            candidate_id,
+        )
+        return printer
+
     async def async_step_user(
         self,
         user_input: dict[str, Any] | None = None,  # noqa: ARG002
@@ -798,6 +967,17 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         printer_object.name,
                         printer_object.cc2_token_status,
                     )
+
+            if not printer_object and ip_address:
+                # Neither UDP protocol answered. Ask the printer over the
+                # connection the integration actually uses before giving up: a
+                # CC1 that stops answering discovery still holds TCP 3030 open
+                # (#429/#431), and it describes itself over that socket.
+                LOGGER.debug(
+                    "Discovery silent for %s, probing the live WebSocket connection",
+                    ip_address,
+                )
+                printer_object = await self._async_probe_websocket_printer(ip_address)
 
             if not printer_object:
                 LOGGER.warning("No printer found at IP address: %s", ip_address)
