@@ -1,5 +1,5 @@
 ---
-status: running
+status: done
 mode: autonomous
 updated: 2026-10-24
 ---
@@ -134,5 +134,8 @@ One line per task: hash, what shipped, gate numbers at that moment.
 - `8c50208` docs — CHANGELOG lines for the three, each crediting its reporter.
 - `cd2b902` T4 #425 — shared video-enabled flag moved off the ConfigEntry object into `_video_stream_state_by_entry`; 5 injected traps each caught by exactly one named test. Gate at commit: 766 passed (762 + 4), lifecycle file 75 -> 79.
 - `d4549ba` T5 #432 — new `cleanup_files` service (dry-run by default, confirm-by-1044-relist, epoch floor from #426 applied to a destructive path). Gate at commit: **806 passed** (766 + 40), lint clean, format no-op. #432 deliberately NOT closed — 1047 is untested on hardware.
+- `604629f` T6 #429/#431 — manual IP without SDCP discovery (probe + wall 2 in api.py). Gate at commit: 833 passed (806 + 27).
+- `e0d6906` docs — CHANGELOG for #432 and #429/#431.
+- **FINAL gate (all six tasks):** `make format` no-op, `make lint` clean, `make test` **833 passed** (baseline 750 -> 833, +83 tests). Tree clean.
 - **Wave 1 gate (once, after all three):** `make format` no-op, `make lint` "All checks passed",
   `make test` **762 passed, 12 warnings** (baseline 750 + 7 + 1 + 4). Tree clean.
