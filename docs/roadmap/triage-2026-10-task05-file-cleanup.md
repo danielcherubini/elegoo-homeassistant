@@ -1,7 +1,7 @@
 ---
 status: committed
 parent: docs/roadmap/triage-2026-10-status.md
-done-when: "A CC2 user can delete files from the printer's local storage from an automation, selecting by age and by name pattern, with a dry run that deletes nothing by default, and **a deletion is confirmed by a fresh 1044 file listing rather than by the printer's 1047 reply** — pinned by `test_accepted_but_still_listed_counts_as_not_deleted`, which drives a client double that answers `error_code 0` and keeps the file in its listing, and asserts `success is False`, `deleted == []` and `failed == {\"ghost.gcode\": \"still listed after delete\"}`; that test is verified to fail (with 3 others) when the confirmation re-list is disabled, so the clause is falsifiable and not a claim. Concretely: a new `elegoo_printer.cleanup_files` service (fourth registration, `SupportsResponse.OPTIONAL`, reusing `_resolve_cc2_client` at `__init__.py:260` unchanged) takes `entry_id`, `older_than_days` (default 60), `include` (default `[\"*\"]`), `exclude` (default `[]`) and `dry_run` (default **true**), and every response carries `success`/`dry_run`/`deleted`/`failed`/`skipped`/`would_delete`; selection lives in a new pure module `cc2/cleanup.py` using the reporter's own include/exclude vocabulary and never deleting a file whose `create_time` is missing or a file the printer is printing; `ElegooCC2Client.delete_file()` is added and its docstring states that 1047's response shape is undocumented and that its return value is not proof of deletion; the gate is green from the measured 766 baseline — `make format` no-op, `make lint` \"All checks passed\", `make test` **798 passed** (766 + 20 + 4 + 8, every addition itemised in § Count) — with `test_services.py` at 28 → 48 and its `call_count == 3` pin updated to 4; `translations/` is untouched (the parent row's \"18 locales\" claim is wrong and is corrected in § Other notes); `config_flow.py` and entry options are untouched, because the reporter's \"how would config be stored\" question is answered by the service's call data; and #432 **must not be closed on this commit** — the suite is green against a mocked 1047 whose reply shape this repo has never observed, so the issue stays open pending one hardware dry-run-and-delete run, recorded in § The issue stays open and in the CHANGELOG line."
+done-when: "A CC2 user can delete files from the printer's local storage from an automation, selecting by age and by name pattern, with a dry run that deletes nothing by default, and **a deletion is confirmed by a fresh 1044 file listing rather than by the printer's 1047 reply** — pinned by `test_accepted_but_still_listed_counts_as_not_deleted`, which drives a client double that answers `error_code 0` and keeps the file in its listing, and asserts `success is False`, `deleted == []` and `failed == {\"ghost.gcode\": \"still listed after delete\"}`; that test is verified to fail (with 3 others) when the confirmation re-list is disabled, so the clause is falsifiable and not a claim. **An age-based destructive filter must also survive a printer clock that has never been set: a `create_time` below a 2000 floor is treated as unset and SKIPPED, never deleted** — pinned by `test_near_epoch_create_time_is_never_deleted`, `test_creation_dates_below_the_floor_are_treated_as_unset` and `test_near_epoch_create_time_survives_a_real_delete_run`, which seed `create_time: 84720` (1970-01-01 23:32 UTC, which *parses*, so a naive `if created:` filter deletes it) and assert the file survives; removing the floor fails exactly those 3 (trap T10). Concretely: a new `elegoo_printer.cleanup_files` service (fourth registration, `SupportsResponse.OPTIONAL`, reusing `_resolve_cc2_client` at `__init__.py:260` unchanged) takes `entry_id`, `older_than_days` (default 60, whole numbers only), `include` (default `[\"*\"]`), `exclude` (default `[]`) and `dry_run` (default **true**), and every response carries `success`/`dry_run`/`deleted`/`failed`/`skipped`/`would_delete`; selection lives in a new pure module `cc2/cleanup.py` using the reporter's own include/exclude vocabulary and never deleting a file whose `create_time` is missing, epoch-near, or a file the printer is printing; `ElegooCC2Client.delete_file()` is added and its docstring states that 1047's response shape is undocumented and that its return value is not proof of deletion; the gate is green from the measured 766 baseline — `make format` no-op, `make lint` \"All checks passed\", `make test` **806 passed** (766 + 40, every addition itemised in § Count) — with `test_services.py` at 28 → 53 and its `call_count == 3` pin updated to 4; `translations/` is untouched (the parent row's \"18 locales\" claim is wrong and is corrected in § Other notes); `config_flow.py` and entry options are untouched, because the reporter's \"how would config be stored\" question is answered by the service's call data; and #432 **must not be closed on this commit** — the suite is green against a mocked 1047 whose reply shape this repo has never observed, so the issue stays open pending one hardware dry-run-and-delete run, recorded in § The issue stays open and in the CHANGELOG line."
 ---
 
 # T5 — #432 Clean up old printer files (1047 delete is documented "Untested")
@@ -34,12 +34,68 @@ assumption is never load-bearing: **deletion is confirmed by re-listing.**
 Grounding was done inline against the tree at `feature/triage-2026-10` (`414be9b`). Everything below is a
 measurement or a read, not an inference: the baseline was re-measured; the whole feature was **implemented and
 measured in a throwaway copy at `/tmp/t5`** (real tree left byte-identical — `git status --porcelain` returns 0
-lines, 766 passed, lint clean, format no-op, 124 files formatted, before and after); and nine traps were injected
-into that finished copy and each one's failing tests recorded (§ The traps). Where the brief and the tree disagree,
-the tree won, and each disagreement is called out in § Corrections to the brief.
+lines, 766 passed, lint clean, format no-op, 124 files formatted, before and after); and **fourteen** traps were
+injected into that finished copy and each one's failing tests recorded (§ The traps — read the note there about whose
+measurements these are). The review round added the epoch floor, the blank-pattern message, the whole-days check and
+the active-guard basis test to that copy, which took it from 798 to **806 passed**; T1–T9 were then **re-run** against
+the larger suite because the new tests change which set each trap catches. Where the brief and the tree disagree, the
+tree won, and each disagreement is called out in § Corrections to the brief; where the **reviewer and this plan**
+disagreed, § Reviewer round 1 records it. All seven findings were checked against the tree before acting: the blocking
+one was a real data-loss bug and is fixed; four non-blocking ones were accepted as written (NB-2, NB-3, NB-4, NB-6); two offered a choice of
+remedy as an either/or and I picked one after measuring what the other would cost (NB-5, NB-7); and one — NB-3 — was a
+false claim **this plan** had made about `cv.ensure_list`, whose real justification is different and is now written
+down. No finding was rejected. Two of the plan's own earlier claims were.
+
+## Reviewer round 1 (a data-loss bug in this plan, fixed here)
+
+The review of this plan found **one blocking defect in the design I had written, not in the brief**. I am recording it
+in full because it is the most serious thing on the page: **the age filter as first specified deletes files.**
+
+> **BLOCKING.** The filter was `if created:` — so a *non-zero but tiny* `create_time` parses to a 1970 date, compares
+> as older than any cutoff, and a nightly `older_than_days: 60` job **destroys a file the user never named.** The
+> plan mentioned 1970/epoch zero times (verified: `grep -ci "1970\|epoch\|_MIN_VALID"` on the committed revision
+> → `0`).
+
+This repo has already fixed this exact class of bug, for job times, in **#426** (`bb572ec`
+"fix(sensor): handle 1970 job times from the printer"), at `definitions.py:54-61`:
+
+```python
+# The printer sometimes reports job times near 1970 (seen on a Centauri Carbon
+# after a restart). Job times before this are treated as unset.
+_MIN_VALID_JOB_TIME = datetime(2000, 1, 1, tzinfo=UTC)
+
+def _valid_job_time(value: datetime | None) -> datetime | None:
+    """Return a job timestamp, or None when the printer clock was unset."""
+    return value if value and value >= _MIN_VALID_JOB_TIME else None
+```
+
+`PrinterFile` (`sdcp/models/file_info.py:29-36`) guards only against `create_time` being **falsy** or
+**unparseable**. Measured against the real model with a 60-day cutoff and `now = 2026-10-24`:
+
+| `create_time` | `file.created` | plan's old `if created:` |
+| --- | --- | --- |
+| missing / `0` | `None` | skipped (correct, by luck) |
+| **`84720`** | **`1970-01-01 23:32:00+00:00`** | **DELETED** |
+| `1` | `1970-01-01 00:00:01+00:00` | **DELETED** |
+| `10**20` | `None` (`OverflowError`) | skipped (correct) |
+| `1789680958` | `2026-09-17 21:35:58+00:00` | skipped (correct) |
+
+**State the principle plainly, because it is the whole reason the floor is mandatory:** *an age-based destructive
+filter is only as safe as its treatment of a printer clock that has never been set.* A printer that stops reporting
+dates must degrade to **"deletes nothing"**, never to "deletes everything". In #426 the same bug cost a wrong sensor
+reading; here it costs a user's file, which is why the floor sits in the selection module rather than at the edge and
+why three tests pin it instead of one.
+
+The fix (§ The change item 2) mirrors `_MIN_VALID_JOB_TIME` — same 2000-01-01 floor, same "below the floor means
+unset" semantics — with a comment in the code naming #426 and the fact that this is the destructive path. Trap **T10**
+removes the floor and fails exactly the 3 new timestamp tests.
+
+Four smaller review findings are also folded in below and marked **(NB-n)** where they land: the `# noqa: PLR0913`
+placement that cannot pass lint **(NB-2)**, a false claim I had written about `cv.ensure_list` **(NB-3)**, the
+per-file ruff ignore lists **(NB-4)**, the blank-pattern silent no-op **(NB-5)**, the active-file guard's comparison
+basis **(NB-6)**, and `vol.Coerce(int)` truncating toward *more* deletion **(NB-7)**.
 
 ## Corrections to the brief (three of its grounding claims are wrong)
-
 Trust the tree. These were checked by reading, and the first two change what you write.
 
 | Brief says | Tree says | Consequence |
@@ -131,13 +187,37 @@ Active-file guard: `client.printer_data.status.print_info.filename` is populated
 status. `sdcp/models/status.py:67-95` already keeps `_FDM_ACTIVE_STATUSES`, but it is private, keyed on the *status*
 enum, and `compute_percent_complete` is its only consumer — so this task guards on the **filename**, which is
 exact, rather than borrowing a status set that would refuse to delete anything while the printer is merely
-levelling.
+levelling. **Exact equality is also the reason the guard needs its own test and its own stated basis** — it fails open
+on a name mismatch, so see NB-6 in § The change item 2 for the sentence that states the basis and the test that pins
+it. Note that the repo's own *sensor* for the same field trims it
+(`definitions.py:800`, `(… .filename or "").strip() or None`) — this guard deliberately does **not** trim, so that
+the comparison basis is one thing and not two.
 
-Lint facts that will bite (all reproduced): `select = ["ALL"]`; per-file ignores for `cc2/tests/*.py` are **only
-`S101, SLF001, PLC0415`** (`pyproject.toml:68`) — so `PLR2004` (magic value) and `D401` (imperative mood) **do fire
-in `cc2/tests/`** and in `tests/`; `PLR0913` (too many args) fires above 5 and has three `# noqa` precedents
-(`mqtt/client.py:89`, `cc2/client.py:115`, `config_flow.py:1386`); D200/D213 pull opposite ways (single-sentence
-summary inline, multi-paragraph summary on the second line).
+Lint facts that will bite (all reproduced against the repo's own `pyproject.toml` with ruff 0.14.1 — and **corrected
+after the review**, because an earlier revision of this paragraph said `PLR2004` and `D401` fire "in `cc2/tests/` **and
+in `tests/`**", which is wrong in both halves): `select = ["ALL"]`; the two test directories have **different** ignore
+lists and the wider one is the one the service tests live in — `custom_components/elegoo_printer/tests/*.py`
+(`pyproject.toml:67`) ignores `S101, D102, D103, ANN001, ANN201, ANN202, PLR2004, SLF001, D403, ARG002`, while
+`custom_components/elegoo_printer/cc2/tests/*.py` (`:68`) ignores **only** `S101, SLF001, PLC0415`. So: `PLR2004`
+fires in `cc2/tests/` and is **silent** in `tests/`; `ANN201`/`D103` fire in `cc2/tests/` and are silent in `tests/`;
+`D401` (imperative mood) is in **neither** list and fires in **both** directories for ordinary helper functions, but
+**not** for functions named `test_*` in either (measured both ways) — so keep helper docstrings imperative and do not
+bother annotating test signatures in `tests/`. `PLR0913` (too many args) fires above 5, is reported **on the `def`
+line**, and has three `# noqa` precedents (`mqtt/client.py:89`, `cc2/client.py:115`, `config_flow.py:1386`), all of
+which put the directive on the `def`; putting it on a parameter line buys you `PLR0913` **and** `RUF100` (measured —
+§ The change item 2, NB-2). D200/D213 pull opposite ways (single-sentence summary inline, multi-paragraph summary on
+the second line).
+
+**The `create_time`/clock fact that the whole safety story turns on** (measured against the real
+`sdcp/models/file_info.py` in the real tree, before any of this code exists): `PrinterFile` maps a *falsy* or
+*unparseable* `create_time` to `created = None`, and **nothing else**. `create_time=0` → `None`; `create_time=10**20`
+→ `None` (`OverflowError`); but **`create_time=84720` → `1970-01-01 23:32:00+00:00`** and `create_time=1` →
+`1970-01-01 00:00:01+00:00`. Both parse, so both clear a truthiness-only age filter and land on the delete side of
+every cutoff. This repo has already been bitten by exactly this on the non-destructive path — #426 / `bb572ec`,
+`definitions.py:54-61`, `_MIN_VALID_JOB_TIME = datetime(2000, 1, 1, tzinfo=UTC)` with `_valid_job_time()` rejecting
+anything below it, pinned by `tests/test_job_timestamps.py` — and the comment there says the printer "sometimes reports
+job times near 1970 (seen on a Centauri Carbon after a restart)". **This task's file list is the same field on the same
+printer, on a path that deletes.** See § Reviewer round 1 and § The change item 2.
 
 ## The change
 
@@ -173,14 +253,34 @@ SKIP_EXCLUDED = "excluded"
 SKIP_NOT_INCLUDED = "not_included"
 SKIP_ACTIVE = "currently_printing"
 
+# The #426 lesson (definitions.py:54-61, fixed in bb572ec) applied to a
+# DESTRUCTIVE path. A printer whose clock has never been set reports a SMALL
+# create_time - not zero, which PrinterFile already reads as unset, but e.g.
+# 84720, which parses to 1970-01-01 23:32 UTC. Any age filter then calls that
+# file older than every cutoff, so a nightly older_than_days: 60 job deletes a
+# file the user never named. In #426 the same bug cost a wrong sensor reading;
+# here it costs data, so the floor is mandatory, not cosmetic. A stamp below it
+# is treated as unset, which the age filter turns into SKIP, never into a
+# delete: a printer that stops reporting dates must degrade to "deletes
+# nothing", not "deletes everything".
+_MIN_VALID_CREATE_TIME = datetime(2000, 1, 1, tzinfo=UTC)
+
+
+def _usable_created(file: PrinterFile) -> datetime | None:
+    """Return a file's creation date, or None when the printer clock was unset."""
+    created: datetime | None = getattr(file, "created", None)
+    if created is None or created < _MIN_VALID_CREATE_TIME:
+        return None
+    return created
+
 
 def _matches(name: str, patterns: tuple[str, ...]) -> bool:
     """Whether a file name matches any of the glob patterns."""
     return any(fnmatch.fnmatchcase(name, pattern) for pattern in patterns)
 
 
-def select_deletions(
-    files: dict[str, PrinterFile],  # noqa: PLR0913 on the function below
+def select_deletions(  # noqa: PLR0913
+    files: dict[str, PrinterFile],
     *,
     include: tuple[str, ...] = DEFAULT_INCLUDE,
     exclude: tuple[str, ...] = DEFAULT_EXCLUDE,
@@ -190,23 +290,57 @@ def select_deletions(
 ) -> tuple[list[str], list[tuple[str, str]]]: ...
 ```
 
-Four decisions in there, each measured:
+**`# noqa: PLR0913` goes on the `def` line** (NB-2). The previous revision of this plan had it on the
+`files: dict[str, PrinterFile]` parameter line, which does not work: ruff reports `PLR0913` on the `def` line, so that
+placement yields **two** errors, not zero. Measured in a scratch copy with the repo's own `pyproject.toml` and
+ruff 0.14.1:
+
+```
+PLR0913 Too many arguments in function definition (6 > 5)
+ --> a.py:4:5
+4 | def select_deletions(
+5 |     files: dict[str, str],  # noqa: PLR0913 on the function below
+
+RUF100 [*] Unused `noqa` directive (unused: `PLR0913`)
+ --> a.py:5:29
+```
+
+Put it on `def select_deletions(  # noqa: PLR0913`, matching all three existing precedents
+(`mqtt/client.py:89`, `cc2/client.py:115`, `config_flow.py:1386`), each of which sits on the `def`.
+
+Six decisions in there, each measured:
 
 - **`fnmatchcase`, not `fnmatch`.** `fnmatch.fnmatch` normalises case through `os.path.normcase`, which is the
   identity on Linux and lowercases on Windows. A user's `exclude=Keep*` would then keep `KEEP*` files on one host
   and not another. **Trap T7 below is the interesting one in this plan** and it is about how to *test* this, not
   about the choice.
-- **A file with no usable timestamp is never deleted.** `PrinterFile.created` is `None` when `create_time` is
-  missing *or* unparseable (`file_info.py:29-36`, pinned by `cc2/tests/test_file_list.py::test_corrupt_timestamp_keeps_the_file`).
-  Unknown age is not "old enough". This is the one rule that can cost a user a deletion they wanted, and it is
-  deliberate: an age filter that treats "unknown" as "old" deletes the newest file on the printer the moment the
-  printer stops reporting dates for it.
-- **The active file is skipped before any pattern is consulted**, so it cannot be talked past by `include=*`.
+- **A file with no *usable* timestamp is never deleted.** `PrinterFile.created` is `None` when `create_time` is
+  missing *or* unparseable (`file_info.py:29-36`, pinned by
+  `cc2/tests/test_file_list.py::test_corrupt_timestamp_keeps_the_file`), and it is **a 1970 date when the clock was
+  never set** — which that test does *not* cover, because `10**20` raises and `84720` does not. Unknown age is not
+  "old enough", and an epoch age is not "ancient". This is the one rule that can cost a user a deletion they wanted,
+  and it is deliberate: an age filter that treats "unknown" as "old" deletes the newest file on the printer the
+  moment the printer stops reporting dates for it. **This is the blocking review finding; see § Reviewer round 1.**
+- **The active file is skipped before any pattern is consulted**, so it cannot be talked past by `include=*`. The
+  comparison basis is stated in NB-6 below and pinned by its own test.
 - **Both results are sorted**, so a dry run reads the same twice and the response is assertable.
 - `created >= cutoff` is **too new** — exactly-at-the-limit is not yet "older than".
+- `older_than_days` is a required argument (no default) on purpose: a caller that forgot to think about age should not
+  compile.
 
-`older_than_days` is a required argument (no default) on purpose: a caller that forgot to think about age should not
-compile.
+**The active-file guard's comparison basis (NB-6), stated because it fails open.** `active_filename` is
+`client.printer_data.status.print_info.filename`, which CC2 fills from the pushed status payload at
+`cc2/models.py:229` (`print_info.filename = print_status.get("filename")`, i.e. `print_status.filename` in the status
+message — **not** from 1047, which documents no response at all), and it is compared to the 1044 listing key with
+**exact equality** — no case folding, no trimming, no prefix stripping. That is the right basis: the repo already
+treats the two as **one namespace**, because `cc2/models.py:315-316` looks the *print* filename up in the
+`_file_details` cache built from 1044 listings, and `start_print`/`upload_gcode` pass bare listing names back in. But
+exact equality **fails open**: if the two ever differ by case, whitespace or a path prefix, the file currently
+printing is no longer recognised and becomes deletable. `test_active_guard_compares_the_printers_own_filename_exactly` pins both directions
+— the exact name is skipped, and a name differing by one trailing space is *not* — so a future change to the basis is
+a deliberate edit to that test rather than a silent one. Trap **T14** (folding case and trimming instead) fails
+exactly that test. Do not "harden" the guard into a fuzzy match without reading that test first.
+
 
 ### 3. `cc2/client.py` — `delete_file`, whose docstring is part of the deliverable
 
@@ -254,18 +388,26 @@ find out whether they can trust the return value, and today the answer is no.
 ### 4. `__init__.py` — the service
 
 New in this order, ending before `async_setup` (`:447`): `SERVICE_CLEANUP_FILES = "cleanup_files"`, `_glob_patterns`,
-`SERVICE_CLEANUP_FILES_SCHEMA`, `CleanupReport`, `_async_delete_each`, `_async_cleanup_files`, `_cleanup_failure_text`,
-`_cleanup_unreachable`. Then a **fourth** `async_register` in `async_setup` after the `upload_gcode` one.
+`_whole_days`, `SERVICE_CLEANUP_FILES_SCHEMA`, `CleanupReport`, `_pattern_note`, `_async_delete_each`,
+`_async_cleanup_files`, `_cleanup_failure_text`, `_cleanup_unreachable`. Then a **fourth** `async_register` in
+`async_setup` after the `upload_gcode` one.
 
 Schema — the reporter's vocabulary, with the two defaults they proposed:
 
 ```python
+def _whole_days(value: object) -> int:
+    """Validate older_than_days as a WHOLE number of days, rejecting fractions."""
+    days = vol.Coerce(int)(value)
+    if days != float(value):
+        msg = "older_than_days must be a whole number of days"
+        raise vol.Invalid(msg)
+    return vol.Range(min=1)(days)
+
+
 SERVICE_CLEANUP_FILES_SCHEMA = vol.Schema(
     {
         vol.Required("entry_id"): str,
-        vol.Optional("older_than_days", default=DEFAULT_OLDER_THAN_DAYS): vol.All(
-            vol.Coerce(int), vol.Range(min=1)
-        ),
+        vol.Optional("older_than_days", default=DEFAULT_OLDER_THAN_DAYS): _whole_days,
         vol.Optional("include", default=list(DEFAULT_INCLUDE)): _glob_patterns,
         vol.Optional("exclude", default=list(DEFAULT_EXCLUDE)): _glob_patterns,
         # 1047 is documented "Untested" and its reply shape is undocumented, so
@@ -275,24 +417,61 @@ SERVICE_CLEANUP_FILES_SCHEMA = vol.Schema(
 )
 ```
 
-**`_glob_patterns` is a hand-rolled validator, and that is a decision, not an oversight** — but not for the reason I
-first wrote here. **A correction worth keeping:** I first justified it by claiming a `text` selector with
-`multiple: true` hands over a *mapping*, and that is **false**. `TextSelector.__call__`
-(`homeassistant/helpers/selector.py:1352-1359`) validates `multiple: true` as a **`list[str]`** and raises
-`vol.Invalid("Value should be a list")` otherwise; core uses that selector in that shape (e.g.
-`components/ecobee/services.yaml:152`). Do not repeat my claim in a comment or a PR description.
+**Why `_whole_days` and not `vol.All(vol.Coerce(int), vol.Range(min=1))` (NB-7).** `vol.Coerce(int)` **truncates**:
+measured against the installed voluptuous, `60.9 → 60` and `0.5 → Invalid (min)`. A lower day count is a **lower
+cutoff**, so a caller asking for 60.9 days would get **slightly more deletion than they asked for** — the wrong
+direction to round on a destructive field. HA's own `cv.positive_int` has the identical defect (measured: it returns
+`60` for `60.9`), so the check has to be explicit rather than borrowed. A string still parses (`"60" → 60`), because
+automations template these. Pinned by `test_schema_rejects_a_fractional_age_limit`; trap **T12** (drop the
+fraction check) fails exactly that test.
 
-The real reason is one this file already documents at `__init__.py:107-109`: **`services.yaml` selectors shape the UI
-only — a programmatic or REST call can pass any JSON at all.** That is exactly why `_async_update_ip` re-checks the
-entry domain and calls the selector "not the real guard". So the obvious
-`vol.All(cv.ensure_list, [vol.All(str, vol.Length(min=1))])` would **coerce a mapping** into `str({...})` — one
-pattern matching no file name — and the cleanup would report "nothing to delete" forever while returning
-`success: true`. A silent no-op in a destructive service is worse than a loud rejection. Hence: `services.yaml` uses
-a plain `text` selector (one pattern, exactly the reporter's `include=ECC*`), and the validator takes a `str` or a
-`list[str]`, treats `""` as "no patterns" (the UI prefills and sends an empty string), and raises `vol.Invalid` on a
-mapping. Pinned by `test_schema_rejects_a_mapping_of_patterns` and
-`test_schema_reads_a_blank_field_as_no_patterns`. Both the code comment and the test comment carry the corrected
-reasoning — check neither reads "a multiple selector produces a dict".
+**`_glob_patterns` is a hand-rolled validator, and that is a decision — but not for the reason an earlier revision of
+this plan gave.** Two claims in that revision were **false** and must not reach a code comment or the PR description
+(NB-3):
+
+| Claim written earlier | Measured against installed voluptuous + HA 2025.4 |
+| --- | --- |
+| "a `text` selector with `multiple: true` hands over a *mapping*" | **False.** `TextSelector.__call__` (`homeassistant/helpers/selector.py:1352-1359`) validates `multiple: true` as a **`list[str]`** and raises `vol.Invalid("Value should be a list")` otherwise. (Core's `multiple: true` usage is widespread — `components/ecobee/services.yaml:152` is one, for a `device` selector — but no precedent is needed: the selector's own `__call__` is the answer.) |
+| "`vol.All(cv.ensure_list, [vol.All(str, vol.Length(min=1))])` would **coerce a mapping** into `str({...})`" | **False.** `cv.ensure_list` does not coerce a dict: it passes it through and the inner `str` check rejects it — `expected str @ data[0]`. Measured: `{'0': 'ECC*'}` → `Invalid: expected str @ data[0]`; `42` → same. |
+
+**The real justification, which the reviewer confirmed and which the code comment must carry:** the composition
+**rejects the empty string** — `""` → `length of value must be at least 1 @ data[0]` — and **a cleared `text` field in
+the UI is submitted as `""`**. The reporter's "exclude = nothing" has to *validate*, so the blank case has to be
+handled explicitly, and no composition of the stdlib validators expresses it. That, plus the standing fact already
+documented at `__init__.py:107-109` that **selectors shape the UI only and a programmatic or REST caller can send any
+JSON at all** (the reason `_async_update_ip` re-checks the entry domain and calls the selector "not the real guard"),
+is why the shape rules and the blank rule live together in one hand-rolled validator. So: `services.yaml` uses a plain
+`text` selector (one pattern, exactly the reporter's `include=ECC*`); the validator takes a `str` or a `list[str]`,
+rejects a mapping, and treats `""` as "no patterns" — with the consequences of that last rule pinned, see below.
+Pinned by `test_schema_rejects_a_mapping_of_patterns`,
+`test_schema_reads_a_blank_field_as_no_patterns` and `test_schema_reads_a_blank_include_as_no_patterns`.
+
+**Blank pattern fields, and why `""` is not allowed to be a silent no-op (NB-5).** `_glob_patterns` turns `""` into
+`[]`, and `[]` matches **no file name at all**. So `include: ""` — which a UI user reaches by clearing the box, and
+which a template reaches by rendering empty — yields `include=[]` → nothing selected → the service reports
+`success: true` having deleted nothing, and the reporter's nightly job stays inert **forever** while reporting
+success. Wrong-delete risk from the schema rule itself: none. But a permanently-inert cleanup job that reports success
+is its own bug, and the reviewer is right to call it.
+
+**Decision: `""` still validates as "no patterns" (the schema must not reject what the UI submits), and the *handler*
+says out loud when a pattern set left nothing a candidate.** `_pattern_note(include, file_count, to_delete, reasons)`
+returns a message naming the pattern when every listed file was rejected by `SKIP_NOT_INCLUDED` (or the listing was
+empty), and `None` otherwise — so the ordinary "everything is too new" run keeps its plain message and does not become
+noise. `success` **stays `True`** in that case: this is the same call the plan already makes in § Two bugs the
+measurements caught (an empty selection is a clean run, and an automation that alerts nightly on "nothing to do" is
+noise by Thursday). The fix is *visibility*, not a new failure: the notify now reads
+"none of the 12 listed file(s) matched the include pattern `['']`, so nothing was a candidate and nothing was
+deleted", which is diagnosable instead of mysterious.
+
+The alternative the reviewer offered — **fall back to `DEFAULT_INCLUDE` on a blank field** — was considered and
+**rejected**, and the reason belongs in the code comment: `include: ""` is indistinguishable from a template that
+rendered to empty (`"{{ state_attr('sensor.x','name') }}*"` on a missing attribute gives `""`), and resolving that to
+`*` means **every old file on the printer is deleted by a call that named nothing**. That converts a benign inert-job
+bug into a mass-delete bug, which is the exact failure class this whole task is built to refuse. Refusing `""` at the
+schema was the other candidate and is also rejected: the UI submits it, so it would make the exclude box unusable.
+Pinned by `test_blank_include_is_reported_as_an_inert_pattern_not_silence` and its inverse
+`test_everything_too_new_is_not_reported_as_a_bad_pattern`; trap **T11** (blank → `["*"]`) and **T13** (never
+distinguish) record both halves.
 
 **`dry_run` defaults to `true`.** The other three services default to *doing the thing*. This one defaults to not
 destroying files, because its reply cannot be trusted. Trap T2 confirms that pinning this is load-bearing.
@@ -334,7 +513,14 @@ Handler flow — and this ordering is the feature, not plumbing:
    able to alert on `not response.success` and know the printer is not in the state it asked for. Trap T8.
 8. Nothing matched at all → `success: True` with a message. A nightly job that finds nothing new is not an error,
    and an automation that alerts on it would be noise by Thursday. (I got this wrong first and a test caught it —
-   see § Two bugs the measurements caught.)
+   see § Two bugs the measurements caught.) **When the reason nothing matched is the `include` pattern itself** —
+   every listed file came back `SKIP_NOT_INCLUDED`, which is what `include: ""` and a typo'd `include=EEXC*` both
+   look like — that message names the pattern instead of the bland "nothing older than the limit" text, so a job
+   that will delete nothing forever is visible in the notify. `success` is unchanged. See NB-5 in § The change item 4.
+
+The **epoch floor is applied inside step 3**, not here: the handler passes the listing straight through and
+`select_deletions` turns a below-the-floor `create_time` into `SKIP_NO_TIMESTAMP`. Keeping it in the pure module is
+what makes trap T10 fail three selection/service tests rather than depending on handler wiring.
 
 Response fields, always present: `success`, `dry_run`, `deleted`, `failed` (name → reason), `skipped`
 (name → one of the five `SKIP_*` reasons), `would_delete`, plus `error` or `message`. `skipped` naming *why* every
@@ -345,12 +531,17 @@ worth reading.
 
 Append `cleanup_files:` after `upload_gcode`. Field descriptions must carry the safety story, because this is the
 only place a UI user reads it: the dry-run default, "excluded is never deleted even when it also matches include",
-the no-timestamp rule, the printing-file rule, and **"Whether a delete happened is confirmed by re-reading the
-printer's file list, not by trusting its reply."** Validated as YAML and confirmed to parse to
+the no-timestamp rule (**including** "a file whose creation date the printer could not set — a 1970 stamp — is treated
+as having no date and is never deleted", since that is the case a user would otherwise expect to be deleted), the
+printing-file rule, and **"Whether a delete happened is confirmed by re-reading the printer's file list, not by
+trusting its reply."** Validated as YAML and confirmed to parse to
 `['update_ip', 'start_print', 'upload_gcode', 'cleanup_files']`. `number` selector `min: 1, max: 3650, mode: box`
-for days; plain `text` for both pattern fields (`multiple: true` deliberately **not** used — see above).
+for days, and say **whole days** in its description (the schema rejects `60.9`, NB-7); plain `text` for both pattern
+fields (`multiple: true` deliberately **not** used — see above). Say in the `include` description that **leaving it
+blank matches nothing and deletes nothing** and that omitting it is how you ask for "everything" — the field is the
+reporter's, so the sharp edge has to be documented where the reporter will read it.
 
-### 6. Tests — 32 new, and the seam is a stateful printer double
+### 6. Tests — 40 new, and the seam is a stateful printer double
 
 `_cleanup_client` must **not** be a scripted `side_effect=[listing_a, listing_b]`. It holds a `set` of names,
 answers `get_file_list` from it, and removes names on delete:
@@ -383,14 +574,48 @@ Why it is built this way, and the two traps it exists to avoid:
   "simplify" by reusing `_cc2_client()`.
 
 Files: `cc2/tests/test_delete_file.py` (4 — wire shape, 1007 returned not raised, no-answer raises, missing
-`error_code` raises), `cc2/tests/test_cleanup_selection.py` (8), and `TestCleanupFilesService` (20) appended to
-`tests/test_services.py`. Existing test edits: **one line** — `call_count == 3` → `== 4` at `:104`, comment
+`error_code` raises), `cc2/tests/test_cleanup_selection.py` (**11**), and `TestCleanupFilesService` (**25**) appended to
+`tests/test_services.py`. The selection file's 11 are the original 8 plus the three the review demanded:
+`test_near_epoch_create_time_is_never_deleted` (seeds `create_time: 84720`, asserts `delete == []` and
+`skipped == [(…, SKIP_NO_TIMESTAMP)]`, and asserts `created is not None` first so the test cannot quietly become
+vacuous — that assertion is the whole point: **it parses, therefore naive code deletes it**),
+`test_creation_dates_below_the_floor_are_treated_as_unset` (1999 below the floor is skipped, 2001 above it is still a
+judgeable age, so the floor is pinned as a boundary and not as "reject 1970 specifically"), and
+`test_active_guard_compares_the_printers_own_filename_exactly` (NB-6, both directions). The service class's 25 are the
+original 20 plus `test_near_epoch_create_time_survives_a_real_delete_run` (the same seed, end to end through
+`_async_cleanup_files`: `deleted == []`, `delete_file.assert_not_called()`, `await_count == 1` — the file survives a
+**real** delete run, not just the selector), `test_blank_include_is_reported_as_an_inert_pattern_not_silence` and
+`test_everything_too_new_is_not_reported_as_a_bad_pattern` (NB-5, both directions),
+`test_schema_reads_a_blank_include_as_no_patterns`, and
+`test_schema_rejects_a_fractional_age_limit` (NB-7).
+
+Existing test edits: **one line** — `call_count == 3` → `== 4` at `:104`, comment
 updated to name `cleanup_files` and point at the new class that pins it by name and index. Nothing else in the
 28 existing tests changes; `call_count == 3` is the only registration-count assertion in the repo
 (`grep -rn "call_count ==" custom_components/` — the rest are unrelated mocks).
 
 New imports in `test_services.py`: `time`, `PrinterFile`, and
 `SERVICE_CLEANUP_FILES, SERVICE_CLEANUP_FILES_SCHEMA, _async_cleanup_files`.
+
+**Where `# noqa` is needed, per directory (NB-4 — the earlier revision implied the opposite).** The two test
+directories have **different** ignore lists and the wider one is the *service* test dir:
+
+| Directory | `pyproject.toml` | Ignored | So in that dir you **must** still write |
+| --- | --- | --- | --- |
+| `custom_components/elegoo_printer/tests/*.py` (where the **25** service tests land) | `:67` | `S101, D102, D103, ANN001, ANN201, ANN202, PLR2004, SLF001, D403, ARG002` | almost nothing — `# noqa: D103` on a bare `def test_x():` is optional here, `1007` needs no constant, and missing `-> None` is tolerated |
+| `custom_components/elegoo_printer/cc2/tests/*.py` (where the **11 + 4** = 15 new pure-module tests land) | `:68` | `S101, SLF001, PLC0415` **only** | `-> None` on every test (else `ANN201`), a docstring or `# noqa: D103` on every test (else `D103`), and a named constant instead of a bare magic number (else `PLR2004`) |
+
+Measured with the repo's own `pyproject.toml` and ruff 0.14.1: an annotated, docstringed test in either dir is clean;
+strip the annotation and both dirs are still clean **only because** `ANN201` is ignored in `tests/` — in `cc2/tests/`
+it fires, together with `D103`; a bare `1007` comparison is silent in `tests/` and `PLR2004` in `cc2/tests/`. That is
+why `CC2_ERROR_FILE_DELETE_FAILED` (§ item 1) is needed at all, and why the existing `cc2/tests/test_file_list.py`
+writes `def test_corrupt_timestamp_keeps_the_file() -> None:  # noqa: D103` — **copy that shape for the 15 new
+`cc2/tests/` tests**; the service tests in `tests/` do not need it. Two caveats so this is not over-claimed:
+`D401` (imperative mood) is in neither ignore list and **does fire in both dirs** for non-test helpers (measured: a
+`"""Returning a number."""` helper docstring in either dir is flagged), so keep helper docstrings imperative; and
+`D401` does **not** fire on functions whose name starts with `test_` in either dir, so the test functions themselves
+are free.
+
 
 ### 7. `README.md` + `CHANGELOG.md` — including the video sentence
 
@@ -399,7 +624,13 @@ New `### cleanup_files (Centauri Carbon 2 only)` section under **Services** (aft
 
 - **Run the dry run first** — `dry_run` defaults to on, so the first call only answers `would_delete`.
 - `exclude` wins over `include`; case matters, and matters the same way on every host.
-- **A file with no creation date is never deleted; the file being printed is never deleted.**
+- **A file with no creation date is never deleted; the file being printed is never deleted.** Spell out the case a
+  user will actually hit: a printer whose clock has never been set reports a 1970 creation date, and this service
+  treats any creation date before 2000 as "no date" and leaves the file alone — the same rule #426 had to apply to the
+  time sensors, applied here where getting it wrong would delete a file rather than misread a sensor.
+- **Leaving `include` blank matches nothing, so nothing is deleted** — omit the field to mean "every file". A run in
+  that state reports success and says in its message that no listed file matched the pattern, so an automation that
+  quietly stops deleting is visible in the notification rather than invisible.
 - **Deletion is confirmed by re-reading the file list, not by trusting the printer's reply** — and a file the
   printer accepted and kept comes back in `failed`, with `success` false unless *every* selected file was confirmed.
 - **The video limitation, stated plainly**, naming #432's "both gcode and video files", explaining that 1044 is the
@@ -438,9 +669,13 @@ the decision in the PR description so it is not re-litigated on the issue.
 
 Work in the real tree. Run scoped files as you go; the full gate once at the end.
 
-1. **`cc2/cleanup.py` + `cc2/tests/test_cleanup_selection.py`** → **8 passed** in the file. Pure module, no mocks.
-   Expect `PLR0913` on `select_deletions` (6 args) — take the `# noqa: PLR0913`, matching the three precedents,
-   rather than folding two filters into one parameter to appease a linter.
+1. **`cc2/cleanup.py` + `cc2/tests/test_cleanup_selection.py`** → **11 passed** in the file. Pure module, no mocks.
+   **Write the two epoch-floor tests in the same commit as the floor** — they are the review's blocking finding and
+   the only thing standing between this feature and a nightly mass-delete on a printer with an unset clock. Expect
+   `PLR0913` on `select_deletions` (6 args) — take the `# noqa: PLR0913` **on the `def` line**, matching the three
+   precedents (§ item 2, NB-2: on a parameter line it yields PLR0913 *and* RUF100), rather than folding two filters
+   into one parameter to appease a linter. Remember the `cc2/tests/` ignore list is narrow (NB-4): every test needs
+   `-> None` and `# noqa: D103`, and the 1999/2001 boundary test needs named constants rather than inline magic values.
 2. **`cc2/const.py` + `delete_file` + `cc2/tests/test_delete_file.py`** → **4 passed**. Expect `PLR2004` on a bare
    `1007` in the test — that is what `CC2_ERROR_FILE_DELETE_FAILED` is for. Expect `F821` if the `const` import is
    missed.
@@ -449,45 +684,76 @@ Work in the real tree. Run scoped files as you go; the full gate once at the end
    - `test_async_setup_registers_update_ip_service` — the one expected pre-existing red (`4 != 3`).
    - Then three of my own bugs, which is what step 3 is for; see § Two bugs the measurements caught.
    Fix production for the first two, the test for the third. Then update `:104` to `4`. → `test_services.py`
-   **48 passed**.
+   **53 passed**.
 4. **`services.yaml`, `README.md`, `CHANGELOG.md`.** Re-parse the YAML (`python -c "import yaml; …"`) and parse both
    README blocks.
 5. **Gate from repo root**: `make format` (the end state needed one `ruff format` pass on the new files and is then a
-   no-op), `make lint` → "All checks passed", `make test` → **798 passed, 12 warnings**.
+   no-op — re-measured, 127 files formatted), `make lint` → "All checks passed", `make test` →
+   **806 passed, 12 warnings**.
 
 ## Count
 
-**798 passed** = 766 baseline + **32**, every one itemised:
+**806 passed** = 766 baseline + **40**, every one itemised (re-measured in `/tmp/t5` after the review fixes; the
+pre-review figure was 798 = 766 + 32, and the further **+8** is 2 epoch/floor tests + 1 active-comparison-basis test in
+the selection module, plus 5 in the service class — nothing was removed or renamed):
 
 | New / changed | Count | Where |
 | --- | --- | --- |
-| `TestCleanupFilesService` | **+20** (28 → 48 in the file) | `tests/test_services.py` |
+| `TestCleanupFilesService` | **+25** (28 → 53 in the file) | `tests/test_services.py` |
 | `cc2/tests/test_delete_file.py` | **+4** (new file) | wire shape, 1007, no-answer, missing `error_code` |
-| `cc2/tests/test_cleanup_selection.py` | **+8** (new file) | include/exclude/age/no-timestamp/active/case/boundary/sort |
+| `cc2/tests/test_cleanup_selection.py` | **+11** (new file) | include/exclude/age/no-timestamp/**epoch floor ×2**/active/**active comparison basis**/case/boundary/sort |
 | Existing tests edited | **1 line**: `call_count == 3` → `4` | `tests/test_services.py:104` |
 
-20 in the service class is a lot for one service, and the breakdown is deliberate: 3 schema tests (defaults, bare
-string, and the two rejection/blank cases), 2 registration, and 15 behaviour — where the value is in the *failure*
-paths (refused delete, accepted-but-still-listed, re-list fails, connection lost mid-delete, nothing matched,
-non-CC2 entry) plus `test_response_carries_every_field_in_every_outcome`, which walks six outcomes and asserts the
-key set. If your count differs from 798, explain why rather than adjusting the number.
+25 in the service class is a lot for one service, and the breakdown is deliberate: **7 schema** (defaults; bare
+string; zero-days + empty-list rejection; mapping rejection; blank `exclude`; blank `include`; fractional days),
+**2 registration**, and **16 behaviour** — where the value is in the *failure* paths (refused delete,
+accepted-but-still-listed, re-list fails, connection lost mid-delete, nothing matched, **epoch-near create_time
+surviving a real run**, **blank include reported as inert**, **everything-too-new NOT blamed on the pattern**,
+non-CC2 entry) plus `test_response_carries_every_field_in_every_outcome`, which walks six outcomes and asserts the key
+set. If your count differs from 806, explain why rather than adjusting the number.
 
 ## The traps — each injected into the finished copy, with the tests that actually caught it
 
-Every row is a real run of the **full 798-test suite** in `/tmp/t5` after injecting the bad implementation. A claim
+Every row is a real run of the **full 806-test suite** in `/tmp/t5` after injecting the bad implementation. A claim
 with no failing test is an unpinned claim, so T7 was rewritten until it caught.
 
-| # | Trap injected | Result | Caught by |
+**These counts are my measurements, in one specific throwaway copy (`/tmp/t5`), and a reviewer could not reproduce
+them** — they run the suite where the plan's *mechanism* is checkable but the injected copy is not. So each row states
+the injection as an exact edit and the mechanism that makes it observable (the stateful double + `await_count`, or a
+direct assertion on the pure function). Any of these can be re-derived in five minutes: copy the tree, apply the
+edit, run `make test`. Do not treat a count as a fact you cannot re-measure; treat the *failing test name* as the
+claim, because that is the part that says what the test is for. T1–T9 were measured once before the review and
+**all nine were re-measured after it**, against the 806-test suite, because the new tests change which set each trap
+catches. T10–T14 are new, from the review round.
+
+| # | Trap injected (exact edit) | Result (my run, 806-test suite) | Caught by |
 | --- | --- | --- | --- |
-| T1 | Skip the confirmation re-list (`if deleted:` → `if False:`) — i.e. **trust the printer's reply** | **4 failed, 792 passed** | `test_deletes_old_file_and_confirms_it_by_re_listing`, `test_accepted_but_still_listed_counts_as_not_deleted`, `test_partial_delete_reports_both_halves`, `test_re_list_failure_reports_unconfirmed_not_success` |
-| T2 | `dry_run` defaults to `False` | **1 failed** | `test_schema_defaults_to_dry_run_and_sixty_days` |
-| T3 | Undated files treated as old and deleted | **1 failed** | `test_file_without_a_creation_date_is_never_deleted` |
-| T4 | Active-print guard removed | **2 failed** | `test_active_file_survives_every_filter`, `test_never_deletes_the_file_being_printed` |
-| T5 | `exclude` ignored | **2 failed** | `test_exclude_wins_over_include`, `test_keeps_young_excluded_and_undated_files_with_reasons` |
-| T6 | Missing/no-`error_code` reply counted as success (`result.get("error_code", 0)`) | **2 failed** | `test_delete_without_answer_raises`, `test_delete_without_error_code_raises` |
-| T7 | `fnmatch.fnmatch` instead of `fnmatchcase` | **1 failed** *after the test was rewritten* — see below | `test_patterns_ignore_the_host_path_case_rules` |
-| T8 | Partial success reported as success (`success = bool(deleted)`) | **1 failed** | `test_partial_delete_reports_both_halves` |
-| T9 | `cleanup_files` not registered at all | **3 failed** | `test_async_setup_registers_update_ip_service`, `test_async_setup_registers_cleanup_files_service`, `test_registered_handler_takes_the_call_alone` |
+| T1 | Skip the confirmation re-list (`if deleted:` → `if False:`) — i.e. **trust the printer's reply** | **4 failed, 802 passed** | `test_deletes_old_file_and_confirms_it_by_re_listing`, `test_accepted_but_still_listed_counts_as_not_deleted`, `test_partial_delete_reports_both_halves`, `test_re_list_failure_reports_unconfirmed_not_success` |
+| T2 | `dry_run` defaults to `False` | **1 failed, 805 passed** | `test_schema_defaults_to_dry_run_and_sixty_days` |
+| T3 | Undated files treated as old and deleted (`created is None` → `delete.append`) | **4 failed, 802 passed** — *was 1 before the review* | `test_file_without_a_creation_date_is_never_deleted`, `test_near_epoch_create_time_is_never_deleted`, `test_creation_dates_below_the_floor_are_treated_as_unset`, `test_near_epoch_create_time_survives_a_real_delete_run` |
+| T4 | Active-print guard removed | **3 failed, 803 passed** — *was 2* | `test_active_file_survives_every_filter`, `test_active_guard_compares_the_printers_own_filename_exactly`, `test_never_deletes_the_file_being_printed` |
+| T5 | `exclude` ignored | **2 failed, 804 passed** | `test_exclude_wins_over_include`, `test_keeps_young_excluded_and_undated_files_with_reasons` |
+| T6 | Missing/no-`error_code` reply counted as success (`result.get("error_code", 0)`) | **2 failed, 804 passed** | `test_delete_without_answer_raises`, `test_delete_without_error_code_raises` |
+| T7 | `fnmatch.fnmatch` instead of `fnmatchcase` | **1 failed, 805 passed** *after the test was rewritten* — see below | `test_patterns_ignore_the_host_path_case_rules` |
+| T8 | Partial success reported as success (`success = bool(deleted)`) | **1 failed, 805 passed** | `test_partial_delete_reports_both_halves` |
+| T9 | `cleanup_files` not registered at all | **3 failed, 803 passed** | `test_async_setup_registers_update_ip_service`, `test_async_setup_registers_cleanup_files_service`, `test_registered_handler_takes_the_call_alone` |
+| **T10** | **Epoch floor removed** (`if created is None or created < _MIN_VALID_CREATE_TIME:` → `if created is None:`) — the #426 bug, restored | **3 failed, 803 passed** | `test_near_epoch_create_time_is_never_deleted`, `test_creation_dates_below_the_floor_are_treated_as_unset`, `test_near_epoch_create_time_survives_a_real_delete_run` |
+| **T11** | Blank `include` falls back to `["*"]` (the option § item 4 rejects) | **2 failed, 804 passed** | `test_schema_reads_a_blank_field_as_no_patterns`, `test_schema_reads_a_blank_include_as_no_patterns` |
+| **T12** | Fractional-day check removed (back to bare `vol.Coerce(int)`, so `60.9` → 60) | **1 failed, 805 passed** | `test_schema_rejects_a_fractional_age_limit` |
+| **T13** | `_pattern_note` never distinguishes (early `return None`), so a blank/typo'd include is the bland "nothing matched" message again | **1 failed, 805 passed** | `test_blank_include_is_reported_as_an_inert_pattern_not_silence` |
+| **T14** | Active guard made "smarter": `name.casefold().strip() == active.casefold().strip()` | **1 failed, 805 passed** | `test_active_guard_compares_the_printers_own_filename_exactly` |
+
+**T10 is the row that matters most in this table**, because it is the only one where the injected bug deletes a real
+user's file. Its mechanism is checkable without running anything: `PrinterFile({"create_time": 84720}).created` is
+`1970-01-01 23:32:00+00:00`, not `None` (verified against the real model in the real tree), so any filter that tests
+truthiness alone puts that file on the delete side of every cutoff. The test asserts `created is not None` before
+asserting the file survives, which is what stops it from being a test of the `None` path in disguise — the mistake
+that let this bug through the pre-review design, whose only timestamp test was
+`test_corrupt_timestamp_keeps_the_file` with `create_time=10**20` (a value that *raises*, so it exercises `None`).
+
+**T14 is the inverse lesson**: a trap that *adds* robustness to the guard also fails a test, because that test pins
+the comparison **basis**, not just the outcome. If someone later decides case-folding is right, they have to change
+the test and the sentence in § The change item 2 that explains the trade-off.
 
 **T7 is the one to read, because my first test for it was worthless.** I wrote "assert `ecc*` does not match
 `ECC2_x`", ran the trap, and got **798 passed** — the trap was completely invisible. Reason: on Linux
@@ -496,7 +762,9 @@ here runs on. The bug would only have appeared for a user running HA on Windows,
 rule exists to protect. The test now patches `os.path.normcase` to lowercase during the assertion, so `fnmatch`
 would match and fail while `fnmatchcase` never calls it and passes — and it asserts the positive case too, so the
 patch cannot be making the test vacuous. **Lesson for the rest of this repo: a cross-platform rule tested only
-where the platforms agree is not tested.** If you add a case-related rule anywhere else here, do the same.
+where the platforms agree is not tested.** If you add a case-related rule anywhere else here, do the same. **T10 is
+the same class of mistake one level up**: a timestamp rule tested only with values that fail to parse is not a test
+of the values that parse *wrong*.
 
 Also true, and worth keeping in mind:
 
@@ -524,25 +792,33 @@ get this service subtly wrong.
 Both are pinned (1 by `test_deletes_old_file_and_confirms_it_by_re_listing`'s full-dict equality plus the
 every-fields test; 2 by `test_nothing_matching_is_reported_as_an_empty_success`).
 
+**A third bug was caught by review, not by measurement, and that is the uncomfortable one.** The epoch-near
+`create_time` defect (§ Reviewer round 1) **passed all 798 tests and all nine original traps.** Nothing in the
+test suite could see it, because the only timestamp test used a value that *fails to parse* (`10**20`) and so
+exercised the `None` path, while the dangerous value (`84720`) *parses successfully*. A suite that tests "missing"
+and "corrupt" but not "wrong-but-valid" has no coverage of the case that destroys data. Two lessons for this repo:
+**destructive paths need a test for a plausible bad value, not just an impossible one**, and **green is not safe** —
+this plan's own trap methodology, which is otherwise rigorous, was not sufficient to find it.
+
 ## Scope — the true seam
 
 | File | Change |
 | --- | --- |
-| `custom_components/elegoo_printer/cc2/cleanup.py` | **new**, ~103 lines, pure (no HA, no transport) |
+| `custom_components/elegoo_printer/cc2/cleanup.py` | **new**, 132 lines as measured in `/tmp/t5`, pure (no HA, no transport). Includes `_MIN_VALID_CREATE_TIME` + `_usable_created` — the epoch floor is part of this module, not the handler's problem |
 | `custom_components/elegoo_printer/cc2/const.py` | +3 lines: `CC2_ERROR_FILE_DELETE_FAILED = 1007` + its comment. `CC2_CMD_DELETE_FILE` **already exists at `:80`** |
 | `custom_components/elegoo_printer/cc2/client.py` | +`delete_file` before `set_fan_speed` (`:1741`); +1 line to the `from .const import` block |
-| `custom_components/elegoo_printer/__init__.py` | +`SERVICE_CLEANUP_FILES`, `_glob_patterns`, schema, `CleanupReport`, `_async_delete_each`, `_async_cleanup_files`, `_cleanup_failure_text`, `_cleanup_unreachable`; 4th registration; `NamedTuple` import; extend the `.cc2.cleanup` and `.cc2.const` imports |
+| `custom_components/elegoo_printer/__init__.py` | +`SERVICE_CLEANUP_FILES`, `_glob_patterns`, `_whole_days`, schema, `CleanupReport`, `_pattern_note`, `_async_delete_each`, `_async_cleanup_files`, `_cleanup_failure_text`, `_cleanup_unreachable`; 4th registration; `NamedTuple` import; extend the `.cc2.cleanup` (incl. `SKIP_NOT_INCLUDED`) and `.cc2.const` imports |
 | `custom_components/elegoo_printer/services.yaml` | +`cleanup_files` entry |
-| `custom_components/elegoo_printer/tests/test_services.py` | +`TestCleanupFilesService` (20) + 3 helpers + imports; **1 existing assertion** `3` → `4` |
+| `custom_components/elegoo_printer/tests/test_services.py` | +`TestCleanupFilesService` (**25**) + 3 helpers + imports; **1 existing assertion** `3` → `4`; file goes 28 → **53** |
 | `custom_components/elegoo_printer/cc2/tests/test_delete_file.py` | **new**, 4 tests |
-| `custom_components/elegoo_printer/cc2/tests/test_cleanup_selection.py` | **new**, 8 tests |
-| `README.md` | +`cleanup_files` section (Services) incl. the video limitation and the daily automation |
+| `custom_components/elegoo_printer/cc2/tests/test_cleanup_selection.py` | **new**, **11** tests (incl. the 2 epoch-floor tests and the active-guard basis test) |
+| `README.md` | +`cleanup_files` section (Services) incl. the video limitation, the unset-clock rule, the blank-`include` warning and the daily automation |
 | `CHANGELOG.md` | +1 bullet under `[Unreleased] → Added`, crediting @tvidal-net |
 | `docs/CC2_PROTOCOL.md` | see § Protocol doc, below |
 
 **OUT of scope, declared:** `translations/` (services have no translation surface — see § Corrections);
 `config_flow.py`, `data.py`, entry options (the reporter's config question is answered by call data);
-`blueprints/` (§ No blueprint); `camera.py` (T4's file, and this task needs nothing from it); `coordinator.py`
+`blueprints/` (§ No blueprint); `camera.py` (task T4's file, and this task needs nothing from it — "T4" here is the task, not trap T4); `coordinator.py`
 (no new poll work — the service lists on demand); `scripts/test_cc2_printer.py` (§ Protocol doc, decision 3);
 sdcp/websocket transports (SDCP has `CMD_BATCH_DELETE_FILES = 259` at `sdcp/const.py:29`, **defined and never used**,
 and the sibling `CMD_START_PRINT` crashed the first-gen Centauri Carbon per #297 — wiring a second, equally
@@ -583,7 +859,11 @@ against a double whose reply shape this repo invented from the shared envelope. 
 - whether `error_code: 0` means what we assume;
 - whether a real delete is visible in a subsequent 1044 (the re-list is designed to survive *any* answer, including
   silence — but nobody has watched it work);
-- whether the reporter's printer lists video files at all (§ Videos are out of scope).
+- whether the reporter's printer lists video files at all (§ Videos are out of scope);
+- whether `print_status.filename` and the 1044 listing key are ever spelled differently for the same file — the
+  active-file guard's exact comparison depends on it and nothing in this repo can settle it (NB-6);
+- what an **unset printer clock** looks like in a 1044 `create_time` (the epoch floor assumes "small or zero"; #426's
+  evidence is for job times, not the file list).
 
 So: the PR says "implements #432 for G-code files; **#432 stays open until one hardware run confirms it**", and the
 CHANGELOG line says the same. The verification that closes it is five minutes with a real printer: run the service
@@ -610,17 +890,46 @@ feature rather than quietly closing it, and `docs/CC2_PROTOCOL.md` keeps its pla
   1044/1046 do report `last_print_time` and `total_print_times` (`docs/CC2_PROTOCOL.md:1550-1551`) and `PrinterFile`
   does **not** parse them, so a "keep anything printed recently" rule is a real follow-up needing two small model
   changes. `include`/`exclude` is today's workaround.
-- **`skipped` reports only files present in the listing**, so a pattern matching nothing looks like "no files"
-  rather than "bad pattern". A typo'd `include=EEXC*` therefore silently deletes nothing. This is the one
-  user-visible sharp edge left; the dry run is the defence, and `would_delete` being empty on a dry run is the cue.
+- **A pattern matching nothing is *reported* but still deletes nothing.** `skipped` only ever contains files
+  present in the listing, so a typo'd `include=EEXC*` and a blank `include: ""` both select nothing. The review
+  (NB-5) is right that a permanently-inert job reporting success is a bug, so `_pattern_note` now says so in the
+  message ("none of the 12 listed file(s) matched the include pattern …, so nothing was a candidate"), which makes
+  the inertness visible in a notify. What is **not** fixed: `success` stays `True` in that case, deliberately — an
+  automation must not alert nightly on "nothing to do" (§ The change item 4) — and a *message* is only read if the
+  user reads the notification. The dry run remains the real defence, and `would_delete` being empty is the cue.
+  Trap T13 pins the message, T11 pins why the blank field is not silently widened to `*`.
+- **The active-file guard fails open on a name mismatch** (NB-6). It compares
+  `status.print_info.filename` (`cc2/models.py:229`) with the 1044 listing key by **exact equality**, so if the
+  printer ever reports the same file under a different spelling — different case, trailing whitespace, a path
+  prefix — the file **currently printing becomes deletable**. Exact equality was chosen over a fuzzy match because
+  the repo already treats the two strings as one namespace (`cc2/models.py:315-316` looks the print filename up in
+  the 1044-derived `_file_details` cache) and a fuzzy match would *also* skip files a user legitimately wants gone.
+  **UNVERIFIED** whether the two ever differ — that needs a real 1044/1047 pair from one printer mid-print, which is
+  part of the hardware run in § The issue stays open. `test_active_guard_compares_the_printers_own_filename_exactly`
+  pins the basis in both directions and trap T14 fails if someone changes it silently.
 - **Race with a print started after the listing**: the active-file guard reads status at selection time, so a job
   started between selection and delete is not protected. The 10-min poll means the status is at most ~2 s stale, and
   the printer refusing to delete a file it is printing (1007) is the backstop — **UNVERIFIED**, since 1047 is
   untested. A daily 03:30 trigger is the practical mitigation, and the README example uses one.
 - **`CleanupReport` always allocates the full key set** including `would_delete` on real runs, where it duplicates
   `deleted`. Cheap, and preferred over a response whose shape depends on which branch ran.
-- **`_glob_patterns` is hand-rolled** rather than `cv.ensure_list`. Deliberate (§ The change item 4) — it is ~15
-  lines of validation that a stdlib-ish helper would replace if HA ever ships a list-of-globs validator.
+- **`_glob_patterns` is hand-rolled** rather than `cv.ensure_list`. Deliberate (§ The change item 4) — the reason
+  is *measured*, not stylistic: the `cv` composition rejects `""`, which is what a cleared UI text field submits.
+  ~20 lines of validation a stdlib-ish list-of-globs helper would replace if HA ever ships one. Its docstring names
+  the two claims about `cv.ensure_list` that are **false** so nobody re-adds them.
+- **`older_than_days` rejects fractions rather than rounding them** (NB-7). `vol.Coerce(int)` and HA's
+  `cv.positive_int` both truncate `60.9 → 60`, i.e. *more* deletion than asked; refusing the value is the safer
+  half of the fix, and the cost is that a template producing `60.0` from arithmetic is accepted (`60.0 == 60`) while
+  one producing `60.5` fails the call. Failing loudly is the intended behaviour on a destructive field, but it does
+  mean an automation that computes a fractional age breaks rather than rounds.
+- **The 2000 epoch floor is a judgement, inherited from #426, not a measurement of this printer.** It rejects any
+  `create_time` before `2000-01-01`, which cannot be a real G-code creation date (the format postdates it) and is the
+  same boundary `definitions.py:56` already uses for job times. The cost of the choice is one-sided and intentional: a
+  genuinely-old file dated before 2000 is never deleted, which is a missed cleanup; the alternative — trusting it — is
+  deleting files whose clock was never set. A file dated 2000-2005 with a *correct* clock is likewise treated as old
+  and will be deleted, which is correct. **UNVERIFIED** how a CC2 with an unset clock reports `create_time` in the
+  field list (the #426 evidence is for job times on a Centauri Carbon after a restart); the hardware run should note
+  what an unset clock looks like in 1044 too.
 - **UNVERIFIED:** nothing here touched a printer, a broker or a running Home Assistant. Registration tests use a bare
   `MagicMock` hass (the file's existing pattern), so `services.yaml`↔schema agreement is checked by parsing YAML and
   by reading both, not by a test. A real HA start-up with the integration loaded would be the last check before
@@ -649,7 +958,16 @@ chain is the orchestrator's call; flagging it rather than quietly leaving a stal
   stays open for a hardware run.
 - **Commit shape**: one commit. Suggested split if the wave protocol wants reviewable chunks: (a) `cc2/cleanup.py` +
   `cc2/const.py` + `delete_file` + their two new test files — pure and self-contained; (b) service + `services.yaml`
-  + `test_services.py` + README/CHANGELOG/doc. Both green on their own.
+  + `test_services.py` + README/CHANGELOG/doc. Both green on their own. **The epoch floor and its three tests must
+  land in (a) together** — the floor is in the pure module, and one of the three (`test_near_epoch_create_time_survives_a_real_delete_run`)
+  is in (b), so if the split is used, (a) must not be merged as a standalone PR without (b) following: the floor
+  would be shipped with only two of its three pins.
+- **Cross-reference #426 in the PR description.** The epoch floor is the same boundary `definitions.py:54-61` already
+  applies to job times, and the PR is the natural place to say "this is #426's lesson applied to the destructive path,
+  where the cost of the bug is data loss rather than a wrong sensor reading". It also invites the follow-up the plan
+  does *not* take: a shared helper for "printer timestamp below the floor means unset", which would belong in
+  `definitions.py` or the models layer once a third caller needs it. Not extracted here — two callers in different
+  layers is not yet a pattern, and `cc2/cleanup.py` is deliberately import-free of the HA layer.
 - **Credit @tvidal-net** in the CHANGELOG and the PR. They wrote the include/exclude design, kept its vocabulary
   verbatim (`include`/`exclude`, `all`/`nothing` defaults, `ECC*`/`Keep*` examples), and offered to implement it —
   the shipped design is theirs, with the confirmation-by-relisting and dry-run-default added because 1047 is
