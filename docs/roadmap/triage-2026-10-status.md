@@ -73,22 +73,26 @@ Forcing symbols / shared files:
 
 | # | Task | Plan file | Wave | Seam (disjointness evidence) | Status |
 |---|------|-----------|------|------------------------------|--------|
-| T1 | #436 device firmware version frozen at setup | `docs/roadmap/triage-2026-10-task01-device-firmware.md` | 1 | `entity.py` (owned outright); reads coordinator data, edits no other module | `todo` |
-| T2 | PR #430 `update_ip` service: stale `ip_address` in options, 2 red tests | `docs/roadmap/triage-2026-10-task02-update-ip-options.md` | 1 | `__init__.py` + `tests/test_services.py` | `todo` |
-| T3 | #435 Print Selected File ignores the chosen tray | `docs/roadmap/triage-2026-10-task03-tray-selection.md` | 1 | `cc2/client.py`, `definitions.py`, new test file | `todo` |
+| T1 | #436 device firmware version frozen at setup | `docs/roadmap/triage-2026-10-task01-device-firmware.md` | 1 | `coordinator.py` + `entity.py` + new `tests/test_device_firmware.py` (corrected from "entity.py owned outright" — the fix is *in* coordinator.py; entity.py alone regresses on reload) | `done` `7a4bdd8` |
+| T2 | PR #430 `update_ip` service: stale `ip_address` in options, 2 red tests | `docs/roadmap/triage-2026-10-task02-update-ip-options.md` | 1 | `__init__.py` + `tests/test_services.py` | `done` `aae757f` |
+| T3 | #435 Print Selected File ignores the chosen tray | `docs/roadmap/triage-2026-10-task03-tray-selection.md` | 1 | 10 existing files, no new file: `sdcp/models/file_info.py`, `cc2/client.py`, `definitions.py`, `select.py`, `services.yaml`, `README.md`, `docs/CC2_PROTOCOL.md`, `cc2/tests/test_start_print.py`, `tests/test_file_select.py`, `cc2/tests/test_file_list.py` (corrected — the row previously claimed "new test file", which does not exist) | `done` `e63ea94` (+ docstring row in `__init__.py`, + changelog `8c50208`) |
 | T4 | #425 video lifecycle state onto an integration-owned, entry-id-keyed owner | `docs/roadmap/triage-2026-10-task04-video-state-owner.md` | 2 | `camera.py`, `__init__.py`, `data.py`, `tests/test_video_lifecycle.py` | `todo` |
 | T5 | #432 cleanup old printer files/videos (1047 DELETE_FILE is documented Untested) | `docs/roadmap/triage-2026-10-task05-file-cleanup.md` | 2 | `cc2/client.py`, `services.yaml`, `translations/*` (18 locales), new test, `blueprints/` | `todo` |
 | T6 | #429 CC1: manual IP setup when UDP 3000 discovery is unanswered | `docs/roadmap/triage-2026-10-task06-manual-ip-no-discovery.md` | 2 | `config_flow.py`, `api.py`, `translations/*` | `todo` |
 
 The **Seam** column is load-bearing: on resume, wave 1-2 can only be re-verified against the tree from what is
-written here.
+written here. Wave 1's rows were corrected against the tree after the plans were written — both corrections
+came from the plan authors, and both original rows were wrong.
 
 ## Blockers / open questions
 
-Empty. (T3 and T5 both carry a *protocol unknown* — the real `slot_map` semantics, and the untested 1047
-DELETE_FILE — which is scoped as part of their grounding, not a blocker. If ground truth cannot be reached
-from the repo's own protocol doc + existing evidence, the task records the limit honestly rather than paying
-an unbounded rewrite; see the follow-ups file if that happens.)
+- **#435 is NOT confirmed fixed and must not be closed on a green gate.** The multi-tool `slot_map` explanation
+  is the best the repo's evidence supports and the mapping is correct per the protocol doc regardless, but the
+  tray choice was already reaching the wire for single-tool files (measured). Only a hardware run — start a
+  known multi-tool G-code with a tray other than A1 and watch which tray is consumed — closes it. The code,
+  README and `CC2_PROTOCOL.md` all say this; the CHANGELOG line says this. Follow-up: ask the reporter how
+  many tools their file uses.
+- T5's 1047 DELETE_FILE is documented "Untested" — protocol verification is part of that task's grounding.
 
 ## Decisions log
 
@@ -101,7 +105,32 @@ an unbounded rewrite; see the follow-ups file if that happens.)
   branch: its `headRefName` is `main`, so it cannot be checked out as a normal head, and the fix needs a
   decision (sync both stores vs drop the stale options key) plus the 2 red tests. Contributor credit is owed
   regardless — record it for the release notes.
+- 2026-10-24 — **Wave-1 decomposition corrected by the tree.** My original T3 hypothesis (object aliasing
+  loses `selected_tray`) was disproved by measurement: `coordinator.data is api.client.printer_data` for CC2
+  and the tray reaches the wire as `tray_id: 1` for A2. My original T2 framing ("needs a decision whether
+  options are even written") was also wrong — an options flow exists and writes `ip_address` on every save.
+  Both tasks were re-scoped from the grounding reports, not from my initial read.
+- 2026-10-24 — T3's `__init__.py` docstring row **deferred out of the parallel wave** to keep T2 sole owner of
+  that file; applied by the orchestrator and folded into T3's commit. First attempt at T2's commit swept the
+  row in by accident (it described behaviour landing a commit later) — reset and re-committed clean.
+- 2026-10-24 — T1 keeps a **second edit in `entity.py`** after the reviewer reproduced the regression: a reload
+  re-runs `async_get_or_create(**device_info)`, which writes the frozen `sw_version` back over the registry.
+  Registry-only fixes silently undo themselves. `entry.data` is deliberately NOT written on the poll path —
+  that fires `add_update_listener(async_reload_entry)` = full reload. Limit recorded in the plan:
+  `entry.data["firmware"]` stays the at-setup value; nothing user-visible reads it once `sw_version` is live.
 
 ## Changelog
 
 One line per task: hash, what shipped, gate numbers at that moment.
+
+- `7a4bdd8` T1 #436 — device registry `sw_version` follows the printer's live firmware off the poll, plus the
+  `entity.py` read so a reload cannot undo it; new `tests/test_device_firmware.py` (7 tests). Gate at commit:
+  scoped 7 passed.
+- `aae757f` T2 #430 — `update_ip` writes the address to data *and* options in one call; false comment
+  removed; 2 assertions updated + 1 merge-outcome test added. Scoped 28 passed.
+- `e63ea94` T3 #435 — `PrinterFile.tools` from `color_map[].t`; `print_start` emits one `slot_map` entry per
+  tool, byte-identical fallback; e2e test pins select→1020; README + `CC2_PROTOCOL.md` separate measured from
+  inferred. Scoped 40 passed (36 → 40, +4, no existing test edited).
+- `8c50208` docs — CHANGELOG lines for the three, each crediting its reporter.
+- **Wave 1 gate (once, after all three):** `make format` no-op, `make lint` "All checks passed",
+  `make test` **762 passed, 12 warnings** (baseline 750 + 7 + 1 + 4). Tree clean.
