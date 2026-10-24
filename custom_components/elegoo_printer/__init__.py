@@ -14,7 +14,7 @@ import tempfile
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 from urllib.parse import unquote
 
 import voluptuous as vol
@@ -37,8 +37,15 @@ from homeassistant.loader import async_get_loaded_integration
 from custom_components.elegoo_printer.websocket.client import ElegooPrinterClient
 
 from .api import ElegooPrinterApiClient
+from .cc2.cleanup import (
+    DEFAULT_EXCLUDE,
+    DEFAULT_INCLUDE,
+    DEFAULT_OLDER_THAN_DAYS,
+    SKIP_NOT_INCLUDED,
+    select_deletions,
+)
 from .cc2.client import ElegooCC2Client
-from .cc2.const import CC2_ERROR_PRINTER_BUSY
+from .cc2.const import CC2_ERROR_FILE_DELETE_FAILED, CC2_ERROR_PRINTER_BUSY
 from .cc2.upload import CHUNK_SIZE as UPLOAD_CHUNK_SIZE
 from .cc2.upload import UploadFile
 from .const import (
@@ -54,13 +61,14 @@ from .const import (
 from .coordinator import ElegooDataUpdateCoordinator
 from .data import ElegooPrinterData
 from .sdcp.exceptions import (
+    PRINT_TRANSPORT_ERRORS,
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
 )
 from .websocket.server import ElegooPrinterServer
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Mapping, Sequence
 
     import aiohttp
     from homeassistant.core import HomeAssistant, ServiceCall
@@ -443,6 +451,390 @@ async def _async_upload_gcode(hass: HomeAssistant, call: ServiceCall) -> dict:
         await hass.async_add_executor_job(_remove_quietly, staged)
 
 
+SERVICE_CLEANUP_FILES = "cleanup_files"
+
+# How the printer's own reply maps onto the per-file reasons the service
+# reports. 1007 is the only delete-specific code the protocol lists, and even
+# that is unverified (1047 documents no response at all).
+_DELETE_REFUSED = "printer refused the delete"
+_DELETE_REFUSED_BUSY = "printer is busy"
+_DELETE_UNCONFIRMED = "still listed after delete"
+_DELETE_NO_REPLY = "printer did not answer"
+
+
+def _glob_patterns(value: object) -> list[str]:
+    """
+    Validate ``include``/``exclude`` into a list of glob patterns.
+
+    Hand-rolled rather than a ``cv`` composition, and the reason is measured:
+    ``vol.All(cv.ensure_list, [vol.All(str, vol.Length(min=1))])`` — the
+    obvious spelling — **rejects the empty string** ("length of value must be
+    at least 1 @ data[0]"), and a cleared ``text`` field in the HA UI is
+    submitted as ``""``. The reporter's "exclude = nothing" has to validate, so
+    the blank case needs explicit handling that no stdlib composition
+    expresses. Two claims sometimes made for the stdlib route are false and
+    must not be re-added here: a ``text`` selector with ``multiple: true``
+    validates a **list of strings** (not a mapping), and ``cv.ensure_list`` does
+    **not** coerce a dict into a string — it passes it through and the inner
+    ``str`` check rejects it.
+
+    So this takes a ``str`` or a ``list[str]``, rejects anything else (a mapping
+    included — the selector shapes the UI only, and a programmatic or REST
+    caller can send any JSON at all, which is why the same reasoning already
+    re-checks the entry domain in ``_async_update_ip``), and reads ``""`` as "no
+    patterns".
+
+    ``""`` becoming ``[]`` — which matches no file name at all — is deliberate
+    and NOT widened to ``DEFAULT_INCLUDE``: a blank field is indistinguishable
+    from a template that rendered to empty, and resolving that to ``*`` would
+    delete every old file on a call that named nothing. That trade is pinned by
+    test_schema_reads_a_blank_field_as_no_patterns, and the resulting inert run
+    is reported out loud by ``_pattern_note`` rather than left silent.
+    """
+    if isinstance(value, str):
+        return [] if value == "" else [value]
+    if isinstance(value, list):
+        patterns: list[str] = []
+        for entry in value:
+            if not isinstance(entry, str):
+                msg = "each pattern must be a string"
+                raise vol.Invalid(msg)
+            if entry:
+                patterns.append(entry)
+        return patterns
+    msg = "include/exclude must be a pattern or a list of patterns"
+    raise vol.Invalid(msg)
+
+
+def _whole_days(value: object) -> int:
+    """
+    Validate ``older_than_days`` as a WHOLE number of days, rejecting fractions.
+
+    ``vol.Coerce(int)`` — and HA's own ``cv.positive_int``, which is built the
+    same way — **truncates**: ``60.9`` becomes ``60``. A lower day count is a
+    lower cutoff, so truncating hands out slightly MORE deletion than the caller
+    asked for, which is the wrong direction to round on a destructive field.
+    Refusing the value is therefore the fix; a string still parses ("60"),
+    because automations template these.
+
+    A ``bool`` is refused for the same kind of reason: Home Assistant's YAML
+    loader turns ``older_than_days: yes`` (or ``on``) into ``True``, and
+    ``int(True)`` is ``1`` — silently the most aggressive cutoff the field
+    allows. A day count that arrives as a boolean is a caller that did not mean
+    what it sent, so it fails loudly instead.
+    """
+    if isinstance(value, bool):
+        msg = "older_than_days must be a number of days, not a yes/no value"
+        raise vol.Invalid(msg)
+    days = vol.Coerce(int)(value)
+    try:
+        fractional = days != float(value)
+    except OverflowError:
+        # A value too large for float() is not a usable day count either; fail
+        # as a validation error rather than letting an OverflowError escape the
+        # schema and surface as an unhandled exception in the call.
+        fractional = True
+    if fractional:
+        msg = "older_than_days must be a whole number of days"
+        raise vol.Invalid(msg)
+    return vol.Range(min=1)(days)
+
+
+SERVICE_CLEANUP_FILES_SCHEMA = vol.Schema(
+    {
+        vol.Required("entry_id"): str,
+        vol.Optional("older_than_days", default=DEFAULT_OLDER_THAN_DAYS): _whole_days,
+        vol.Optional("include", default=list(DEFAULT_INCLUDE)): _glob_patterns,
+        vol.Optional("exclude", default=list(DEFAULT_EXCLUDE)): _glob_patterns,
+        # 1047 is documented "Untested" and its reply shape is undocumented, so
+        # the safe answer is the default: report, delete nothing. The other
+        # three services default to doing the thing; this one defaults to not
+        # destroying files, because its reply cannot be trusted.
+        vol.Optional("dry_run", default=True): bool,
+    }
+)
+
+
+class CleanupReport(NamedTuple):
+    """
+    The one shape every ``cleanup_files`` response is built from.
+
+    Seven outcomes all returning hand-built dicts guarantees drift, and a key
+    missing from a service response renders as nothing in a template — which is
+    indistinguishable from a genuinely empty list. Making the fields
+    structural means "every response carries ``deleted``" is a property of the
+    type rather than of each branch.
+
+    ``error`` and ``message`` are prose and are dropped by ``as_dict()`` when
+    unset: in a Jinja template ``None`` renders as the string "None", so a
+    notify reading ``{{ response.error }}`` on a successful run would tell the
+    user "None".
+    """
+
+    success: bool
+    dry_run: bool
+    deleted: list[str]
+    failed: dict[str, str]
+    skipped: dict[str, str]
+    would_delete: list[str]
+    error: str | None = None
+    message: str | None = None
+
+    def as_dict(self) -> dict:
+        """Return the response body, dropping prose that was never set."""
+        body = self._asdict()
+        return {
+            key: value
+            for key, value in body.items()
+            if value is not None or key not in ("error", "message")
+        }
+
+
+def _pattern_note(
+    include: Sequence[str],
+    file_count: int,
+    to_delete: Sequence[str],
+    reasons: Mapping[str, str],
+) -> str | None:
+    """
+    Say out loud when the include pattern left nothing a candidate.
+
+    ``include: ""`` (a cleared UI box, or a template that rendered empty) and a
+    typo'd ``include=EEXC*`` both look identical to "nothing is old enough":
+    every listed file comes back ``SKIP_NOT_INCLUDED``, the service reports
+    success, and a nightly cleanup stays inert forever while saying so. A run
+    that simply found nothing old keeps its plain message, so this does not turn
+    into nightly noise.
+
+    The message is visibility only — ``success`` stays True, because an
+    automation must not alert on "nothing to do" — and the pattern set is named
+    (an empty one as "(empty)", so a cleared field is recognisable as itself),
+    which makes the notification diagnosable instead of mysterious.
+    """
+    if to_delete:
+        return None
+    if not file_count:
+        # An empty listing: nothing was ever a candidate, pattern or not.
+        return "the printer listed no files, so there was nothing to clean up"
+    if reasons and set(reasons.values()) == {SKIP_NOT_INCLUDED}:
+        named = ", ".join(include) if include else "(empty)"
+        return (
+            f"none of the {file_count} listed file(s) matched the include "
+            f"pattern(s) {named}, so nothing was a candidate and nothing was "
+            "deleted; omit 'include' to mean every file"
+        )
+    return None
+
+
+def _cleanup_failure_text(code: int) -> str:
+    """Turn a delete error_code into the per-file reason the service reports."""
+    if code == CC2_ERROR_FILE_DELETE_FAILED:
+        return _DELETE_REFUSED
+    if code == CC2_ERROR_PRINTER_BUSY:
+        return _DELETE_REFUSED_BUSY
+    return f"{_DELETE_REFUSED} (error_code {code})"
+
+
+async def _async_delete_each(
+    client: ElegooCC2Client, names: Sequence[str]
+) -> tuple[list[str], dict[str, str]]:
+    """
+    Send one 1047 per file in order, stopping at the first transport error.
+
+    Sequential on purpose: one MQTT command channel, a 10 s timeout each, and a
+    delete storm is the last thing an untested method needs. A refused delete is
+    data reported per file, not an abort — one locked file must not cost the
+    other thirty-nine. When the printer stops answering, whatever was already
+    handled is reported rather than thrown away, and the files never attempted
+    are reported as never attempted.
+    """
+    deleted: list[str] = []
+    failed: dict[str, str] = {}
+    for index, name in enumerate(names):
+        try:
+            code = await client.delete_file(name)
+        except PRINT_TRANSPORT_ERRORS as err:
+            LOGGER.warning("cleanup_files stopped at %s: %r", name, err)
+            failed[name] = f"{_DELETE_NO_REPLY} ({err.__class__.__name__})"
+            for rest in names[index + 1 :]:
+                failed[rest] = _DELETE_NO_REPLY
+            return deleted, failed
+        if code == 0:
+            deleted.append(name)
+        else:
+            failed[name] = _cleanup_failure_text(code)
+    return deleted, failed
+
+
+def _pattern_list(
+    call_data: Mapping[str, object], key: str, default: list[str]
+) -> list[str]:
+    """
+    Read a pattern field from call data, mirroring the schema's default.
+
+    The schema fills `include` with `["*"]` and `exclude` with `[]`, but a
+    programmatic or REST caller can bypass it, so the handler needs the same
+    defaults. The two cases are NOT the same and must not be collapsed: a
+    MISSING key means "the caller did not say", which is the reporter's
+    `include = all` default, while a key present as `""` or `[]` means the
+    caller cleared the box, which stays inert and is reported as such by
+    ``_pattern_note``. Widening a cleared field to `*` is the mass-delete bug
+    this service refuses.
+    """
+    if key not in call_data:
+        return list(default)
+    return list(call_data[key] or ())
+
+
+async def _async_confirm_deletions(
+    client: ElegooCC2Client, deleted: list[str]
+) -> tuple[list[str], dict[str, str]]:
+    """
+    Re-read the file list (1044) and split ``deleted`` into confirmed and not.
+
+    This is the whole point of the design: 1047 documents no response, so a
+    printer that answers ``error_code 0`` and keeps the file is a scenario this
+    repo has to survive, not one it gets to disbelieve. Only a listing that no
+    longer carries the file counts as a delete; a re-list that fails reports
+    every accepted file as unconfirmed rather than as gone.
+    """
+    try:
+        remaining = await client.get_file_list()
+    except PRINT_TRANSPORT_ERRORS as err:
+        reason = f"delete not confirmed, re-list failed ({err!r})"
+        return [], dict.fromkeys(deleted, reason)
+
+    still = dict.fromkeys((n for n in deleted if n in remaining), _DELETE_UNCONFIRMED)
+    return [name for name in deleted if name not in remaining], still
+
+
+async def _async_cleanup_files(hass: HomeAssistant, call: ServiceCall) -> dict:
+    """
+    Delete old files from a Centauri Carbon 2's local storage (issue #432).
+
+    Takes ``entry_id``, ``older_than_days`` (default 60, whole days only),
+    ``include`` (default every file), ``exclude`` (default nothing) and
+    ``dry_run`` (**default on**). Selection is the reporter's own vocabulary;
+    the safety rules are because method 1047 is documented "Untested": the file
+    listing is fetched fresh rather than read from the ten-minute cache, the dry
+    run deletes nothing, and a delete is confirmed by re-listing (1044) instead
+    of by trusting 1047's reply. A partial success is reported as a failure, so
+    an automation can alert on ``not response.success`` and know the printer is
+    not in the state it asked for. CC2 only.
+    """
+    client, error = _resolve_cc2_client(hass, call.data["entry_id"])
+    if client is None:
+        return error or {"success": False, "error": "unknown"}
+
+    include = _pattern_list(call.data, "include", list(DEFAULT_INCLUDE))
+    exclude = _pattern_list(call.data, "exclude", list(DEFAULT_EXCLUDE))
+    older_than_days = call.data.get("older_than_days", DEFAULT_OLDER_THAN_DAYS)
+    dry_run = call.data.get("dry_run")
+    # A programmatic or REST caller can send anything, including no key at all
+    # or None; the schema's default is not a guard there. Only exactly the
+    # boolean False turns the dry run off, so an omitted key, a None, a "false"
+    # string or a 0 all keep the handler from deleting: the destructive branch
+    # has to be asked for by name, and cannot be reached by accident.
+    dry_run = dry_run is not False
+
+    entry_id = call.data["entry_id"]
+    try:
+        files = await client.get_file_list()
+    except PRINT_TRANSPORT_ERRORS as err:
+        return _cleanup_unreachable("file list", err, dry_run=dry_run)
+
+    # The guard reads the name the printer itself reported for the running job;
+    # select_deletions compares it exactly, before any pattern is consulted.
+    active = client.printer_data.status.print_info.filename
+    to_delete, skipped = select_deletions(
+        files,
+        include=tuple(include),
+        exclude=tuple(exclude),
+        older_than_days=older_than_days,
+        active_filename=active,
+    )
+    reasons = dict(skipped)
+    note = _pattern_note(include, len(files), to_delete, reasons)
+
+    if dry_run:
+        message = (
+            note
+            or f"{len(to_delete)} file(s) older than {older_than_days} day(s) "
+            "would be deleted; nothing was deleted (dry run)"
+        )
+        LOGGER.info("cleanup_files dry run for entry %s: %s", entry_id, message)
+        return CleanupReport(
+            success=True,
+            dry_run=True,
+            deleted=[],
+            failed={},
+            skipped=reasons,
+            would_delete=to_delete,
+            message=message,
+        ).as_dict()
+
+    deleted, failed = await _async_delete_each(client, to_delete)
+
+    # The done-when clause: 1047 documents no response, so the printer's
+    # "error_code 0" is not proof of anything. Re-list and believe the listing.
+    still: list[str] = []
+    if deleted:
+        deleted, unconfirmed = await _async_confirm_deletions(client, deleted)
+        still = list(unconfirmed)
+        failed.update(unconfirmed)
+
+    if note:
+        # The include pattern itself left nothing a candidate — say that rather
+        # than the bland "nothing was old enough" text.
+        message = note
+    elif to_delete:
+        message = f"deleted {len(deleted)} of {len(to_delete)} selected file(s)"
+        if failed:
+            message += f"; {len(failed)} refused or unconfirmed"
+    else:
+        message = (
+            f"no file was older than {older_than_days} day(s) and allowed by "
+            "the patterns"
+        )
+
+    # A partial success is a failure: a daily automation must be able to alert
+    # on `not response.success` and know the printer is not in the state it
+    # asked for. `still` is folded into `failed` above, so the second half is
+    # belt-and-braces rather than a second condition. An EMPTY selection is not
+    # a failure — a nightly run with nothing old to do is a clean run, and
+    # alerting on it would be noise by Thursday.
+    report = CleanupReport(
+        success=not failed and not still,
+        dry_run=False,
+        deleted=deleted,
+        failed=failed,
+        skipped=reasons,
+        would_delete=to_delete,
+        message=message,
+    )
+    LOGGER.info("cleanup_files for entry %s: %s", entry_id, message)
+    return report.as_dict()
+
+
+def _cleanup_unreachable(what: str, err: Exception, *, dry_run: bool) -> dict:
+    """
+    Report a printer that could not be reached, in the full response shape.
+
+    ``dry_run`` echoes what the caller actually asked for rather than a fixed
+    False, so a failed dry run is not misreported as a failed delete run.
+    """
+    LOGGER.warning("cleanup_files could not %s: %r", what, err)
+    return CleanupReport(
+        success=False,
+        dry_run=dry_run,
+        deleted=[],
+        failed={},
+        skipped={},
+        would_delete=[],
+        error=f"Printer not reachable ({err.__class__.__name__})",
+    ).as_dict()
+
+
 # https://developers.home-assistant.io/docs/creating_integration_file_structure/#defining-services
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG001
     """Set up the Elegoo Printer component."""
@@ -471,6 +863,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:  # noqa: ARG00
         SERVICE_UPLOAD_GCODE,
         partial(_async_upload_gcode, hass),
         schema=SERVICE_UPLOAD_GCODE_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CLEANUP_FILES,
+        partial(_async_cleanup_files, hass),
+        schema=SERVICE_CLEANUP_FILES_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
     return True

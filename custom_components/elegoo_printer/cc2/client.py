@@ -42,6 +42,7 @@ from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
 from . import upload as _upload
 from .const import (
+    CC2_CMD_DELETE_FILE,
     CC2_CMD_GET_ATTRIBUTES,
     CC2_CMD_GET_CANVAS_STATUS,
     CC2_CMD_GET_FILE_DETAIL,
@@ -1735,6 +1736,56 @@ class ElegooCC2Client:
         result = (response or {}).get("result")
         if not isinstance(result, dict) or "error_code" not in result:
             msg = "No acknowledgement from the printer for start print"
+            raise ElegooPrinterConnectionError(msg)
+        return int(result["error_code"])
+
+    async def delete_file(
+        self,
+        filename: str,
+        *,
+        storage_media: str = "local",
+    ) -> int:
+        """
+        Delete one file from the printer's storage (method 1047).
+
+        UNTESTED ON HARDWARE. The protocol doc marks 1047 "Untested" and
+        documents the request only: unlike 1044, 1046 and 1048 it shows no
+        response body at all, and nothing in this repo has ever received a 1047
+        reply. Reading the answer as ``result.error_code`` is therefore an
+        inference from the envelope every other file method uses — the listed
+        ``1007 FILE_DELETE_FAILED`` is the only hint — not a measurement.
+
+        So a ``0`` here means "the printer did not refuse", nothing more. It is
+        NOT proof of deletion, and the caller decides whether the file is gone
+        by re-listing (method 1044); that is what the ``cleanup_files`` service
+        does rather than trusting this return value.
+
+        A non-zero code is returned rather than raised: one locked or busy file
+        must not abort a cleanup of forty, and the reason is reported per file.
+
+        Args:
+            filename: the name exactly as the 1044 listing reports it.
+            storage_media: defaults to the printer's internal storage; no
+                caller in this integration offers another value, because 1044
+                is only ever documented with ``path: "/"`` on ``local``.
+
+        Returns:
+            The ``error_code`` from the printer's reply, if it sent one.
+
+        Raises:
+            ElegooPrinterConnectionError: if the printer sent no reply, or a
+                reply with no error code — including firmware that does not
+                implement 1047 and stays silent, which surfaces from
+                ``_send_command`` as a timeout after 10 s.
+
+        """
+        response = await self._send_command(
+            CC2_CMD_DELETE_FILE,
+            {"storage_media": storage_media, "filename": filename},
+        )
+        result = (response or {}).get("result")
+        if not isinstance(result, dict) or "error_code" not in result:
+            msg = f"No acknowledgement from the printer for delete file {filename}"
             raise ElegooPrinterConnectionError(msg)
         return int(result["error_code"])
 

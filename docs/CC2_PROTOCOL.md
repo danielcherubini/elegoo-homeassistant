@@ -1613,6 +1613,26 @@ All require `X-Token` authentication (query parameter or header). See [Download 
 }
 ```
 
+> ⚠️ **No response is documented for 1047 — unlike 1044, 1046 and 1048, each of
+> which shows a response body here.** The method is also marked **Untested** in
+> the table above. The only hint that its reply resembles the standard envelope
+> is the listed error code `1007 FILE_DELETE_FAILED`, and that is an inference,
+> not an observation: nothing in this repository has ever received a 1047 reply.
+>
+> Because of that, the integration's `cleanup_files` service **does not treat
+> the reply as proof of deletion**. `ElegooCC2Client.delete_file()` reads
+> `result.error_code` when a reply arrives (and raises when none does, which is
+> also what firmware that ignores 1047 produces after the 10 s command
+> timeout), but the service confirms every delete by re-listing with **1044**
+> and reporting a file the printer accepted and still lists as
+> `still listed after delete`. A printer that never answers therefore costs a
+> reported failure, never a silently wrong deletion.
+>
+> **Placeholder for the first real capture.** Whoever runs 1047 against hardware
+> first, please paste the raw reply here (topic, full payload, and whether the
+> file was gone from the next 1044). That single observation would let this row
+> say "Works" and would let the service stop paying for a second listing.
+
 ### Disk Info [Both]
 
 ```json
@@ -2410,6 +2430,7 @@ Use this checklist when implementing CC2 support:
 - [ ] File detail/metadata (MQTT method 1046)
 - [ ] File thumbnail (MQTT method 1045)
 - [ ] File download (OpenCentauri only: HTTP `GET /download`; stock firmware: not available via any method)
+- [ ] Delete file (MQTT method 1047) — **implemented in this integration (`cleanup_files`), never verified on hardware.** No response is documented for 1047, so the service confirms a delete by re-listing with 1044 rather than by reading the reply; see [Delete File](#delete-file-both). Unticked until someone captures a real reply.
 
 ### Peripheral Control
 - [ ] Temperature control
