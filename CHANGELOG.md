@@ -30,6 +30,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- The printer's **Firmware version** on the device page now follows the printer instead of staying frozen at whatever version it was running when the integration was first set up; a firmware update shows up without reloading the integration. Reported by @mmerickel in #436.
+- `update_ip` now actually moves the printer when its address had been saved in the printer's options: the new address is written to both places Home Assistant keeps it, so the reload connects where the printer now is instead of where it used to be. Reported by @caohuongls in #430.
+- The Print Tray choice is now mapped to **every** G-code tool a file uses when starting a print, not just the first one, so a multi-tool file no longer silently prints from A1. Whether the printer honours a complete map is not yet confirmed on hardware, so #435 stays open until a print can be watched directly; reported by @jsbrich.
 - Begin Time no longer shows "1 January 1970" when the printer reports a 1970 start time (seen on a Centauri Carbon after a restart). It is now worked out from the elapsed print time, and a 1970 End Time reads as unknown.
 - A failed firmware check (e.g. Elegoo's server unreachable) no longer resets Firmware Update Available to "no update" until the next check 12 hours later; the last known result is kept.
 - WebSocket discovery now recognizes hostnames by their resolved IPv4 address, and options updates validate the newly submitted address.
