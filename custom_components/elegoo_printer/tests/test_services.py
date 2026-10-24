@@ -43,6 +43,7 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
     ElegooPrinterNotConnectedError,
 )
+from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 
 def _make_hass_with_entry(*, entry: MagicMock) -> MagicMock:
@@ -57,7 +58,12 @@ def _make_hass_with_entry(*, entry: MagicMock) -> MagicMock:
 
 
 def _make_config_entry(
-    *, entry_id: str, domain: str, data: dict, state: ConfigEntryState
+    *,
+    entry_id: str,
+    domain: str,
+    data: dict,
+    state: ConfigEntryState,
+    options: dict | None = None,
 ) -> MagicMock:
     """
     Build a fake config entry with real string and dict attributes.
@@ -66,11 +72,16 @@ def _make_config_entry(
     a bare MagicMock attribute raises) and ``entry.entry_id`` / ``entry.domain``
     MUST be real strings (the handler string-compares and does
     ``hass.config_entries.async_get_entry(...) is entry``).
+
+    ``options`` defaults to a REAL empty dict for the same reason: left as a
+    bare MagicMock attribute it splats to ``{}``, so a test silently exercises
+    the no-options shape instead of the merge it means to pin.
     """
     entry = MagicMock()
     entry.entry_id = entry_id
     entry.domain = domain
     entry.data = data
+    entry.options = {} if options is None else options
     entry.state = state
     return entry
 
@@ -143,7 +154,9 @@ class TestUpdateIpService:
 
             assert result["success"] is True
             hass.config_entries.async_update_entry.assert_called_once_with(
-                entry, data={"ip_address": "198.51.100.7", "id": "p1"}
+                entry,
+                data={"ip_address": "198.51.100.7", "id": "p1"},
+                options={"ip_address": "198.51.100.7"},
             )
             hass.config_entries.async_reload.assert_awaited_once_with("abc-123")
 
@@ -245,8 +258,62 @@ class TestUpdateIpService:
             assert "SETUP_ERROR" in error.replace(" ", "_").upper()
             # The data update legitimately happened before the failed reload.
             hass.config_entries.async_update_entry.assert_called_once_with(
-                entry, data={"ip_address": "198.51.100.7", "id": "p1"}
+                entry,
+                data={"ip_address": "198.51.100.7", "id": "p1"},
+                options={"ip_address": "198.51.100.7"},
             )
+
+        asyncio.run(_run())
+
+    def test_update_ip_overwrites_a_stale_ip_in_entry_options(self) -> None:
+        """
+        A stale ``ip_address`` in ``entry.options`` must not win.
+
+        The options flow saves the whole ``Printer.to_dict()`` payload —
+        ``ip_address`` included — into ``entry.options``, and runtime setup
+        reads ``{**entry.data, **entry.options}``, so options beat data on a
+        conflicting key. An entry whose options were saved before the printer
+        moved therefore reconnects at the OLD address unless the service
+        writes both stores. (PR #430, reported by @caohuongls.)
+        """
+
+        async def _run() -> None:
+            entry = _make_config_entry(
+                entry_id="abc-123",
+                domain=DOMAIN,
+                data={"ip_address": "192.0.2.1", "id": "p1"},
+                options={
+                    "ip_address": "192.0.2.99",  # stale, saved by the options flow
+                    "allow_printer_offline": True,
+                },
+                state=ConfigEntryState.LOADED,
+            )
+            hass = _make_hass_with_entry(entry=entry)
+
+            call = MagicMock()
+            call.data = {"entry_id": "abc-123", "ip_address": "198.51.100.7"}
+
+            result = await _async_update_ip(hass, call)
+
+            assert result["success"] is True
+            _, kwargs = hass.config_entries.async_update_entry.call_args
+            # Both stores carry the new address...
+            assert kwargs["data"]["ip_address"] == "198.51.100.7"
+            assert kwargs["options"]["ip_address"] == "198.51.100.7"
+            # ...and the merge the runtime actually reads resolves to the new
+            # address rather than the stale one.
+            assert {**kwargs["data"], **kwargs["options"]}[
+                "ip_address"
+            ] == "198.51.100.7"
+            # Options keys that are not the address survive the rewrite.
+            assert kwargs["options"]["allow_printer_offline"] is True
+            assert kwargs["data"]["id"] == "p1"
+            # The merge outcome, at the layer that picks the address we connect
+            # to: async_setup_entry hands Printer.from_dict the merged config,
+            # and printer.ip_address is the address every transport targets.
+            # Without the options write this reads the stale 192.0.2.99.
+            merged = {**kwargs["data"], **kwargs["options"]}
+            assert Printer.from_dict(merged).ip_address == "198.51.100.7"
 
         asyncio.run(_run())
 

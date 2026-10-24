@@ -116,13 +116,23 @@ async def _async_update_ip(hass: HomeAssistant, call: ServiceCall) -> dict:
     new_ip = call.data[CONF_IP_ADDRESS]
     LOGGER.info("Updating printer IP to %s for entry %s", new_ip, entry_id)
 
-    # Update the entry data only: the integration has no options flow; the
-    # config flow and all migrations write the IP into entry.data.
+    # The runtime config is read data-first, options-second
+    # (``{**(entry.data or {}), **(entry.options or {})}`` — see
+    # async_setup_entry, coordinator and sensor), so options win on a
+    # conflicting key. The options flow saves the whole Printer.to_dict()
+    # payload -- ip_address included -- into entry.options, so writing
+    # entry.data alone leaves the stale address winning and the printer is
+    # still sought at its old address. Both stores must be written.
     # Pin note: async_update_entry is a sync @callback on the HA 2025.4.0 pin
     # — it must NOT be awaited. If the HA pin is ever advanced, re-verify
     # this call form.
     new_data = {**entry.data, CONF_IP_ADDRESS: new_ip}
-    hass.config_entries.async_update_entry(entry, data=new_data)
+    new_options = {**(entry.options or {}), CONF_IP_ADDRESS: new_ip}
+    hass.config_entries.async_update_entry(
+        entry,
+        data=new_data,
+        options=new_options,
+    )
 
     try:
         # On a still-LOADED entry, the data write above also fires the
