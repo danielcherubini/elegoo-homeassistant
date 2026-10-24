@@ -42,7 +42,12 @@ class ElegooPrinterEntity(CoordinatorEntity[ElegooDataUpdateCoordinator]):
         device_name = config_data[CONF_NAME]
         device_model = config_data[CONF_MODEL]
         device_manufacturer = config_data[CONF_BRAND]
-        device_firmware = config_data[CONF_FIRMWARE]
+        # entry.data holds the version seen at setup; the printer's own value
+        # is the live one and wins when it has reported it (#436).
+        device_firmware = (
+            self.coordinator.config_entry.runtime_data.api.printer.firmware
+            or config_data[CONF_FIRMWARE]
+        )
         device_ip = config_data.get(CONF_IP)
         proxy_enabled = config_data.get(CONF_PROXY_ENABLED, False)
 

@@ -7,10 +7,16 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 from homeassistant.core import callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
-from custom_components.elegoo_printer.const import CONF_HAS_CANVAS, LOGGER
+from custom_components.elegoo_printer.const import (
+    CONF_HAS_CANVAS,
+    CONF_ID,
+    DOMAIN,
+    LOGGER,
+)
 from custom_components.elegoo_printer.sdcp.exceptions import (
     PRINT_TRANSPORT_ERRORS,
     ElegooPrinterNotConnectedError,
@@ -169,6 +175,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             await self._refresh_file_list_if_due(api, now)
 
             self._replay_cc2_print_status_transitions()
+            self._sync_device_firmware()
 
             self.online = True
             if self.update_interval != timedelta(seconds=2):
@@ -206,6 +213,36 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             )
             msg = f"Unexpected Error: {e.strerror}"
             raise UpdateFailed(msg) from e
+
+    def _sync_device_firmware(self) -> None:
+        """
+        Keep the device record's firmware version in step with the printer.
+
+        Home Assistant reads ``entity.device_info`` once, when the entity is
+        added, so a fresher value there never reaches the device record. The
+        printer's live version (kept from its attributes frames) is written
+        straight to the registry instead, and only when it differs: writing
+        ``entry.data`` would fire the entry's update listener, which is wired
+        to a full reload (#436).
+        """
+        entry = self.config_entry
+        live = entry.runtime_data.api.printer.firmware
+        identifier = entry.data.get(CONF_ID)
+        if not live or not identifier:
+            return
+
+        registry = dr.async_get(self.hass)
+        device_entry = registry.async_get_device(identifiers={(DOMAIN, identifier)})
+        if device_entry is None or device_entry.sw_version == live:
+            return
+
+        LOGGER.info(
+            "Updating firmware version for printer %s: '%s' -> '%s'",
+            entry.title,
+            device_entry.sw_version,
+            live,
+        )
+        registry.async_update_device(device_entry.id, sw_version=live)
 
     def _log_failed_poll(self, error: Exception, *, was_online: bool) -> None:
         """
