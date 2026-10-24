@@ -73,6 +73,20 @@ def _isolated_viewer_registry(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(camera_module, "_video_viewers_by_entry", {})
 
 
+@pytest.fixture(autouse=True)
+def _isolated_video_state_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Give every test its own shared-video-state registry.
+
+    Defensive rather than load-bearing: every entry double in this file already
+    carries a distinct entry id, so nothing currently bleeds across a test
+    boundary through it. It is here for the same reason its two siblings are —
+    the registry is module level because it must outlive the entry — and it keeps
+    the per-entry tests from coupling to the order tests happen to run in.
+    """
+    monkeypatch.setattr(camera_module, "_video_stream_state_by_entry", {})
+
+
 def _run(coro):
     """Run an async coroutine to completion (fresh loop)."""
     asyncio.run(coro)
@@ -164,11 +178,17 @@ def _leave_stream_enabled(entry: SimpleNamespace) -> None:
     """
     Mark the shared printer video of an entry as enabled.
 
-    The enabled flag lives on the config entry so it survives an unload, while
-    its runtime data does not — pairing the two models the state a reload starts
-    from after a previous entity left the stream on.
+    The enabled flag lives in the integration's entry-id-keyed registry so it
+    survives an unload, while the entry's runtime data does not — pairing the two
+    models the state a reload starts from after a previous entity left the
+    stream on.
     """
-    setattr(entry, "_elegoo_video_state", {"enabled": True})  # noqa: B010
+    camera_module._video_stream_state(entry.entry_id)["enabled"] = True
+
+
+def _stream_state_of(entry: SimpleNamespace) -> dict[str, bool]:
+    """Read the shared video state registry's record for an entry, if any."""
+    return camera_module._video_stream_state_by_entry.get(entry.entry_id, {})
 
 
 def _make_printer() -> MagicMock:
@@ -402,7 +422,9 @@ class TestVideoLifecycleMixin:
     def test_stream_enabled_state_is_shared_per_entry(self) -> None:
         """Entities of the same config entry agree on the enabled flag."""
         coordinator = MagicMock()
-        coordinator.config_entry = SimpleNamespace()
+        # A real ConfigEntry always has an entry_id, and the shared flag is keyed
+        # by it, so the double has to carry one (as does the sibling test below).
+        coordinator.config_entry = SimpleNamespace(entry_id="entry-shared")
         client_a, _ = _make_client()
         client_b, _ = _make_client()
         a = _VideoLifecycleSubject(client_a)
@@ -419,7 +441,7 @@ class TestVideoLifecycleMixin:
     def test_new_camera_refreshes_url_despite_inherited_enabled(self) -> None:
         """A shared enabled flag must not make a fresh entity trust its fallback."""
         coordinator = MagicMock()
-        coordinator.config_entry = SimpleNamespace()
+        coordinator.config_entry = SimpleNamespace(entry_id="entry-inherited")
 
         old_client, _ = _make_client()
         old = _VideoLifecycleSubject(old_client)
@@ -1658,6 +1680,22 @@ class TestEntryRemovalForgetsTheParkedRelease:
         )
         return integration_module.async_remove_entry
 
+    @staticmethod
+    def _warnings_for(caplog: pytest.LogCaptureFixture, entry_id: str) -> list[str]:
+        """
+        Collect the warnings the hook logged about one config entry.
+
+        ``caplog`` sits on the root logger, which the component LOGGER
+        (``custom_components.elegoo_printer``) propagates to, so filtering on the
+        entry id keeps other components' (or another entry's) lines out of the
+        count.
+        """
+        return [
+            record.getMessage()
+            for record in caplog.records
+            if record.levelno == logging.WARNING and entry_id in record.getMessage()
+        ]
+
     def test_retry_exhaustion_then_removal_leaves_no_key(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1710,7 +1748,7 @@ class TestEntryRemovalForgetsTheParkedRelease:
         _run(run())
 
     def test_removal_only_forgets_its_own_entry(self) -> None:
-        """Another printer's parked release survives this entry's removal."""
+        """Another printer's parked release and video flag survive this removal."""
 
         async def run() -> None:
             removed = _make_entry("entry-removed")
@@ -1721,17 +1759,40 @@ class TestEntryRemovalForgetsTheParkedRelease:
             camera_module._record_pending_video_release(
                 other.entry_id, "camera.chamber_camera_other"
             )
+            # The flag is forgotten per entry too: one printer's removal must not
+            # wipe the flag of a printer that is still set up.
+            _leave_stream_enabled(removed)
+            _leave_stream_enabled(other)
 
             await self._hook()(MagicMock(), removed)
 
             assert camera_module._pending_video_releases == {
                 other.entry_id: "camera.chamber_camera_other"
             }
+            assert _stream_state_of(removed) == {}
+            assert _stream_state_of(other) == {"enabled": True}
 
         _run(run())
 
-    def test_removal_does_not_disturb_the_shared_stream_flag(self) -> None:
-        """The hook forgets the debt; it never touches the printer or its flags."""
+    def test_removal_forgets_the_shared_flag_but_never_touches_the_printer(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """
+        The hook forgets the entry's flag loudly; it never reaches the printer.
+
+        Removal may forget what unload may not: ``async_unload_entry`` has to
+        leave an enabled flag set so the entity a reload builds knows the stream
+        is still on, while removal is terminal — no rebuilt entity can be misled
+        into assuming "off", and nothing is left that can disable the stream. So
+        the flag goes, and the pop is the operator's only notice that a removed
+        printer's video may be stuck on: the teardown retry that used to say so
+        exits through its quiet door once the flag is gone, because its per-tick
+        guard sees a stream that is no longer enabled and returns.
+
+        The hook's real subject stays pinned below: it never talks to the printer
+        and never schedules work — ``async_unload_entry``, which core always runs
+        first, owns everything that touches a connection.
+        """
 
         async def run() -> None:
             entry = _make_entry()
@@ -1744,9 +1805,13 @@ class TestEntryRemovalForgetsTheParkedRelease:
             await self._hook()(hass, entry)
 
             assert camera_module._pending_video_releases == {}
-            # The stream flag is the entry's own state and survives: only core's
-            # unload path talks to the printer.
-            assert entry._elegoo_video_state == {"enabled": True}
+            # Removal is terminal, so the entry's flag is dropped rather than
+            # left behind for an entity that can never be rebuilt.
+            assert _stream_state_of(entry) == {}
+            # Dropping an enabled flag is the one case that must not go quiet.
+            warnings = self._warnings_for(caplog, entry.entry_id)
+            assert len(warnings) == 1
+            assert "reboot" in warnings[0]
             hass.config_entries.async_get_entry.assert_not_called()
             hass.async_create_task.assert_not_called()
             hass.async_create_background_task.assert_not_called()
@@ -2265,9 +2330,136 @@ class TestExhaustedRetryParksTheRelease:
             await subject._async_cleanup_retry()
 
             assert camera_module._pending_video_release_entity(entry.entry_id)
-            assert entry._elegoo_video_state == {"enabled": True}
+            assert _stream_state_of(entry) == {"enabled": True}
             _attach_client(entry, _make_client(connected_streams=0, max_streams=2)[0])
             cam = _live_fdm_camera(entry, hass)
             assert cam._stream_enabled is True  # what makes adoption possible
 
         _run(run())
+
+
+class TestSharedFlagIsPerEntry:
+    """The enabled flag of one printer is invisible to another."""
+
+    def test_flag_of_one_entry_is_not_visible_to_another(self) -> None:
+        """
+        Enabling one entry's video leaves every other entry's flag off.
+
+        The handover tests already punish a flag shared across entries, but only
+        by accident: they leave one entry enabled and expect a different entry's
+        entity to see it off while checking the release handover. Nothing read
+        one entry's flag and another's through the flag's own accessor, so an
+        implementation that was per-entry only where it was forced to be stayed
+        invisible. This is that read, asked directly.
+        """
+        entry_a = _make_entry("entry-flag-a")
+        entry_b = _make_entry("entry-flag-b")
+        client_a, _ = _make_client()
+        client_b, _ = _make_client()
+
+        subject_a = _lifecycle_subject(client_a, entry=entry_a)
+        subject_a._stream_enabled = True
+
+        subject_b = _lifecycle_subject(client_b, entry=entry_b)
+
+        assert subject_a._stream_enabled is True
+        assert subject_b._stream_enabled is False
+        # Asking an entry's flag creates its default record — the registry hands
+        # back the same mutable dict the old getattr/setattr pair did — so this is
+        # {enabled: False}, not a missing key.
+        assert _stream_state_of(entry_b) == {"enabled": False}
+        assert _stream_state_of(entry_a) == {"enabled": True}
+
+    def test_detached_entities_do_not_share_the_attached_flag(self) -> None:
+        """
+        An entity that was never attached to an entry keeps its flag to itself.
+
+        ``_local_stream_state`` is the fallback for a bare lifecycle subject, so
+        it must not pick up what an attached entity of some other entry enabled —
+        and toggling it must not create a registry key for an entry id nobody
+        owns. The key set is compared before and after rather than asserted
+        absolutely, so this pins the detached entity's own behaviour instead of
+        depending on which tests ran first.
+        """
+        entry = _make_entry("entry-attached")
+        attached = _lifecycle_subject(_make_client()[0], entry=entry)
+        attached._stream_enabled = True
+        detached = _lifecycle_subject(_make_client()[0], entry=None)
+        keys_before = set(camera_module._video_stream_state_by_entry)
+
+        assert detached._stream_enabled is False
+
+        detached._stream_enabled = True
+
+        assert detached._local_stream_state == {"enabled": True}
+        assert detached._stream_state() is detached._local_stream_state
+        assert set(camera_module._video_stream_state_by_entry) == keys_before
+        assert _stream_state_of(entry) == {"enabled": True}
+        assert attached._stream_enabled is True
+
+
+class TestFlagOwnership:
+    """The flag lives where the integration owns it, and nowhere else."""
+
+    def test_unload_leaves_the_flag_registry_alone(self) -> None:
+        """
+        The real unload hook cannot clear the flag the reload has to read.
+
+        Every other test models an unload by hand — dropping ``runtime_data``, or
+        pointing the entry lookup at nothing — so none of them would notice
+        ``async_unload_entry`` reaching into this registry. That would satisfy the
+        "survives a reload" claim while breaking it outright: while a foreign
+        viewer holds the stream the unload cannot disable it, and the entity the
+        reload builds must still be told the stream is on. So this drives the real
+        hook, the only test in the file that does.
+        """
+        entry = _make_entry("entry-unload")
+        _leave_stream_enabled(entry)
+
+        client = MagicMock()
+        client.is_connected = True
+        client.elegoo_disconnect = AsyncMock()
+        client.elegoo_stop_mqtt_broker = AsyncMock()
+        # The hook reads ``runtime_data.api`` as the client itself (it calls
+        # ``api.elegoo_disconnect()``), which is why this builds its own double
+        # rather than reusing _attach_client, whose api wraps a client.
+        entry.runtime_data = SimpleNamespace(api=client)
+        # server=None plus an unregistered printer keep the shared-proxy
+        # bookkeeping out of the test: this pin is about the flag, not the server.
+        client.server = None
+
+        hass = MagicMock()
+        hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+
+        async def run() -> None:
+            with patch.object(
+                integration_module.ElegooPrinterServer,
+                "is_printer_registered",
+                return_value=False,
+            ):
+                unload_ok = await integration_module.async_unload_entry(hass, entry)
+
+            assert unload_ok is True
+            client.elegoo_disconnect.assert_awaited_once()
+            # The flag survived the unload, which is the whole reason it lives at
+            # module level instead of in the runtime data core deletes here.
+            assert _stream_state_of(entry) == {"enabled": True}
+
+        _run(run())
+
+    def test_shared_flag_never_writes_through_to_the_entry_object(self) -> None:
+        """
+        The entry object gains no attribute from the shared flag.
+
+        #425 is about ownership: the integration may not hang attributes on a
+        core-owned object. Every other test still passes if a setattr creeps
+        back, so this is the only thing that falsifies the claim.
+        """
+        entry = _make_entry("entry-not-mutated")
+        before = dict(entry.__dict__)
+        subject = _lifecycle_subject(_make_client()[0], entry=entry)
+
+        subject._stream_enabled = True
+
+        assert subject._stream_enabled is True
+        assert entry.__dict__ == before, "the entry object must gain no attributes"
