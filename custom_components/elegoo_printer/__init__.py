@@ -201,8 +201,9 @@ async def _async_start_print(hass: HomeAssistant, call: ServiceCall) -> dict:
 
     CC2 only - the SDCP transports are deliberately not wired up, since
     CMD_START_PRINT crashed the first-gen Centauri Carbon (#297). Accepts
-    ``entry_id``, ``filename``, optional ``tray`` (0-based Canvas tray for
-    G-code tool 0) and ``bed_leveling`` (default on, as the slicer does), and returns a
+    ``entry_id``, ``filename``, optional ``tray`` (0-based Canvas tray mapped
+    to every G-code tool the file reports) and ``bed_leveling`` (default on,
+    as the slicer does), and returns a
     definitive ``{success, message|error}`` result (supports_response=optional).
     """
     entry_id = call.data["entry_id"]

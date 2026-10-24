@@ -216,12 +216,12 @@ action: elegoo_printer.start_print
 data:
   entry_id: <config entry UUID>
   filename: "benchy.gcode"   # exact name from the printer's file list
-  tray: 2                    # optional, Canvas tray 0-3 (A1-A4) for G-code tool 0
+  tray: 2                    # optional, Canvas tray 0-3 (A1-A4), mapped to every G-code tool the file uses
   bed_leveling: true         # optional, default true: auto bed leveling first (~3 min), as the slicer does
 ```
 
 - The response says whether the printer accepted the job: `error_code` 1009 means it is busy.
-- `tray` is validated by Home Assistant, **not by the printer** - an out-of-range tray is acknowledged with `error_code` 0 and silently printed from tray 0. Only G-code tool 0 is mapped; this service does not preserve a complete multi-tool mapping.
+- `tray` is validated by Home Assistant, **not by the printer** - an out-of-range tray is acknowledged with `error_code` 0 and silently printed from tray 0. The tray is mapped to **every** G-code tool the file's listing reports (its `color_map`); a file whose tool list the printer never reported maps its first tool. Whether the printer honours a complete multi-tool map is **not yet confirmed on hardware** - see #435, which stays open until someone can watch which tray a multi-tool print actually consumes.
 - `bed_leveling` maps to the protocol's `printer_check`, which ElegooSlicer sends on every job - so it defaults to on. `false` is sent as `false`, which is how the slicer's own unchecked box does it and the only way to stop the printer levelling: leaving the key out lets it decide, and it has been observed levelling for 196 s even when the previous print used the same bed temperature.
 - Not available for the first-generation Centauri Carbon or resin printers, where the equivalent SDCP command crashed the printer (#297).
 

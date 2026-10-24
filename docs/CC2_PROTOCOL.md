@@ -1842,6 +1842,31 @@ serialised in `src/lan/adapters/elegoo_fdm_cc2/elegoo_fdm_cc2_message_adapter.cp
 An empty `slot_map` leaves the tray choice to the printer. The other `config` fields are
 described under [Start Print](#start-print).
 
+#### How much of this is measured
+
+This section carries no `Untested` marker, but **absence of a marker here is not evidence of
+verification** — the `Untested` label in this document appears only in the method tables. On the
+slot map specifically:
+
+**Measured on firmware 02.01.00.00**
+- An entry must carry `t`, `canvas_id` and `tray_id` together. A partial entry, or an out-of-range
+  `tray_id`, is acknowledged with `error_code` 0 and the printer prints from tray 0 — so the
+  response cannot be used to validate a mapping.
+- `color_map[].t` in 1044/1046 is the G-code tool index, not a tray.
+- An empty `slot_map` leaves the tray choice to the printer.
+
+**Inferred, NOT measured**
+- That a *complete* map — an entry for every tool the file uses — makes the printer honour the
+  tray. That reading comes from this section's own wording ("maps each tool index") plus the
+  two-entry example above, which is attributed to the elegoo-link SDK's serialisation, **not a
+  packet capture**. The slicer's own captured Start Print (see
+  [Start Print](#start-print)) sends `"slot_map": []`, so no capture of a real multi-tray job
+  exists in this repository.
+- What the printer does with a tool index **absent** from `slot_map`. The protocol is silent.
+  "It falls back to tray 0" is the natural reading of a user report, not a documented behaviour.
+- Whether a complete map is *required* for any entry to be honoured, or merely sufficient.
+- `canvas_id` with more than one Canvas unit: the integration sends 0. UNVERIFIED.
+
 ---
 
 ## Print Job Lifecycle

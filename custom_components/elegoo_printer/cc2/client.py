@@ -1662,10 +1662,17 @@ class ElegooCC2Client:
         Start printing a file that is already in the printer's local storage.
 
         Sends method 1020 with a ``config`` that carries only what is needed:
-        ``slot_map`` maps G-code tool 0 to ``tray_id`` when one is given (an
-        empty list lets the printer pick the tray), and ``printer_check``
-        carries ``bed_leveling``. The other ``config`` fields the slicer sends
-        are not required.
+        ``slot_map`` maps every G-code tool the file uses to ``tray_id`` when
+        one is given (an empty list lets the printer pick the tray), and
+        ``printer_check`` carries ``bed_leveling``. The other ``config`` fields
+        the slicer sends are not required.
+
+        The tool list comes from the file's ``color_map`` in the 1044 listing
+        (``PrinterFile.tools``), which the file-list poll already fills; when
+        no file detail is available the map falls back to a single ``t`` 0
+        entry, which is byte-identical to what a single-tool print sent
+        before. ``canvas_id`` stays 0: UNVERIFIED with more than one Canvas
+        unit, and a single-Canvas printer has only unit 0.
 
         The key is sent in both directions, never omitted, because the
         firmware REMEMBERS THE LAST VALUE IT WAS GIVEN. Measured on a Centauri
@@ -1681,7 +1688,21 @@ class ElegooCC2Client:
         entry must carry ``t``, ``canvas_id`` and ``tray_id`` together. A
         partial entry, or an out-of-range ``tray_id``, is acknowledged with
         ``error_code`` 0 and the printer silently prints from tray 0 - so the
-        response cannot be used to validate the mapping. Only tool 0 is mapped.
+        response cannot be used to validate the mapping. ``color_map[].t`` is
+        the G-code tool index, not a tray. An empty ``slot_map`` leaves the
+        choice to the printer.
+
+        NOT measured, and this method must not be read as having proven it:
+        that a COMPLETE map - an entry for every tool the file uses - makes the
+        printer honour the tray. That is the protocol doc's own wording ("maps
+        each tool index") plus its two-entry example, but the example comes
+        from the elegoo-link SDK's serialisation, not a packet capture, and the
+        slicer's own captured Start Print sends an empty ``slot_map``. What the
+        printer does with a tool index absent from ``slot_map`` is undocumented;
+        "it falls back to tray 0" is the natural reading of a user report, not a
+        recorded behaviour. Whether a complete map is required for any entry to
+        be honoured, or merely sufficient, is likewise unknown. Issue #435 stays
+        open pending a hardware run.
 
         Returns:
             The ``error_code`` from the printer's response
@@ -1697,7 +1718,12 @@ class ElegooCC2Client:
         """
         slot_map: list[dict[str, int]] = []
         if tray_id is not None:
-            slot_map.append({"t": 0, "canvas_id": 0, "tray_id": tray_id})
+            file = self.printer_data.file_list.get(filename)
+            tools = file.tools if file is not None else []
+            slot_map = [
+                {"t": tool, "canvas_id": 0, "tray_id": tray_id}
+                for tool in (tools or [0])
+            ]
         config: dict[str, Any] = {
             "slot_map": slot_map,
             "printer_check": bed_leveling,

@@ -42,7 +42,8 @@ start_print:
       name: Canvas tray
       description: >-
         Tray to print from, 0-3 (A1-A4). Leave empty to let the printer choose.
-        Maps G-code tool 0 only.
+        Maps every G-code tool the file uses; a file whose tool list the
+        printer never reported maps its first tool.
       required: false
       selector:
         number:
@@ -92,7 +93,8 @@ upload_gcode:
       name: Canvas tray
       description: >-
         Tray to print from, 0-3 (A1-A4), only with "Start printing". Leave
-        empty to let the printer choose. Maps G-code tool 0 only.
+        empty to let the printer choose. Maps every G-code tool the file uses;
+        a file whose tool list the printer never reported maps its first tool.
       required: false
       selector:
         number:

@@ -74,6 +74,7 @@ def test_get_file_list_parses_entries_and_skips_folders() -> None:  # noqa: D103
     assert file.print_time == SKULLBOWL["print_time"]
     assert file.filament_used == SKULLBOWL["total_filament_used"]
     assert file.colors == [SKULLBOWL["color_map"][0]["color"]]
+    assert file.tools == [SKULLBOWL["color_map"][0]["t"]]
     assert file.created == datetime.fromtimestamp(SKULLBOWL["create_time"], tz=UTC)
     assert client.printer_data.file_list is files
 

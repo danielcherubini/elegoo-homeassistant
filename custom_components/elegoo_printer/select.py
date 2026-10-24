@@ -195,9 +195,10 @@ class ElegooPrintTraySelect(ElegooPrinterEntity, RestoreEntity, SelectEntity):
     The Canvas tray the Print Selected File button prints from.
 
     ``Automatic`` leaves the choice to the printer, ``A1``-``A4`` map to
-    tray 0-3 for G-code tool 0, as ``start_print``'s ``tray`` does. The
-    choice is kept in ``printer_data.selected_tray`` and restored across
-    restarts; the trays' current filaments are exposed as attributes.
+    tray 0-3 for every G-code tool the chosen file uses, as ``start_print``'s
+    ``tray`` does. The choice is kept in ``printer_data.selected_tray`` and
+    restored across restarts; the trays' current filaments are exposed as
+    attributes.
     """
 
     def __init__(

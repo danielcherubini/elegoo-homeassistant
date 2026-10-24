@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.exceptions import ServiceValidationError
 
+from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
+from custom_components.elegoo_printer.cc2.const import CC2_CMD_START_PRINT
 from custom_components.elegoo_printer.definitions import (
     PRINT_TRAY_OPTIONS,
     PRINTER_FDM_BUTTONS_CC2_ONLY,
@@ -17,9 +19,12 @@ from custom_components.elegoo_printer.definitions import (
     _print_selected_file_available,
 )
 from custom_components.elegoo_printer.sdcp.models.ams import AMSStatus
-from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStatus
+from custom_components.elegoo_printer.sdcp.models.enums import (
+    ElegooMachineStatus,
+    PrinterType,
+)
 from custom_components.elegoo_printer.sdcp.models.file_info import PrinterFile
-from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
+from custom_components.elegoo_printer.sdcp.models.printer import Printer, PrinterData
 from custom_components.elegoo_printer.select import (
     ElegooPrintFileSelect,
     ElegooPrintTraySelect,
@@ -27,6 +32,7 @@ from custom_components.elegoo_printer.select import (
 
 BENCHY = "benchy.gcode"
 CLIP = "clip.gcode"
+MULTI = "multicolor.gcode"
 
 
 def _select(files: list[str]) -> ElegooPrintFileSelect:
@@ -188,6 +194,54 @@ def test_print_button_passes_the_chosen_tray() -> None:
     client.printer_data.selected_tray = 2
     asyncio.run(_print_selected_file_action(client))
     client.print_start.assert_awaited_once_with(BENCHY, tray_id=2)
+
+
+def test_chosen_tray_reaches_the_wire_for_every_tool() -> None:
+    """The tray picked in the Print Tray select must reach method 1020."""
+    printer = Printer()
+    printer.printer_type = PrinterType.FDM
+    client = ElegooCC2Client("192.168.1.1", "TESTSN", printer=printer)
+    client.printer_data.file_list = {
+        MULTI: PrinterFile(
+            {
+                "filename": MULTI,
+                "color_map": [
+                    {"t": 0, "color": "#111111", "name": "PETG"},
+                    {"t": 2, "color": "#222222", "name": "PLA"},
+                ],
+            }
+        )
+    }
+    client.printer_data.selected_file = MULTI
+
+    coordinator = MagicMock()
+    coordinator.generate_unique_id = lambda key: f"testsn_{key}"
+    coordinator.data = client.printer_data  # the SAME object the client reads
+    select = ElegooPrintTraySelect(coordinator, PRINTER_TRAY_SELECT_CC2[0])
+    select.async_write_ha_state = MagicMock()
+    asyncio.run(select.async_select_option("A2"))
+
+    with patch.object(
+        client,
+        "_send_command",
+        new_callable=AsyncMock,
+        return_value={"result": {"error_code": 0}},
+    ) as mock_cmd:
+        asyncio.run(_print_selected_file_action(client))
+        mock_cmd.assert_called_once_with(
+            CC2_CMD_START_PRINT,
+            {
+                "storage_media": "local",
+                "filename": MULTI,
+                "config": {
+                    "slot_map": [
+                        {"t": 0, "canvas_id": 0, "tray_id": 1},
+                        {"t": 2, "canvas_id": 0, "tray_id": 1},
+                    ],
+                    "printer_check": True,
+                },
+            },
+        )
 
 
 def test_print_button_does_nothing_without_a_choice() -> None:
