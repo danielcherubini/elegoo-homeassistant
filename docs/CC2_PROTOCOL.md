@@ -662,7 +662,7 @@ Commands are JSON messages sent to control the printer.
 | 1036 | PRINT_TASK_LIST | Get print history | `{"page": 1, "page_size": 10}` |
 | 1037 | PRINT_TASK_DETAIL | Get task details | `{"uuid": "..."}` |
 | 1044 | GET_FILE_LIST | List files | `{"storage_media": "local", "path": "/"}` |
-| 1045 | GET_FILE_THUMBNAIL | Get file thumbnail | `{"storage_media": "local", "filename": "..."}` |
+| 1045 | GET_FILE_THUMBNAIL | Get file thumbnail | `{"storage_media": "local", "file_name": "..."}` |
 | 1046 | GET_FILE_DETAIL | Get file info | `{"storage_media": "local", "filename": "..."}` |
 | 1048 | GET_DISK_INFO | Get storage info | `{"storage_media": "local"}` |
 | 2005 | GET_CANVAS_STATUS | Get AMS status | None |
@@ -1454,7 +1454,7 @@ Returns raw file contents.
 | GET_FILE_LIST | 1044 | ✅ Works | Returns file names, sizes |
 | GET_FILE_THUMBNAIL | 1045 | ✅ Works | Returns base64 PNG thumbnail |
 | GET_FILE_DETAIL | 1046 | ✅ Works | Returns metadata: size, layers, filament used, print time, color map |
-| DELETE_FILE | 1047 | Untested | — |
+| DELETE_FILE | 1047 | ❌ No-op | Returns `error_code: 1003` and deletes nothing on fw 02.01.01.07; the same file deletes fine from the printer UI (#432) |
 | GET_DISK_INFO | 1048 | Untested | — |
 | SET_PRINTER_DOWNLOAD_FILE | 1057 | Untested (cloud feature) | Tells printer to download from URL — NOT for retrieving files (see below) |
 | CANCEL_PRINTER_DOWNLOAD_FILE | 1058 | Untested | Cancels a 1057 download task |
@@ -1613,25 +1613,62 @@ All require `X-Token` authentication (query parameter or header). See [Download 
 }
 ```
 
-> ⚠️ **No response is documented for 1047 — unlike 1044, 1046 and 1048, each of
-> which shows a response body here.** The method is also marked **Untested** in
-> the table above. The only hint that its reply resembles the standard envelope
-> is the listed error code `1007 FILE_DELETE_FAILED`, and that is an inference,
-> not an observation: nothing in this repository has ever received a 1047 reply.
->
-> Because of that, the integration's `cleanup_files` service **does not treat
-> the reply as proof of deletion**. `ElegooCC2Client.delete_file()` reads
-> `result.error_code` when a reply arrives (and raises when none does, which is
-> also what firmware that ignores 1047 produces after the 10 s command
-> timeout), but the service confirms every delete by re-listing with **1044**
-> and reporting a file the printer accepted and still lists as
-> `still listed after delete`. A printer that never answers therefore costs a
-> reported failure, never a silently wrong deletion.
->
-> **Placeholder for the first real capture.** Whoever runs 1047 against hardware
-> first, please paste the raw reply here (topic, full payload, and whether the
-> file was gone from the next 1044). That single observation would let this row
-> say "Works" and would let the service stop paying for a second listing.
+**Response (measured on stock firmware):**
+
+```json
+{
+  "id": 1,
+  "method": 1047,
+  "result": {
+    "error_code": 1003
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `error_code` | int | `1003` in every capture so far, for an existing file and for a non-existent one alike. The hinted `1007 FILE_DELETE_FAILED` has never been observed. `error_code: 0` is assumed to mean accepted, but no firmware seen here ever sent it |
+
+**First real capture — @MrHaku81, #432 (2026-10-25).** Centauri Carbon 2 Combo, firmware `ota_version = 02.01.01.07` (read from method 1001; `mcu_version` and `soc_version` reported empty), Access-Code pairing (`token_status = 1`, `lan_status = 1`), MQTT on 1883, printer idle throughout. Both requests used the shape above with `storage_media: "local"` — the only value tried; `sdcard` and `udisk` were offered as variants but not yet run.
+
+Case A — a file that exists (uploaded by the reporter a minute earlier; `storage_media: "local"`, listed exactly once by the 1044 before and after):
+
+```json
+{"id": <rid>, "method": 1047, "params": {"storage_media": "local", "filename": "handslice_delete_test_<ts>.gcode"}}
+```
+
+Reply after ~13 ms:
+
+```json
+{"id": <rid>, "method": 1047, "result": {"error_code": 1003}}
+```
+
+The 1044 re-list afterwards returned the same 24 files, the test file **still present**, every other file hash unchanged — and the file was confirmed **still visible on the printer's own display**.
+
+Case B — a file that does not exist:
+
+```json
+{"id": <rid>, "method": 1047, "params": {"storage_media": "local", "filename": "handslice_does_not_exist_<ts>.gcode"}}
+```
+
+Reply after ~10 ms — the identical payload:
+
+```json
+{"id": <rid>, "method": 1047, "result": {"error_code": 1003}}
+```
+
+File list 24/24 identical before and after.
+
+**Control:** the same file deleted without problems from the printer's touchscreen, so it was not locked or protected — the LAN delete is what does nothing.
+
+**Reading the capture.** `1003` is `CC2_ERROR_INVALID_PARAMETER` — a *request-shape* rejection, not a refusal to delete. That is exactly what the identical reply for an existing and a non-existent file looks like: a server that checked the file would answer differently for the two, whereas a server that rejected the request before looking at it answers the same either way. The `file_name` hypothesis is **untested**: 1045 works while being sent `file_name` (see [File Thumbnail](#file-thumbnail-method-1045)) and 1046 works while being sent `filename`, so the file methods demonstrably do not share one parameter spelling, and `file_name` may be what 1047 wants — but nobody has offered it to a real printer yet, and 1047 may want something else entirely. The reporter's alternative reading — that `1003` is this firmware's generic "not available / not handled" bucket, noting that 1045 also answered `1003` for one file in the same session — is equally untested.
+
+> The integration's `cleanup_files` service confirms every delete by re-listing with **1044**
+> rather than reading this reply, and reports a file the printer accepted and still lists as
+> `still listed after delete`. That design is what made this failure visible rather than
+> silent: the service reports the refusal in `failed` and answers `success: false`, instead
+> of telling you files were deleted that are still on the printer.
+
 
 ### Disk Info [Both]
 
@@ -2442,7 +2479,7 @@ Use this checklist when implementing CC2 support:
 - [ ] File detail/metadata (MQTT method 1046)
 - [ ] File thumbnail (MQTT method 1045)
 - [ ] File download (OpenCentauri only: HTTP `GET /download`; stock firmware: not available via any method)
-- [ ] Delete file (MQTT method 1047) — **implemented in this integration (`cleanup_files`), never verified on hardware.** No response is documented for 1047, so the service confirms a delete by re-listing with 1044 rather than by reading the reply; see [Delete File](#delete-file-both). Unticked until someone captures a real reply.
+- [ ] Delete file (MQTT method 1047) — **implemented in this integration (`cleanup_files`); a real reply has now been captured, and the delete does not happen.** On firmware 02.01.01.07 the printer answers every 1047 with `error_code: 1003` and removes nothing, for an existing file and a missing one alike, while the same file deletes fine from the printer's own UI (#432). The service confirms a delete by re-listing with 1044 rather than by reading the reply, which is what reports this as a failure instead of a false success; see [Delete File](#delete-file-both). Left unticked because the capability does not work — a working parameter shape has still to be found.
 
 ### Peripheral Control
 - [ ] Temperature control
@@ -2774,7 +2811,7 @@ Method 1045 (`GET_FILE_THUMBNAIL`) retrieves a thumbnail image for a print file.
   "method": 1045,
   "params": {
     "storage_media": "local",
-    "filename": "benchy.gcode"
+    "file_name": "benchy.gcode"
   }
 }
 ```
@@ -2794,10 +2831,11 @@ Method 1045 (`GET_FILE_THUMBNAIL`) retrieves a thumbnail image for a print file.
 | Field | Type | Description |
 |-------|------|-------------|
 | `storage_media` | string | Storage location (`local`, `u-disk`, `sd-card`) |
-| `filename` | string | Name of the gcode file |
+| `file_name` | string | Name of the gcode file — spelled with an underscore, unlike 1046 and 1047, which are sent `filename` |
 | `thumbnail` | string | Base64-encoded image data (typically PNG) |
 
 **Notes:**
+- The parameter key is `file_name`, not `filename`. This is the one file method that takes the underscored spelling; 1046 (`GET_FILE_DETAIL`) and 1047 (`DELETE_FILE`) are sent `filename`. The key this document previously showed (`filename`) does not match what the working client sends (`_request_file_thumbnail`, `cc2/client.py`), which is recorded here as ✅ Works; corrected 2026-10-25 so a client written from this document does not repeat the mistake.
 - The `thumbnail` field contains raw base64 data (not a data URI)
 - If the file has no embedded thumbnail, the response may omit the `thumbnail` field or return an error
 - Thumbnails are typically embedded in gcode files by the slicer
