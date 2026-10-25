@@ -170,6 +170,9 @@ from custom_components.elegoo_printer.cc2.const import (  # noqa: E402
     CC2_CMD_GET_ATTRIBUTES,
     CC2_DISCOVERY_RETRIES,
     CC2_DISCOVERY_TIMEOUT,
+    CC2_ERROR_INVALID_PARAMETER,
+    CC2_ERROR_PRINTER_BUSY,
+    CC2_ERROR_SUCCESS,
 )
 from custom_components.elegoo_printer.cc2.discovery import CC2Discovery  # noqa: E402
 from custom_components.elegoo_printer.cc2.upload import (  # noqa: E402
@@ -938,6 +941,36 @@ async def read_still_listed(client: ElegooCC2Client, name: str) -> dict[str, Any
 # upload_probe_file's callers and read by _delete_own_file below.
 OWNED: set[str] = set()
 
+# Names this run TRIED to upload, registered before the upload is attempted.
+#
+# `OWNED` is only reached once the upload call has RETURNED, and the whole point
+# of the leftovers list is the case where that call does not return cleanly: an
+# upload whose last chunk reached the printer but whose reply was lost (a wifi
+# drop, a Ctrl-C, a 429 mid-transfer) leaves the file on the printer with
+# `upload_probe_file` raising, so `OWNED.add` never runs and the file belongs to
+# nobody — it cannot be deleted (correctly: this run cannot confirm it created
+# it) AND it is missing from the leftovers the volunteer is handed (wrongly: it
+# is almost certainly sitting on their printer). Every name is therefore recorded
+# here BEFORE the first await, and the leftovers list is built from this set
+# while the delete gate stays on `OWNED`: an upload this run cannot prove it
+# finished is never eligible for automatic deletion, but it is never silently
+# dropped from the report either.
+ATTEMPTED: set[str] = set()
+
+
+def begin_upload(name: str) -> str:
+    """
+    Record that this run is about to try to create ``name``, and return it.
+
+    One call site per upload, placed immediately before the await that performs
+    it. The point is the ordering, not the set operation: `OWNED` is only
+    populated once an upload has returned, so without this the window between
+    "the printer received the bytes" and "we saw the reply" produces a file on
+    the printer that belongs to no list at all.
+    """
+    ATTEMPTED.add(name)
+    return name
+
 
 async def _delete_own_file(
     client: ElegooCC2Client, name: str, params: dict[str, Any]
@@ -1035,6 +1068,9 @@ async def probe_variant(
 
     # 1. Create the disposable target. Never reuse an existing file.
     try:
+        # Registered BEFORE the await, so an upload that dies on its way back
+        # still names its file in the report (see ATTEMPTED).
+        begin_upload(name)
         record["upload"] = await upload_probe_file(session, target.ip, token, name)
         OWNED.add(name)
         # Its own greppable line, because this is the one fact the report cannot
@@ -1143,10 +1179,44 @@ async def cleanup(
     try:
         files = await client.get_verified_file_list()
     except LISTING_ERRORS as err:
-        return {"error": f"could not re-list for cleanup: {err!r}", "leftovers": sorted(OWNED)}
+        return {
+            "error": f"could not re-list for cleanup: {err!r}",
+            "leftovers": sorted(OWNED | ATTEMPTED),
+        }
 
+    # Anything this run tried to upload and the printer now lists is named, even
+    # when the upload never confirmed — but ONLY OWNED names are ever deleted. An
+    # unconfirmed upload may be a file this run created or one it did not, and
+    # the promise of this function is that it never deletes what it cannot
+    # account for, so those names go to the human in the report instead.
+    unconfirmed = sorted(name for name in ATTEMPTED - OWNED if name in files)
+    for name in unconfirmed:
+        logger.warning(
+            "Cleanup: {} is listed on the printer but this run never confirmed "
+            "uploading it, so it is NOT deleted here — remove it from the "
+            "printer's UI.",
+            name,
+        )
     leftovers = sorted(name for name in OWNED if name in files)
     if not leftovers:
+        if unconfirmed:
+            logger.warning(
+                "Cleanup: nothing this run CONFIRMED uploading is left, but {} "
+                "upload(s) whose confirmation was lost are listed and have to be "
+                "removed by hand: {}",
+                len(unconfirmed),
+                ", ".join(unconfirmed),
+            )
+            return {
+                "leftovers": unconfirmed,
+                "attempts": [],
+                "shape_used": None,
+                "note": (
+                    "these files were named at upload time but their upload "
+                    "never confirmed, so this run will not delete them: it "
+                    "cannot prove it created them"
+                ),
+            }
         logger.info("Cleanup: nothing of ours left on the printer.")
         return {"leftovers": [], "attempts": [], "shape_used": None}
 
@@ -1155,10 +1225,14 @@ async def cleanup(
             "Cleanup: no variant found a working delete, so these {} probe "
             "files are still on the printer and have to be removed from its UI: "
             "{}",
-            len(leftovers),
-            ", ".join(leftovers),
+            len(leftovers) + len(unconfirmed),
+            ", ".join(leftovers + unconfirmed),
         )
-        return {"leftovers": leftovers, "attempts": [], "shape_used": None}
+        return {
+            "leftovers": sorted(leftovers + unconfirmed),
+            "attempts": [],
+            "shape_used": None,
+        }
 
     logger.info(
         "Cleanup: removing {} of our own upload(s) with {}",
@@ -1193,9 +1267,11 @@ async def cleanup(
             attempts.append({"file": name, "params": params, "error": repr(err)})
     try:
         files = await client.get_verified_file_list()
-        remaining = sorted(name for name in OWNED if name in files)
+        remaining = sorted(name for name in OWNED | ATTEMPTED if name in files)
     except LISTING_ERRORS:
-        remaining = leftovers
+        # The re-list failed, so nothing was confirmed gone: report everything
+        # this run named at upload time, confirmed or not.
+        remaining = sorted(set(leftovers) | set(unconfirmed))
     if remaining:
         logger.warning(
             "Cleanup left {} of our probe files on the printer; remove them from "
@@ -1246,13 +1322,19 @@ def unconfirmed_leftovers(records: list[dict[str, Any]]) -> list[str]:
     pessimistic: a file whose delete was never confirmed is named, because the
     one thing this script promises is that a volunteer is never left guessing
     which `cc2_probe_*.gcode` files are sitting on their printer.
+
+    Keyed on `ATTEMPTED`, not `OWNED`: a name is worth reporting as soon as this
+    run has tried to create it, because an upload whose reply was lost leaves the
+    file on the printer while `OWNED` stays empty. `OWNED` remains the gate for
+    what may be DELETED; this list is the gate for what gets REPORTED, and the
+    first has to be stricter than the second.
     """
     confirmed_gone = {
         str(record["file"])
         for record in records
         if record.get("file") and record.get("still_listed") is False
     }
-    return sorted(OWNED - confirmed_gone)
+    return sorted(ATTEMPTED - confirmed_gone)
 
 
 async def cleanup_after_abort(
@@ -1385,6 +1467,13 @@ def build_report(
         # never about whether the file disappeared, and that second half is only
         # evidence when the listing was actually read.
         "variants_answered_without_listing_confirmation": len(unconfirmed),
+        # The single code the answered variants agreed on, when they did, else
+        # None. `answered_variants_answered_identically` says THAT they agreed;
+        # this says WHAT they agreed on, which is the half the conclusion needs:
+        # the "1047 is not served / 1003 is a generic not-available" reading is a
+        # claim about error_code 1003 specifically, and it must never be printed
+        # for a matrix that unanimously answered something else.
+        "answered_shared_error_code": codes[0] if answered_identically else None,
         "answered_variants_answered_identically": answered_identically,
         "winning_shape": winning["params"] if winning else None,
         "winning_shape_note": (
@@ -1450,6 +1539,69 @@ def deletion_claim(sent: list[dict[str, Any]]) -> str:
         )
     return "none of them was CONFIRMED to have removed its own file" + (
         " (" + "; ".join(clauses) + ")" if clauses else ""
+    )
+
+
+def shared_code(sent: list[dict[str, Any]]) -> Any:
+    """
+    The error_code every answered variant agreed on.
+
+    Read off the rows themselves rather than out of the report flag, so the
+    sentence that names a code cannot drift from the rows it summarises.
+    `identical_answer_explanation` needs this exact value, and re-deriving it
+    from `sent` keeps the two in step even if a caller builds a report by hand.
+    """
+    codes = {r.get("error_code") for r in sent}
+    return next(iter(codes)) if len(codes) == 1 else None
+
+
+def identical_answer_explanation(code: Any) -> str:
+    """
+    What a UNANIMOUS reply actually means — chosen from the code, never assumed.
+
+    Both identical-answer branches used to hard-code the same sentence whatever
+    the shared code was, and that sentence was about 1003. A matrix that
+    unanimously answered 1009 (PRINTER_BUSY) was therefore explained as "1003 is
+    this firmware's generic not-available answer" — a claim about a code this
+    capture never contained, printed over a run whose printer was simply busy.
+    A unanimous 0 with every file still listed was explained the same way, when
+    the shape of that result is the accept-and-ignore trap this script was
+    written to catch. So the explanation is now selected by the code that was
+    actually shared, and anything unrecognised stays inconclusive rather than
+    borrowing 1003's interpretation.
+    """
+    if code == CC2_ERROR_INVALID_PARAMETER:
+        return (
+            f"on this firmware {code} is not about the parameter key at all — "
+            f"1047 is simply not served, or {code} is its generic 'not "
+            "available / not handled' answer. The key-name hypothesis is not "
+            "supported by this capture."
+        )
+    if code == CC2_ERROR_SUCCESS:
+        # Answering 0 for every shape while every file stays listed is not a
+        # verdict about parameter keys at all: it is the printer accepting the
+        # request and ignoring it.
+        return (
+            f"every variant was ACCEPTED (error_code {code}) and none of them "
+            "provably removed its own file — that is the ACCEPT-AND-IGNORE "
+            "shape: 1047 takes any of these parameter shapes and reports "
+            "success without deleting. No parameter key can be concluded from "
+            "it, because the reply was never about the request."
+        )
+    if code == CC2_ERROR_PRINTER_BUSY:
+        return (
+            f"every variant was refused with {code} (PRINTER_BUSY), which is a "
+            "statement about the printer's state and not about any parameter "
+            "shape. This capture is INCONCLUSIVE for the key-name hypothesis "
+            f"and for the alternative reading alike: make the printer idle "
+            "and RE-RUN."
+        )
+    return (
+        f"every variant answered with the same code, {code!r}, and this script "
+        "has no interpretation recorded for that code. It is reported as what "
+        "it is — a unanimous refusal that has not been seen before — and "
+        "NEITHER hypothesis is supported or refuted by it. Do not read it as "
+        "the 1003 result; this capture never contained a 1003."
     )
 
 
@@ -1588,29 +1740,25 @@ def conclusion_lines(report: dict[str, Any]) -> list[str]:
         )
     elif report["every_variant_answered_identically"]:
         lines.append(
-            "EVERY VARIANT ANSWERED IDENTICALLY and "
+            "EVERY VARIANT ANSWERED IDENTICALLY (error_code "
+            f"{shared_code(sent)}) and "
             + deletion_claim(sent)
-            + ". That is a real finding, and it supports the ALTERNATIVE "
-            "reading recorded above: on this firmware 1003 is not about the "
-            "parameter key at all — 1047 is simply not served, or 1003 is its "
-            "generic 'not available / not handled' answer. The key-name "
-            "hypothesis is not supported by this capture."
+            + ". That is a real finding. What it means: "
+            + identical_answer_explanation(shared_code(sent))
         )
     elif report["answered_variants_answered_identically"]:
         # The answered variants did all say the same thing, but the claim is
         # qualified: `missing` rows are absent, so "EVERY variant" is false, and
         # a reader must not mistake the qualified line for the strong one above.
         lines.append(
-            f"THE {len(sent)} VARIANT(S) THAT ANSWERED answered IDENTICALLY, and "
-            f"{deletion_claim(sent)}; {missing} of the {len(VARIANTS)} "
-            "planned variants produced no answer to compare. That is a real "
-            "finding for the answered subset, and it leans towards the "
-            "ALTERNATIVE reading recorded above (1047 is not served, or 1003 is "
-            "its generic 'not available / not handled' answer) — but with "
-            f"{missing} rows missing it is NOT the full-matrix result the "
-            "paragraph above would claim, and it settles neither that reading "
-            "nor the key-name hypothesis. Re-run to fill in the missing "
-            "variants."
+            f"THE {len(sent)} VARIANT(S) THAT ANSWERED answered IDENTICALLY "
+            f"(error_code {shared_code(sent)}), and {deletion_claim(sent)}; "
+            f"{missing} of the {len(VARIANTS)} planned variants produced no "
+            "answer to compare. That is a real finding for the answered subset. "
+            "What it means: " + identical_answer_explanation(shared_code(sent))
+            + f" But with {missing} rows missing this is NOT the full-matrix "
+            "result the paragraph above would claim. Re-run to fill in the "
+            "missing variants."
         )
     else:
         lines.append(
@@ -1919,35 +2067,48 @@ async def probe(args: argparse.Namespace) -> int:
                 # clean-up cannot work and junk files would be left behind.
                 name = probe_name("preflight")
                 logger.info("Dry run: uploading one preflight file {}.", name)
+                # Published before the first await, exactly as `probe_variant`
+                # does for a --run: a dry run interrupted mid-upload or mid-settle
+                # still has this row in its report, and this row is the ONLY
+                # place the preflight file's name is written down. Appending it
+                # after the awaits meant a Ctrl-C during the upload produced a
+                # capture with no rows at all, naming nothing, for a run that may
+                # well have left a file on the printer. Mutated in place below.
+                preflight = {
+                    "index": 0,
+                    "slug": "preflight",
+                    "label": "dry-run upload check (no 1047 sent)",
+                    "file": name,
+                    "params": None,
+                    "upload": None,
+                    "settle": None,
+                    "status": None,
+                    "still_listed": None,
+                    "error_code": None,
+                }
+                records.append(preflight)
                 try:
+                    # Same ordering rule as probe_variant: named before the
+                    # upload is attempted, so a preflight upload that dies on
+                    # its way back is still reportable.
+                    begin_upload(name)
                     record = await upload_probe_file(session, target.ip, token, name)
                     OWNED.add(name)
+                    preflight["upload"] = record
+                    preflight["status"] = "dry_run_upload_only"
+                    preflight["note"] = (
+                        "dry run: no delete request was sent. The matrix "
+                        "below is exactly what --run would send, with "
+                        "cc2_probe_<variant>_<8 hex>.gcode in place of N."
+                    )
                     logger.info("PROBE UPLOADED {}", name)
                     logger.info("  uploaded {} bytes", record["size"])
                     settle = await wait_until_listed(client, name)
+                    preflight["settle"] = settle
                     logger.info(
                         "  listed after {} attempt(s): {}",
                         settle["attempts"],
                         settle["listed"],
-                    )
-                    records.append(
-                        {
-                            "index": 0,
-                            "slug": "preflight",
-                            "label": "dry-run upload check (no 1047 sent)",
-                            "file": name,
-                            "params": None,
-                            "upload": record,
-                            "settle": settle,
-                            "status": "dry_run_upload_only",
-                            "still_listed": None,
-                            "error_code": None,
-                            "note": (
-                                "dry run: no delete request was sent. The matrix "
-                                "below is exactly what --run would send, with "
-                                "cc2_probe_<variant>_<8 hex>.gcode in place of N."
-                            ),
-                        }
                     )
                 except UPLOAD_ERRORS as err:
                     logger.error(
@@ -1958,21 +2119,10 @@ async def probe(args: argparse.Namespace) -> int:
                     )
                     # Recorded so the report names the file it tried, in case the
                     # upload half-succeeded and the printer is holding it.
-                    records.append(
-                        {
-                            "index": 0,
-                            "slug": "preflight",
-                            "label": "dry-run upload check (no 1047 sent)",
-                            "file": name,
-                            "params": None,
-                            "status": "upload_failed",
-                            "still_listed": None,
-                            "error_code": None,
-                            "note": (
-                                f"dry run: the preflight upload failed ({err!r}), "
-                                "so no 1047 was sent and nothing was deleted"
-                            ),
-                        }
+                    preflight["status"] = "upload_failed"
+                    preflight["note"] = (
+                        f"dry run: the preflight upload failed ({err!r}), "
+                        "so no 1047 was sent and nothing was deleted"
                     )
                     raise _EarlyExit(
                         5, f"dry-run preflight upload failed ({err!r})"
@@ -2045,17 +2195,26 @@ async def probe(args: argparse.Namespace) -> int:
             # so it runs even on the exits that never had a client (where
             # `records` is empty anyway).
             stamp_unfinished_records(records)
-        if aborted is not None and client is not None and not cleanup_info and OWNED:
+        if (
+            aborted is not None
+            and client is not None
+            and not cleanup_info
+            and (OWNED or ATTEMPTED)
+        ):
             # The abort path: name what we uploaded, and clean up only if the
-            # link is still up. Skipped entirely when OWNED is empty — on the
-            # early exits nothing was ever uploaded, so there is nothing to name
-            # and no reason to send the printer so much as a listing after it has
-            # been refused. Bounded, because a run that died on a dead printer
-            # would otherwise spend 10 s per command (CC2_COMMAND_TIMEOUT)
-            # timing out — minutes — before the volunteer saw the list of files
-            # they must delete. The report is the deliverable; the clean-up is a
-            # bonus. `cleanup_after_abort` catches what it can and falls back to
-            # naming the files, so a failure here cannot replace the real error.
+            # link is still up. Skipped entirely when neither set has a name — on
+            # the early exits nothing was ever uploaded, so there is nothing to
+            # name and no reason to send the printer so much as a listing after it
+            # has been refused. `ATTEMPTED` is in the test as well as `OWNED`
+            # because the case this exists for is precisely the one where `OWNED`
+            # is still empty: an upload that reached the printer but whose reply
+            # was lost, followed by an abort. Bounded, because a run that died on
+            # a dead printer would otherwise spend 10 s per command
+            # (CC2_COMMAND_TIMEOUT) timing out — minutes — before the volunteer
+            # saw the list of files they must delete. The report is the
+            # deliverable; the clean-up is a bonus. `cleanup_after_abort` catches
+            # what it can and falls back to naming the files, so a failure here
+            # cannot replace the real error.
             try:
                 cleanup_info = await asyncio.wait_for(
                     cleanup_after_abort(

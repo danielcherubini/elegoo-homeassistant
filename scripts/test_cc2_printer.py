@@ -294,6 +294,20 @@ UPLOAD_PORT = 8080
 # total cannot make the simulator buffer without limit.
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 
+# Ceilings on the IN-FLIGHT uploads together, not just on one file.
+# MAX_UPLOAD_BYTES caps a single file; nothing capped the number of half-finished
+# files, so a contributor (or a probe run interrupted eleven times) could upload
+# `cc2_probe_a.gcode` chunk 0, abandon it, repeat under a fresh name, and leave
+# every one of those buffers resident for the life of the simulator. A
+# long-running simulator under a looping probe would grow without bound.
+MAX_PENDING_UPLOADS = 16
+MAX_PENDING_UPLOAD_BYTES = 32 * 1024 * 1024
+# An upload that has not seen a chunk in this many seconds is abandoned: the
+# real client sends its chunks back to back, so a gap this long means the sender
+# is gone (Ctrl-C, a refused chunk, a crashed run) and its buffer is worth
+# nothing but the RAM it is holding.
+PENDING_UPLOAD_IDLE_TIMEOUT = 300.0
+
 
 def seed_file_list():
     """
@@ -377,8 +391,60 @@ def seed_file_list():
 # Mutable: 1047 removes entries, PUT /upload appends them.
 printer_files = seed_file_list()
 
-# In-flight uploads by file name: {name: {"md5": ..., "data": bytearray}}
+# In-flight uploads by file name: {name: {"md5": ..., "data": bytearray,
+# "total": int, "seen": monotonic-seconds}}. Bounded by the two MAX_PENDING_*
+# ceilings below via `_evict_stale_uploads` — see their comment for why an
+# unfinished upload must not be able to live here forever.
 pending_uploads: dict[str, dict] = {}
+
+
+def _evict_stale_uploads(incoming_bytes=0, keep=None):
+    """
+    Drop in-flight uploads that are abandoned or that crowd out the memory budget.
+
+    Called on every chunk BEFORE a new transfer is registered, with the size of
+    the chunk about to arrive and the name it belongs to, so the two ceilings
+    hold for the state the request leaves behind — including the transfer this
+    request is part of. Evicting after the insert would instead leave the new
+    upload permanently one over the limit, and could evict the very entry the
+    handler is mid-way through writing to.
+
+    `keep` is never evicted, whatever the budgets say: it is the upload this
+    client is still sending, and discarding a transfer in progress would turn a
+    memory guard into a broken upload. The honest worst case is therefore
+    `MAX_PENDING_UPLOAD_BYTES` of OTHER in-flight files plus one whole file of up
+    to `MAX_UPLOAD_BYTES` being actively received — a bound, which is what this
+    is for, rather than the unbounded accumulation it replaces.
+
+    Order is oldest-seen-first, which discards the uploads nobody is still
+    sending. Returns the names dropped so the caller can report them: a
+    contributor whose earlier attempt got evicted is about to be told "expected
+    offset 0", and that is only explainable if it was named when it happened.
+    """
+    now = time.monotonic()
+    dropped = [
+        name
+        for name, state in pending_uploads.items()
+        if name != keep and now - state["seen"] > PENDING_UPLOAD_IDLE_TIMEOUT
+    ]
+    for name in dropped:
+        del pending_uploads[name]
+
+    # Then the hard ceilings, oldest first, until both are satisfied with room
+    # left for the chunk that prompted this call.
+    for name in sorted(
+        (n for n in pending_uploads if n != keep),
+        key=lambda n: pending_uploads[n]["seen"],
+    ):
+        buffered = sum(len(s["data"]) for s in pending_uploads.values())
+        if (
+            len(pending_uploads) < MAX_PENDING_UPLOADS
+            and buffered + incoming_bytes <= MAX_PENDING_UPLOAD_BYTES
+        ):
+            break
+        del pending_uploads[name]
+        dropped.append(name)
+    return dropped
 
 
 # =============================================================================
@@ -952,6 +1018,19 @@ async def handle_upload(request):
         docstring records
       * a range that does not continue the bytes already received, or a body that
         contradicts its own range -> HTTP 200 + ``error_code`` 9000 OFFSET_MISMATCH
+      * a range that reaches past its own declared total (``end >= total``), a
+        total that changes mid-transfer, or a completed transfer whose buffered
+        byte count is not the declared total -> HTTP 200 + ``error_code`` 9000.
+        All three are the same failure seen from three sides: a file listed under
+        a size its bytes do not add up to. The probe uploads its own target files
+        and judges the delete against the listing, so a simulator that accepted a
+        malformed upload could hand a contributor a passing run over a corrupt
+        file — and the whole point of this endpoint is that it refuses the shapes
+        the real printer refuses.
+
+    In-flight uploads are bounded (``MAX_PENDING_UPLOADS`` /
+    ``MAX_PENDING_UPLOAD_BYTES`` / ``PENDING_UPLOAD_IDLE_TIMEOUT``) so that
+    abandoned half-uploads cannot accumulate for the life of the simulator.
 
     On completion the file is APPENDED to ``printer_files``, so the next 1044
     lists it. An uploaded file that never appeared in the listing would make the
@@ -986,6 +1065,21 @@ async def handle_upload(request):
             f"match range {start}-{end}/{total}"
         )
         return web.json_response({"error_code": 9000}, status=200)
+    if end >= total:
+        # The range reaches past the end of the file it declared. Without this
+        # check `bytes 0-1/2` carrying three bytes was accepted (the length check
+        # above only compares the body against the RANGE, never against TOTAL),
+        # and completion then fired on `received >= total` with three bytes
+        # buffered — a "successful" upload of a file whose bytes contradict its
+        # own declared size. The real printer refuses the range; so does this.
+        print(
+            f"⚠️  Upload of {filename} refused: range {start}-{end} reaches past "
+            f"the declared total {total}"
+        )
+        return web.json_response({"error_code": 9000}, status=200)
+
+    for abandoned in _evict_stale_uploads(len(body), keep=filename):
+        print(f"🧹 Dropped abandoned in-flight upload {abandoned}")
 
     state = pending_uploads.get(filename)
     if state is None or state["md5"] != md5 or start == 0:
@@ -996,8 +1090,24 @@ async def handle_upload(request):
                 f"under a new MD5 mid-transfer"
             )
             return web.json_response({"error_code": 9000}, status=200)
-        state = {"md5": md5, "data": bytearray(), "total": total}
+        state = {
+            "md5": md5,
+            "data": bytearray(),
+            "total": total,
+            "seen": time.monotonic(),
+        }
         pending_uploads[filename] = state
+    elif total != state["total"]:
+        # The total may not move mid-transfer. `state["total"]` used to be stored
+        # and then never read, so a later chunk could restate the size and pull
+        # completion forward: chunks declaring 4 bytes total could be finished by
+        # a final chunk claiming 2, and the file was listed with bytes it never
+        # received. The declared size is fixed by its first chunk.
+        print(
+            f"⚠️  Upload of {filename} refused: chunk declares total {total}, but "
+            f"its first chunk declared {state['total']}"
+        )
+        return web.json_response({"error_code": 9000}, status=200)
 
     if start != len(state["data"]):
         print(
@@ -1013,11 +1123,25 @@ async def handle_upload(request):
         )
 
     state["data"].extend(body)
+    state["seen"] = time.monotonic()
     received = len(state["data"])
     print(f"📥 Uploading {filename}: {received}/{total} bytes")
 
     if received < total:
         return web.json_response({"error_code": CC2_ERROR_SUCCESS}, status=200)
+
+    if received > total:
+        # Unreachable while the two checks above hold (a range inside its total,
+        # a fixed total, and chunks that continue exactly), and kept precisely
+        # because it is the last gate before a file is announced as uploaded: no
+        # path through this handler may list a file whose buffered byte count is
+        # not the declared size.
+        print(
+            f"⚠️  Upload of {filename} refused: {received} bytes buffered for a "
+            f"declared total of {total}"
+        )
+        del pending_uploads[filename]
+        return web.json_response({"error_code": 9000}, status=200)
 
     # Last chunk landed: verify the MD5 of the whole file, as the printer does.
     del pending_uploads[filename]

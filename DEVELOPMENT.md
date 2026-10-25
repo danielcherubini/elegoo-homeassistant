@@ -192,7 +192,11 @@ What it will never do:
 - **Delete a file it did not upload itself.** Every delete goes through one
   guarded call that refuses any name this run did not create. If no variant found
   a working shape, the leftover probe files are listed by name in the report so
-  you can remove them from the printer's UI.
+  you can remove them from the printer's UI. Note the asymmetry in what that list
+  covers: a file is *reported* as soon as the probe has tried to upload it, but
+  only a file whose upload *confirmed* is ever deleted. So an upload that reached
+  the printer and lost its reply (a wifi drop, a Ctrl-C mid-transfer) is named for
+  you to remove by hand rather than deleted on a guess.
 - **Run against a working printer.** It refuses when the printer names a file it
   is printing. The filename is the load-bearing guard, not the status code —
   `CC2StatusMapper.map_status` resolves an unrecognised machine code to `IDLE`, so
