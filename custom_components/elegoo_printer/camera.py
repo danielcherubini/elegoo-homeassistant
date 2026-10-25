@@ -135,6 +135,36 @@ _pending_video_releases: dict[str, str] = {}
 # never be kept alive by being tracked here.
 _video_viewers_by_entry: dict[str, weakref.WeakSet["ElegooVideoStreamLifecycle"]] = {}
 
+# Whether an entry's shared printer video is currently enabled, by config entry.
+#
+# The printer's video stream is a single on/off resource per printer, shared by
+# every client (the MJPEG camera, still-image grabs, the native stream and
+# foreign viewers such as the Elegoo Slicer), so "is it on" is the config
+# entry's fact and not any one entity's: an entity inherits it at construction
+# and a teardown retry that outlived its entity reads it through its successor.
+#
+# It cannot live in ``entry.runtime_data``, which core deletes on unload,
+# because it has to survive the unload: while a foreign viewer holds the stream
+# the unload cannot disable it, and the entity the reload builds must know it is
+# still on instead of trusting constructor defaults. Module level is what
+# survives. It must not live on the config entry object either — that object is
+# core's, and an integration does not get to hang attributes on it (#425).
+#
+# One path bounds it, and it is the same one its two siblings use: an entry that
+# is removed has its flag dropped by the integration's ``async_remove_entry``
+# hook, which calls forget_pending_video_release() below. That hook cannot be
+# undone by asking: reads never create a record (see
+# ``_read_video_stream_state``), so a stray read — the retry performs one at the
+# top of every tick, including for an entry removed since the tick began —
+# answers from the entity's own copy instead of putting the dropped key back.
+# A WRITE can still create a record for an entry removed a moment earlier (a
+# video enable racing the hook), and nothing collects that one boolean — but
+# entry ids are never reused, so no future entity will ever read it either.
+#
+# An entry id is never reused, so at most one boolean is held per printer that
+# is between connections, and a reload reads the same key it had before.
+_video_stream_state_by_entry: dict[str, dict[str, bool]] = {}
+
 
 def _record_pending_video_release(entry_id: str, entity_id: str) -> None:
     """
@@ -158,14 +188,60 @@ def _clear_pending_video_release(entry_id: str) -> None:
     _pending_video_releases.pop(entry_id, None)
 
 
+def _video_stream_state(entry_id: str) -> dict[str, bool]:
+    """
+    Return the shared video state of an entry, creating it on first use.
+
+    The WRITE path, and the only thing allowed to add a key: creation belongs to
+    the side that has something to say about the stream, not to whoever asks.
+    A reader goes through ``_read_video_stream_state`` instead, because a
+    creating read resurrects the record the removal hook just dropped — see the
+    registry's own comment.
+
+    Arguments:
+        entry_id: Config entry whose shared printer video is being written to.
+
+    """
+    state = _video_stream_state_by_entry.get(entry_id)
+    if state is None:
+        state = {"enabled": False}
+        _video_stream_state_by_entry[entry_id] = state
+    return state
+
+
+def _read_video_stream_state(entry_id: str) -> dict[str, bool] | None:
+    """
+    Return an entry's stored video state, or None when it has no record.
+
+    The READ path, and deliberately non-creating. ``_async_cleanup_retry`` reads
+    the flag at the top of every tick, so a creating read was a leak with a
+    warning attached: the removal hook pops the entry, the next stray read puts
+    ``{"enabled": False}`` back, and nothing is left to collect it — removal is
+    terminal, so no future hook will ever name that entry id again. It also
+    falsified the registry's guarantee that a removed entry's flag cannot be
+    read, since a read of a gone entry answered from a record it had just made.
+
+    Returning None rather than a default keeps the two cases distinguishable for
+    the caller: "this entry never said anything" and "this entry said OFF" are
+    different facts, and only the second one deserves a key.
+
+    Arguments:
+        entry_id: Config entry whose shared printer video is being asked about.
+
+    """
+    return _video_stream_state_by_entry.get(entry_id)
+
+
 @callback
 def forget_pending_video_release(entry_id: str) -> None:
     """
     Forget everything this integration parked for an entry that is gone.
 
-    The public edge of both per-entry registries, called by the integration's
-    ``async_remove_entry`` hook: the handover registry keeps the entry id, the
-    viewer registry keeps the group of camera entities that were live for it.
+    The public edge of the three per-entry registries, called by the
+    integration's ``async_remove_entry`` hook: the handover registry keeps the
+    entry id, the viewer registry keeps the group of camera entities that were
+    live for it, and the video state registry keeps whether that entry's shared
+    printer video was left enabled.
 
     A release parked for a removed config entry can never be paid — there is no
     printer connection left to disable the stream with, and no future entity for
@@ -178,8 +254,15 @@ def forget_pending_video_release(entry_id: str) -> None:
     entity-free) group key forever.
 
     Idempotent and side-effect free: an entry with nothing parked is a no-op, so
-    it is safe to call for every removal. It deliberately touches neither the
-    printer nor the entry's shared enabled flag — that is core's unload path.
+    it is safe to call for every removal. It touches no printer — the client is
+    already disconnected by ``async_unload_entry``, which core always runs first.
+
+    It does drop the entry's shared enabled flag, which the unload path must not
+    do. Unload has to leave the flag set so the entity a reload builds knows the
+    stream is still on; removal is terminal, so there is no rebuilt entity left to
+    mislead and nothing left that can ever turn the stream off. That is why
+    forgetting an enabled flag here is loud: it is the only notice an operator
+    gets that a removed printer's video may stay enabled.
 
     Arguments:
         entry_id: Config entry being removed.
@@ -187,6 +270,15 @@ def forget_pending_video_release(entry_id: str) -> None:
     """
     _clear_pending_video_release(entry_id)
     _video_viewers_by_entry.pop(entry_id, None)
+    state = _video_stream_state_by_entry.pop(entry_id, None)
+    if state is not None and state.get("enabled"):
+        LOGGER.warning(
+            "Forgetting the video state of config entry %s while its shared "
+            "printer video was still enabled: the entry has been removed, so "
+            "nothing is left to disable the stream. The printer video may stay "
+            "enabled until the printer is rebooted.",
+            entry_id,
+        )
 
 
 class ElegooCameraMjpeg(CameraMjpeg):
@@ -467,27 +559,47 @@ class ElegooVideoStreamLifecycle(ElegooPrinterEntity):
 
     def _stream_state(self) -> dict[str, bool]:
         """
-        Return the shared printer-video state for this config entry.
+        Return the WRITABLE shared printer-video state for this config entry.
 
         The printer video is a single resource shared with every client, so
         the enabled flag is shared too: a teardown retry can outlive the
         entity it was created for and act through the replacement camera's
         client, and both must agree on whether the stream is on. The state
-        lives on the config entry, which survives a reload.
+        lives in ``_video_stream_state_by_entry``, keyed by entry id, which
+        survives a reload; an entity that was never attached to an entry keeps
+        its own copy in ``_local_stream_state``.
+
+        This is the write side: it creates the entry's record, because writing
+        is the moment the integration has something to say about the stream.
+        Reading goes through ``_stream_enabled`` and a non-creating lookup, so
+        that asking a removed entry's flag cannot resurrect its record.
         """
-        entry = self._config_entry()
-        if entry is None:
+        entry_id = self._config_entry_id()
+        if entry_id is None:
             return self._local_stream_state
-        state = getattr(entry, "_elegoo_video_state", None)
-        if state is None:
-            state = {"enabled": False}
-            setattr(entry, "_elegoo_video_state", state)  # noqa: B010
-        return state
+        return _video_stream_state(entry_id)
+
+    def _read_stream_state(self) -> dict[str, bool]:
+        """
+        Return this entry's shared video state without creating a record.
+
+        Answers from the stored record when the entry has one, and from the
+        entity's own copy when it does not — which is the same answer a
+        freshly created ``{"enabled": False}`` record would have given, without
+        leaving a key behind for an entry the removal hook has already forgotten
+        (the retry reads once per tick, so a creating read re-added a removed
+        entry's key and nothing left could collect it).
+        """
+        entry_id = self._config_entry_id()
+        if entry_id is None:
+            return self._local_stream_state
+        state = _read_video_stream_state(entry_id)
+        return self._local_stream_state if state is None else state
 
     @property
     def _stream_enabled(self) -> bool:
         """Whether the shared printer video is currently enabled."""
-        return self._stream_state()["enabled"]
+        return self._read_stream_state()["enabled"]
 
     @_stream_enabled.setter
     def _stream_enabled(self, value: bool) -> None:

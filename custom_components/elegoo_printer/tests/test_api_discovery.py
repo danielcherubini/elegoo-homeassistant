@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import socket
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+import custom_components.elegoo_printer.api as api_module
 from custom_components.elegoo_printer.api import ElegooPrinterApiClient
 from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
 _DOC_IP = "192.0.2.10"
 _HOSTNAME = "centauri-carbon.local"
@@ -25,6 +27,27 @@ def _printer(ip_address: str) -> Printer:
             "protocol": "V3",
         }
     )
+
+
+@contextlib.contextmanager
+def _no_tcp_probe() -> Iterator[Any]:
+    """
+    Patch out the TCP 3030 reachability probe (#429/#431).
+
+    Discovery that comes back empty now ends in a real connect attempt to the
+    configured address, which for the documentation addresses these tests use
+    costs the full connect timeout in a test that is only ever about UDP. The
+    probe is pinned where it belongs — ``TestTcpProbeHelper`` and the end-to-end
+    test in ``test_manual_ip_no_discovery.py`` drive real sockets.
+
+    ``return_value``, never a positional ``False``: ``AsyncMock(False)`` reads
+    its argument as ``spec`` and then hands back a truthy mock, which would make
+    every printer look reachable.
+    """
+    with patch.object(
+        api_module, "async_tcp_port_is_open", new=AsyncMock(return_value=False)
+    ):
+        yield
 
 
 def _api_client(discovered_printers: list[Printer]) -> ElegooPrinterApiClient:
@@ -85,9 +108,12 @@ class TestDiscoverPrinterWithFallback:
     def test_unresolvable_hostname_still_uses_broadcast_fallback(self) -> None:
         async def _run() -> None:
             api_client = _api_client([])
-            with patch(
-                "custom_components.elegoo_printer.api.socket.gethostbyname",
-                side_effect=socket.gaierror,
+            with (
+                _no_tcp_probe(),
+                patch(
+                    "custom_components.elegoo_printer.api.socket.gethostbyname",
+                    side_effect=socket.gaierror,
+                ),
             ):
                 assert not await api_client._discover_printer_with_fallback(
                     _printer(_HOSTNAME)

@@ -29,6 +29,7 @@ from .const import (
     FIRMWARE_SERVICE_BASE_URL,
     FIRMWARE_UPDATE_ENDPOINT,
     LOGGER,
+    TCP_PROBE_TIMEOUT,
     WEBSOCKET_PORT,
 )
 from .mqtt.client import ElegooMQTTClient
@@ -42,6 +43,7 @@ from .sdcp.exceptions import (
 from .sdcp.models.elegoo_image import ElegooImage
 from .sdcp.models.enums import TransportType
 from .sdcp.models.printer import Printer, PrinterData
+from .sdcp.transport.discovery import async_tcp_port_is_open
 from .websocket.client import ElegooPrinterClient
 from .websocket.server import ElegooPrinterServer
 
@@ -258,6 +260,31 @@ class ElegooPrinterApiClient:
                     printer.ip_address,
                     e,
                 )
+
+        # Neither UDP attempt answered. That is not the same as "the printer is
+        # not there": a CC1 that cannot ping its default gateway declares its
+        # network down and stops answering SDCP discovery while its control
+        # socket on TCP 3030 stays open the whole time (#431). Ask the question
+        # the integration actually depends on — does the port we dial answer? —
+        # before declaring the printer unreachable. This is the reachability
+        # gate for setup AND for reconnect(), which both call this method, so a
+        # manual-IP entry for such a printer would otherwise sit in
+        # "Failed setup, will retry" forever (#429).
+        if not printer_reachable:
+            port_is_open = await async_tcp_port_is_open(
+                printer.ip_address,
+                WEBSOCKET_PORT,
+                wait_timeout=TCP_PROBE_TIMEOUT,
+            )
+            if port_is_open:
+                self._logger.info(
+                    "Printer %s at %s did not answer SDCP discovery but TCP %s is"
+                    " open — proceeding on the live connection.",
+                    printer.name,
+                    printer.ip_address,
+                    WEBSOCKET_PORT,
+                )
+                printer_reachable = True
 
         return printer_reachable
 

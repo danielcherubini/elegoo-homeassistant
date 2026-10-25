@@ -42,7 +42,8 @@ start_print:
       name: Canvas tray
       description: >-
         Tray to print from, 0-3 (A1-A4). Leave empty to let the printer choose.
-        Maps G-code tool 0 only.
+        Maps every G-code tool the file uses; a file whose tool list the
+        printer never reported maps its first tool.
       required: false
       selector:
         number:
@@ -92,7 +93,8 @@ upload_gcode:
       name: Canvas tray
       description: >-
         Tray to print from, 0-3 (A1-A4), only with "Start printing". Leave
-        empty to let the printer choose. Maps G-code tool 0 only.
+        empty to let the printer choose. Maps every G-code tool the file uses;
+        a file whose tool list the printer never reported maps its first tool.
       required: false
       selector:
         number:
@@ -109,3 +111,83 @@ upload_gcode:
       selector:
         boolean:
 
+
+cleanup_files:
+  name: Clean up printer files
+  description: >-
+    Delete old files from a printer's local storage, by age and by name
+    pattern. Centauri Carbon 2 only, and DRY RUN BY DEFAULT: the first call
+    reports which files it would delete and deletes nothing, so run it once and
+    read the answer before switching the dry run off. Whether a delete actually
+    happened is confirmed by re-reading the printer's file list, not by trusting
+    its reply - the delete command is documented as untested on hardware and its
+    reply shape is not documented at all, so a file the printer accepted and
+    kept comes back as failed. Two kinds of file are never deleted: the file the
+    printer is printing right now, and any file whose creation date it did not
+    report - including a file dated before 2000, which is how a printer whose
+    clock has never been set reports a date, so an unset clock means nothing
+    gets deleted rather than everything getting deleted. It deletes whatever the
+    printer's file list reports and matches the patterns: there is no video
+    filter, this integration has simply never seen a video on that list. A call
+    that never reached the printer answers with just success: false and an
+    error; a call that reached it answers with the full report, and with an
+    error instead of a message when it could not act.
+  fields:
+    entry_id:
+      name: Config Entry
+      description: The Centauri Carbon 2 to clean up.
+      required: true
+      selector:
+        config_entry:
+          integration: elegoo_printer
+    older_than_days:
+      name: Older than (days)
+      description: >-
+        Whole number of days. A file is only a candidate when its creation date
+        is strictly older than this; fractions are rejected rather than rounded
+        down, because rounding down would delete slightly more than you asked
+        for. Defaults to 60.
+      required: false
+      default: 60
+      selector:
+        number:
+          min: 1
+          max: 3650
+          mode: box
+    include:
+      name: Include patterns
+      description: >-
+        File names to consider, as glob patterns - "ECC*" matches every file
+        whose name starts with ECC. Omit this field to mean every file, which is
+        the default. A field that is present but BLANK matches nothing, so
+        nothing is deleted: a nightly job left in that state stays inert, and
+        the response says the pattern matched nothing rather than reporting a
+        quiet success. Excluded files are never deleted even when they match
+        this too. Case matters, the same way on every machine.
+      example: "ECC*"
+      required: false
+      selector:
+        text:
+    exclude:
+      name: Exclude patterns
+      description: >-
+        File names to keep, as glob patterns - "Keep*" keeps every file whose
+        name starts with Keep. Omit this field to keep nothing special, which is
+        the default. Exclusion wins over inclusion, so a file matching both is
+        kept no matter what the include field asks for. A field that is present
+        but BLANK excludes nothing, so every matching file stays a candidate.
+        Case matters, the same way on every machine.
+      example: "Keep*"
+      required: false
+      selector:
+        text:
+    dry_run:
+      name: Dry run
+      description: >-
+        On (the default) reports the files that would be deleted and deletes
+        nothing. Switch off to delete them. Only the literal off switch deletes:
+        a value that is not exactly off is treated as a dry run.
+      required: false
+      default: true
+      selector:
+        boolean:

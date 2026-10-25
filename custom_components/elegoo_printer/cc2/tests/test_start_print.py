@@ -16,6 +16,7 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
 )
 from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
+from custom_components.elegoo_printer.sdcp.models.file_info import PrinterFile
 from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 
@@ -86,6 +87,114 @@ def test_start_without_bed_leveling_sends_printer_check_false() -> None:  # noqa
         asyncio.run(client.print_start("benchy.gcode", bed_leveling=False))
         params = mock_cmd.call_args.args[1]
         assert params["config"] == {"slot_map": [], "printer_check": False}
+
+
+def test_start_maps_every_tool_the_file_uses() -> None:  # noqa: D103
+    # config.slot_map maps EACH tool index of the G-code to a physical tray
+    # (docs/CC2_PROTOCOL.md, "Printing with Canvas"). Mapping only tool 0 left
+    # a multi-tool file's other tools unmapped - the one defect in this repo's
+    # evidence that fits #435's "all usage in A1".
+    client = _client()
+    client.printer_data.file_list = {
+        "multi.gcode": PrinterFile(
+            {
+                "filename": "multi.gcode",
+                "color_map": [
+                    {"t": 0, "color": "#111111", "name": "PETG"},
+                    {"t": 2, "color": "#222222", "name": "PLA"},
+                ],
+            }
+        )
+    }
+    with patch.object(
+        client, "_send_command", new_callable=AsyncMock, return_value=_response(0)
+    ) as mock_cmd:
+        asyncio.run(client.print_start("multi.gcode", tray_id=1))
+        mock_cmd.assert_called_once_with(
+            CC2_CMD_START_PRINT,
+            {
+                "storage_media": "local",
+                "filename": "multi.gcode",
+                "config": {
+                    "slot_map": [
+                        {"t": 0, "canvas_id": 0, "tray_id": 1},
+                        {"t": 2, "canvas_id": 0, "tray_id": 1},
+                    ],
+                    "printer_check": True,
+                },
+            },
+        )
+
+
+def test_start_without_file_detail_falls_back_to_tool_0() -> None:  # noqa: D103
+    # Regression pin, do not weaken: when no file detail is available - nothing
+    # in file_list, or a listing entry that carried no usable color_map - the
+    # payload must stay byte-identical to what a single-tool print sent before
+    # multi-tool mapping existed, so those prints cannot regress.
+    client = _client()
+    with patch.object(
+        client, "_send_command", new_callable=AsyncMock, return_value=_response(0)
+    ) as mock_cmd:
+        asyncio.run(client.print_start("benchy.gcode", tray_id=1))
+        mock_cmd.assert_called_once_with(
+            CC2_CMD_START_PRINT,
+            {
+                "storage_media": "local",
+                "filename": "benchy.gcode",
+                "config": {
+                    "slot_map": [{"t": 0, "canvas_id": 0, "tray_id": 1}],
+                    "printer_check": True,
+                },
+            },
+        )
+
+    client.printer_data.file_list = {
+        "plain.gcode": PrinterFile({"filename": "plain.gcode"})
+    }
+    with patch.object(
+        client, "_send_command", new_callable=AsyncMock, return_value=_response(0)
+    ) as mock_cmd:
+        asyncio.run(client.print_start("plain.gcode", tray_id=1))
+        params = mock_cmd.call_args.args[1]
+        assert params["config"]["slot_map"] == [{"t": 0, "canvas_id": 0, "tray_id": 1}]
+
+
+def test_start_tool_order_and_garbage() -> None:  # noqa: D103
+    # Tool indices are NOT contiguous from 0: the measured 1046 response
+    # (CC2_PROTOCOL.md) is a single entry with t: 3, so the map must carry the
+    # file's own indices. A non-int, negative, bool or duplicate t is dropped
+    # rather than sent - an out-of-range tray_id entry is a whole-map reject,
+    # so one bad entry must not poison every good one.
+    client = _client()
+    client.printer_data.file_list = {
+        "one.gcode": PrinterFile({"filename": "one.gcode", "color_map": [{"t": 3}]}),
+        "messy.gcode": PrinterFile(
+            {
+                "filename": "messy.gcode",
+                "color_map": [
+                    {"t": 2},
+                    {"t": 0},
+                    {"t": "red"},
+                    {"t": -1},
+                    {"t": True},
+                    {"t": 2},
+                    {"color": "#000000"},
+                ],
+            }
+        ),
+    }
+    with patch.object(
+        client, "_send_command", new_callable=AsyncMock, return_value=_response(0)
+    ) as mock_cmd:
+        asyncio.run(client.print_start("one.gcode", tray_id=1))
+        assert mock_cmd.call_args.args[1]["config"]["slot_map"] == [
+            {"t": 3, "canvas_id": 0, "tray_id": 1}
+        ]
+        asyncio.run(client.print_start("messy.gcode", tray_id=2))
+        assert mock_cmd.call_args.args[1]["config"]["slot_map"] == [
+            {"t": 0, "canvas_id": 0, "tray_id": 2},
+            {"t": 2, "canvas_id": 0, "tray_id": 2},
+        ]
 
 
 def test_start_returns_printer_error_code() -> None:  # noqa: D103

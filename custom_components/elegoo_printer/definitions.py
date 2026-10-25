@@ -1431,9 +1431,10 @@ PRINTER_FILE_SELECT_CC2: tuple[ElegooPrinterDynamicSelectEntityDescription, ...]
     ),
 )
 
-# Print Tray options: label -> tray_id for G-code tool 0. "Automatic" sends no
-# slot_map and leaves the choice to the printer - measured on fw 02.01.00.00 to
-# be the last active tray once and tray 0 otherwise, so it is a choice too.
+# Print Tray options: label -> tray_id, applied to every G-code tool the chosen
+# file uses. "Automatic" sends no slot_map and leaves the choice to the printer
+# - measured on fw 02.01.00.00 to be the last active tray once and tray 0
+# otherwise, so it is a choice too.
 PRINT_TRAY_OPTIONS: dict[str, int | None] = {
     "Automatic": None,
     "A1": 0,

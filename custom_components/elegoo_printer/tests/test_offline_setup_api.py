@@ -26,7 +26,10 @@ import aiomqtt
 import custom_components.elegoo_printer.api as api_module
 from custom_components.elegoo_printer.api import ElegooPrinterApiClient
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
-from custom_components.elegoo_printer.const import CONF_ALLOW_PRINTER_OFFLINE
+from custom_components.elegoo_printer.const import (
+    CONF_ALLOW_PRINTER_OFFLINE,
+    WEBSOCKET_PORT,
+)
 from custom_components.elegoo_printer.mqtt.client import ElegooMQTTClient
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterNotConnectedError,
@@ -96,6 +99,18 @@ def _offline_websocket() -> Any:
         patch.object(api_module, "get_async_client", return_value=MagicMock()),
         # Neither the unicast nor the broadcast discovery answers: printer off.
         patch.object(ElegooPrinterClient, "discover_printer", return_value=[]),
+        # Discovery answering nothing now falls through to a real TCP connect to
+        # the configured address (#429/#431), and these tests use a documentation
+        # IP, so every one of them would pay the full connect timeout to prove a
+        # printer is unreachable. The probe is pinned for real by
+        # TestTcpProbeHelper / TestRuntimeReachabilityProbe in
+        # test_manual_ip_no_discovery.py and by
+        # TestSilentDiscoveryButOpenPortSetups below. Note the explicit
+        # return_value: AsyncMock(False) would pass False as ``spec`` and return
+        # a truthy mock, making every printer look reachable.
+        patch.object(
+            api_module, "async_tcp_port_is_open", new=AsyncMock(return_value=False)
+        ),
         patch.object(
             ElegooPrinterApiClient, "_update_config_entry_if_needed", new=AsyncMock()
         ),
@@ -181,6 +196,62 @@ class TestUnreachablePrinter:
         assert api is not None
         assert api.offline_setup is True
         assert api.is_connected is False
+
+
+class TestSilentDiscoveryButOpenPortSetups:
+    """
+    A printer that ignores UDP 3000 but holds TCP 3030 open sets up (#429/#431).
+
+    This is the second wall, pinned at the ``async_create`` decision rather than
+    at ``_discover_printer_with_fallback``: reachability used to be decided by UDP
+    discovery alone, so a CC1 that had just been accepted by the config flow — its
+    IP typed by hand, its socket open — was declared unreachable at setup and the
+    entry sat in "Failed setup, will retry" forever. Pinning it here rather than
+    only at the helper means the test fails if the probe is removed, moved behind
+    the discovery branches, or if its result stops feeding ``printer_reachable``.
+    """
+
+    async def test_open_tcp_port_alone_makes_setup_succeed(self) -> None:
+        """Discovery silent, TCP 3030 open: setup returns a live client."""
+        probe = AsyncMock(return_value=True)
+        with (
+            patch.object(
+                api_module, "async_get_clientsession", return_value=MagicMock()
+            ),
+            patch.object(api_module, "get_async_client", return_value=MagicMock()),
+            patch.object(ElegooPrinterClient, "discover_printer", return_value=[]),
+            patch.object(api_module, "async_tcp_port_is_open", new=probe),
+            patch.object(
+                ElegooPrinterClient,
+                "connect_printer",
+                new=AsyncMock(return_value=True),
+            ) as connect,
+            patch.object(
+                ElegooPrinterClient, "disconnect", new=AsyncMock()
+            ) as disconnect,
+            patch.object(
+                ElegooPrinterApiClient,
+                "_update_config_entry_if_needed",
+                new=AsyncMock(),
+            ),
+        ):
+            api = await ElegooPrinterApiClient.async_create(
+                _config(), MagicMock(), _hass(), None
+            )
+
+        assert api is not None
+        # Not the tolerated offline exit (#171): the open port was believed.
+        assert api.offline_setup is False
+        # Setup ran past the reachability gate and dialled the printer. (The
+        # connect itself is stubbed, so ``is_connected`` stays False — the
+        # transport was never opened; what is under test is the gate.)
+        connect.assert_awaited_once()
+        # The probe was asked about the printer's own address on the control port.
+        assert probe.await_args is not None
+        assert probe.await_args.args[0] == PRINTER_IP
+        assert probe.await_args.args[1] == WEBSOCKET_PORT
+        # A reachable printer is not torn down on the way in.
+        disconnect.assert_not_awaited()
 
 
 class TestUnreachableCc2:

@@ -11,7 +11,7 @@ import asyncio
 import json
 from functools import partial
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -126,6 +126,316 @@ def _normalize_gcode_proxy_base_url(raw: str) -> str | None:
 
 # Total budget for CC1 Canvas detection (WS handshake + first status push).
 _CANVAS_DETECT_TIMEOUT: float = 5
+
+# Cap on how much of a device-controlled frame is ever written to the log.
+# Length alone is not the reason for the cap; the reason is that the text comes
+# from a device the user just pointed Home Assistant at, so it is bounded rather
+# than trusted. See :func:`_frame_for_log`.
+_MAX_LOGGED_FRAME_CHARS: int = 400
+
+# Cap on a device-reported identifier written at INFO (name, model, mainboard id).
+_MAX_LOGGED_ID_CHARS: int = 64
+
+# Keys a printer may use to describe **itself**.
+#
+# ``Printer.from_dict`` reads routing configuration out of the same dictionary it
+# reads identity from — ``transport_type``, ``protocol_version``, ``proxy_host``,
+# ``mqtt_external_host``, ``mqtt_external_port``, ``cc2_access_code``,
+# ``cc2_token_status``, ``proxy_enabled``, ``camera_enabled``, ``has_canvas``,
+# ``external_ip`` and the two proxy ports are all read from the frame — and every
+# other call site on this integration hands it a dictionary the integration
+# itself wrote (``to_dict`` output, entry data, the manual-entry form). The live
+# probe is the only place the dictionary comes from the wire, so there the frame
+# is filtered through this set first.
+#
+# What survives is exactly what the UDP discovery constructor
+# (``Printer(json_string)``) has always been willing to believe, minus ``Proxy``:
+# the seven keys below are the printer's name, model, brand, address, mainboard
+# id and two version strings. Everything else in the frame is dropped, so a
+# hostile device can name itself but cannot say where Home Assistant connects
+# next — the reason ``Proxy`` is left out even though discovery reads it is that
+# the probe is only ever pointed at an address the user typed to reach a printer,
+# and letting that device claim to be a proxy buys nothing while adding a key the
+# identity concept does not need.
+#
+# ``MainboardIP`` is listed because ``from_dict`` wants it, not because it is
+# believed: the probe overwrites ``ip_address`` with the typed address right
+# after parsing. Transport is deliberately absent — with ``transport_type`` and
+# ``protocol_version`` gone, ``from_dict`` falls back to deriving both from
+# ``ProtocolVersion``, which is how discovery does it.
+_PRINTER_IDENTITY_KEYS: frozenset[str] = frozenset(
+    {
+        "Name",
+        "MachineName",
+        "BrandName",
+        "MainboardIP",
+        "MainboardID",
+        "ProtocolVersion",
+        "FirmwareVersion",
+    }
+)
+
+
+def _identity_only(attributes: dict[str, Any]) -> dict[str, Any]:
+    """
+    Reduce a device-sent attributes frame to the keys that describe identity.
+
+    This is the trust boundary of the live printer probe in
+    :meth:`ElegooFlowHandler._async_probe_websocket_printer`: the frame answers
+    "who are you", never "where should Home Assistant connect". Filtering rather
+    than sanitising per key is deliberate — the dangerous keys are the ones a
+    future ``Printer.from_dict`` might grow as much as the ones it reads today,
+    and an allowlist cannot be widened by accident.
+
+    Arguments:
+        attributes: The attributes dict taken out of a printer frame.
+
+    Returns:
+        A new dict holding only :data:`_PRINTER_IDENTITY_KEYS`, keys absent from
+        the frame simply missing.
+
+    """
+    return {
+        key: value for key, value in attributes.items() if key in _PRINTER_IDENTITY_KEYS
+    }
+
+
+def _as_str(value: Any) -> str:
+    """
+    Return ``value`` when it is a string, else ``""``.
+
+    Lets a membership test on a device-controlled field stay total:
+    ``"status" in frame.get("Topic", "")`` is a ``TypeError`` when the topic is
+    ``7`` or ``None``, and the frame loops run on frames the printer chose.
+
+    Arguments:
+        value: Anything read out of a frame.
+
+    Returns:
+        The string itself, or an empty string for any other type.
+
+    """
+    return value if isinstance(value, str) else ""
+
+
+def _dig(frame: Any, *keys: str) -> dict[str, Any]:
+    """
+    Walk nested dictionaries in a device frame without being able to raise.
+
+    ``frame.get("Data", {}).get("Data", {}).get("Status", {})`` — the shape CC1
+    status pushes use — is an ``AttributeError`` the moment any level is a list,
+    a string or a number instead of an object, and these frames come from the
+    network. A level that is not a dict ends the walk.
+
+    Arguments:
+        frame: The value to descend from (typically a parsed frame).
+        keys: The chain of keys to follow.
+
+    Returns:
+        The innermost dict found, or an empty dict if any level is missing or
+        not an object.
+
+    """
+    current: Any = frame
+    for key in keys:
+        if not isinstance(current, dict):
+            return {}
+        current = current.get(key)
+    return current if isinstance(current, dict) else {}
+
+
+def _frame_for_log(
+    value: Any,
+    limit: int = _MAX_LOGGED_FRAME_CHARS,
+    *,
+    collapse: bool = True,
+) -> str:
+    """
+    Render a device-controlled value so it is safe and cheap to log.
+
+    Two problems are solved here, in this order:
+
+    * **Log injection.** The value is a frame from a device on the user's LAN.
+      Rendered through ``repr``, newlines and quotes come back escaped, so a
+      frame cannot forge extra lines in Home Assistant's log.
+    * **Cost and noise.** A printer can push a large frame, and rendering it is
+      itself recursive work that can raise ``RecursionError`` on a deeply nested
+      one, so rendering is guarded and the result truncated.
+
+    Arguments:
+        value: The device-controlled value to render.
+        limit: Maximum characters kept.
+        collapse: Whether to squash runs of whitespace. True keeps a frame dump
+            compact; False is for values whose whitespace IS the diagnosis — an
+            all-blank mainboard id has to read differently from an empty one.
+
+    Returns:
+        A single-line, truncated representation, or a fixed placeholder if the
+        value cannot be rendered at all.
+
+    """
+    try:
+        text = repr(value)
+    except (RecursionError, ValueError, TypeError):
+        # A frame deep enough to break repr is exactly the input this whole
+        # section is written to survive; the log line is not worth losing it over.
+        return "<unrenderable frame>"
+    if collapse:
+        text = " ".join(text.split())
+    if len(text) > limit:
+        return f"{text[:limit]}... ({len(text)} chars total)"
+    return text
+
+
+def _id_for_log(value: Any) -> str:
+    """
+    Return a device-reported name or id, bounded for the log.
+
+    A name a printer reports is normally an ordinary short string, and the log
+    line is easier to read — and unchanged from before this existed — when it is
+    echoed as it came. So a value that is already a short single-line string with
+    no control characters passes through untouched; anything else (non-string,
+    over-long, or carrying a newline or other control character that could forge a
+    log line) goes through the escaped, truncated rendering.
+
+    Arguments:
+        value: The identifier or name the printer reported about itself.
+
+    Returns:
+        The value as it came when it is benign, else a bounded single-line
+        representation (``"None"`` when nothing was reported).
+
+    """
+    if value is None:
+        return "None"
+    # `isprintable()` is False for anything containing a newline, a tab or another
+    # control character, which is exactly the log-injection surface.
+    if (
+        isinstance(value, str)
+        and len(value) <= _MAX_LOGGED_ID_CHARS
+        and value.isprintable()
+    ):
+        return value
+    return _frame_for_log(value, _MAX_LOGGED_ID_CHARS)
+
+
+class _FrameScan(NamedTuple):
+    """
+    What one scan of a printer's live WebSocket connection produced.
+
+    Attributes:
+        found: Whatever the caller's ``find`` pulled out of the frame it matched,
+            or None when no frame matched (or the scan never got frames at all).
+        connected: Whether the WebSocket connection itself worked. Callers need
+            this because "nothing is listening" and "something answered but said
+            nothing useful" are different answers for the user and for the log,
+            and only the connection outcome tells them apart.
+
+    """
+
+    found: Any
+    connected: bool
+
+
+async def _async_scan_websocket_frames(
+    hass: HomeAssistant,
+    ip_address: str | None,
+    find: Callable[[dict[str, Any]], Any],
+    context: str,
+) -> _FrameScan:
+    """
+    Read a printer's live WebSocket push stream until ``find`` matches a frame.
+
+    This is the ONE frame loop for both config-flow probes that talk to a printer
+    over TCP 3030 — the identity probe and CC1 Canvas detection. They used to be
+    two loops, and only this one was total: Canvas detection still had the
+    pre-probe ``parsed.get("Topic")`` / ``.get("Data")`` chain, which raises
+    ``AttributeError`` on a list frame, ``TypeError`` on a non-string ``Topic``,
+    and ``RecursionError`` on a deeply nested one. Canvas detection is reachable
+    with a device-controlled first frame now that the identity probe only
+    guarantees "something at this IP accepts TCP", so that crash became a
+    user-visible one.
+
+    Never raises for anything the printer controls, for the reason the identity
+    probe's docstring gives in full: ``data_entry_flow._async_handle_step``
+    catches only ``AbortFlow``, so anything escaping here surfaces as the generic
+    "Config flow could not be loaded". Hence:
+
+    * non-text messages end the scan, as they always have;
+    * undecodable JSON is skipped, not fatal (a garbage frame says nothing, it
+      does not prove the printer is unreachable);
+    * ``RecursionError`` is caught in both the per-frame decode and the outer
+      handler — ``json.loads`` is itself recursive and a frame nested ~30k deep
+      raises it, which is neither ``JSONDecodeError`` nor ``ClientError``;
+    * every value taken out of a frame goes through :func:`_as_str` or
+      :func:`_dig`, so nothing here can be made to raise by what the device
+      sends.
+
+    ``asyncio.CancelledError`` is deliberately NOT caught: it derives from
+    ``BaseException``, and Home Assistant must still be able to cancel a flow.
+
+    Arguments:
+        hass: The Home Assistant instance, for the shared aiohttp session.
+        ip_address: The address to dial, or None when the caller has none.
+        find: Given one parsed frame, returns the value the caller wants, or
+            None to keep reading. It is this integration's own code, and the two
+            call sites keep it total with :func:`_as_str` / :func:`_dig`.
+        context: Short phrase naming the caller, used in the failure log so a
+            Canvas-detection timeout is not reported as an identity probe one.
+
+    Returns:
+        A :class:`_FrameScan`: the matched value (None if nothing matched) and
+        whether the connection worked.
+
+    """
+    import aiohttp  # noqa: PLC0415
+
+    if not ip_address:
+        return _FrameScan(found=None, connected=False)
+
+    ws_url = f"ws://{ip_address}:{WEBSOCKET_PORT}/websocket"
+    session = async_get_clientsession(hass)
+    try:
+        # The timeout must cover ws_connect too: a device that accepts TCP but
+        # never completes the WS handshake would otherwise hang the config flow
+        # on HA's shared session (no handshake timeout).
+        async with (
+            asyncio.timeout(_CANVAS_DETECT_TIMEOUT),
+            session.ws_connect(ws_url) as ws,
+        ):
+            async for msg in ws:
+                if msg.type != aiohttp.WSMsgType.TEXT:
+                    break
+                try:
+                    frame = json.loads(msg.data)
+                except (json.JSONDecodeError, RecursionError):
+                    # A frame that is not JSON, or is JSON too deeply nested to
+                    # decode, carries nothing this integration can use. Skip it
+                    # and keep reading: the printer is still connected.
+                    continue
+                # Everything from here down is device-controlled, so the frame is
+                # type-checked before any key is read out of it.
+                if not isinstance(frame, dict):
+                    continue
+                candidate = find(frame)
+                if candidate is not None:
+                    return _FrameScan(found=candidate, connected=True)
+    except (TimeoutError, aiohttp.ClientError, RecursionError) as exception:
+        # The narrow set this integration already uses for its own connectivity
+        # probes, plus RecursionError for the deeply-nested frame json.loads
+        # cannot decode inside `find`. Deliberately not widened further: a
+        # printer cannot cause anything else here, and swallowing more would hide
+        # real bugs.
+        LOGGER.debug(
+            "%s: reading the WebSocket push stream from %s:%s failed (%s)",
+            context,
+            ip_address,
+            WEBSOCKET_PORT,
+            type(exception).__name__,
+        )
+        return _FrameScan(found=None, connected=False)
+    return _FrameScan(found=None, connected=True)
+
 
 MANUAL_IP_SCHEMA = vol.Schema(
     {
@@ -436,37 +746,291 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return _sanitize_ip_address(raw_ip)
 
     async def _async_detect_canvas(self, printer: Printer) -> bool:
-        """Detect Canvas on CC1 by reading AmsConnectStatus from status push."""
-        import aiohttp  # noqa: PLC0415
+        """
+        Detect Canvas on CC1 by reading AmsConnectStatus from a status push.
 
-        ws_url = f"ws://{printer.ip_address}:{WEBSOCKET_PORT}/websocket"
-        session = async_get_clientsession(self.hass)
+        The frame stream is read by :func:`_async_scan_websocket_frames`, which
+        is total against a device-controlled frame; this method only decides what
+        counts as an answer. The first frame here is NOT known to come from a
+        printer: the identity probe guarantees only that something at this IP
+        accepts TCP, so Canvas detection can be pointed at whatever is listening,
+        and any exception escaping would reach the user as HA's generic "Config
+        flow could not be loaded".
+
+        A frame whose `AmsConnectStatus` is present but not a bool is read as
+        whatever it is and `bool()`-ed, matching the previous behaviour; a status
+        frame that does not carry the key at all means "no Canvas", as before.
+
+        Arguments:
+            printer: The selected printer (only its address is used).
+
+        Returns:
+            True when the printer reported Canvas connected, False for anything
+            else — including a device that answers with frames that are not
+            status frames at all.
+
+        """
+
+        def _ams_connect_status(frame: dict[str, Any]) -> bool | None:
+            """Pull AmsConnectStatus from a status frame; None keeps reading."""
+            if "status" not in _as_str(frame.get("Topic", "")):
+                return None
+            status = _dig(frame, "Data", "Data", "Status")
+            # `False` is a real answer, so the "keep reading" signal is None and
+            # not falsiness: a status frame that omits AmsConnectStatus means no
+            # Canvas, exactly as the pre-probe loop read it.
+            return bool(status.get("AmsConnectStatus", 0))
+
+        scan = await _async_scan_websocket_frames(
+            self.hass, printer.ip_address, _ams_connect_status, "CC1 Canvas detection"
+        )
+        if scan.found is None:
+            LOGGER.debug(
+                "CC1 Canvas detection: no AmsConnectStatus from %s"
+                " — assuming no Canvas",
+                printer.ip_address,
+            )
+            return False
+        LOGGER.debug(
+            "CC1 Canvas detection: AmsConnectStatus=%s",
+            scan.found,
+        )
+        return bool(scan.found)
+
+    async def _async_probe_websocket_printer(self, ip_address: str) -> Printer | None:
+        """
+        Describe a WebSocket printer over the connection the integration uses.
+
+        Used only when both UDP discovery protocols came back empty for an IP
+        the user typed by hand. Discovery and reachability are different
+        questions: a CC1 that cannot ping its default gateway stops answering
+        SDCP discovery while TCP 3030 stays open the whole time (#431), so the
+        printer is asked who it is over the socket it is already known to
+        accept, and described from what **it reports about itself**.
+
+        Identity is not invented. ``printer.id`` doubles as the config entry's
+        unique id, the device identifier and the entity unique-id prefix, and
+        nothing repairs it later: with no id, ``_abort_if_unique_id_configured``
+        early-returns on ``None`` and duplicate protection is silently off while
+        ``coordinator.generate_unique_id`` raises ``TypeError`` for every entity;
+        and an id that is present but not a non-empty string fails the same way
+        (``123 + "_"`` is a ``TypeError``) after passing a bare truthiness
+        check. So a printer that pushes no attributes frame, no
+        ``MainboardID``, or a ``MainboardID`` that is not a usable string is
+        REFUSED — ``None``, which the caller reports as ``no_printer_found`` —
+        rather than entered with an id that cannot work.
+
+        The frame supplies identity, never routing. That is the second half of
+        the contract, and it is not optional: this is the only place in the
+        integration where ``Printer.from_dict`` is handed a dictionary the device
+        wrote, and ``from_dict`` reads transport selection out of the same dict it
+        reads the name out of (``transport_type``, ``protocol_version``,
+        ``proxy_host``, ``mqtt_external_host``, ``cc2_access_code``, the proxy
+        ports). Measured before the filter was added, a frame carrying
+        ``{"transport_type": "cc2_mqtt", "protocol_version": "CC2",
+        "proxy_host": "attacker.example"}`` produced a printer whose
+        ``connection_host`` was ``attacker.example``, whose ``to_dict`` carried
+        ``proxy_host``, and which the caller routed to the CC2 auth flow — a
+        hostile device on the LAN choosing the host Home Assistant dials next and
+        sending the CC2 registration and fallback passwords to it, permanently, in
+        ``entry.data``. UDP discovery never had this hole because the
+        ``Printer(json_string)`` constructor reads only the identity keys. So the
+        frame is reduced to :data:`_PRINTER_IDENTITY_KEYS` before it is parsed:
+        the device can say who it is, and transport is derived from
+        ``ProtocolVersion`` the way ``from_dict`` already derives it when the
+        routing keys are absent.
+
+        One consequence of keeping ``ProtocolVersion`` is accepted rather than
+        overlooked: a frame reporting ``ProtocolVersion: "V1.0.0"`` derives
+        ``TransportType.MQTT`` and so steers ``async_step_manual_ip`` into its
+        MQTT branch, which ``async_create_entry``s with ``mqtt_broker_enabled``
+        and runs no connection test. That is the one remaining way a
+        device-chosen frame changes which branch the flow takes. It is in scope
+        for the identity concept — the protocol a printer speaks is what it
+        reports about itself — it moves no credential and no hostname, and UDP
+        discovery already routes a V1 printer the same way from the same string,
+        so filtering it here would make the probe disagree with discovery rather
+        than close anything.
+
+        Never raises for anything the printer controls. HA's
+        ``data_entry_flow._async_handle_step`` catches only ``AbortFlow``, so an
+        exception escaping here reaches the UI as the generic "Config flow could
+        not be loaded" — strictly worse than the error this replaces. The frame
+        loop is total by construction, and now shared with Canvas detection via
+        :func:`_async_scan_websocket_frames`: every value taken out of the frame
+        is type-checked before use, so no device-controlled frame can make it
+        raise. ``Printer.from_dict`` is not exception-safe for shapes it did not
+        anticipate (measured: ``AttributeError`` for a non-string
+        ``MachineName``/``ProtocolVersion``/``FirmwareVersion``, ``ValueError``
+        for an unknown ``transport_type``), so the parse is guarded, and the
+        guard ends in a declared broad ``except Exception`` because the input is
+        a frame the printer chooses to send and the cost of missing a class is
+        the crash this section exists to prevent. It is ``Exception``, not
+        ``BaseException``: ``asyncio.CancelledError`` must still propagate so HA
+        can cancel the flow.
+
+        Arguments:
+            ip_address: The address the user typed (already cleaned).
+
+        Returns:
+            The printer as it described itself, or None when nothing usable
+            could be read from it.
+
+        """
+
+        def _attributes_of(frame: dict[str, Any]) -> dict[str, Any] | None:
+            """Pull the attributes dict out of one frame, None to keep reading."""
+            if "attributes" not in _as_str(frame.get("Topic", "")):
+                return None
+            # Two attributes shapes exist in this repo's own evidence and they
+            # disagree: scripts/test_server.py pushes {Data: {Attributes: ...}}
+            # while the conformance test and the MQTT client's "WebSocket
+            # fallback format" comment use {Attributes: ...} at the frame root.
+            # Which one a real CC1 sends is UNVERIFIED, so both are read.
+            candidate = frame.get("Attributes")
+            if not isinstance(candidate, dict) or not candidate:
+                # An EMPTY attributes object is treated as no answer, not as a
+                # description with no keys: matching on it would end the scan on
+                # the first frame and let a device hide a real attributes frame
+                # behind an empty one. The refusal is the same either way, so this
+                # only buys the chance that a usable frame follows.
+                candidate = _dig(frame, "Data", "Attributes")
+            return candidate or None
+
+        scan = await _async_scan_websocket_frames(
+            self.hass,
+            ip_address,
+            _attributes_of,
+            "live printer probe",
+        )
+        attributes: dict[str, Any] | None = scan.found
+
+        if attributes is None:
+            # The two cases read differently to an operator: nothing listening on
+            # the port at all, versus something answering that never described
+            # itself. Only the second one is a printer problem worth a warning.
+            if not scan.connected:
+                LOGGER.debug(
+                    "Nothing at %s:%s could be read over the live connection"
+                    " (no connection, no usable frame)",
+                    ip_address,
+                    WEBSOCKET_PORT,
+                )
+            else:
+                LOGGER.warning(
+                    "Nothing at %s:%s described itself: no attributes frame was"
+                    " received, so no printer identity could be read",
+                    ip_address,
+                    WEBSOCKET_PORT,
+                )
+            return None
+
+        # The trust boundary. Everything from here on is built from the seven
+        # identity keys only, so no routing decision downstream can be steered by
+        # what this device chose to send.
+        identity = _identity_only(attributes)
+
         try:
-            # The timeout must cover ws_connect too: a device that accepts TCP
-            # but never completes the WS handshake would otherwise hang the
-            # config flow on HA's shared session (no handshake timeout).
-            async with (
-                asyncio.timeout(_CANVAS_DETECT_TIMEOUT),
-                session.ws_connect(ws_url) as ws,
-            ):
-                async for msg in ws:
-                    if msg.type != aiohttp.WSMsgType.TEXT:
-                        break
-                    parsed = json.loads(msg.data)
-                    topic = parsed.get("Topic", "")
-                    if "status" in topic:
-                        status_data = (
-                            parsed.get("Data", {}).get("Data", {}).get("Status", {})
-                        )
-                        ams_connect = status_data.get("AmsConnectStatus", 0)
-                        LOGGER.debug(
-                            "CC1 Canvas detection: AmsConnectStatus=%s",
-                            ams_connect,
-                        )
-                        return bool(ams_connect)
-        except (TimeoutError, aiohttp.ClientError, json.JSONDecodeError):
-            LOGGER.debug("CC1 Canvas detection failed — assuming no Canvas")
-        return False
+            printer = Printer.from_dict(identity)
+        except (AttributeError, TypeError, ValueError):
+            # The measured classes a device-controlled attributes frame can
+            # raise out of Printer.from_dict. The frame is logged at DEBUG and
+            # scrubbed: it is device-controlled text, so it is neither a
+            # default-visible log line nor an unbounded one.
+            LOGGER.warning(
+                "Printer at %s:%s sent an attributes frame this integration"
+                " cannot parse",
+                ip_address,
+                WEBSOCKET_PORT,
+            )
+            LOGGER.debug(
+                "Unparseable attributes frame from %s:%s: %s",
+                ip_address,
+                WEBSOCKET_PORT,
+                _frame_for_log(identity),
+            )
+            return None
+        except Exception:  # noqa: BLE001  # declared, see the docstring
+            # Declared judgement, not a derived fact: the input is a frame the
+            # printer controls and from_dict grows keys, so an unanticipated
+            # class must end in a refusal, not in HA's "Config flow could not be
+            # loaded". Logged as an exception so it stays a findable bug to
+            # narrow rather than silence.
+            LOGGER.exception(
+                "Unexpected error parsing the attributes frame from %s:%s",
+                ip_address,
+                WEBSOCKET_PORT,
+            )
+            return None
+
+        # "The printer reported an id" is not "the id is usable as a unique id":
+        # require the second claim. A truthy non-string (123, True, 1.5, ["a"])
+        # or an all-whitespace string passes a bare `if not id:` and then breaks
+        # every entity's unique id and the entry's device identity for good.
+        candidate_id = printer.id
+        if not (isinstance(candidate_id, str) and candidate_id.strip()):
+            LOGGER.warning(
+                "Printer at %s:%s reported no usable mainboard id (got %s),"
+                " refusing it rather than creating an entry that cannot work",
+                ip_address,
+                WEBSOCKET_PORT,
+                # Not _id_for_log: an all-blank id and an empty one are different
+                # bugs and must read differently, so the whitespace is kept. repr
+                # escapes newlines, so this stays one line either way.
+                _frame_for_log(candidate_id, _MAX_LOGGED_ID_CHARS, collapse=False),
+            )
+            return None
+
+        # The address the user typed wins over MainboardIP: a printer behind NAT
+        # or reporting a stale address must not overwrite what the integration
+        # dials. `connection` mirrors what discovery itself does (Printer sets
+        # it from the frame's Id) and what _apply_serial does for CC2.
+        printer.ip_address = ip_address
+        printer.connection = ip_address
+        printer.brand = printer.brand or "ELEGOO"
+        # WebSocket printers never run the embedded broker.
+        printer.mqtt_broker_enabled = False
+        # The routing and credential fields, asserted rather than only excluded by
+        # the allowlist above. The filter is what makes them unreachable from the
+        # frame; writing them here is what keeps that true if `Printer.from_dict`
+        # ever grows a default, since every one of these decides where Home
+        # Assistant dials next, what it authenticates with, or which proxy the
+        # entry trusts. `transport_type`/`protocol_version` are deliberately NOT
+        # reset: with the frame's copies filtered out, `from_dict` derives them
+        # from `ProtocolVersion`, which is the derivation discovery itself uses and
+        # the reason a real CC1 still lands on the WebSocket transport.
+        printer.proxy_host = None
+        printer.proxy_enabled = False
+        printer.proxy_websocket_port = None
+        printer.proxy_video_port = None
+        printer.mqtt_external_host = None
+        printer.mqtt_external_port = None
+        printer.cc2_access_code = None
+        printer.cc2_token_status = 0
+        printer.camera_enabled = False
+        printer.has_canvas = False
+        # `external_ip` is what the MQTT transport advertises to the printer as
+        # the broker to dial, so it belongs with the fields above even though
+        # `async_step_manual_ip` overwrites it from the form straight after.
+        printer.external_ip = None
+        # `is_proxy` is the flag `async_step_user` filters discovered printers by,
+        # and `from_dict` reads it (`Proxy` / `is_proxy`) like the rest. Nothing
+        # that consumes it is reachable from this probe — the probed printer goes
+        # to `selected_printer`, never into `discovered_printers` — so this line
+        # changes no behaviour today. It is here because this block is written as
+        # the exhaustive "nothing the frame could have set survives", and leaving
+        # out the one routing-adjacent key `from_dict` still reads would make that
+        # claim read as complete when it is not.
+        printer.is_proxy = False
+        LOGGER.info(
+            "Probed %s over TCP %s without discovery: found %s (%s, id=%s)",
+            ip_address,
+            WEBSOCKET_PORT,
+            _id_for_log(printer.name or printer.model or "printer"),
+            printer.printer_type,
+            _id_for_log(candidate_id),
+        )
+        return printer
 
     async def async_step_user(
         self,
@@ -798,6 +1362,17 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                         printer_object.name,
                         printer_object.cc2_token_status,
                     )
+
+            if not printer_object and ip_address:
+                # Neither UDP protocol answered. Ask the printer over the
+                # connection the integration actually uses before giving up: a
+                # CC1 that stops answering discovery still holds TCP 3030 open
+                # (#429/#431), and it describes itself over that socket.
+                LOGGER.debug(
+                    "Discovery silent for %s, probing the live WebSocket connection",
+                    ip_address,
+                )
+                printer_object = await self._async_probe_websocket_printer(ip_address)
 
             if not printer_object:
                 LOGGER.warning("No printer found at IP address: %s", ip_address)

@@ -14,8 +14,10 @@ class PrinterFile:
     ``filename``, ``size`` (bytes), ``create_time`` (unix seconds), ``layer``,
     ``print_time`` (estimated seconds), ``total_filament_used`` (grams) and
     ``color_map`` (one entry per G-code tool, with ``color`` and ``name``).
-    Directory entries carry ``type`` other than ``"file"`` and are skipped by
-    the caller.
+    ``colors`` keeps the per-tool colours; ``tools`` keeps the per-tool G-code
+    tool indices (``color_map[].t``), which is what a ``slot_map`` entry has to
+    carry to map a tray. Directory entries carry ``type`` other than ``"file"``
+    and are skipped by the caller.
     """
 
     def __init__(self, data: dict[str, Any] | None = None) -> None:
@@ -40,6 +42,22 @@ class PrinterFile:
             for entry in data.get("color_map") or []
             if isinstance(entry, dict)
         ]
+        # The tool indices a slot_map has to carry, one per tool the file uses.
+        # Sorted and deduped: the measured 1046 response is a single entry with
+        # t: 3, so tool indices are not contiguous from 0 and must not be
+        # assumed to be. A bool is an int subclass and a negative index would
+        # be an out-of-range entry - which the printer rejects as a whole map -
+        # so both are dropped rather than poisoning every good entry.
+        self.tools: list[int] = sorted(
+            {
+                int(entry["t"])
+                for entry in data.get("color_map") or []
+                if isinstance(entry, dict)
+                and isinstance(entry.get("t"), int)
+                and not isinstance(entry.get("t"), bool)
+                and int(entry["t"]) >= 0
+            }
+        )
 
     def __repr__(self) -> str:
         """Return a compact representation for logs."""

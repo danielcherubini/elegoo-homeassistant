@@ -51,6 +51,12 @@ VIDEO_ENDPOINT = "video"
 VIDEO_PORT = 3031
 WEBSOCKET_PORT = 3030
 
+# Budget for the live TCP reachability probe (#429/#431). It runs only after
+# both UDP discovery attempts have already timed out, so the printer has had
+# DISCOVERY_TIMEOUT seconds to answer the cheaper question first; this covers a
+# bare ``asyncio.open_connection`` to TCP 3030 and nothing else.
+TCP_PROBE_TIMEOUT = 3.0
+
 # CC2 video stream, served by the printer's own MJPEG streamer and forwarded on
 # the same port by a forward proxy. Not the CC1 proxy's VIDEO_PORT/ENDPOINT
 # above: the proxy exposes the CC2 stream on 8080 only, so a CC2 URL built on

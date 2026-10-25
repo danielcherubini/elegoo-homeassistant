@@ -6,11 +6,17 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import httpx
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistantError, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
-from custom_components.elegoo_printer.const import CONF_HAS_CANVAS, LOGGER
+from custom_components.elegoo_printer.const import (
+    CONF_HAS_CANVAS,
+    CONF_ID,
+    DOMAIN,
+    LOGGER,
+)
 from custom_components.elegoo_printer.sdcp.exceptions import (
     PRINT_TRANSPORT_ERRORS,
     ElegooPrinterNotConnectedError,
@@ -105,8 +111,9 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         link too. A plain MQTT printer is the exception: ``is_connected`` tracks
         our link to the *broker*, so a printer that goes silent while its broker
         outlives it — including the broker this integration hosts itself — keeps
-        answering from cache. That case behaves as it always has and is recorded
-        as a follow-up in ``docs/roadmap/offline-tolerant-setup.md``.
+        answering from cache. That case behaves as it always has and is still
+        open: closing it needs a printer-side heartbeat, which the integration
+        has no way to ask the printer for.
 
         Raises:
             ElegooPrinterNotConnectedError: if the client is not connected.
@@ -169,6 +176,7 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             await self._refresh_file_list_if_due(api, now)
 
             self._replay_cc2_print_status_transitions()
+            self._sync_device_firmware()
 
             self.online = True
             if self.update_interval != timedelta(seconds=2):
@@ -206,6 +214,87 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
             )
             msg = f"Unexpected Error: {e.strerror}"
             raise UpdateFailed(msg) from e
+
+    def _sync_device_firmware(self) -> None:
+        """
+        Keep the device record's firmware version in step with the printer.
+
+        Home Assistant reads ``entity.device_info`` once, when the entity is
+        added, so a fresher value there never reaches the device record. The
+        printer's live version (kept from its attributes frames) is written
+        straight to the registry instead, and only when it differs: writing
+        ``entry.data`` would fire the entry's update listener, which is wired
+        to a full reload (#436).
+        """
+        entry = self.config_entry
+        live = entry.runtime_data.api.printer.firmware
+        identifier = entry.data.get(CONF_ID)
+        if not live or not identifier:
+            return
+
+        # ``dr.async_get`` needs a net of its own. On 2025.4 it cannot fail — the
+        # ``@singleton`` decorator builds a registry on demand — which is why
+        # nothing above the write below has ever needed one. Home Assistant
+        # 2026.10 made it strict: it raises ``RuntimeError("Device registry not
+        # set up")`` instead of inventing one. That is the same situation the
+        # guard below exists for — the registry is not there for this poll —
+        # reached from a different call, and it lands in the same core catch-all
+        # that prints a traceback every 2 s. Core sets the registry up before any
+        # integration loads, so this is the guard's stated purpose applied
+        # consistently rather than a bug being fixed: a device record that cannot
+        # be found is never worth the noise.
+        #
+        # ``RuntimeError`` is deliberately NOT added to the write below. Its only
+        # routes out of ``async_update_device`` are the frame helper's thread check
+        # (this runs inside the poll, so on the event loop thread) and reports for
+        # ``disabled_by`` arguments this call does not pass.
+        try:
+            registry = dr.async_get(self.hass)
+        except RuntimeError as err:
+            LOGGER.debug(
+                "Could not reach the device registry to write firmware version"
+                " '%s': %r",
+                live,
+                err,
+            )
+            return
+
+        device_entry = registry.async_get_device(identifiers={(DOMAIN, identifier)})
+        if device_entry is None or device_entry.sw_version == live:
+            return
+
+        # The registry is shared with everything else in Home Assistant, and a
+        # device can be removed between the lookup above and this write (a user
+        # deleting the device, an entry unload, another integration pruning it).
+        # ``async_update_device`` then raises -- ``KeyError`` out of its own
+        # ``self.devices[device_id]`` lookup, ``HomeAssistantError`` from its
+        # collision checks -- and this runs inside ``_async_update_data``, where
+        # core's catch-all would report "Unexpected error fetching <printer>
+        # data" with a full traceback on EVERY poll (2 s while online). A stale
+        # version on a device record is not worth that noise, which is the same
+        # reason ``_log_failed_poll`` and the ``reconnect()`` net exist; the next
+        # poll simply looks the device up again.
+        try:
+            registry.async_update_device(device_entry.id, sw_version=live)
+        except (HomeAssistantError, KeyError) as err:
+            LOGGER.debug(
+                "Could not write firmware version '%s' to device %s: %r",
+                live,
+                device_entry.id,
+                err,
+            )
+            return
+
+        # Logged once the write landed: the line reads as "the device record now
+        # says X", which is only true if the registry took it, and announcing a
+        # version the record never gained is the kind of statement this file
+        # avoids making before it is owed.
+        LOGGER.info(
+            "Updating firmware version for printer %s: '%s' -> '%s'",
+            entry.title,
+            device_entry.sw_version,
+            live,
+        )
 
     def _log_failed_poll(self, error: Exception, *, was_online: bool) -> None:
         """

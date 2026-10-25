@@ -14,6 +14,8 @@ Stdlib only — this module must not import aiohttp / aiomqtt / paho
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import socket
 from typing import Any
 
@@ -22,8 +24,62 @@ from custom_components.elegoo_printer.const import (
     DISCOVERY_MESSAGE,
     DISCOVERY_PORT,
     DISCOVERY_TIMEOUT,
+    TCP_PROBE_TIMEOUT,
 )
 from custom_components.elegoo_printer.sdcp.models.printer import Printer
+
+
+async def async_tcp_port_is_open(
+    host: str | None,
+    port: int,
+    *,
+    wait_timeout: float = TCP_PROBE_TIMEOUT,
+) -> bool:
+    """
+    Report whether a TCP port answers, without speaking the protocol.
+
+    SDCP discovery (UDP 3000) answers a different question from reachability:
+    a CC1 that cannot ping its default gateway decides the network is down and
+    stops answering ``M99999`` while its control socket (TCP 3030) stays open
+    for the whole time (#431). Callers that must decide "is the printer there"
+    therefore need this second, transport-level question asked.
+
+    True only on a *completed* connect — an unanswered SYN, a refused port and
+    a host that cannot be resolved all return False, and the function never
+    raises for them. The socket is closed on success; a peer that vanished
+    between the handshake and the close is not a reason to report the port
+    closed, so the close is suppressed rather than observed.
+
+    Arguments:
+        host: The host to dial; None or blank returns False.
+        port: The TCP port to dial.
+        wait_timeout: Seconds to wait for the connect to complete. Named
+            ``wait_timeout`` rather than ``timeout`` for the same reason
+            ``ElegooCC2Client.async_discover_serial`` names its bound that:
+            ruff ASYNC109 rejects an async function with a ``timeout``
+            parameter.
+
+    Returns:
+        True when the TCP connect completed within ``wait_timeout``.
+
+    """
+    if not host:
+        return False
+    try:
+        _, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port), timeout=wait_timeout
+        )
+    except (TimeoutError, OSError):
+        # TimeoutError: silent. OSError covers ConnectionRefusedError (closed
+        # port), the gaierror of an unresolvable host and the socket errors a
+        # network with no route raises. All of them mean "not open".
+        return False
+    with contextlib.suppress(OSError):
+        # The connect already completed; how the teardown goes says nothing
+        # about whether the port answered.
+        writer.close()
+        await writer.wait_closed()
+    return True
 
 
 def parse_printer_discovery_response(data: bytes) -> Printer | None:

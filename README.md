@@ -216,12 +216,12 @@ action: elegoo_printer.start_print
 data:
   entry_id: <config entry UUID>
   filename: "benchy.gcode"   # exact name from the printer's file list
-  tray: 2                    # optional, Canvas tray 0-3 (A1-A4) for G-code tool 0
+  tray: 2                    # optional, Canvas tray 0-3 (A1-A4), mapped to every G-code tool the file uses
   bed_leveling: true         # optional, default true: auto bed leveling first (~3 min), as the slicer does
 ```
 
 - The response says whether the printer accepted the job: `error_code` 1009 means it is busy.
-- `tray` is validated by Home Assistant, **not by the printer** - an out-of-range tray is acknowledged with `error_code` 0 and silently printed from tray 0. Only G-code tool 0 is mapped; this service does not preserve a complete multi-tool mapping.
+- `tray` is validated by Home Assistant, **not by the printer** - an out-of-range tray is acknowledged with `error_code` 0 and silently printed from tray 0. The tray is mapped to **every** G-code tool the file's listing reports (its `color_map`); a file whose tool list the printer never reported maps its first tool. Whether the printer honours a complete multi-tool map is **not yet confirmed on hardware** - see #435, which stays open until someone can watch which tray a multi-tool print actually consumes.
 - `bed_leveling` maps to the protocol's `printer_check`, which ElegooSlicer sends on every job - so it defaults to on. `false` is sent as `false`, which is how the slicer's own unchecked box does it and the only way to stop the printer levelling: leaving the key out lets it decide, and it has been observed levelling for 196 s even when the previous print used the same bed temperature.
 - Not available for the first-generation Centauri Carbon or resin printers, where the equivalent SDCP command crashed the printer (#297).
 
@@ -241,6 +241,54 @@ data:
 - Up to 100 MB (Home Assistant's upload limit). The file keeps its name; an existing file of the same name is replaced.
 - The upload is not retried: if the printer answers "busy" (HTTP 429) or rejects a chunk, the service reports it and stops - the printer does not list a failed upload.
 - In an automation the `file` field needs a file id from Home Assistant's upload API; the field is meant for the UI.
+
+### `cleanup_files` (Centauri Carbon 2 only)
+Deletes old files from the printer's local storage, selected by **age** and by **name pattern**, so a daily automation can keep the printer's storage from filling up (#432). The `include` / `exclude` vocabulary and the `all` / `nothing` starting defaults are the reporter's from that issue.
+
+```yaml
+action: elegoo_printer.cleanup_files
+data:
+  entry_id: <config entry UUID>
+  older_than_days: 60      # optional, default 60, whole days only
+  include: "ECC*"          # optional, default every file
+  exclude: "Keep*"         # optional, default nothing
+  dry_run: true            # optional, default TRUE: report, delete nothing
+response_variable: cleanup
+```
+
+- **Run the dry run first.** `dry_run` defaults to **on**, so the first call only answers `would_delete` and touches nothing. The printer's delete command is documented as untested on hardware, which is why this service defaults to not destroying files. Switch it off only after reading the list - the **Print file** select on the device page is the same listing, refreshed every ten minutes, so you can eyeball it too.
+- **`exclude` wins over `include`.** A file matching both is kept. Patterns are case-sensitive, and the same on every machine - a pattern that keeps `Keep_this.gcode` keeps it whether Home Assistant runs on Linux or Windows.
+- **A file with no creation date is never deleted, and the file being printed is never deleted.** The second half matters when a nightly job runs while something is printing. The first half has a case you will hit: **a printer whose clock has never been set reports a creation date in 1970**, and this service treats any creation date before 2000 as "no date" and leaves the file alone. That is the same rule #426 had to apply to the time sensors, applied here where getting it wrong would delete a file instead of misreading a sensor - so a printer that stops reporting dates degrades to *deleting nothing*, never to *deleting everything*.
+- **Leaving `include` blank matches nothing, so nothing is deleted** - omit the field to mean "every file". A run in that state still reports `success: true` (a nightly job that finds nothing to do is not an error) but says in its message that no listed file matched the pattern, so an automation that quietly stops deleting is visible in the notification instead of invisible. The blank field is deliberately **not** read as "everything": a template that renders to empty would otherwise delete every old file on the printer on a call that named nothing.
+- **Deletion is confirmed by re-reading the file list, not by trusting the printer's reply.** The delete command has no documented response shape, so a file the printer accepted and still lists comes back in `failed` as `still listed after delete`, and `success` is false unless *every* selected file was confirmed gone. `success: false` therefore means "the printer is not in the state you asked for" - which is what an automation should alert on. A run that selected nothing is a **successful** run.
+- **Two response shapes.** A run that reached the printer carries `success`, `dry_run`, `deleted`, `failed` (name → why it stayed), `skipped` (name → why it was not a candidate: `younger_than_limit`, `no_creation_date`, `excluded`, `not_included`, `currently_printing`), `would_delete` and a `message` — or an `error` instead of a message when it reached the printer but could not act. A call that never got there — unknown or unloaded printer, or one that is not a Centauri Carbon 2 — carries only `success: false` and an `error`, with no lists at all.
+- **Videos: this integration has never seen one on a printer's file list.** #432 asked for "both gcode and video files", but that list is the only inventory the printer offers, and the camera is a live MJPEG stream rather than a file. There is deliberately **no extension filter**, so if your firmware's list *does* contain video files the patterns match and delete them like any other file - if yours does, say so on #432.
+- Deletes are sent one at a time, each waiting up to 10 s for the printer, so a printer full of old files can take a while. Fine behind a 03:30 trigger; not something to put behind a UI button.
+
+A daily cleanup that tells you what it removed:
+
+```yaml
+alias: Nightly printer file cleanup
+triggers:
+  - trigger: time
+    at: "03:30"
+actions:
+  - action: elegoo_printer.cleanup_files
+    data:
+      entry_id: <config entry UUID>
+      older_than_days: 60
+      dry_run: false
+    response_variable: cleanup
+  - action: notify.mobile_app_your_phone
+    data:
+      title: Printer cleanup
+      message: >-
+        Deleted {{ cleanup.deleted | default([]) | length }} file(s),
+        refused {{ cleanup.failed | default([]) | length }}.
+        {{ cleanup.message | default(cleanup.error, true) }}
+```
+
+The response dict lands in `response_variable` **itself**: `cleanup.deleted`, not `cleanup.response.deleted` — reading a `.response` segment raises a template error, so the notification step fails instead of arriving.
 
 ---
 
