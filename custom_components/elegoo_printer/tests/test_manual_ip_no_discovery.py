@@ -26,13 +26,11 @@ in ``no_printer_found`` rather than an entry carrying a made-up one.
 from __future__ import annotations
 
 import contextlib
-import json
 import socket
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import aiohttp
 import pytest
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.data_entry_flow import FlowResultType
@@ -49,126 +47,37 @@ from custom_components.elegoo_printer.sdcp.models.printer import Printer
 from custom_components.elegoo_printer.sdcp.transport.discovery import (
     async_tcp_port_is_open,
 )
+from custom_components.elegoo_printer.tests.ws_doubles import (
+    DOC_IP,
+    MAINBOARD_ID,
+    cc1_self_reported_attributes,
+    flat_attributes_frame,
+    make_config_flow,
+    nested_attributes_frame,
+    pass_printer_through,
+    session_refusing,
+    session_returning,
+    text_msg,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-def _pass_printer_through(hass: Any, printer: Printer, user_input: Any) -> Printer:  # noqa: ARG001
-    """Stand in for ``_async_test_connection``: the printer is already valid."""
-    return printer
-
-
-_DOC_IP = "192.0.2.1"
-# The mainboard id the CC1 in #431 reports; used verbatim so the tests read like
-# the report they came from.
-MAINBOARD_ID = "000000000001d354"
-
-
-# --------------------------------------------------------------------------- #
-# Frame doubles
-# --------------------------------------------------------------------------- #
-
-
-class _FakeWS:
-    """Async-iterable mock websocket that yields pre-built messages."""
-
-    def __init__(self, messages: list[Any]) -> None:
-        self._messages = iter(messages)
-
-    async def __aenter__(self) -> Self:
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        pass
-
-    def __aiter__(self) -> Self:
-        return self
-
-    async def __anext__(self) -> Any:
-        try:
-            return next(self._messages)
-        except StopIteration:
-            raise StopAsyncIteration from None
-
-
-def _text_msg(payload: Any) -> Any:
-    """Build a TEXT frame carrying ``payload`` (serialised when it is an object)."""
-    data = payload if isinstance(payload, str) else json.dumps(payload)
-    return SimpleNamespace(type=aiohttp.WSMsgType.TEXT, data=data)
-
-
-def _cc1_attributes() -> dict[str, Any]:
-    """Return the attributes a CC1 reports about itself (the #431 printer)."""
-    return {
-        "Name": "CC1",
-        "MachineName": "Centauri Carbon",
-        "BrandName": "ELEGOO",
-        "ProtocolVersion": "V3.0.0",
-        "FirmwareVersion": "V1.1.29",
-        "MainboardIP": "10.30.20.44",
-        "MainboardID": MAINBOARD_ID,
-        "NetworkStatus": "wlan",
-    }
-
-
-def _nested_attributes_frame(attributes: dict[str, Any] | None = None) -> dict:
+def _current_status_frame() -> dict[str, Any]:
     """
-    Build the nested shape ``scripts/test_server.py`` pushes.
+    Build a real status frame carrying ``CurrentStatus`` and nothing else.
 
-    That server wraps the attributes in ``create_push_message``, which puts them
-    at ``Data -> Attributes``.
+    A printer pushes this while printing. It is deliberately NOT the Canvas
+    status frame from ``ws_doubles.ams_status_frame``: that one answers the
+    Canvas question with ``AmsConnectStatus``, while this one says something
+    ordinary that both probes must decline to read as an answer. Two payloads,
+    two names.
     """
-    return {
-        "Id": "push-1",
-        "Topic": f"sdcp/attributes/{MAINBOARD_ID}",
-        "Data": {"Attributes": _cc1_attributes() if attributes is None else attributes},
-    }
-
-
-def _flat_attributes_frame(attributes: dict[str, Any] | None = None) -> dict:
-    """Build the root-level ``{Attributes: ...}`` shape the conformance test uses."""
-    return {
-        "Id": "push-1",
-        "Topic": f"sdcp/attributes/{MAINBOARD_ID}",
-        "Attributes": _cc1_attributes() if attributes is None else attributes,
-    }
-
-
-def _status_frame() -> dict:
     return {
         "Topic": f"sdcp/status/{MAINBOARD_ID}",
         "Data": {"Data": {"Status": {"CurrentStatus": [0]}}},
     }
-
-
-def _session_returning(*messages: Any) -> MagicMock:
-    """Build a hass-session double whose ``ws_connect`` yields ``messages``."""
-    return MagicMock(ws_connect=MagicMock(return_value=_FakeWS(list(messages))))
-
-
-def _session_refusing(error: Exception | None = None) -> MagicMock:
-    """Build a session double whose ``ws_connect`` raises (nothing listening)."""
-
-    def _refuse(*_args: Any, **_kwargs: Any) -> Any:
-        raise error or aiohttp.ClientConnectorError(
-            MagicMock(host=_DOC_IP, port=3030, req=None), ConnectionRefusedError()
-        )
-
-    return MagicMock(ws_connect=MagicMock(side_effect=_refuse))
-
-
-def _make_flow() -> ElegooFlowHandler:
-    flow = ElegooFlowHandler()
-    flow.hass = MagicMock()
-    flow.flow_id = "config-test-flow"
-    flow.handler = "elegoo_printer"
-
-    async def _run_in_executor(func: Callable[..., Any], *args: Any) -> Any:
-        return func(*args)
-
-    flow.hass.async_add_executor_job = AsyncMock(side_effect=_run_in_executor)
-    return flow
 
 
 @contextlib.contextmanager
@@ -195,7 +104,7 @@ def _silent_discovery(session: MagicMock | None = None) -> Any:
             "custom_components.elegoo_printer.config_flow.async_get_clientsession",
             return_value=session
             if session is not None
-            else _session_returning(_text_msg(_nested_attributes_frame())),
+            else session_returning(text_msg(nested_attributes_frame())),
         ),
         patch.object(
             ElegooFlowHandler, "async_set_unique_id", new=AsyncMock()
@@ -227,20 +136,20 @@ class TestProbeReadsIdentityFromTheLiveConnection:
         field is the whole reason the probe exists. The typed IP also wins over
         ``MainboardIP``, and ``connection`` is set the way discovery sets it.
         """
-        flow = _make_flow()
+        flow = make_config_flow()
         with patch(
             "custom_components.elegoo_printer.config_flow.async_get_clientsession",
-            return_value=_session_returning(_text_msg(_nested_attributes_frame())),
+            return_value=session_returning(text_msg(nested_attributes_frame())),
         ):
-            printer = await flow._async_probe_websocket_printer(_DOC_IP)
+            printer = await flow._async_probe_websocket_printer(DOC_IP)
 
         assert printer is not None
         assert printer.id == MAINBOARD_ID
         assert printer.name == "CC1"
         assert printer.model == "Centauri Carbon"
         assert printer.firmware == "V1.1.29"
-        assert printer.ip_address == _DOC_IP
-        assert printer.connection == _DOC_IP
+        assert printer.ip_address == DOC_IP
+        assert printer.connection == DOC_IP
         assert printer.transport_type is TransportType.WEBSOCKET
         assert printer.printer_type is PrinterType.FDM
         assert printer.mqtt_broker_enabled is False
@@ -254,12 +163,12 @@ class TestProbeReadsIdentityFromTheLiveConnection:
         client's "WebSocket fallback format" comment do not), and no real frame
         has ever been captured here, so both are read rather than guessed at.
         """
-        flow = _make_flow()
+        flow = make_config_flow()
         with patch(
             "custom_components.elegoo_printer.config_flow.async_get_clientsession",
-            return_value=_session_returning(_text_msg(_flat_attributes_frame())),
+            return_value=session_returning(text_msg(flat_attributes_frame())),
         ):
-            printer = await flow._async_probe_websocket_printer(_DOC_IP)
+            printer = await flow._async_probe_websocket_printer(DOC_IP)
 
         assert printer is not None
         assert printer.id == MAINBOARD_ID
@@ -267,12 +176,12 @@ class TestProbeReadsIdentityFromTheLiveConnection:
 
     async def test_no_attributes_frame_refuses_the_printer(self) -> None:
         """A socket that pushes no attributes says nothing usable: refused."""
-        flow = _make_flow()
+        flow = make_config_flow()
         with patch(
             "custom_components.elegoo_printer.config_flow.async_get_clientsession",
-            return_value=_session_returning(_text_msg(_status_frame())),
+            return_value=session_returning(text_msg(_current_status_frame())),
         ):
-            assert await flow._async_probe_websocket_printer(_DOC_IP) is None
+            assert await flow._async_probe_websocket_printer(DOC_IP) is None
 
     async def test_attributes_without_mainboard_id_refuses_the_printer(self) -> None:
         """
@@ -285,16 +194,14 @@ class TestProbeReadsIdentityFromTheLiveConnection:
         in later — not ``_update_config_entry_if_needed`` (which does not compare
         ``id``) and not the options flow — so refusing is the only safe answer.
         """
-        attributes = _cc1_attributes()
+        attributes = cc1_self_reported_attributes()
         del attributes["MainboardID"]
-        flow = _make_flow()
+        flow = make_config_flow()
         with patch(
             "custom_components.elegoo_printer.config_flow.async_get_clientsession",
-            return_value=_session_returning(
-                _text_msg(_flat_attributes_frame(attributes))
-            ),
+            return_value=session_returning(text_msg(flat_attributes_frame(attributes))),
         ):
-            assert await flow._async_probe_websocket_printer(_DOC_IP) is None
+            assert await flow._async_probe_websocket_printer(DOC_IP) is None
 
     async def test_hostile_attributes_frame_refuses_instead_of_raising(self) -> None:
         """
@@ -314,18 +221,18 @@ class TestProbeReadsIdentityFromTheLiveConnection:
         """
         hostile_frames = [
             # Raises out of Printer.from_dict:
-            _flat_attributes_frame({"MachineName": 7, "MainboardID": MAINBOARD_ID}),
-            _flat_attributes_frame(
+            flat_attributes_frame({"MachineName": 7, "MainboardID": MAINBOARD_ID}),
+            flat_attributes_frame(
                 {"ProtocolVersion": 999, "MainboardID": MAINBOARD_ID}
             ),
-            _flat_attributes_frame(
+            flat_attributes_frame(
                 {
                     "MachineName": "Centauri Carbon",
                     "FirmwareVersion": 11,
                     "MainboardID": MAINBOARD_ID,
                 }
             ),
-            _flat_attributes_frame(
+            flat_attributes_frame(
                 {"transport_type": "nope", "protocol_version": "V3.0.0"}
             ),
             # Rejected by the probe's shape check:
@@ -333,15 +240,15 @@ class TestProbeReadsIdentityFromTheLiveConnection:
             {"Topic": "sdcp/attributes/x", "Attributes": "not-a-dict"},
             {"Topic": "sdcp/attributes/x", "Data": []},
         ]
-        flow = _make_flow()
+        flow = make_config_flow()
         for frame in hostile_frames:
             with patch(
                 "custom_components.elegoo_printer.config_flow.async_get_clientsession",
-                return_value=_session_returning(_text_msg(frame)),
+                return_value=session_returning(text_msg(frame)),
             ):
                 # An unexpected exception type fails the test loudly; a refusal
                 # is the only acceptable outcome.
-                assert await flow._async_probe_websocket_printer(_DOC_IP) is None, frame
+                assert await flow._async_probe_websocket_printer(DOC_IP) is None, frame
 
     async def test_non_dict_frame_refuses_the_printer(self) -> None:
         """
@@ -359,16 +266,16 @@ class TestProbeReadsIdentityFromTheLiveConnection:
             "hello",
             None,
             7,
-            {"Topic": 7, "Attributes": _cc1_attributes()},
-            {"Topic": None, "Attributes": _cc1_attributes()},
+            {"Topic": 7, "Attributes": cc1_self_reported_attributes()},
+            {"Topic": None, "Attributes": cc1_self_reported_attributes()},
         ]
-        flow = _make_flow()
+        flow = make_config_flow()
         for frame in hostile_frames:
             with patch(
                 "custom_components.elegoo_printer.config_flow.async_get_clientsession",
-                return_value=_session_returning(_text_msg(frame)),
+                return_value=session_returning(text_msg(frame)),
             ):
-                assert await flow._async_probe_websocket_printer(_DOC_IP) is None, frame
+                assert await flow._async_probe_websocket_printer(DOC_IP) is None, frame
 
     async def test_refused_connection_returns_none(self) -> None:
         """
@@ -378,12 +285,12 @@ class TestProbeReadsIdentityFromTheLiveConnection:
         refused port. The probe returns None and the caller reports the existing
         ``no_printer_found`` — the error the user already understood.
         """
-        flow = _make_flow()
+        flow = make_config_flow()
         with patch(
             "custom_components.elegoo_printer.config_flow.async_get_clientsession",
-            return_value=_session_refusing(),
+            return_value=session_refusing(),
         ):
-            assert await flow._async_probe_websocket_printer(_DOC_IP) is None
+            assert await flow._async_probe_websocket_printer(DOC_IP) is None
 
 
 class TestManualIpWithoutDiscovery:
@@ -397,9 +304,9 @@ class TestManualIpWithoutDiscovery:
         creates an entry) and, crucially, sets the unique id from the id the
         printer reported over the live socket — duplicate protection is intact.
         """
-        flow = _make_flow()
+        flow = make_config_flow()
         with _silent_discovery() as doubles:
-            result = await flow.async_step_manual_ip({CONF_IP_ADDRESS: _DOC_IP})
+            result = await flow.async_step_manual_ip({CONF_IP_ADDRESS: DOC_IP})
 
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "fdm_options"
@@ -409,7 +316,7 @@ class TestManualIpWithoutDiscovery:
         doubles.abort.assert_called_once()
         assert flow.selected_printer is not None
         assert flow.selected_printer.id == MAINBOARD_ID
-        assert flow.selected_printer.ip_address == _DOC_IP
+        assert flow.selected_printer.ip_address == DOC_IP
 
     async def test_the_live_probed_identity_reaches_the_created_entry(self) -> None:
         """
@@ -421,12 +328,12 @@ class TestManualIpWithoutDiscovery:
         the id were lost in the round trip the entry would be created broken, so
         the assertion is on the created data, not on the in-memory printer.
         """
-        flow = _make_flow()
+        flow = make_config_flow()
         with _silent_discovery():
-            await flow.async_step_manual_ip({CONF_IP_ADDRESS: _DOC_IP})
+            await flow.async_step_manual_ip({CONF_IP_ADDRESS: DOC_IP})
             with patch(
                 "custom_components.elegoo_printer.config_flow._async_test_connection",
-                new=AsyncMock(side_effect=_pass_printer_through),
+                new=AsyncMock(side_effect=pass_printer_through),
             ):
                 result = await flow.async_step_fdm_options(
                     {CONF_PROXY_ENABLED: False, "has_canvas": False}
@@ -434,15 +341,15 @@ class TestManualIpWithoutDiscovery:
 
         assert result["type"] == FlowResultType.CREATE_ENTRY
         assert result["data"]["id"] == MAINBOARD_ID
-        assert result["data"]["ip_address"] == _DOC_IP
+        assert result["data"]["ip_address"] == DOC_IP
         assert result["data"]["name"] == "CC1"
         assert result["data"]["transport_type"] == TransportType.WEBSOCKET.value
 
     async def test_dead_address_still_reports_no_printer_found(self) -> None:
         """An IP that answers nothing keeps today's error, and sets no id."""
-        flow = _make_flow()
-        with _silent_discovery(session=_session_refusing()) as doubles:
-            result = await flow.async_step_manual_ip({CONF_IP_ADDRESS: _DOC_IP})
+        flow = make_config_flow()
+        with _silent_discovery(session=session_refusing()) as doubles:
+            result = await flow.async_step_manual_ip({CONF_IP_ADDRESS: DOC_IP})
 
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "manual_ip"
@@ -459,14 +366,10 @@ class TestManualIpWithoutDiscovery:
         generic "Config flow could not be loaded" that any exception escaping
         ``async_step_manual_ip`` produces.
         """
-        hostile = _flat_attributes_frame(
-            {"MachineName": 7, "MainboardID": MAINBOARD_ID}
-        )
-        flow = _make_flow()
-        with _silent_discovery(
-            session=_session_returning(_text_msg(hostile))
-        ) as doubles:
-            result = await flow.async_step_manual_ip({CONF_IP_ADDRESS: _DOC_IP})
+        hostile = flat_attributes_frame({"MachineName": 7, "MainboardID": MAINBOARD_ID})
+        flow = make_config_flow()
+        with _silent_discovery(session=session_returning(text_msg(hostile))) as doubles:
+            result = await flow.async_step_manual_ip({CONF_IP_ADDRESS: DOC_IP})
 
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "manual_ip"
@@ -494,13 +397,13 @@ class TestManualIpWithoutDiscovery:
         is a non-empty *string*, not merely a present id, and an all-whitespace
         string is refused with it.
         """
-        attributes = _cc1_attributes()
+        attributes = cc1_self_reported_attributes()
         attributes["MainboardID"] = mainboard_id
-        flow = _make_flow()
+        flow = make_config_flow()
         with _silent_discovery(
-            session=_session_returning(_text_msg(_flat_attributes_frame(attributes)))
+            session=session_returning(text_msg(flat_attributes_frame(attributes)))
         ) as doubles:
-            result = await flow.async_step_manual_ip({CONF_IP_ADDRESS: _DOC_IP})
+            result = await flow.async_step_manual_ip({CONF_IP_ADDRESS: DOC_IP})
 
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "manual_ip"
@@ -513,13 +416,13 @@ class TestManualIpWithoutDiscovery:
         discovered = Printer.from_dict(
             {
                 "name": "Discovered CC1",
-                "ip_address": _DOC_IP,
+                "ip_address": DOC_IP,
                 "id": MAINBOARD_ID,
                 "model": "Centauri Carbon",
                 "protocol": "V3.0.0",
             }
         )
-        flow = _make_flow()
+        flow = make_config_flow()
         with (
             patch(
                 "custom_components.elegoo_printer.config_flow.ElegooPrinterClient"
@@ -542,7 +445,7 @@ class TestManualIpWithoutDiscovery:
             ),
         ):
             ws_client.return_value.discover_printer.return_value = [discovered]
-            result = await flow.async_step_manual_ip({CONF_IP_ADDRESS: _DOC_IP})
+            result = await flow.async_step_manual_ip({CONF_IP_ADDRESS: DOC_IP})
 
         assert result["type"] == FlowResultType.FORM
         assert result["step_id"] == "fdm_options"
@@ -550,7 +453,7 @@ class TestManualIpWithoutDiscovery:
 
     async def test_proxy_host_path_is_untouched(self) -> None:
         """The proxy short-circuit still runs before any of this and skips it."""
-        flow = _make_flow()
+        flow = make_config_flow()
         with (
             patch(
                 "custom_components.elegoo_printer.config_flow.ElegooPrinterClient"
@@ -565,7 +468,7 @@ class TestManualIpWithoutDiscovery:
             ) as probe,
         ):
             result = await flow.async_step_manual_ip(
-                {CONF_IP_ADDRESS: _DOC_IP, "proxy_host": "192.0.2.50"}
+                {CONF_IP_ADDRESS: DOC_IP, "proxy_host": "192.0.2.50"}
             )
 
         assert result["type"] == FlowResultType.FORM
@@ -644,13 +547,13 @@ class TestRuntimeReachabilityProbe:
         ) as probe:
             assert (
                 await api_client._discover_printer_with_fallback(
-                    Printer.from_dict({"ip_address": _DOC_IP, "protocol": "V3.0.0"})
+                    Printer.from_dict({"ip_address": DOC_IP, "protocol": "V3.0.0"})
                 )
                 is True
             )
 
         assert probe.await_args is not None
-        assert probe.await_args.args[0] == _DOC_IP
+        assert probe.await_args.args[0] == DOC_IP
 
     async def test_tcp_closed_leaves_the_printer_unreachable(self) -> None:
         """Neither protocol answers: genuinely unreachable, exactly as before."""
@@ -660,7 +563,7 @@ class TestRuntimeReachabilityProbe:
         ):
             assert (
                 await api_client._discover_printer_with_fallback(
-                    Printer.from_dict({"ip_address": _DOC_IP, "protocol": "V3.0.0"})
+                    Printer.from_dict({"ip_address": DOC_IP, "protocol": "V3.0.0"})
                 )
                 is False
             )
@@ -668,14 +571,14 @@ class TestRuntimeReachabilityProbe:
     async def test_discovery_answered_skips_the_probe_entirely(self) -> None:
         """A printer that answers discovery never pays the extra connect."""
         api_client = _api_client(
-            [Printer.from_dict({"ip_address": _DOC_IP, "protocol": "V3.0.0"})]
+            [Printer.from_dict({"ip_address": DOC_IP, "protocol": "V3.0.0"})]
         )
         with patch.object(
             api_module, "async_tcp_port_is_open", new=AsyncMock()
         ) as probe:
             assert (
                 await api_client._discover_printer_with_fallback(
-                    Printer.from_dict({"ip_address": _DOC_IP, "protocol": "V3.0.0"})
+                    Printer.from_dict({"ip_address": DOC_IP, "protocol": "V3.0.0"})
                 )
                 is True
             )

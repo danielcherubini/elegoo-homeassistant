@@ -840,6 +840,18 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         ``ProtocolVersion`` the way ``from_dict`` already derives it when the
         routing keys are absent.
 
+        One consequence of keeping ``ProtocolVersion`` is accepted rather than
+        overlooked: a frame reporting ``ProtocolVersion: "V1.0.0"`` derives
+        ``TransportType.MQTT`` and so steers ``async_step_manual_ip`` into its
+        MQTT branch, which ``async_create_entry``s with ``mqtt_broker_enabled``
+        and runs no connection test. That is the one remaining way a
+        device-chosen frame changes which branch the flow takes. It is in scope
+        for the identity concept — the protocol a printer speaks is what it
+        reports about itself — it moves no credential and no hostname, and UDP
+        discovery already routes a V1 printer the same way from the same string,
+        so filtering it here would make the probe disagree with discovery rather
+        than close anything.
+
         Never raises for anything the printer controls. HA's
         ``data_entry_flow._async_handle_step`` catches only ``AbortFlow``, so an
         exception escaping here reaches the UI as the generic "Config flow could
@@ -1001,6 +1013,15 @@ class ElegooFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         # the broker to dial, so it belongs with the fields above even though
         # `async_step_manual_ip` overwrites it from the form straight after.
         printer.external_ip = None
+        # `is_proxy` is the flag `async_step_user` filters discovered printers by,
+        # and `from_dict` reads it (`Proxy` / `is_proxy`) like the rest. Nothing
+        # that consumes it is reachable from this probe — the probed printer goes
+        # to `selected_printer`, never into `discovered_printers` — so this line
+        # changes no behaviour today. It is here because this block is written as
+        # the exhaustive "nothing the frame could have set survives", and leaving
+        # out the one routing-adjacent key `from_dict` still reads would make that
+        # claim read as complete when it is not.
+        printer.is_proxy = False
         LOGGER.info(
             "Probed %s over TCP %s without discovery: found %s (%s, id=%s)",
             ip_address,

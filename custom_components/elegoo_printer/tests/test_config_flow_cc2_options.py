@@ -29,11 +29,14 @@ from custom_components.elegoo_printer.sdcp.models.enums import (
     TransportType,
 )
 from custom_components.elegoo_printer.sdcp.models.printer import Printer
+from custom_components.elegoo_printer.tests.ws_doubles import (
+    DOC_IP,
+    make_config_flow,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-_DOC_IP = "192.0.2.1"
 CC2_MODEL = "Centauri Carbon 2"
 
 
@@ -44,7 +47,7 @@ def _cc2_options_schema_dict() -> dict:
 
 CC2_ENTRY_DATA = {
     "name": "CC2 Unit Test",
-    "ip_address": _DOC_IP,
+    "ip_address": DOC_IP,
     "transport_type": "cc2_mqtt",
     "protocol_version": "CC2",
     "protocol": "CC2",
@@ -78,7 +81,7 @@ class TestAsyncStepCc2OptionsProxyUrl:
             flow = _make_options_flow()
             result = await flow.async_step_cc2_options(
                 user_input={
-                    CONF_IP_ADDRESS: _DOC_IP,
+                    CONF_IP_ADDRESS: DOC_IP,
                     CONF_GCODE_PROXY_URL: "http://",
                 },
             )
@@ -105,7 +108,7 @@ class TestAsyncStepCc2OptionsProxyUrl:
                 mock_cls.return_value.check_health = AsyncMock(return_value=False)
                 result = await flow.async_step_cc2_options(
                     user_input={
-                        CONF_IP_ADDRESS: _DOC_IP,
+                        CONF_IP_ADDRESS: DOC_IP,
                         CONF_GCODE_PROXY_URL: "192.0.2.99",
                     },
                 )
@@ -130,19 +133,11 @@ class TestManualIpWithProxyHost:
     PROXY = "192.0.2.50"
     PRINTER_IP = "192.0.2.1"
 
-    @staticmethod
-    def _make_flow() -> ElegooFlowHandler:
-        flow = ElegooFlowHandler()
-        flow.hass = MagicMock()
-        flow.flow_id = "config-test-flow"
-        flow.handler = "elegoo_printer"
-        return flow
-
     def test_proxy_host_skips_discovery_and_routes_to_cc2_auth(self) -> None:
         """With proxy_host, neither discovery path runs and the CC2 flow starts."""
 
         async def _run() -> None:
-            flow = self._make_flow()
+            flow = make_config_flow()
             with (
                 patch.object(
                     ElegooFlowHandler,
@@ -193,7 +188,7 @@ class TestManualIpWithProxyHost:
         """
 
         async def _run() -> None:
-            flow = self._make_flow()
+            flow = make_config_flow()
             with (
                 patch.object(ElegooFlowHandler, "async_set_unique_id", new=AsyncMock()),
                 patch.object(ElegooFlowHandler, "_abort_if_unique_id_configured"),
@@ -221,7 +216,7 @@ class TestManualIpWithProxyHost:
         """A blank printer IP still errors instead of falling through to discovery."""
 
         async def _run() -> None:
-            flow = self._make_flow()
+            flow = make_config_flow()
             with (
                 patch(
                     "custom_components.elegoo_printer.config_flow.ElegooPrinterClient"
@@ -246,7 +241,7 @@ class TestManualIpWithProxyHost:
         """An empty proxy_host keeps the existing discovery path untouched."""
 
         async def _run() -> None:
-            flow = self._make_flow()
+            flow = make_config_flow()
             discovered = Printer.from_dict(
                 {
                     "name": "Discovered CC2",
@@ -294,7 +289,7 @@ class TestCc2OptionsProxyHost:
             flow = _make_options_flow()
             result = await flow.async_step_cc2_options(
                 user_input={
-                    CONF_IP_ADDRESS: _DOC_IP,
+                    CONF_IP_ADDRESS: DOC_IP,
                     CONF_PROXY_HOST: self.PROXY,
                 },
             )
@@ -317,13 +312,13 @@ class TestCc2OptionsProxyHost:
             flow = _make_options_flow()
             flow.config_entry.data = {**CC2_ENTRY_DATA, CONF_PROXY_HOST: self.PROXY}
             result = await flow.async_step_cc2_options(
-                user_input={CONF_IP_ADDRESS: _DOC_IP, CONF_PROXY_HOST: ""},
+                user_input={CONF_IP_ADDRESS: DOC_IP, CONF_PROXY_HOST: ""},
             )
 
             assert result["type"] == FlowResultType.CREATE_ENTRY
             assert result["data"][CONF_PROXY_HOST] == ""
             merged = {**flow.config_entry.data, **result["data"]}
-            assert Printer.from_dict(merged).connection_host == _DOC_IP
+            assert Printer.from_dict(merged).connection_host == DOC_IP
 
         asyncio.run(_run())
 
@@ -346,10 +341,7 @@ class TestProxySerialHybrid:
 
     @staticmethod
     def _make_flow(*, proxy_host: str | None = PROXY) -> ElegooFlowHandler:
-        flow = ElegooFlowHandler()
-        flow.hass = MagicMock()
-        flow.flow_id = "config-test-flow"
-        flow.handler = "elegoo_printer"
+        flow = make_config_flow()
         flow.selected_printer = Printer.from_dict(
             {
                 "name": "CC2 Proxy Unit Test",

@@ -42,6 +42,7 @@ from .cc2.cleanup import (
     DEFAULT_EXCLUDE,
     DEFAULT_INCLUDE,
     DEFAULT_OLDER_THAN_DAYS,
+    SKIP_ACTIVE,
     SKIP_NOT_INCLUDED,
     select_deletions,
 )
@@ -828,10 +829,13 @@ async def _async_read_activity(
     begun printing. A dry run deletes nothing, so it reads the cache and pays
     nothing for a name it cannot act on anyway.
 
-    The fresh read closes the timing hole; ``_listed_name_for`` closes the
+    The fresh read closes the timing hole; ``_listed_names_for`` closes the
     spelling hole. A printer reporting "/local/dir/x.gcode" or "X.GCODE" for a
     file the 1044 listing keys "x.gcode" means the SAME file, and exact equality
-    — what ``select_deletions`` applies — does not recognise it as active.
+    — what ``select_deletions`` applies — does not recognise it as active. That
+    resolution returns EVERY key it could mean, so a listing that carries two
+    files called ``job.gcode`` in different directories protects both rather
+    than guessing which one is under the nozzle.
     """
     if dry_run:
         return _ActivityCheck(activity=_read_activity(client.printer_data.status))
@@ -845,9 +849,9 @@ async def _async_read_activity(
     return _ActivityCheck(activity=_read_activity(client.printer_data.status))
 
 
-def _listed_name_for(files: Mapping[str, object], wanted: str | None) -> str | None:
+def _listed_names_for(files: Mapping[str, object], wanted: str | None) -> list[str]:
     """
-    Find which listed file the printer's active name refers to, if any.
+    Find EVERY listed file the printer's active name could refer to.
 
     The comparison is on the last path component, casefolded: the guard's job is
     "do not delete the file the printer is reading", and a printer that reports
@@ -855,23 +859,35 @@ def _listed_name_for(files: Mapping[str, object], wanted: str | None) -> str | N
     ``x.gcode`` — or spells it ``X.GCODE`` — means the SAME file. Exact equality
     (what ``select_deletions`` applies) fails OPEN on both, and a name that does
     not match leaves the file being printed as a delete candidate. Returning the
-    LISTING KEY rather than the printer's string is what keeps that comparison
+    LISTING KEYS rather than the printer's string is what keeps that comparison
     inside ``select_deletions`` unchanged; the broadening is confined to names
     that denote the same file, so it can only ever ADD a skip, never a delete.
+
+    Every match is returned, not the first, and that is the part of the
+    guarantee the single-match version could not honour. Two listing keys can
+    share a basename — ``dirA/job.gcode`` and ``dirB/job.gcode`` — and
+    basename+casefold cannot tell them apart: when the printer reports its job
+    as ``job.gcode`` the handler cannot know which one it is reading. Returning
+    one of them protected one spelling and left the other a delete candidate,
+    so "the file being printed is safe" was true of the mechanism (a skip was
+    added, never a delete) but false of the outcome whenever basenames collided.
+    A last-writer-wins guess is not a safety guard, so all of them are protected
+    and the cost is at most one stale file surviving one more night.
 
     ``PurePosixPath.name`` rather than ``Path.name`` or ``os.path.basename``:
     the names are the printer's, always ``/``-separated, and HA can run on
     Windows, where the host's own rules would not split them at all.
     """
     if not wanted:
-        return None
+        return []
     target = PurePosixPath(wanted.replace("\\", "/")).name.casefold()
     if not target:
-        return None
-    for name in files:
-        if PurePosixPath(str(name).replace("\\", "/")).name.casefold() == target:
-            return str(name)
-    return None
+        return []
+    return [
+        name
+        for name in files
+        if PurePosixPath(str(name).replace("\\", "/")).name.casefold() == target
+    ]
 
 
 class _CleanupRequest(NamedTuple):
@@ -1097,15 +1113,29 @@ async def _async_cleanup_files(hass: HomeAssistant, call: ServiceCall) -> dict:
             f"Could not delete anything: {activity.reason}; deleted nothing"
         )
 
-    active = _listed_name_for(files, activity.activity.filename)
+    # Every listing key whose basename matches the printer's active name is
+    # protected, not just the first (see `_listed_names_for` for why a
+    # last-writer-wins guess is not a guard). `select_deletions` still does the
+    # comparing and still compares EXACTLY — it takes one name, so the first
+    # match goes in and the remaining spellings are applied here, in the handler,
+    # which is the layer that owns the spelling question. The extra pass mirrors
+    # the selection's own precedence rather than inventing a second rule: a file
+    # the printer is reading is skipped before any pattern or age filter is
+    # consulted, so a colliding sibling gets the same `currently_printing`
+    # reason and never reaches 1047 whatever its age or the patterns.
+    active_names = _listed_names_for(files, activity.activity.filename)
     to_delete, skipped = select_deletions(
         files,
         include=tuple(request.include),
         exclude=tuple(request.exclude),
         older_than_days=request.older_than_days,
-        active_filename=active,
+        active_filename=active_names[0] if active_names else None,
     )
     reasons = dict(skipped)
+    if len(active_names) > 1:
+        protected = set(active_names)
+        to_delete = [name for name in to_delete if name not in protected]
+        reasons.update(dict.fromkeys(protected, SKIP_ACTIVE))
     note = _pattern_note(request.include, len(files), to_delete, reasons)
 
     if dry_run:
@@ -1174,8 +1204,9 @@ async def _async_delete_and_report(  # noqa: PLR0913
     # is refused rather than guessed at: a cleanup that waits for the print to
     # finish costs one more night of files, and the alternative is deleting the
     # job out from under the nozzle. A busy printer that DID name its file needs
-    # no refusal — that file is skipped by the selection, and the rest are fair
-    # game, which is what makes a cleanup during a long print still work.
+    # no refusal — every listing key that names it is skipped by the selection
+    # above, and the rest are fair game, which is what makes a cleanup during a
+    # long print still work.
     if activity.busy and activity.filename is None:
         message = (
             "the printer reported a busy state without naming a file, so this "

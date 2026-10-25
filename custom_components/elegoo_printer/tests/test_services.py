@@ -38,6 +38,7 @@ from custom_components.elegoo_printer import (
     _async_start_print,
     _async_update_ip,
     _async_upload_gcode,
+    _listed_names_for,
     _remove_quietly,
     _stage_upload,
     async_setup,
@@ -1807,7 +1808,8 @@ class TestCleanupFilesService:
         # means the SAME file, and exact equality leaves the file being printed
         # on the delete side. The handler resolves the printer's name to the
         # listing key on basename+casefold first, so the guard still fires — and
-        # can only ever add a skip, never a delete.
+        # can only ever add a skip, never a delete. (Every match, not the first:
+        # pinned by test_every_listing_key_naming_the_active_file_is_skipped.)
         async def _run() -> None:
             for reported in ("/local/dir/printing.gcode", "PRINTING.GCODE"):
                 listing = {
@@ -1841,6 +1843,103 @@ class TestCleanupFilesService:
             assert result["deleted"] == ["old.gcode", "printing.gcode"]
 
         asyncio.run(_run())
+
+    def test_every_listing_key_naming_the_active_file_is_skipped(self) -> None:
+        # The one case where "the broadening can only add a skip" is not
+        # enough on its own: TWO listing keys whose basename matches the
+        # printer's active name (`dirA/job.gcode` and `dirB/job.gcode` against
+        # a printer reporting `job.gcode`). Basename+casefold cannot tell those
+        # two apart, and the handler cannot know which one the printer is
+        # reading — so it must protect BOTH. Resolving the active name to the
+        # FIRST match and protecting only that was measured deleting the other:
+        # `to_delete == ['dirB/job.gcode', 'other.gcode']`, i.e. the file under
+        # the nozzle gone. The guard is the only thing standing between a
+        # nightly automation and a live print, so every spelling stays.
+        async def _run() -> None:
+            listing = {
+                "dirA/job.gcode": _entry("dirA/job.gcode", days_ago=90),
+                "dirB/job.gcode": _entry("dirB/job.gcode", days_ago=90),
+                "other.gcode": _entry("other.gcode", days_ago=90),
+            }
+            client = _cleanup_client(listing, active="job.gcode")
+            hass = _cleanup_hass(client)
+
+            result = await _async_cleanup_files(
+                hass, _cleanup_call(dry_run=False, older_than_days=60, include="*")
+            )
+
+            assert result["success"] is True
+            assert result["deleted"] == ["other.gcode"]
+            assert result["skipped"] == {
+                "dirA/job.gcode": "currently_printing",
+                "dirB/job.gcode": "currently_printing",
+            }
+            # The stronger claim, stated as the calls rather than as the report:
+            # neither spelling of the active file was ever sent to 1047.
+            requested = [c.args[0] for c in client.delete_file.await_args_list]
+            assert requested == ["other.gcode"]
+
+        asyncio.run(_run())
+
+    def test_a_colliding_active_name_is_protected_on_a_dry_run_too(self) -> None:
+        # The same rule on the reporting branch, where nothing is deleted: a dry
+        # run that lists `dirB/job.gcode` under would_delete is telling the user
+        # their live print is scheduled for deletion, which is the misleading
+        # half of the same bug.
+        async def _run() -> None:
+            listing = {
+                "dirA/job.gcode": _entry("dirA/job.gcode", days_ago=90),
+                "dirB/Job.GCODE": _entry("dirB/Job.GCODE", days_ago=90),
+                "old.gcode": _entry("old.gcode", days_ago=90),
+            }
+            client = _cleanup_client(listing, active="/local/dirA/job.gcode")
+            hass = _cleanup_hass(client)
+
+            result = await _async_cleanup_files(
+                hass, _cleanup_call(dry_run=True, older_than_days=60, include="*")
+            )
+
+            assert result["would_delete"] == ["old.gcode"]
+            assert result["skipped"] == {
+                "dirA/job.gcode": "currently_printing",
+                "dirB/Job.GCODE": "currently_printing",
+            }
+            client.delete_file.assert_not_called()
+
+        asyncio.run(_run())
+
+    def test_the_resolver_hands_back_every_key_that_could_be_the_active_one(
+        self,
+    ) -> None:
+        # The helper itself, not through the service: the whole fix is "return
+        # every match", and the shapes worth pinning are (a) two colliding keys
+        # both come back, (b) a name matching nothing comes back empty rather
+        # than as a near-miss, and (c) an empty/absent active name comes back
+        # empty — which the handler reads as "nothing to protect", NOT as
+        # "protect everything".
+        listing = {
+            "dirA/job.gcode": _entry("dirA/job.gcode", days_ago=90),
+            "dirB/Job.GCODE": _entry("dirB/Job.GCODE", days_ago=90),
+            "job.gcode": _entry("job.gcode", days_ago=90),
+            "other.gcode": _entry("other.gcode", days_ago=90),
+        }
+        assert _listed_names_for(listing, "/local/dirA/job.gcode") == [
+            "dirA/job.gcode",
+            "dirB/Job.GCODE",
+            "job.gcode",
+        ]
+        assert _listed_names_for(listing, "JOB.gcode") == [
+            "dirA/job.gcode",
+            "dirB/Job.GCODE",
+            "job.gcode",
+        ]
+        assert _listed_names_for(listing, "other.gcode") == ["other.gcode"]
+        assert _listed_names_for(listing, "missing.gcode") == []
+        for no_name in (None, "", "   "):
+            assert _listed_names_for(listing, no_name) == [], no_name
+        # A name that is only a directory ("/") resolves to nothing, rather than
+        # to every entry whose basename happens to be empty.
+        assert _listed_names_for({"weird/": _entry("weird/", days_ago=90)}, "/") == []
 
     def test_every_refused_reason_the_printer_can_give_is_reported(self) -> None:
         # Three refusal texts, and until now only the first was asserted: a

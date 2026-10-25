@@ -26,13 +26,10 @@ since the probe guarantees no more than "something at this IP accepts TCP".
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Self
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import aiohttp
 import pytest
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.data_entry_flow import FlowResultType
@@ -47,14 +44,23 @@ from custom_components.elegoo_printer.sdcp.models.enums import (
     PrinterType,
     TransportType,
 )
+from custom_components.elegoo_printer.tests.ws_doubles import (
+    DOC_IP,
+    MAINBOARD_ID,
+    ams_status_frame,
+    cc1_self_reported_attributes,
+    flat_attributes_frame,
+    make_config_flow,
+    nested_attributes_frame,
+    pass_printer_through,
+    session_refusing,
+    session_returning,
+    text_msg,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
-_DOC_IP = "192.0.2.1"
-MAINBOARD_ID = "000000000001d354"
 # Every key from_dict reads that decides where HA connects, what it
 # authenticates with, or which proxy the entry trusts. None of them may survive
 # a frame, and the guard test below fails if the allowlist ever grows one.
@@ -78,51 +84,6 @@ ROUTING_KEYS: tuple[str, ...] = (
 )
 
 
-def _pass_printer_through(hass: Any, printer: Printer, user_input: Any) -> Printer:  # noqa: ARG001
-    """Stand in for ``_async_test_connection``: the printer is already valid."""
-    return printer
-
-
-class _FakeWS:
-    """Async-iterable mock websocket that yields pre-built messages."""
-
-    def __init__(self, messages: list[Any]) -> None:
-        self._messages = iter(messages)
-
-    async def __aenter__(self) -> Self:
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        pass
-
-    def __aiter__(self) -> Self:
-        return self
-
-    async def __anext__(self) -> Any:
-        try:
-            return next(self._messages)
-        except StopIteration:
-            raise StopAsyncIteration from None
-
-
-def _text_msg(payload: Any) -> Any:
-    data = payload if isinstance(payload, str) else json.dumps(payload)
-    return SimpleNamespace(type=aiohttp.WSMsgType.TEXT, data=data)
-
-
-def _session_returning(*messages: Any) -> MagicMock:
-    return MagicMock(ws_connect=MagicMock(return_value=_FakeWS(list(messages))))
-
-
-def _session_refusing() -> MagicMock:
-    def _refuse(*_args: Any, **_kwargs: Any) -> Any:
-        raise aiohttp.ClientConnectorError(
-            MagicMock(host=_DOC_IP, port=3030, req=None), ConnectionRefusedError()
-        )
-
-    return MagicMock(ws_connect=MagicMock(side_effect=_refuse))
-
-
 class _CancellingWS:
     """A connection that is cancelled during the handshake."""
 
@@ -131,33 +92,6 @@ class _CancellingWS:
 
     async def __aexit__(self, *args: object) -> None:
         pass
-
-
-def _make_flow() -> ElegooFlowHandler:
-    flow = ElegooFlowHandler()
-    flow.hass = MagicMock()
-    flow.flow_id = "config-test-flow"
-    flow.handler = "elegoo_printer"
-
-    async def _run_in_executor(func: Callable[..., Any], *args: Any) -> Any:
-        return func(*args)
-
-    flow.hass.async_add_executor_job = AsyncMock(side_effect=_run_in_executor)
-    return flow
-
-
-def _cc1_attributes() -> dict[str, Any]:
-    """Return the attributes a CC1 reports about itself (the #431 printer)."""
-    return {
-        "Name": "CC1",
-        "MachineName": "Centauri Carbon",
-        "BrandName": "ELEGOO",
-        "ProtocolVersion": "V3.0.0",
-        "FirmwareVersion": "V1.1.29",
-        "MainboardIP": "10.30.20.44",
-        "MainboardID": MAINBOARD_ID,
-        "NetworkStatus": "wlan",
-    }
 
 
 def _poisoned_attributes() -> dict[str, Any]:
@@ -172,7 +106,7 @@ def _poisoned_attributes() -> dict[str, Any]:
     allowlist that only blocked the wire names would still be leaky.
     """
     return {
-        **_cc1_attributes(),
+        **cc1_self_reported_attributes(),
         "transport_type": "cc2_mqtt",
         "protocol_version": "CC2",
         "proxy_host": "attacker.example",
@@ -198,24 +132,6 @@ def _poisoned_attributes() -> dict[str, Any]:
     }
 
 
-def _flat_frame(attributes: dict[str, Any]) -> dict[str, Any]:
-    return {"Topic": f"sdcp/attributes/{MAINBOARD_ID}", "Attributes": attributes}
-
-
-def _nested_frame(attributes: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "Topic": f"sdcp/attributes/{MAINBOARD_ID}",
-        "Data": {"Attributes": attributes},
-    }
-
-
-def _status_frame(ams_connect: int = 1) -> dict[str, Any]:
-    return {
-        "Topic": f"sdcp/status/{MAINBOARD_ID}",
-        "Data": {"Data": {"Status": {"AmsConnectStatus": ams_connect}}},
-    }
-
-
 def _deeply_nested_json(depth: int = 30_000) -> str:
     """
     JSON ``json.loads`` cannot decode.
@@ -228,21 +144,21 @@ def _deeply_nested_json(depth: int = 30_000) -> str:
 
 
 async def _probe_with(*messages: Any) -> Printer | None:
-    flow = _make_flow()
+    flow = make_config_flow()
     with patch(
         "custom_components.elegoo_printer.config_flow.async_get_clientsession",
-        return_value=_session_returning(*messages),
+        return_value=session_returning(*messages),
     ):
-        return await flow._async_probe_websocket_printer(_DOC_IP)
+        return await flow._async_probe_websocket_printer(DOC_IP)
 
 
 async def _canvas_with(*messages: Any) -> bool:
-    flow = _make_flow()
+    flow = make_config_flow()
     printer = MagicMock()
-    printer.ip_address = _DOC_IP
+    printer.ip_address = DOC_IP
     with patch(
         "custom_components.elegoo_printer.config_flow.async_get_clientsession",
-        return_value=_session_returning(*messages),
+        return_value=session_returning(*messages),
     ):
         return await flow._async_detect_canvas(printer)
 
@@ -290,7 +206,7 @@ class TestAllowlistIsIdentityOnly:
     def test_identity_only_drops_everything_not_listed(self) -> None:
         """Filtering, not sanitising: an unknown key is dropped, not inspected."""
         kept = _identity_only(_poisoned_attributes())
-        assert kept == _identity_only(_cc1_attributes())
+        assert kept == _identity_only(cc1_self_reported_attributes())
         assert set(kept) <= _PRINTER_IDENTITY_KEYS
 
 
@@ -299,7 +215,7 @@ class TestProbeFrameCannotDecideRouting:
 
     @pytest.mark.parametrize(
         ("shape", "frame_builder"),
-        [("flat", _flat_frame), ("nested", _nested_frame)],
+        [("flat", flat_attributes_frame), ("nested", nested_attributes_frame)],
     )
     async def test_poisoned_frame_describes_identity_but_not_routing(
         self, shape: str, frame_builder: Any
@@ -311,7 +227,7 @@ class TestProbeFrameCannotDecideRouting:
         the reason it is not simply a reachability test — while every routing and
         credential field ends at its neutral default.
         """
-        printer = await _probe_with(_text_msg(frame_builder(_poisoned_attributes())))
+        printer = await _probe_with(text_msg(frame_builder(_poisoned_attributes())))
 
         assert printer is not None, shape
         # Identity, from the frame:
@@ -323,9 +239,9 @@ class TestProbeFrameCannotDecideRouting:
         # Routing, NOT from the frame: the typed address wins, and transport is
         # derived from ProtocolVersion the way from_dict derives it when the
         # routing keys are absent.
-        assert printer.ip_address == _DOC_IP
-        assert printer.connection == _DOC_IP
-        assert printer.connection_host == _DOC_IP
+        assert printer.ip_address == DOC_IP
+        assert printer.connection == DOC_IP
+        assert printer.connection_host == DOC_IP
         assert printer.transport_type is TransportType.WEBSOCKET
 
         data = printer.to_dict()
@@ -339,6 +255,13 @@ class TestProbeFrameCannotDecideRouting:
         assert data["has_canvas"] is False
         assert data["external_ip"] is None
         assert data["mqtt_broker_enabled"] is False
+        # `is_proxy` is the one key here the probe never needed to reset: the code
+        # that reads it filters *discovered* printers, which this one never joins.
+        # Asserted for the same reason as the lines above — it pins the outcome,
+        # so it fails if the allowlist ever lets `Proxy` through or `from_dict`
+        # grows a non-neutral default for it — not because a line in the probe
+        # depends on it today.
+        assert data["is_proxy"] is False
         assert data["transport_type"] == TransportType.WEBSOCKET.value
 
     async def test_poisoned_frame_cannot_route_the_flow_to_the_cc2_auth_step(
@@ -354,7 +277,7 @@ class TestProbeFrameCannotDecideRouting:
         a V3 printer lands on the FDM options step like any other WebSocket
         printer, and the created entry carries no attacker host.
         """
-        flow = _make_flow()
+        flow = make_config_flow()
         with (
             patch(
                 "custom_components.elegoo_printer.config_flow.ElegooPrinterClient"
@@ -364,8 +287,8 @@ class TestProbeFrameCannotDecideRouting:
             ) as cc2_discovery,
             patch(
                 "custom_components.elegoo_printer.config_flow.async_get_clientsession",
-                return_value=_session_returning(
-                    _text_msg(_flat_frame(_poisoned_attributes()))
+                return_value=session_returning(
+                    text_msg(flat_attributes_frame(_poisoned_attributes()))
                 ),
             ),
             patch.object(
@@ -379,13 +302,13 @@ class TestProbeFrameCannotDecideRouting:
             ),
             patch(
                 "custom_components.elegoo_printer.config_flow._async_test_connection",
-                new=AsyncMock(side_effect=_pass_printer_through),
+                new=AsyncMock(side_effect=pass_printer_through),
             ),
         ):
             ws_client.return_value.discover_printer.return_value = []
             cc2_discovery.discover_as_printers.return_value = []
 
-            routed = await flow.async_step_manual_ip({CONF_IP_ADDRESS: _DOC_IP})
+            routed = await flow.async_step_manual_ip({CONF_IP_ADDRESS: DOC_IP})
             assert routed["type"] == FlowResultType.FORM
             assert routed["step_id"] == "fdm_options"
 
@@ -395,7 +318,7 @@ class TestProbeFrameCannotDecideRouting:
 
         assert created["type"] == FlowResultType.CREATE_ENTRY
         assert created["data"]["id"] == MAINBOARD_ID
-        assert created["data"]["ip_address"] == _DOC_IP
+        assert created["data"]["ip_address"] == DOC_IP
         assert created["data"]["transport_type"] == TransportType.WEBSOCKET.value
         assert created["data"]["proxy_host"] is None
         assert created["data"]["mqtt_external_host"] is None
@@ -416,17 +339,19 @@ class TestProbeFrameCannotDecideRouting:
         frame that redirected the probe would show up as a second ``ws_connect``
         to a different URL.
         """
-        flow = _make_flow()
-        session = _session_returning(_text_msg(_flat_frame(_poisoned_attributes())))
+        flow = make_config_flow()
+        session = session_returning(
+            text_msg(flat_attributes_frame(_poisoned_attributes()))
+        )
         with patch(
             "custom_components.elegoo_printer.config_flow.async_get_clientsession",
             return_value=session,
         ):
-            await flow._async_probe_websocket_printer(_DOC_IP)
+            await flow._async_probe_websocket_printer(DOC_IP)
 
         assert session.ws_connect.call_count == 1
         url = session.ws_connect.call_args.args[0]
-        assert url == f"ws://{_DOC_IP}:3030/websocket"
+        assert url == f"ws://{DOC_IP}:3030/websocket"
 
 
 class TestFrameLoopsAreTotal:
@@ -475,7 +400,7 @@ class TestFrameLoopsAreTotal:
         reachable with a device-controlled first frame, because the identity probe
         only guarantees that TCP 3030 accepts.
         """
-        assert await _canvas_with(_text_msg(frame)) is False
+        assert await _canvas_with(text_msg(frame)) is False
 
     async def test_canvas_detection_survives_an_undecodable_frame(self) -> None:
         """
@@ -486,11 +411,11 @@ class TestFrameLoopsAreTotal:
         a method whose handler named only ``TimeoutError``/``ClientError``/
         ``JSONDecodeError``.
         """
-        assert await _canvas_with(_text_msg(_deeply_nested_json())) is False
+        assert await _canvas_with(text_msg(_deeply_nested_json())) is False
 
     async def test_probe_survives_an_undecodable_frame(self) -> None:
         """The same frame refused by the probe, which already had the loop."""
-        assert await _probe_with(_text_msg(_deeply_nested_json())) is None
+        assert await _probe_with(text_msg(_deeply_nested_json())) is None
 
     async def test_canvas_detection_still_reads_a_real_status_frame(self) -> None:
         """
@@ -502,17 +427,17 @@ class TestFrameLoopsAreTotal:
         """
         assert (
             await _canvas_with(
-                _text_msg([1, 2]),
-                _text_msg("this is not json"),
-                _text_msg(_deeply_nested_json()),
-                _text_msg(_status_frame(ams_connect=1)),
+                text_msg([1, 2]),
+                text_msg("this is not json"),
+                text_msg(_deeply_nested_json()),
+                text_msg(ams_status_frame(ams_connect=1)),
             )
             is True
         )
-        assert await _canvas_with(_text_msg(_status_frame(ams_connect=0))) is False
+        assert await _canvas_with(text_msg(ams_status_frame(ams_connect=0))) is False
         assert (
             await _canvas_with(
-                _text_msg({"Topic": "sdcp/status/x", "Data": {"Data": {"Status": {}}}})
+                text_msg({"Topic": "sdcp/status/x", "Data": {"Data": {"Status": {}}}})
             )
             is False
         )
@@ -522,16 +447,16 @@ class TestFrameLoopsAreTotal:
     ) -> None:
         """Same for the probe: unusable frames first, real identity after."""
         printer = await _probe_with(
-            _text_msg("not json at all"),
-            _text_msg([1, 2]),
-            _text_msg(_flat_frame(_cc1_attributes())),
+            text_msg("not json at all"),
+            text_msg([1, 2]),
+            text_msg(flat_attributes_frame(cc1_self_reported_attributes())),
         )
         assert printer is not None
         assert printer.id == MAINBOARD_ID
 
     @pytest.mark.parametrize(
         ("shape", "frame_builder"),
-        [("flat", _flat_frame), ("nested", _nested_frame)],
+        [("flat", flat_attributes_frame), ("nested", nested_attributes_frame)],
     )
     async def test_empty_attributes_object_does_not_end_the_scan(
         self, shape: str, frame_builder: Any
@@ -545,26 +470,26 @@ class TestFrameLoopsAreTotal:
         hint that a second frame was never looked at.
         """
         printer = await _probe_with(
-            _text_msg(frame_builder({})),
-            _text_msg(frame_builder(_cc1_attributes())),
+            text_msg(frame_builder({})),
+            text_msg(frame_builder(cc1_self_reported_attributes())),
         )
         assert printer is not None, shape
         assert printer.id == MAINBOARD_ID, shape
 
     async def test_refused_connection_is_still_a_refusal(self) -> None:
         """Nothing listening is still "no printer", not a crash and not a guess."""
-        flow = _make_flow()
+        flow = make_config_flow()
         with patch(
             "custom_components.elegoo_printer.config_flow.async_get_clientsession",
-            return_value=_session_refusing(),
+            return_value=session_refusing(),
         ):
-            assert await flow._async_probe_websocket_printer(_DOC_IP) is None
+            assert await flow._async_probe_websocket_printer(DOC_IP) is None
 
         printer = MagicMock()
-        printer.ip_address = _DOC_IP
+        printer.ip_address = DOC_IP
         with patch(
             "custom_components.elegoo_printer.config_flow.async_get_clientsession",
-            return_value=_session_refusing(),
+            return_value=session_refusing(),
         ):
             assert await flow._async_detect_canvas(printer) is False
 
@@ -577,7 +502,7 @@ class TestFrameLoopsAreTotal:
         flow. Pinned because "make it total" is exactly the phrasing that tempts a
         ``BaseException`` in here.
         """
-        flow = _make_flow()
+        flow = make_config_flow()
         with (
             patch(
                 "custom_components.elegoo_printer.config_flow.async_get_clientsession",
@@ -587,7 +512,7 @@ class TestFrameLoopsAreTotal:
             ),
             pytest.raises(asyncio.CancelledError),
         ):
-            await flow._async_probe_websocket_printer(_DOC_IP)
+            await flow._async_probe_websocket_printer(DOC_IP)
 
 
 class TestUntrustedFrameLogging:
@@ -609,7 +534,7 @@ class TestUntrustedFrameLogging:
         hostile["Name"] = injected
 
         with caplog.at_level(logging.DEBUG):
-            assert await _probe_with(_text_msg(_flat_frame(hostile))) is None
+            assert await _probe_with(text_msg(flat_attributes_frame(hostile))) is None
 
         loud = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
         assert any("cannot parse" in m for m in loud)
@@ -632,11 +557,11 @@ class TestUntrustedFrameLogging:
 
     async def test_frame_dump_is_truncated(self, caplog) -> None:
         """A huge frame cannot be logged in full at any level."""
-        huge = _cc1_attributes()
+        huge = cc1_self_reported_attributes()
         huge["MachineName"] = 7
         huge["Name"] = "x" * 20_000
         with caplog.at_level(logging.DEBUG):
-            assert await _probe_with(_text_msg(_flat_frame(huge))) is None
+            assert await _probe_with(text_msg(flat_attributes_frame(huge))) is None
 
         dumped = next(
             m
@@ -660,11 +585,11 @@ class TestUntrustedFrameLogging:
         which is still what an operator greps for. The frame itself never reaches
         this level at all (see the test above).
         """
-        attributes = _cc1_attributes()
+        attributes = cc1_self_reported_attributes()
         attributes["Name"] = f"pwn\nFAKE WARNING {'a' * 500}"
         attributes["MainboardID"] = f"{MAINBOARD_ID}{'b' * 500}"
         with caplog.at_level(logging.INFO):
-            printer = await _probe_with(_text_msg(_flat_frame(attributes)))
+            printer = await _probe_with(text_msg(flat_attributes_frame(attributes)))
 
         assert printer is not None
         assert printer.id == f"{MAINBOARD_ID}{'b' * 500}", "only the log is scrubbed"
@@ -692,7 +617,9 @@ class TestUntrustedFrameLogging:
         control character.
         """
         with caplog.at_level(logging.INFO):
-            printer = await _probe_with(_text_msg(_flat_frame(_cc1_attributes())))
+            printer = await _probe_with(
+                text_msg(flat_attributes_frame(cc1_self_reported_attributes()))
+            )
 
         assert printer is not None
         line = next(
