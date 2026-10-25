@@ -1555,7 +1555,7 @@ def shared_code(sent: list[dict[str, Any]]) -> Any:
     return next(iter(codes)) if len(codes) == 1 else None
 
 
-def identical_answer_explanation(code: Any) -> str:
+def identical_answer_explanation(code: Any, sent: list[dict[str, Any]]) -> str:
     """
     What a UNANIMOUS reply actually means — chosen from the code, never assumed.
 
@@ -1569,6 +1569,16 @@ def identical_answer_explanation(code: Any) -> str:
     written to catch. So the explanation is now selected by the code that was
     actually shared, and anything unrecognised stays inconclusive rather than
     borrowing 1003's interpretation.
+
+    `sent` is needed because the code alone does not settle the 0 case: "the
+    printer accepted the request and deleted nothing" is a claim about the FILE,
+    and files are only ever known from a confirming 1044. A matrix that answered
+    0 for everything while every one of those listings failed to read has seen
+    the first half of that sentence and none of the second, so it gets the
+    inconclusive wording instead. Claiming otherwise would contradict the same
+    report's own "whether those files were removed is UNKNOWN" line two clauses
+    earlier, and — worse — could talk a maintainer into disabling a delete path
+    that in fact works.
     """
     if code == CC2_ERROR_INVALID_PARAMETER:
         return (
@@ -1578,15 +1588,38 @@ def identical_answer_explanation(code: Any) -> str:
             "supported by this capture."
         )
     if code == CC2_ERROR_SUCCESS:
-        # Answering 0 for every shape while every file stays listed is not a
-        # verdict about parameter keys at all: it is the printer accepting the
-        # request and ignoring it.
+        still_listed = [r for r in sent if r.get("still_listed") is True]
+        if not still_listed:
+            # Not one confirming 1044 was readable, so nothing here shows a file
+            # surviving its own accepted delete. That is the accept-and-ignore
+            # SHAPE with its evidence missing, and it must be said as such.
+            return (
+                f"every variant was ACCEPTED (error_code {code}) but not one "
+                "confirming 1044 could be read, so whether ANY of those files "
+                "was actually removed is UNKNOWN and this capture CANNOT "
+                "distinguish 'accepted and ignored' from 'accepted and "
+                "deleted'. It is INCONCLUSIVE for both hypotheses and must not "
+                "be read as evidence that deletes are broken: re-run and check "
+                "the printer's file list by hand afterwards."
+            )
+        # Answering 0 for every shape while a readable listing keeps showing the
+        # file is not a verdict about parameter keys at all: it is the printer
+        # accepting the request and ignoring it.
+        unread = [r for r in sent if r.get("still_listed") is None]
         return (
             f"every variant was ACCEPTED (error_code {code}) and none of them "
-            "provably removed its own file — that is the ACCEPT-AND-IGNORE "
-            "shape: 1047 takes any of these parameter shapes and reports "
-            "success without deleting. No parameter key can be concluded from "
-            "it, because the reply was never about the request."
+            "provably removed its own file"
+            + (
+                f" ({len(still_listed)} confirming 1044(s) saw the file still "
+                f"listed; {len(unread)} could not be read)"
+                if unread
+                else f" (all {len(still_listed)} confirming 1044 read(s) saw the "
+                "file still listed)"
+            )
+            + " — that is the ACCEPT-AND-IGNORE shape: 1047 takes any of these "
+            "parameter shapes and reports success without deleting. No "
+            "parameter key can be concluded from it, because the reply was "
+            "never about the request."
         )
     if code == CC2_ERROR_PRINTER_BUSY:
         return (
@@ -1744,7 +1777,7 @@ def conclusion_lines(report: dict[str, Any]) -> list[str]:
             f"{shared_code(sent)}) and "
             + deletion_claim(sent)
             + ". That is a real finding. What it means: "
-            + identical_answer_explanation(shared_code(sent))
+            + identical_answer_explanation(shared_code(sent), sent)
         )
     elif report["answered_variants_answered_identically"]:
         # The answered variants did all say the same thing, but the claim is
@@ -1755,7 +1788,8 @@ def conclusion_lines(report: dict[str, Any]) -> list[str]:
             f"(error_code {shared_code(sent)}), and {deletion_claim(sent)}; "
             f"{missing} of the {len(VARIANTS)} planned variants produced no "
             "answer to compare. That is a real finding for the answered subset. "
-            "What it means: " + identical_answer_explanation(shared_code(sent))
+            "What it means: "
+            + identical_answer_explanation(shared_code(sent), sent)
             + f" But with {missing} rows missing this is NOT the full-matrix "
             "result the paragraph above would claim. Re-run to fill in the "
             "missing variants."
