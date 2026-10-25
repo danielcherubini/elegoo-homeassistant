@@ -72,6 +72,22 @@ Safety properties, and why each exists
   still listed afterwards", and that signal is destroyed the moment one variant
   succeeds: with a shared file, every later variant would report
   `still_listed: false` for a reason unrelated to its parameters.
+* **Silence is never reported as agreement.** A variant whose 1047 was never
+  answered keeps `status: "no_reply"` and contributes no error code to the
+  analysis; the report counts `variants_without_reply` out loud, and the
+  conclusion has its own wording for "nothing answered" (inconclusive — check
+  connectivity and that Home Assistant was off, then re-run) that never claims
+  the variants answered alike. A printer on wifi drops requests; a run where that
+  happened must read as a failed capture, not as a finding for #432.
+* **The capture survives an abort.** A crash mid-matrix or a Ctrl-C produces the
+  same stdout report and JSON file, marked `aborted`, built from whatever was
+  measured, because that report is the only thing that names the probe files the
+  volunteer has to delete by hand. Clean-up is attempted only while the
+  connection is alive; otherwise the files are named, never blindly deleted. The
+  matrix also stops at the first variant it cannot send once the link is gone,
+  rather than uploading more unconfirmable files, and every successful upload is
+  echoed on its own greppable `PROBE UPLOADED <name>` line so terminal scrollback
+  alone can recover the leftovers.
 * **It waits for its own upload to appear in the 1044 listing before deleting
   it.** A just-uploaded file is not guaranteed to show up in the next listing,
   and a transient absence reads exactly like a successful delete. A variant
@@ -88,6 +104,13 @@ per variant the exact request JSON, the full raw reply JSON, elapsed ms and
 whether its own file was still listed, plus firmware, model, `token_status`, the
 caveats, and the leftovers a human has to delete from the UI. Paste the whole
 block into https://github.com/danielcherubini/elegoo-homeassistant/issues/432.
+
+Each variant carries a `status`, and the difference between them is the whole
+point of the report: `sent` (the printer answered — its `error_code` is
+evidence), `no_reply` (a 1047 went out and nothing came back — NOT evidence),
+`link_dropped` (never sent, because the connection was already gone),
+`upload_failed`, `inconclusive_never_listed` and, on a dry run,
+`dry_run_upload_only`. Only `sent` rows feed the identical-answer analysis.
 
 Validating this script without hardware
 ---------------------------------------
@@ -163,6 +186,18 @@ STATUS_ERRORS: tuple[type[Exception], ...] = (
     *TRANSPORT_ERRORS,
     CC2UnusableStatusError,
 )
+# ... plus everything the HTTP upload path can raise. Written as a flat tuple
+# rather than `(TRANSPORT_ERRORS, aiohttp.ClientError, OSError)` on purpose: a
+# NESTED tuple in an `except` clause is not flattened by Python, so the clause
+# itself raises `TypeError: catching classes that do not inherit from
+# BaseException` and the variant is recorded as nothing at all — the exception
+# escapes the matrix and the whole capture is lost. Same reason the three tuples
+# above are flat.
+UPLOAD_ERRORS: tuple[type[Exception], ...] = (
+    *TRANSPORT_ERRORS,
+    aiohttp.ClientError,
+    OSError,
+)
 
 # The machine states in which the printer is not reading a G-code file out of
 # storage, so a delete cannot pull a file out from under a running job.
@@ -178,6 +213,21 @@ IDLE_MACHINE_STATUSES: frozenset[ElegooMachineStatus] = frozenset(
 # How long to wait for a freshly uploaded file to show up in the 1044 listing.
 SETTLE_TIMEOUT = 30.0
 SETTLE_POLL = 1.0
+
+# How long the abort path may spend trying to clean up before it gives up and
+# just prints the leftovers. A run that died because the printer stopped
+# answering would otherwise spend 10 s per command (CC2_COMMAND_TIMEOUT) timing
+# out — minutes — before the volunteer saw the list of files they must delete.
+# The report is the deliverable; the clean-up is a bonus.
+ABORT_CLEANUP_TIMEOUT = 30.0
+
+# The only delete shape a dry run may use when it cleans up its one preflight
+# file: what `delete_file` ships today. `cleanup` re-points the filename key at
+# each of our own leftovers, so the placeholder never reaches the printer.
+DRY_RUN_CLEANUP_SHAPE: dict[str, Any] = {
+    "storage_media": "local",
+    "filename": "<replaced per file>",
+}
 
 # The HTTP token fallback the client itself uses when no access code is configured
 # (`client.py` tries "" then this). The access code IS the MQTT password and the
@@ -401,6 +451,17 @@ def probe_name(slug: str) -> str:
     """A fresh, plausibly-named, collision-proof probe file name."""
     clean = re.sub(r"[^a-z0-9_]", "_", slug.lower())
     return f"cc2_probe_{clean}_{secrets.token_hex(4)}.gcode"
+
+
+class LinkDroppedError(RuntimeError):
+    """The MQTT link died mid-matrix, so the matrix must stop.
+
+    Not a transport error, and deliberately NOT in `TRANSPORT_ERRORS`: a variant
+    whose request was never sent is a different fact from a variant that was sent
+    and went unanswered, and conflating them is the thing this script exists to
+    avoid. It propagates to the abort path in `probe`, which reports the capture
+    as partial and names the leftovers.
+    """
 
 
 # =============================================================================
@@ -719,6 +780,13 @@ async def _delete_own_file(
 
 def verdict_for(record: dict[str, Any]) -> str:
     """One line saying what this variant proved, in the strongest terms it can."""
+    if record.get("status") == "no_reply":
+        # Silence is not an answer. Say so before the note, so the verdict column
+        # alone can never be misread as "this variant agreed with the others".
+        return (
+            "NO REPLY: the printer never answered this 1047 — this variant "
+            "proves NOTHING, in either direction"
+        )
     if record.get("status") != "sent":
         return record.get("note", record.get("status", "not sent"))
     code = record.get("error_code")
@@ -742,6 +810,7 @@ async def probe_variant(
     variant: Variant,
     index: int,
     total: int,
+    sink: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Upload this variant's own file, settle, send its 1047, re-list, record."""
     name = probe_name(variant.slug)
@@ -752,13 +821,50 @@ async def probe_variant(
         "file": name,
         "params": variant.build(name),
     }
+    # Published before anything can fail, and mutated in place from here on: a
+    # run that dies mid-variant (an unexpected exception, a Ctrl-C) still has
+    # THIS row in its report, so the volunteer sees which variant was in flight
+    # instead of finding a hole in the matrix.
+    if sink is not None:
+        sink.append(record)
     logger.info("[{}/{}] {} -> {}", index, total, variant.slug, json_block(record["params"]))
+
+    if not client.is_connected:
+        # The link died during an earlier variant. Sending anything now would be
+        # pointless (the client raises before publishing) and uploading another
+        # probe file would be worse: it would land on the printer over HTTP,
+        # unconfirmable, adding to the pile the volunteer has to clear by hand.
+        # So the matrix STOPS here and says why, rather than running out the
+        # remaining variants as eleven identical no-replies.
+        record["status"] = "link_dropped"
+        record["still_listed"] = None
+        record["error_code"] = None
+        # Nothing was uploaded and nothing was sent, so neither the file name nor
+        # the params may be printed as if they had been: a volunteer hunting the
+        # printer's UI for a file that was never created is a worse report than a
+        # row that says "never sent".
+        record["file"] = None
+        record["params"] = None
+        record["note"] = (
+            "never sent: the connection to the printer had already dropped when "
+            "this variant was reached, so neither its upload nor its delete was "
+            "attempted"
+        )
+        raise LinkDroppedError(
+            f"the connection to the printer dropped before variant {variant.slug} "
+            f"({index}/{total}) could be sent"
+        )
 
     # 1. Create the disposable target. Never reuse an existing file.
     try:
         record["upload"] = await upload_probe_file(session, target.ip, token, name)
         OWNED.add(name)
-    except (TRANSPORT_ERRORS, aiohttp.ClientError, OSError) as err:
+        # Its own greppable line, because this is the one fact the report cannot
+        # afford to lose: if the process is killed hardest (a second Ctrl-C, an
+        # OOM, a closed terminal) the scrollback is all that is left to say which
+        # files the volunteer has to delete by hand. `grep 'PROBE UPLOADED'`.
+        logger.info("PROBE UPLOADED {}", name)
+    except UPLOAD_ERRORS as err:
         record["status"] = "upload_failed"
         record["note"] = (
             f"could not upload its own target file, variant aborted (no existing "
@@ -810,21 +916,30 @@ async def probe_variant(
     # 4. The only trustworthy signal: is our own file still on the printer?
     still = await read_still_listed(client, name)
     record.update(still)
-    record["status"] = "sent"
+    if record.get("status") != "no_reply":
+        # The delete round-trip answered, so this variant is evidence. A variant
+        # that got NO reply must keep `no_reply`: overwriting it with "sent"
+        # turns silence into agreement, because build_report reads its codes only
+        # from "sent" records and an all-None set of codes reads as "every
+        # variant answered identically". On a printer on wifi this is the LIKELY
+        # failure, not the exotic one.
+        record["status"] = "sent"
     if not any(key in record["params"] for key in ("filename", "file_name")):
         # The control (and any variant that names no file at all) cannot possibly
         # have removed its own file, so `still_listed: true` here is arithmetic,
         # not evidence. Say so, so nobody reads it as a refusal of the file.
+        # Prepending keeps an existing note (the no-reply one) intact.
         record["note"] = (
             "this request names NO file, so still_listed=true is expected "
             "whatever the reply says; read only the error_code. "
             + str(record.get("note") or "")
         ).strip()
     logger.info(
-        "  error_code={} still_listed={} in {} ms",
+        "  error_code={} still_listed={} in {} ms{}",
         record.get("error_code"),
         still["still_listed"],
         record.get("elapsed_ms"),
+        "" if record.get("status") == "sent" else " (NO REPLY — not evidence)",
     )
     return record
 
@@ -915,6 +1030,100 @@ async def cleanup(
     return {"leftovers": remaining, "attempts": attempts, "shape_used": shape}
 
 
+def stamp_unfinished_records(records: list[dict[str, Any]]) -> None:
+    """
+    Give a status to any row the abort caught mid-flight.
+
+    `probe_variant` publishes its row before its first await so the row survives
+    a crash, but a row interrupted between the upload and the delete has had no
+    status assigned yet, and a report full of `status: null` is unreadable. This
+    says what is actually known: the variant was reached, and the run stopped
+    before it produced an answer. Mutated in place, because the report reads
+    these same dicts.
+    """
+    for record in records:
+        if record.get("status"):
+            continue
+        record["status"] = "aborted_mid_variant"
+        record.setdefault("still_listed", None)
+        record.setdefault("error_code", None)
+        uploaded = bool(record.get("upload"))
+        record["note"] = (
+            "never answered: the run was interrupted while this variant was in "
+            "flight. "
+            + (
+                "Its file WAS uploaded, so it is named in the leftovers unless "
+                "the cleanup below confirmed otherwise."
+                if uploaded
+                else "Its file was never confirmed uploaded."
+            )
+        )
+
+
+def unconfirmed_leftovers(records: list[dict[str, Any]]) -> list[str]:
+    """
+    Every name this run uploaded that it never PROVED it removed.
+
+    Used when the run blew up and no listing could be trusted. Deliberately
+    pessimistic: a file whose delete was never confirmed is named, because the
+    one thing this script promises is that a volunteer is never left guessing
+    which `cc2_probe_*.gcode` files are sitting on their printer.
+    """
+    confirmed_gone = {
+        str(record["file"])
+        for record in records
+        if record.get("file") and record.get("still_listed") is False
+    }
+    return sorted(OWNED - confirmed_gone)
+
+
+async def cleanup_after_abort(
+    client: ElegooCC2Client,
+    records: list[dict[str, Any]],
+    winning: dict | None,
+    *,
+    dry_run_shape: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Name this run's files after the matrix blew up, without ever guessing.
+
+    Two cases, and the difference matters. If the link is still up, the ordinary
+    `cleanup` can run: it re-lists, and where a working shape exists it deletes
+    (only ever OWNED names, through `_delete_own_file`). If the link is gone,
+    NOTHING may be attempted — a delete over a dead connection cannot be
+    confirmed, and a name we cannot confirm is exactly the report's job: list
+    every file this run uploaded that this run did not prove it deleted, and tell
+    the volunteer to remove them from the printer's UI.
+    """
+    note: str | None = None
+    if client.is_connected:
+        try:
+            # Same shapes, same rules as the normal path: `cleanup` only ever
+            # re-points a filename key at names in OWNED, and on a dry run the
+            # only shape it may use is still the one delete_file ships.
+            return await cleanup(client, winning, dry_run_shape=dry_run_shape)
+        except Exception as err:  # noqa: BLE001 - the report outranks the cause
+            # Whatever it is (a model shape change, a broker half-dead), it must
+            # not cost the volunteer the leftovers list.
+            note = (
+                f"cleanup could not complete on the abort path ({err!r}), so "
+                "every file this run uploaded that it did not confirm deleting "
+                "is named below"
+            )
+    else:
+        note = (
+            "the connection was already gone, so nothing was deleted or confirmed "
+            "from here; every probe file this run uploaded is named below and has "
+            "to be removed from the printer's UI"
+        )
+    return {
+        "leftovers": unconfirmed_leftovers(records),
+        "attempts": [],
+        "shape_used": None,
+        "note": note,
+    }
+
+
 # =============================================================================
 # Step 7: the report
 # =============================================================================
@@ -928,15 +1137,25 @@ def build_report(
     records: list[dict[str, Any]],
     cleanup_info: dict[str, Any],
     winning: dict | None,
+    aborted: str | None = None,
 ) -> dict[str, Any]:
-    codes = [r.get("error_code") for r in records if r.get("status") == "sent"]
-    stills = [r.get("still_listed") for r in records if r.get("status") == "sent"]
-    identical = bool(codes) and len(set(codes)) == 1 and len(set(stills)) <= 1
+    # Only variants that ACTUALLY ANSWERED contribute a code or a still_listed.
+    # Counting `no_reply` rows here would feed the identical-analysis with
+    # `error_code: None` placeholders, and eleven placeholders read as perfect
+    # agreement — the exact way a probe on wifi turns silence into a finding.
+    answered = [r for r in records if r.get("status") == "sent"]
+    silent = [r for r in records if r.get("status") == "no_reply"]
+    codes = [r.get("error_code") for r in answered]
+    stills = [r.get("still_listed") for r in answered]
+    answered_identically = (
+        bool(codes) and len(set(codes)) == 1 and len(set(stills)) <= 1
+    )
     return {
         "tool": "scripts/cc2_probe_delete.py",
         "issue": ISSUE_URL,
         "timestamp": now_iso(),
         "mode": "run" if args.run else "dry_run",
+        "aborted": aborted,
         "printer_ip": target.ip,
         "serial": target.serial,
         "discovered_via_udp": target.discovered,
@@ -950,6 +1169,10 @@ def build_report(
         "upload_port": args.upload_port,
         "delete_method": CC2_CMD_DELETE_FILE,
         "variants": records,
+        "variants_attempted": len(records),
+        "variants_answered": len(answered),
+        "variants_without_reply": len(silent),
+        "answered_variants_answered_identically": answered_identically,
         "winning_shape": winning["params"] if winning else None,
         "winning_shape_note": (
             "the params exactly as the first working variant sent them, so the "
@@ -958,7 +1181,16 @@ def build_report(
             if winning
             else None
         ),
-        "every_variant_answered_identically": identical,
+        # Strong claim, so it is only ever true when the matrix RAN IN FULL and
+        # every variant that was attempted answered, and they all said the same.
+        # Silence, an aborted run, and a matrix cut short mid-way are not
+        # agreement — `len(answered) == len(VARIANTS)` is what stops a capture
+        # that only got through three rows from claiming anything about "every"
+        # variant.
+        "every_variant_answered_identically": answered_identically
+        and not silent
+        and not aborted
+        and len(answered) == len(records) == len(VARIANTS),
         "caveats": CAVEATS,
         "cleanup": cleanup_info,
     }
@@ -971,11 +1203,65 @@ def conclusion_lines(report: dict[str, Any]) -> list[str]:
             "DRY RUN — no 1047 matrix was sent. Re-run with --run to probe."
         )
         return lines
+    if report.get("aborted"):
+        if report.get("variants_attempted"):
+            lines.append(
+                f"THIS RUN WAS ABORTED ({report['aborted']}) — the matrix below "
+                "is PARTIAL and is reported only so the probe files this run "
+                "uploaded can be named for clean-up. Read it as a partial "
+                "capture, not as a result."
+            )
+        else:
+            # Nothing was ever measured and (on the not-idle exit) nothing was
+            # ever uploaded, so promising a leftovers list here would be its own
+            # small untruth.
+            lines.append(
+                f"THIS RUN WAS ABORTED ({report['aborted']}) — no 1047 was sent "
+                "and no probe file was uploaded, so there is nothing to "
+                "conclude and nothing to clean up."
+            )
     sent = [r for r in report["variants"] if r.get("status") == "sent"]
+    silent = [r for r in report["variants"] if r.get("status") == "no_reply"]
+    # Rows the reader is NOT getting an answer for: sent-and-unanswered, plus
+    # every variant of the matrix this run never reached (upload failed, never
+    # listed, or never sent because the link dropped mid-matrix).
+    missing = len(VARIANTS) - len(sent)
     if not sent:
+        if silent:
+            # The all-silent case, spelled out because the alternative is the
+            # single most misleading thing this report could say: eleven
+            # `error_code: null` rows must never be summarised as "the printer
+            # answered 1003 to all of them". It answered NOTHING.
+            lines.append(
+                f"INCONCLUSIVE — NO REPLY WAS RECEIVED FOR ANY OF THE {len(silent)} "
+                "DELETE(S) THIS RUN SENT. The printer never answered method 1047 "
+                "at all, so this capture supports NEITHER hypothesis: not the "
+                "key-name hypothesis, and not the reading that 1003 is this "
+                "firmware's generic 'not available' answer. Silence is not "
+                "agreement, and nothing here distinguishes '1047 is not served' "
+                "from 'the wifi dropped the request'."
+            )
+            lines.append(
+                "  Before reading anything into it: check the printer is on the "
+                "same network and reachable, check Home Assistant (or anything "
+                "else holding the registration slot) was OFF, and RE-RUN. Every "
+                "request below was sent and timed out, so the files named in it "
+                "may or may not have been deleted — check the printer's UI."
+            )
+            return lines
         lines.append(
-            "No variant was measured (every upload or listing step failed). "
-            "Nothing can be concluded from this run."
+            "No variant produced an answer for this report to analyse"
+            + (
+                f" — the run was {report['aborted']} before any 1047 was answered."
+                if report.get("aborted")
+                else " (every upload or listing step failed)."
+            )
+            + (
+                " Nothing can be concluded from it; the capture exists only to "
+                "name the probe files this run uploaded."
+                if report.get("variants_attempted")
+                else " Nothing can be concluded from it."
+            )
         )
         return lines
     winners = [
@@ -983,6 +1269,24 @@ def conclusion_lines(report: dict[str, Any]) -> list[str]:
         for r in sent
         if r.get("error_code") == 0 and r.get("still_listed") is False
     ]
+    if missing:
+        # Say it before the analysis, so the reader of a partial capture knows
+        # how much of the matrix is actually missing, and why.
+        parts = []
+        if silent:
+            parts.append(f"{len(silent)} received NO REPLY AT ALL")
+        unmeasured = missing - len(silent)
+        if unmeasured > 0:
+            parts.append(
+                f"{unmeasured} of the {len(VARIANTS)} planned variants produced no "
+                "answer at all (upload failed, never listed, or never sent)"
+            )
+        lines.append(
+            f"PARTIAL CAPTURE: only {len(sent)} of the {len(VARIANTS)} planned "
+            f"variants answered; " + "; ".join(parts) + ". Those rows contribute "
+            "nothing below — do not read missing rows as agreeing with the ones "
+            "that answered."
+        )
     if winners:
         lines.append(
             "A WORKING SHAPE EXISTS: "
@@ -998,6 +1302,22 @@ def conclusion_lines(report: dict[str, Any]) -> list[str]:
             "parameter key at all — 1047 is simply not served, or 1003 is its "
             "generic 'not available / not handled' answer. The key-name "
             "hypothesis is not supported by this capture."
+        )
+    elif report["answered_variants_answered_identically"]:
+        # The answered variants did all say the same thing, but the claim is
+        # qualified: `missing` rows are absent, so "EVERY variant" is false, and
+        # a reader must not mistake the qualified line for the strong one above.
+        lines.append(
+            f"THE {len(sent)} VARIANT(S) THAT ANSWERED answered IDENTICALLY, and "
+            f"none of them removed its own file; {missing} of the {len(VARIANTS)} "
+            "planned variants produced no answer to compare. That is a real "
+            "finding for the answered subset, and it leans towards the "
+            "ALTERNATIVE reading recorded above (1047 is not served, or 1003 is "
+            "its generic 'not available / not handled' answer) — but with "
+            f"{missing} rows missing it is NOT the full-matrix result the "
+            "paragraph above would claim, and it settles neither that reading "
+            "nor the key-name hypothesis. Re-run to fill in the missing "
+            "variants."
         )
     else:
         lines.append(
@@ -1029,6 +1349,18 @@ def render_report(report: dict[str, Any]) -> str:
         f"access code      : {'supplied' if report['access_code_supplied'] else 'not supplied (client fallback)'}"
     )
     out.append(f"upload port      : {report['upload_port']}")
+    if report.get("aborted"):
+        out.append(f"ABORTED          : {report['aborted']}")
+    out.append(
+        f"variants         : {report.get('variants_answered', '?')} answered, "
+        f"{report.get('variants_without_reply', 0)} got NO REPLY AT ALL "
+        f"(of {report.get('variants_attempted', '?')} attempted)"
+    )
+    if report.get("variants_without_reply"):
+        out.append(
+            "                   ^ a variant that got no reply is NOT evidence and "
+            "must not be read as agreeing with the ones that answered."
+        )
     out.append("")
     out.append("HOW TO READ THIS")
     for caveat in report["caveats"]:
@@ -1056,6 +1388,7 @@ def render_report(report: dict[str, Any]) -> str:
         if "reply" in record and record["reply"] is not None:
             out.append(f"raw reply       : {json_block(record['reply'])}")
         out.append(f"error_code      : {record.get('error_code')}")
+        out.append(f"status          : {record.get('status')}")
         out.append(f"elapsed         : {record.get('elapsed_ms')} ms")
         out.append(f"still_listed    : {record.get('still_listed')}")
         if record.get("listing_count") is not None:
@@ -1097,6 +1430,61 @@ def render_report(report: dict[str, Any]) -> str:
 # =============================================================================
 
 
+class _EarlyExit(Exception):
+    """Internal: an early `return <code>` out of the guarded part of `probe`.
+
+    It exists so that the normal early exits (not idle, dry-run upload failed)
+    still fall through to the report block, instead of returning past it the way
+    a `return` inside the `try` does. `reason` goes into the report's `aborted`
+    field, so a capture that never measured anything says WHY rather than
+    looking like an empty result.
+    """
+
+    def __init__(self, code: int, reason: str) -> None:
+        super().__init__(f"early exit {code}: {reason}")
+        self.code = code
+        self.reason = reason
+
+
+def emit_capture(report: dict[str, Any]) -> Path | None:
+    """
+    Print the paste-ready block and write the JSON, whatever state we are in.
+
+    Called on the normal path AND on the abort path, because a run that dies
+    half-way is precisely the run that leaves files on the printer: without this
+    block the volunteer is left with eleven `cc2_probe_*.gcode` files and no
+    record of what any of them were called. The whole thing is defensive — if
+    rendering or writing itself fails, the reason is printed and the caller's
+    exit code stands, because losing the JSON must not turn into a traceback that
+    hides the report already on screen.
+    """
+    out_path: Path | None = None
+    try:
+        text = render_report(report)
+        print()
+        print(text)
+    except Exception as err:  # noqa: BLE001 - the report is best-effort by definition
+        print(f"\nReport could not be rendered in full: {err!r}", file=sys.stderr)
+    try:
+        out_path = (
+            Path(__file__).parent
+            / f"cc2_probe_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"
+        )
+        out_path.write_text(
+            json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    except Exception as err:  # noqa: BLE001 - same reason
+        print(f"JSON capture could not be written: {err!r}", file=sys.stderr)
+        out_path = None
+    if out_path is not None:
+        print(f"Saved machine-readable capture to: {out_path}")
+    print(
+        f"Then paste the whole block above (and that file) into {ISSUE_URL}. "
+        "Please do not summarise it — the raw replies are the point."
+    )
+    return out_path
+
+
 async def probe(args: argparse.Namespace) -> int:
     # upload_gcode builds its URL from the module-level UPLOAD_PORT; UploadTarget
     # carries only host and token, so this is the only route to a non-80 endpoint
@@ -1117,6 +1505,10 @@ async def probe(args: argparse.Namespace) -> int:
     firmware: Any = None
     raw_attributes: Any = None
     cleanup_info: dict[str, Any] = {}
+    # The two things the report block needs to know about how the run ended.
+    # `aborted` is None on a run that finished, and a description otherwise.
+    aborted: str | None = None
+    exit_code = 0
 
     try:
         blocked = await guard_printer_is_idle(client)
@@ -1126,7 +1518,10 @@ async def probe(args: argparse.Namespace) -> int:
                 "that to a printer that is working.",
                 blocked,
             )
-            return 4
+            # `_EarlyExit`, not `return`: a `return` here would jump over the
+            # report block in the `finally` below, which is the one place the
+            # capture is produced.
+            raise _EarlyExit(4, f"refused: printer is not idle ({blocked})")
 
         firmware, raw_attributes = await read_firmware(client)
         if firmware:
@@ -1144,10 +1539,19 @@ async def probe(args: argparse.Namespace) -> int:
         async with aiohttp.ClientSession() as session:
             if args.run:
                 for index, variant in enumerate(VARIANTS, start=1):
+                    # `records` is passed as the sink and probe_variant publishes
+                    # its row into it BEFORE the first await, so the row survives
+                    # whatever kills the loop; the return value is that same dict.
                     record = await probe_variant(
-                        client, session, target, token, variant, index, len(VARIANTS)
+                        client,
+                        session,
+                        target,
+                        token,
+                        variant,
+                        index,
+                        len(VARIANTS),
+                        sink=records,
                     )
-                    records.append(record)
                     if (
                         winning is None
                         and record.get("error_code") == 0
@@ -1164,6 +1568,7 @@ async def probe(args: argparse.Namespace) -> int:
                 try:
                     record = await upload_probe_file(session, target.ip, token, name)
                     OWNED.add(name)
+                    logger.info("PROBE UPLOADED {}", name)
                     logger.info("  uploaded {} bytes", record["size"])
                     settle = await wait_until_listed(client, name)
                     logger.info(
@@ -1190,14 +1595,34 @@ async def probe(args: argparse.Namespace) -> int:
                             ),
                         }
                     )
-                except (TRANSPORT_ERRORS, aiohttp.ClientError, OSError) as err:
+                except UPLOAD_ERRORS as err:
                     logger.error(
                         "Dry run could not upload its preflight file: {!r}. "
                         "Check --upload-port (the real printer serves PUT /upload "
                         "on 80) and --access-code.",
                         err,
                     )
-                    return 5
+                    # Recorded so the report names the file it tried, in case the
+                    # upload half-succeeded and the printer is holding it.
+                    records.append(
+                        {
+                            "index": 0,
+                            "slug": "preflight",
+                            "label": "dry-run upload check (no 1047 sent)",
+                            "file": name,
+                            "params": None,
+                            "status": "upload_failed",
+                            "still_listed": None,
+                            "error_code": None,
+                            "note": (
+                                f"dry run: the preflight upload failed ({err!r}), "
+                                "so no 1047 was sent and nothing was deleted"
+                            ),
+                        }
+                    )
+                    raise _EarlyExit(
+                        5, f"dry-run preflight upload failed ({err!r})"
+                    ) from None
 
                 logger.info("Matrix this run WOULD send (one file per variant):")
                 for index, variant in enumerate(VARIANTS, start=1):
@@ -1216,36 +1641,106 @@ async def probe(args: argparse.Namespace) -> int:
             cleanup_info = await cleanup(
                 client,
                 winning,
-                dry_run_shape=(
-                    None
-                    if args.run
-                    else {
-                        # `filename` is re-pointed at each of our own leftovers
-                        # by cleanup(); this is the shape delete_file ships.
-                        "storage_media": "local",
-                        "filename": "<replaced per file>",
-                    }
-                ),
+                dry_run_shape=None if args.run else DRY_RUN_CLEANUP_SHAPE,
             )
+    except _EarlyExit as early:
+        # A deliberate early exit (not idle, dry-run upload failed): not a
+        # crash, but the matrix still never ran, and a capture with no rows has
+        # to say why rather than look like an empty result.
+        exit_code = early.code
+        aborted = early.reason
+    except (KeyboardInterrupt, asyncio.CancelledError) as err:
+        # Ctrl-C arrives here as CancelledError: asyncio.run cancels the task and
+        # only re-raises KeyboardInterrupt at the top level, once this coroutine
+        # has finished unwinding. The `finally` below still runs and may still
+        # await (a cancelled task is not a frozen loop), so the abort cleanup does
+        # happen — but it is bounded, and it sends nothing new to the printer
+        # beyond the listing and the deletes of our own files it needs to name the
+        # leftovers. A second Ctrl-C short-circuits it into the same leftovers
+        # list, computed synchronously.
+        aborted = "interrupted"
+        exit_code = 130
+        logger.warning(
+            "Interrupted ({}). Skipping any further commands and going straight "
+            "to the report, because the files this run uploaded still have to be "
+            "named.",
+            type(err).__name__,
+        )
+    except Exception as err:  # noqa: BLE001 - the capture outranks the exception
+        # An AttributeError/KeyError from a client model shape change, or
+        # anything else the matrix did not expect to raise. The client may be
+        # half-dead by now, so this goes through the abort-aware cleanup, which
+        # names the files rather than trusting a listing it cannot get.
+        aborted = repr(err)
+        exit_code = 1
+        logger.error(
+            "The probe aborted mid-run: {!r}.\n"
+            "  The capture below is PARTIAL. It is printed and saved anyway, "
+            "because it is the only thing that names the probe files this run "
+            "uploaded to your printer.",
+            err,
+        )
     finally:
-        await client.disconnect()
+        if aborted is not None:
+            # Rows the abort caught mid-flight get a status before anything reads
+            # them, so the report never shows `status: null`.
+            stamp_unfinished_records(records)
+        if aborted is not None and not cleanup_info and OWNED:
+            # The abort path: name what we uploaded, and clean up only if the
+            # link is still up. Skipped entirely when OWNED is empty — on the
+            # early exits nothing was ever uploaded, so there is nothing to name
+            # and no reason to send the printer so much as a listing after it has
+            # been refused. Bounded, because a run that died on a dead printer
+            # would otherwise spend 10 s per command (CC2_COMMAND_TIMEOUT)
+            # timing out — minutes — before the volunteer saw the list of files
+            # they must delete. The report is the deliverable; the clean-up is a
+            # bonus. `cleanup_after_abort` catches what it can and falls back to
+            # naming the files, so a failure here cannot replace the real error.
+            try:
+                cleanup_info = await asyncio.wait_for(
+                    cleanup_after_abort(
+                        client,
+                        records,
+                        winning,
+                        dry_run_shape=None if args.run else DRY_RUN_CLEANUP_SHAPE,
+                    ),
+                    timeout=ABORT_CLEANUP_TIMEOUT,
+                )
+            except BaseException as err:  # noqa: BLE001 - never mask the abort
+                # Deliberately BaseException: on the interrupt path every await
+                # here can be cancelled again, and losing the leftovers list
+                # would be the one failure this path cannot afford.
+                cleanup_info = {
+                    "leftovers": unconfirmed_leftovers(records),
+                    "attempts": [],
+                    "shape_used": None,
+                    "note": (
+                        f"cleanup could not even be attempted ({err!r}); every "
+                        "probe file this run uploaded is named and has to be "
+                        "removed from the printer's UI"
+                    ),
+                }
+        try:
+            await client.disconnect()
+        except BaseException as err:  # noqa: BLE001 - the report outranks it
+            logger.warning(
+                "Disconnecting reported {} (ignored: the capture comes first).",
+                repr(err),
+            )
 
     report = build_report(
-        args, target, firmware, raw_attributes, records, cleanup_info, winning
+        args,
+        target,
+        firmware,
+        raw_attributes,
+        records,
+        cleanup_info,
+        winning,
+        aborted=aborted,
     )
 
-    text = render_report(report)
-    print()
-    print(text)
-
-    out_path = Path(__file__).parent / f"cc2_probe_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"
-    out_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"Saved machine-readable capture to: {out_path}")
-    print(
-        f"Then paste the whole block above (and that file) into {ISSUE_URL}. "
-        "Please do not summarise it — the raw replies are the point."
-    )
-    return 0
+    emit_capture(report)
+    return exit_code
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
