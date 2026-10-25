@@ -96,6 +96,23 @@ Safety properties, and why each exists
   uploads a single preflight file rather than one per variant, so a volunteer
   who runs it against a printer whose deletes are dead (i.e. the printer this
   script exists to investigate) does not leave eleven junk files behind.
+* **A refusal is never reported as a deletion, and an unread listing is never
+  reported as either.** The identical-answer analysis compares `still_listed`,
+  and a set of nothing but `None`s (every confirming 1044 failed to read)
+  satisfies "they all agreed" just as well as real agreement — so the conclusion
+  claims only "none of them was CONFIRMED to have removed its own file" and
+  counts the listing failures out loud. Identical replies are evidence about the
+  reply, never about the file.
+* **Every exit path emits a capture, and the teardown can never eat it.** The
+  unresolved-target (exit 2) and failed-connect (exit 3) paths raise the same
+  `_EarlyExit` the other early exits use, so the single `emit_capture` at the end
+  of `probe` handles them too — a run that never reached a printer still leaves a
+  JSON naming the `--ip` that was tried and why it stopped, marked
+  `printer_reached: false` so it can never be mistaken for a measurement. Both
+  the abort clean-up and the final `disconnect()` are bounded
+  (`ABORT_CLEANUP_TIMEOUT`, `DISCONNECT_TIMEOUT`), because a stalled teardown on
+  a half-dead wifi link would otherwise bury a report that has already been
+  measured.
 
 Output
 ------
@@ -220,6 +237,15 @@ SETTLE_POLL = 1.0
 # out — minutes — before the volunteer saw the list of files they must delete.
 # The report is the deliverable; the clean-up is a bonus.
 ABORT_CLEANUP_TIMEOUT = 30.0
+
+# How long the final `disconnect()` may take before it is abandoned. Same reason
+# as above, one step later: `disconnect` awaits the heartbeat and listener tasks
+# and the MQTT close, so a printer on wifi that has gone half-dead can hang it —
+# and the report is produced AFTER that `finally`, so an unbounded disconnect
+# would cost the volunteer a capture that had already been measured. Five seconds
+# is generous for a close that is going to work at all, and small enough that the
+# paste-ready block still appears in the same breath as the last log line.
+DISCONNECT_TIMEOUT = 5.0
 
 # The only delete shape a dry run may use when it cleans up its one preflight
 # file: what `delete_file` ships today. `cleanup` re-points the filename key at
@@ -464,18 +490,47 @@ class LinkDroppedError(RuntimeError):
     """
 
 
+class _EarlyExit(Exception):
+    """Internal: an early exit out of `probe` that must still produce a capture.
+
+    It exists so that the early exits (target unresolved, connect failed, printer
+    not idle, dry-run upload failed) still fall through to the report block,
+    instead of returning past it the way a `return` inside the `try` does. A
+    volunteer whose run dies at connect has nothing to paste into #432 without
+    that, and "it failed at connect" is exactly the fact a maintainer asks for.
+
+    `code` is the process exit code and stays whatever it always was; `reason`
+    goes into the report's `aborted` field, so a capture that never measured
+    anything says WHY rather than looking like an empty result; `detail` is merged
+    into the report for the few fields a normal report cannot express (see
+    `build_report`).
+    """
+
+    def __init__(
+        self, code: int, reason: str, detail: dict[str, Any] | None = None
+    ) -> None:
+        super().__init__(f"early exit {code}: {reason}")
+        self.code = code
+        self.reason = reason
+        self.detail: dict[str, Any] = detail or {}
+
+
 # =============================================================================
 # Step 1 + 2: resolve the target, without letting discovery retarget it
 # =============================================================================
 
 
-def resolve_target(args: argparse.Namespace) -> Target | None:
+def resolve_target(args: argparse.Namespace) -> Target:
     """
     Work out the IP and the serial as plain strings, or explain why we cannot.
 
     A wrong serial is silent death: every topic is `elegoo/{sn}/...`, so
     registration and every command simply 404. So an unresolvable serial aborts
-    here with a message rather than becoming `None` further down.
+    here rather than becoming `None` further down — and it aborts by raising
+    `_EarlyExit(2, ...)`, because a volunteer whose run never got as far as a
+    target still needs a JSON capture naming the `--ip` that was tried and what
+    discovery did about it. The detail says what was ATTEMPTED and never claims a
+    printer was reached.
     """
     if args.serial:
         # Both halves given by hand: skip the broadcast. A discovery round-trip
@@ -492,11 +547,48 @@ def resolve_target(args: argparse.Namespace) -> Target | None:
             discovered=False,
         )
 
+    def unresolved(reason: str, error: Any = None, seen: Any = None) -> _EarlyExit:
+        # The payload a post-mortem needs when there is no Target to describe:
+        # the address we were asked about, that discovery DID run (that is the
+        # difference between "no printer on the LAN" and "wrong --serial"), and
+        # whatever the discovery call said.
+        return _EarlyExit(
+            2,
+            reason,
+            {
+                "printer_reached": False,
+                "target_resolution": {
+                    "attempted_ip": args.ip,
+                    "serial_argument": None,
+                    "discovery_ran": True,
+                    "discovery_error": error,
+                    "printers_answered": seen,
+                    "reason": reason,
+                },
+            },
+        )
+
     logger.info(
         "Resolving the serial by UDP discovery (up to ~{} s; pass --serial to skip).",
         CC2_DISCOVERY_TIMEOUT * (CC2_DISCOVERY_RETRIES + 1),
     )
-    printers = CC2Discovery.discover_as_printers()
+    try:
+        printers = CC2Discovery.discover_as_printers()
+    except Exception as err:  # noqa: BLE001 - a broadcast failure is exit 2, not a traceback
+        # A socket error (no route, no permission, an interface that went away)
+        # is the same class of failure as "nobody answered": the target could not
+        # be resolved. It used to escape `probe` as a bare traceback.
+        logger.error(
+            "UDP discovery raised {}: {!r}.\n"
+            "  Aborting rather than guessing a serial: without it every MQTT "
+            "topic (elegoo/<sn>/...) 404s. Run with --serial <serial number> to "
+            "skip discovery entirely.",
+            type(err).__name__,
+            err,
+        )
+        raise unresolved(
+            f"UDP discovery raised {type(err).__name__} ({err!r})", error=repr(err)
+        ) from None
     if not printers:
         logger.error(
             "No CC2 printer answered UDP discovery on port 52700.\n"
@@ -507,7 +599,7 @@ def resolve_target(args: argparse.Namespace) -> Target | None:
             "Network / About). Check the printer is on the same subnet/VLAN as "
             "this machine and that nothing blocks UDP 52700.",
         )
-        return None
+        raise unresolved("no CC2 printer answered UDP discovery on port 52700")
 
     matching = [p for p in printers if p.ip_address == args.ip]
     if not matching:
@@ -528,7 +620,12 @@ def resolve_target(args: argparse.Namespace) -> Target | None:
             seen,
             args.ip,
         )
-        return None
+        raise unresolved(
+            f"--ip {args.ip} was not among the printers discovery answered ({seen})",
+            seen=[
+                {"name": p.name, "ip": p.ip_address, "serial": p.id} for p in printers
+            ],
+        )
 
     printer = matching[0]
     if not printer.id:
@@ -537,7 +634,12 @@ def resolve_target(args: argparse.Namespace) -> Target | None:
             "Run with --serial <serial number>.",
             printer.ip_address,
         )
-        return None
+        raise unresolved(
+            f"discovery answered from {printer.ip_address} but named no serial number",
+            seen=[
+                {"name": printer.name, "ip": printer.ip_address, "serial": printer.id}
+            ],
+        )
     if len(printers) > 1:
         logger.warning(
             "Discovery saw {} CC2 printers; using the one matching --ip ({}) "
@@ -555,13 +657,49 @@ def resolve_target(args: argparse.Namespace) -> Target | None:
     )
 
 
-async def connect(target: Target, access_code: str | None) -> ElegooCC2Client | None:
+async def disconnect_bounded(client: ElegooCC2Client) -> None:
+    """
+    Disconnect, but never longer than `DISCONNECT_TIMEOUT`.
+
+    `ElegooCC2Client.disconnect` awaits the heartbeat and listener tasks and then
+    the MQTT context manager's `__aexit__`, and a half-dead wifi link can leave
+    any of those hanging. The abort-cleanup arm of `probe` has always been
+    bounded for exactly that reason; without the same bound here a stalled
+    disconnect swallows the whole deliverable — the report is built and the JSON
+    written AFTER the `finally`, so the volunteer with a printer that stopped
+    answering would wait forever for output that already exists. Abandoning the
+    disconnect costs a socket on a machine we can no longer talk to; losing the
+    capture costs the run.
+
+    Catches `BaseException` for the same reason the abort arm does: on the
+    interrupt path every await here can be cancelled again, and a cancelled
+    teardown must not replace the report.
+    """
+    try:
+        await asyncio.wait_for(client.disconnect(), timeout=DISCONNECT_TIMEOUT)
+    except BaseException as err:  # noqa: BLE001 - the capture outranks the teardown
+        logger.warning(
+            "Disconnecting {} was abandoned after {}s ({!r}) — moving on to the "
+            "report, because the capture matters more than closing the socket.",
+            client.printer_ip,
+            DISCONNECT_TIMEOUT,
+            err,
+        )
+
+
+async def connect(target: Target, access_code: str | None) -> ElegooCC2Client:
     """
     Connect and register with the SHIPPED client, at exactly the resolved IP.
 
     A bare `Printer()` is passed on purpose: its `connection_host` and `id` are
     None, so `connect_printer` keeps the constructor's IP and serial instead of
     overwriting them with a discovery answer.
+
+    On failure it raises `_EarlyExit(3, ...)` rather than returning None, so the
+    run still produces a capture: a failed connect is the single most likely way
+    a volunteer's run dies, and #432 cannot diagnose what it cannot see. The
+    detail says no printer was reached, so the capture can never read as a
+    measurement.
     """
     client = ElegooCC2Client(
         printer_ip=target.ip,
@@ -570,7 +708,38 @@ async def connect(target: Target, access_code: str | None) -> ElegooCC2Client | 
         logger=PercentLogAdapter(),
     )
     logger.info("Connecting to {} as serial {} ...", target.ip, target.serial)
-    if not await client.connect_printer(Printer()):
+
+    def failed(reason: str, error: Any = None) -> _EarlyExit:
+        return _EarlyExit(
+            3,
+            reason,
+            {
+                "printer_reached": False,
+                "connect_failure": {
+                    "attempted_ip": target.ip,
+                    "attempted_serial": target.serial,
+                    "discovered_via_udp": target.discovered,
+                    "error": error,
+                    "reason": reason,
+                },
+            },
+        )
+
+    try:
+        connected = await client.connect_printer(Printer())
+    except Exception as err:  # noqa: BLE001 - a raising connect is still exit 3
+        # The client swallows its own transport errors, but a newer version may
+        # raise: that is a connect failure (exit 3), not a traceback that costs
+        # the volunteer the capture.
+        logger.error(
+            "Connecting to {} raised {}: {!r}.", target.ip, type(err).__name__, err
+        )
+        await disconnect_bounded(client)
+        raise failed(
+            f"connecting to {target.ip} raised {type(err).__name__} ({err!r})",
+            error=repr(err),
+        ) from None
+    if not connected:
         logger.error(
             "Could not connect to or register with {}.\n"
             "  Most likely causes:\n"
@@ -584,7 +753,11 @@ async def connect(target: Target, access_code: str | None) -> ElegooCC2Client | 
             "--serial <serial number>.",
             target.ip,
         )
-        return None
+        # The client may hold a half-open socket from the failed attempt; bound
+        # it, because a printer that would not answer the connect may equally
+        # refuse to answer the close.
+        await disconnect_bounded(client)
+        raise failed(f"could not connect to or register with {target.ip}")
     if client.printer_ip != target.ip or client.serial_number != target.serial:
         # Belt and braces on the claim above: if connect_printer ever starts
         # retargeting, this script must refuse rather than delete elsewhere.
@@ -596,8 +769,13 @@ async def connect(target: Target, access_code: str | None) -> ElegooCC2Client | 
             target.ip,
             target.serial,
         )
-        await client.disconnect()
-        return None
+        await disconnect_bounded(client)
+        raise failed(
+            "refusing to continue: after connecting, the client was talking to "
+            f"{client.printer_ip} as {client.serial_number} although this run "
+            f"resolved {target.ip} as {target.serial}",
+            error="client retargeted away from --ip",
+        )
     return client
 
 
@@ -1131,14 +1309,25 @@ async def cleanup_after_abort(
 
 def build_report(
     args: argparse.Namespace,
-    target: Target,
+    target: Target | None,
     firmware: Any,
     raw_attributes: Any,
     records: list[dict[str, Any]],
     cleanup_info: dict[str, Any],
     winning: dict | None,
     aborted: str | None = None,
+    detail: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """
+    The whole capture, from whatever the run managed to measure.
+
+    `target` is None on the exits that happened before a target existed (an
+    unresolved `--ip`): the report then carries the address that was asked about
+    and nothing that could be mistaken for a printer's identity. `detail` is what
+    an `_EarlyExit` wanted said about the failure; it is merged last because a
+    raise site knows things the shape of the run cannot show — most importantly
+    that no printer was ever reached.
+    """
     # Only variants that ACTUALLY ANSWERED contribute a code or a still_listed.
     # Counting `no_reply` rows here would feed the identical-analysis with
     # `error_code: None` placeholders, and eleven placeholders read as perfect
@@ -1150,21 +1339,40 @@ def build_report(
     answered_identically = (
         bool(codes) and len(set(codes)) == 1 and len(set(stills)) <= 1
     )
-    return {
+    # Answered variants whose confirming 1044 could not be read. `stills` reads
+    # `None` for them, and `len(set(stills)) <= 1` is satisfied by a set of
+    # nothing but `None`s — so "the variants answered identically" can be TRUE
+    # while not one of the deletions was ever confirmed either way. The
+    # conclusion counts these out loud instead of letting them agree by
+    # omission.
+    unconfirmed = [r for r in answered if r.get("still_listed") is None]
+    report = {
         "tool": "scripts/cc2_probe_delete.py",
         "issue": ISSUE_URL,
         "timestamp": now_iso(),
         "mode": "run" if args.run else "dry_run",
         "aborted": aborted,
-        "printer_ip": target.ip,
-        "serial": target.serial,
-        "discovered_via_udp": target.discovered,
-        "printer_name": target.name,
-        "model_from_discovery": target.model,
+        # Whether a printer was ever reached. True is only correct because every
+        # call site below the successful `connect` in `probe` has a live client;
+        # the two exits that happen BEFORE a connection exists (unresolved target,
+        # failed connect) override this to False through `detail`, so a capture of
+        # a run that never talked to anything can never read as if it had.
+        "printer_reached": True,
+        # What `resolve_target` attempted, when it never got a Target. None on
+        # every normal capture (see `resolve_target`).
+        "target_resolution": None,
+        "printer_ip": target.ip if target else None,
+        "serial": target.serial if target else None,
+        "discovered_via_udp": target.discovered if target else None,
+        "printer_name": target.name if target else None,
+        "model_from_discovery": target.model if target else None,
         "model_from_attributes": attributes_result(raw_attributes).get("machine_model"),
         "firmware": firmware,
         "raw_1001_attributes_reply": raw_attributes,
-        "token_status": target.token_status,
+        "token_status": target.token_status if target else None,
+        # The arguments exactly as they were given: the only thing a capture that
+        # never connected can honestly report about the run.
+        "arguments": {"ip": args.ip, "serial": args.serial, "run": bool(args.run)},
         "access_code_supplied": args.access_code is not None,
         "upload_port": args.upload_port,
         "delete_method": CC2_CMD_DELETE_FILE,
@@ -1172,6 +1380,11 @@ def build_report(
         "variants_attempted": len(records),
         "variants_answered": len(answered),
         "variants_without_reply": len(silent),
+        # Of the ANSWERED rows, how many never got a confirming 1044 read. The
+        # conclusion needs it: identical replies are evidence about the reply,
+        # never about whether the file disappeared, and that second half is only
+        # evidence when the listing was actually read.
+        "variants_answered_without_listing_confirmation": len(unconfirmed),
         "answered_variants_answered_identically": answered_identically,
         "winning_shape": winning["params"] if winning else None,
         "winning_shape_note": (
@@ -1194,10 +1407,89 @@ def build_report(
         "caveats": CAVEATS,
         "cleanup": cleanup_info,
     }
+    # Last, so a raise site can correct the shape it forced: an early exit knows
+    # it never reached a printer, and `probe` has no other way to say so.
+    report.update(detail or {})
+    return report
+
+
+def deletion_claim(sent: list[dict[str, Any]]) -> str:
+    """
+    Say about deletion exactly what the confirming 1044 listings support.
+
+    The identical-answer analysis compares `still_listed` values, and
+    `len(set(stills)) <= 1` is satisfied by a set holding nothing but `None` —
+    which is precisely what a run produces when every confirming 1044 failed to
+    read. Identical replies are therefore evidence about the REPLY and never
+    about the file, so they can never license "none of them removed its own
+    file" on their own. And the mirror case is worse than unproven: if every
+    listing read `False` while the replies were refusals, that sentence would be
+    contradicted by this very capture. Both are reported as what they are — not
+    confirmed, plus how many listings could not be read.
+    """
+    listed = [r for r in sent if r.get("still_listed") is True]
+    gone = [r for r in sent if r.get("still_listed") is False]
+    unread = [r for r in sent if r.get("still_listed") is None]
+    if not unread and not gone:
+        # Every deletion judgement in this capture came from a listing that was
+        # actually read, so the strong wording is earned.
+        return (
+            f"none of them removed its own file (all {len(listed)} confirming "
+            "1044 read(s) saw the variant's own file still listed)"
+        )
+    clauses = []
+    if unread:
+        clauses.append(
+            f"the confirming 1044 could not be read for {len(unread)} of them, so "
+            "whether those files were removed is UNKNOWN"
+        )
+    if gone:
+        clauses.append(
+            f"{len(gone)} of them were listed GONE afterwards despite the reply "
+            "they got, which this capture does not explain"
+        )
+    return "none of them was CONFIRMED to have removed its own file" + (
+        " (" + "; ".join(clauses) + ")" if clauses else ""
+    )
 
 
 def conclusion_lines(report: dict[str, Any]) -> list[str]:
     lines: list[str] = []
+    if not report.get("printer_reached", True):
+        # The run never talked to a printer, so NOTHING below this point may read
+        # as a measurement, and the dry-run wording would be the worst possible
+        # summary ("re-run with --run" when --run could not have helped). Say what
+        # was attempted and what failed, and stop.
+        resolution = report.get("target_resolution") or {}
+        stopped = report.get("aborted") or "The run stopped before it connected."
+        lines.append(
+            "NO PRINTER WAS REACHED — this capture exists only so that a failed "
+            f"run can be reported. {stopped}"
+        )
+        if resolution:
+            ran = (
+                "UDP discovery ran"
+                if resolution.get("discovery_ran")
+                else "discovery skipped (--serial was given)"
+            )
+            error = (
+                f"; discovery error {resolution['discovery_error']}"
+                if resolution.get("discovery_error")
+                else ""
+            )
+            lines.append(
+                f"  Target resolution: --ip {resolution.get('attempted_ip')} "
+                f"({ran}{error})."
+            )
+        lines.append(
+            "  Nothing was uploaded, nothing was sent, and no file on any printer "
+            "was touched, so there is nothing to clean up. The fields above name "
+            "the arguments that were tried; the most common causes are a wrong "
+            "--ip, a printer on another subnet/VLAN, UDP 52700 blocked "
+            "(discovery), or Home Assistant still holding the printer's single "
+            "registration slot (connect). Please attach this capture to " + ISSUE_URL
+        )
+        return lines
     if report["mode"] != "run":
         lines.append(
             "DRY RUN — no 1047 matrix was sent. Re-run with --run to probe."
@@ -1296,8 +1588,9 @@ def conclusion_lines(report: dict[str, Any]) -> list[str]:
         )
     elif report["every_variant_answered_identically"]:
         lines.append(
-            "EVERY VARIANT ANSWERED IDENTICALLY and none of them removed its own "
-            "file. That is a real finding, and it supports the ALTERNATIVE "
+            "EVERY VARIANT ANSWERED IDENTICALLY and "
+            + deletion_claim(sent)
+            + ". That is a real finding, and it supports the ALTERNATIVE "
             "reading recorded above: on this firmware 1003 is not about the "
             "parameter key at all — 1047 is simply not served, or 1003 is its "
             "generic 'not available / not handled' answer. The key-name "
@@ -1309,7 +1602,7 @@ def conclusion_lines(report: dict[str, Any]) -> list[str]:
         # a reader must not mistake the qualified line for the strong one above.
         lines.append(
             f"THE {len(sent)} VARIANT(S) THAT ANSWERED answered IDENTICALLY, and "
-            f"none of them removed its own file; {missing} of the {len(VARIANTS)} "
+            f"{deletion_claim(sent)}; {missing} of the {len(VARIANTS)} "
             "planned variants produced no answer to compare. That is a real "
             "finding for the answered subset, and it leans towards the "
             "ALTERNATIVE reading recorded above (1047 is not served, or 1003 is "
@@ -1321,10 +1614,18 @@ def conclusion_lines(report: dict[str, Any]) -> list[str]:
         )
     else:
         lines.append(
-            "The variants answered DIFFERENTLY, but none both answered 0 and "
-            "removed its own file. Whatever the differing codes mean, no "
-            "parameter shape in this matrix deletes a file on this firmware. A "
-            "variant that answered 0 while its file stayed listed would be the "
+            "The variants answered DIFFERENTLY, but none was CONFIRMED both to "
+            "answer 0 and to remove its own file"
+            + (
+                f" ({report['variants_answered_without_listing_confirmation']} of "
+                "the answered variants never got a readable confirming 1044, so "
+                "their fate is unknown)"
+                if report.get("variants_answered_without_listing_confirmation")
+                else ""
+            )
+            + ". Whatever the differing codes mean, no parameter shape in this "
+            "matrix was PROVEN to delete a file on this firmware. A variant that "
+            "answered 0 while its file stayed listed would be the "
             "accept-and-ignore trap; check the per-variant verdicts below."
         )
     return lines
@@ -1336,11 +1637,67 @@ def render_report(report: dict[str, Any]) -> str:
     out: list[str] = [bar, "CC2 METHOD 1047 (DELETE_FILE) PARAMETER-SHAPE PROBE", bar]
     out.append(f"captured at      : {report['timestamp']}")
     out.append(f"mode             : {report['mode']}")
+    arguments = report.get("arguments") or {}
+    if not report.get("printer_reached", True):
+        # The two exits that happen before a connection exists. The header must
+        # name what was ATTEMPTED and never imply a printer answered: the fields
+        # below are None because nothing was ever read, not because the printer
+        # reported nothing.
+        out.append(
+            "printer reached  : NO — the run stopped before a connection, so "
+            "nothing below was measured"
+        )
+        resolution = report.get("target_resolution") or {}
+        connect_failure = report.get("connect_failure") or {}
+        attempted = resolution.get("attempted_ip") or connect_failure.get(
+            "attempted_ip"
+        )
+        out.append(
+            f"attempted --ip   : {attempted}   "
+            f"(--serial given: {arguments.get('serial')})"
+        )
+        if resolution:
+            out.append(
+                "discovery        : "
+                + (
+                    f"ran; error {resolution['discovery_error']}"
+                    if resolution.get("discovery_error")
+                    else "ran; nothing usable answered"
+                    if resolution.get("discovery_ran")
+                    else "skipped (--serial was given)"
+                )
+            )
+            if resolution.get("printers_answered"):
+                out.append(
+                    f"discovery answers: {json_block(resolution['printers_answered'])}"
+                )
+        else:
+            out.append(
+                "discovery        : "
+                + (
+                    "UDP discovery answered this address"
+                    if connect_failure.get("discovered_via_udp")
+                    else "skipped (--serial was given)"
+                )
+            )
+            out.append(f"serial attempted : {connect_failure.get('attempted_serial')}")
+        stopped = (
+            resolution.get("reason")
+            or connect_failure.get("reason")
+            or report.get("aborted")
+        )
+        out.append(f"why it stopped   : {stopped}")
     out.append(f"printer ip       : {report['printer_ip']}")
     out.append(f"serial           : {report['serial']}")
-    out.append(
-        f"serial source    : {'UDP discovery' if report['discovered_via_udp'] else '--serial flag'}"
-    )
+    if report.get("printer_reached", True):
+        out.append(
+            f"serial source    : {'UDP discovery' if report['discovered_via_udp'] else '--serial flag'}"
+        )
+    else:
+        # Never the '--serial flag' / 'UDP discovery' claim: neither produced a
+        # serial on these paths, and a line saying one did would be the exact
+        # overclaim this report exists to avoid.
+        out.append("serial source    : none (no serial was ever resolved)")
     out.append(f"printer name     : {report['printer_name']}")
     out.append(f"model            : {report['model_from_attributes'] or report['model_from_discovery']}")
     out.append(f"firmware         : {report['firmware']}   (from 1001 software_version.ota_version)")
@@ -1360,6 +1717,13 @@ def render_report(report: dict[str, Any]) -> str:
         out.append(
             "                   ^ a variant that got no reply is NOT evidence and "
             "must not be read as agreeing with the ones that answered."
+        )
+    unconfirmed = report.get("variants_answered_without_listing_confirmation") or 0
+    if unconfirmed:
+        out.append(
+            f"                   and {unconfirmed} answered variant(s) never got a "
+            "readable confirming 1044: their deletion is UNCONFIRMED, not proven "
+            "either way (still_listed: null)."
         )
     out.append("")
     out.append("HOW TO READ THIS")
@@ -1430,22 +1794,6 @@ def render_report(report: dict[str, Any]) -> str:
 # =============================================================================
 
 
-class _EarlyExit(Exception):
-    """Internal: an early `return <code>` out of the guarded part of `probe`.
-
-    It exists so that the normal early exits (not idle, dry-run upload failed)
-    still fall through to the report block, instead of returning past it the way
-    a `return` inside the `try` does. `reason` goes into the report's `aborted`
-    field, so a capture that never measured anything says WHY rather than
-    looking like an empty result.
-    """
-
-    def __init__(self, code: int, reason: str) -> None:
-        super().__init__(f"early exit {code}: {reason}")
-        self.code = code
-        self.reason = reason
-
-
 def emit_capture(report: dict[str, Any]) -> Path | None:
     """
     Print the paste-ready block and write the JSON, whatever state we are in.
@@ -1492,14 +1840,14 @@ async def probe(args: argparse.Namespace) -> int:
     cc2_upload.UPLOAD_PORT = args.upload_port
     token = args.access_code or DEFAULT_HTTP_TOKEN
 
-    target = resolve_target(args)
-    if target is None:
-        return 2
-
-    client = await connect(target, args.access_code)
-    if client is None:
-        return 3
-
+    # Everything the report needs, declared before the try so the `finally` and
+    # the single emit path below can always see it. `target` and `client` stay
+    # None on the exits that happen before they exist (an unresolvable --ip, a
+    # failed connect): those runs now produce a capture too, because "it died at
+    # connect" is precisely the thing a maintainer needs to see on #432, and a
+    # bare traceback in a volunteer's terminal is not reportable.
+    target: Target | None = None
+    client: ElegooCC2Client | None = None
     records: list[dict[str, Any]] = []
     winning: dict | None = None
     firmware: Any = None
@@ -1508,9 +1856,15 @@ async def probe(args: argparse.Namespace) -> int:
     # The two things the report block needs to know about how the run ended.
     # `aborted` is None on a run that finished, and a description otherwise.
     aborted: str | None = None
+    # Extra report fields an `_EarlyExit` supplied (what --ip was attempted, that
+    # no printer was reached). Empty on every normal run.
+    detail: dict[str, Any] = {}
     exit_code = 0
 
     try:
+        target = resolve_target(args)
+        client = await connect(target, args.access_code)
+
         blocked = await guard_printer_is_idle(client)
         if blocked:
             logger.error(
@@ -1644,11 +1998,15 @@ async def probe(args: argparse.Namespace) -> int:
                 dry_run_shape=None if args.run else DRY_RUN_CLEANUP_SHAPE,
             )
     except _EarlyExit as early:
-        # A deliberate early exit (not idle, dry-run upload failed): not a
-        # crash, but the matrix still never ran, and a capture with no rows has
-        # to say why rather than look like an empty result.
+        # A deliberate early exit (target unresolved, connect refused/failed, not
+        # idle, dry-run upload failed): not a crash, but the matrix still never
+        # ran, and a capture with no rows has to say why rather than look like an
+        # empty result. The first two of those happen before this function has a
+        # target or a client at all, which is exactly why they come through here
+        # as a raise instead of a `return`.
         exit_code = early.code
         aborted = early.reason
+        detail = early.detail
     except (KeyboardInterrupt, asyncio.CancelledError) as err:
         # Ctrl-C arrives here as CancelledError: asyncio.run cancels the task and
         # only re-raises KeyboardInterrupt at the top level, once this coroutine
@@ -1683,9 +2041,11 @@ async def probe(args: argparse.Namespace) -> int:
     finally:
         if aborted is not None:
             # Rows the abort caught mid-flight get a status before anything reads
-            # them, so the report never shows `status: null`.
+            # them, so the report never shows `status: null`. Purely synchronous,
+            # so it runs even on the exits that never had a client (where
+            # `records` is empty anyway).
             stamp_unfinished_records(records)
-        if aborted is not None and not cleanup_info and OWNED:
+        if aborted is not None and client is not None and not cleanup_info and OWNED:
             # The abort path: name what we uploaded, and clean up only if the
             # link is still up. Skipped entirely when OWNED is empty — on the
             # early exits nothing was ever uploaded, so there is nothing to name
@@ -1720,13 +2080,13 @@ async def probe(args: argparse.Namespace) -> int:
                         "removed from the printer's UI"
                     ),
                 }
-        try:
-            await client.disconnect()
-        except BaseException as err:  # noqa: BLE001 - the report outranks it
-            logger.warning(
-                "Disconnecting reported {} (ignored: the capture comes first).",
-                repr(err),
-            )
+        if client is not None:
+            # Bounded for the same reason the abort-cleanup arm above is: this
+            # await sits between the last measurement and the report, so a
+            # disconnect that never returns on a half-dead wifi link would bury
+            # a capture that already exists. `disconnect_bounded` logs the
+            # abandonment and falls through to `emit_capture` below.
+            await disconnect_bounded(client)
 
     report = build_report(
         args,
@@ -1737,6 +2097,7 @@ async def probe(args: argparse.Namespace) -> int:
         cleanup_info,
         winning,
         aborted=aborted,
+        detail=detail,
     )
 
     emit_capture(report)
