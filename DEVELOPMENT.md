@@ -153,6 +153,71 @@ The script will:
 2. Let you select which printer to monitor
 3. Display real-time status updates
 
+## Probing a real printer (1047 delete shapes, issue #432)
+
+`scripts/cc2_probe_delete.py` answers one question against a real Centauri Carbon
+2: **which parameter shape does method 1047 (`DELETE_FILE`) accept?** On firmware
+02.01.01.07 every delete we send is answered `error_code: 1003` and deletes
+nothing, while the same file deletes fine from the printer's touchscreen. It
+uploads a fresh throw-away file per parameter variant, deletes that file, and
+re-lists to see whether it actually went away — then prints a block meant to be
+pasted straight into
+[#432](https://github.com/danielcherubini/elegoo-homeassistant/issues/432).
+
+**Stop Home Assistant first.** The printer accepts only a handful of registered
+clients and answers further registrations with `too many clients`, so a running
+integration (or its embedded broker) makes the probe fail to register.
+
+**Run it under `uv run`**, not a bare interpreter — it imports the shipped
+`ElegooCC2Client`, whose package imports `homeassistant`. That is deliberate: a
+probe that re-implemented MQTT would only prove its own code works, whereas a
+success here is immediately actionable as a one-line change to `delete_file`.
+
+```bash
+# DRY RUN (the default): connect, resolve the serial, check the printer is idle,
+# upload ONE file to prove the upload path, print the matrix it would send.
+uv run python scripts/cc2_probe_delete.py --ip 192.168.1.100
+
+# THE PROBE: one fresh file per variant, deleted with that variant's parameters.
+uv run python scripts/cc2_probe_delete.py --ip 192.168.1.100 --run
+
+# Pairing-protected printer (the access code is both the MQTT password and the
+# HTTP X-Token), or a printer whose serial discovery cannot reach:
+uv run python scripts/cc2_probe_delete.py --ip 192.168.1.100 \
+    --access-code 123456 --serial <serial> --run
+```
+
+What it will never do:
+
+- **Delete a file it did not upload itself.** Every delete goes through one
+  guarded call that refuses any name this run did not create. If no variant found
+  a working shape, the leftover probe files are listed by name in the report so
+  you can remove them from the printer's UI.
+- **Run against a working printer.** It refuses when the printer names a file it
+  is printing. The filename is the load-bearing guard, not the status code —
+  `CC2StatusMapper.map_status` resolves an unrecognised machine code to `IDLE`, so
+  the mapped status cannot fail closed on unknown firmware.
+- **Be retargeted by discovery.** `--ip` is authoritative; if discovery answers
+  from a different address the probe aborts rather than deleting files on another
+  machine. `--serial` skips discovery entirely.
+- **Send anything destructive by accident.** The matrix requires `--run`.
+
+Validate it locally before pointing it at hardware, using the CC2 simulator (its
+`--idle` flag exists for exactly this, and it serves `PUT /upload` on 8080
+because port 80 needs root):
+
+```bash
+uv run python scripts/test_cc2_printer.py --idle --upload-port 8080   # terminal 1
+uv run python scripts/cc2_probe_delete.py --ip 127.0.0.1 \
+    --serial CC2TEST1234567890 --access-code 123456 \
+    --upload-port 8080 --run                                          # terminal 2
+```
+
+Flip `DELETE_PARAM_KEY` in `scripts/test_cc2_printer.py` to `"file_name"` and
+re-run: the error codes and the `still_listed` column must **swap**. That flip is
+the probe's acceptance test — if they do not swap, it is not discriminating and
+must not go near a real printer.
+
 ## Alternative: MQTT Explorer
 
 If you can't set up the full development environment but want to help debug printer communication, you can capture raw MQTT messages:
