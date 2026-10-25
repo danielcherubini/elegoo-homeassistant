@@ -11,20 +11,30 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.config_entries import ConfigEntryState
 
+from custom_components.elegoo_printer import _async_cleanup_files
 from custom_components.elegoo_printer.cc2 import client as client_module
-from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
+from custom_components.elegoo_printer.cc2.client import (
+    CC2UnusableStatusError,
+    ElegooCC2Client,
+)
 from custom_components.elegoo_printer.cc2.const import (
     CC2_CMD_DELETE_FILE,
+    CC2_CMD_GET_FILE_LIST,
     CC2_CMD_GET_STATUS,
     CC2_ERROR_FILE_DELETE_FAILED,
+    CC2_ERROR_INVALID_PARAMETER,
+    CC2_ERROR_PRINTER_BUSY,
     CC2_STATUS_IDLE,
     CC2_STATUS_PRINTING,
     CC2_SUBSTATUS_PRINTING,
 )
+from custom_components.elegoo_printer.const import DOMAIN
 from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterConnectionError,
     ElegooPrinterTimeoutError,
@@ -261,3 +271,241 @@ def test_refresh_status_raises_when_the_printer_stays_silent() -> None:  # noqa:
     ):
         asyncio.run(client.refresh_status())
     assert client.printer_data.status.print_info.filename is None
+
+
+# --- a 1002 reply that refuses (Greptile P1, finding 1) --------------------
+#
+# `refresh_status` used to DISCARD the reply it waited for: the only failure it
+# could report was "no answer at all". So a printer that answered the status
+# request by REFUSING it left the caller holding the cache — and the cache was
+# worse than stale, because `_handle_full_status` wrote the refusal envelope into
+# it unconditionally. `CC2StatusMapper.map_status` reads a missing
+# `machine_status` as `.get("status", CC2_STATUS_IDLE)` and a missing
+# `print_status` as `filename=None`, so `{"error_code": 1003}` did not read as a
+# failed status read: it read as an IDLE printer with nothing loaded.
+#
+# That single reply disarms both of `cleanup_files`' guards at once — "idle, so a
+# delete is safe" and "no file is being printed, so nothing needs protecting" —
+# and the run deletes every age-eligible file on the strength of a refusal. The
+# tests below drive the refusal down the real wire (the fake is only the
+# transport; topic routing, request-id matching, `_handle_response`,
+# `_handle_full_status`, the mapper, the service handler and the selection are all
+# production code) and assert the outcome the user would see: nothing deleted,
+# and the status the client could read before still readable afterwards.
+
+
+def _printing_client(filename: str) -> ElegooCC2Client:
+    """Return a client whose cache says it is printing `filename` right now."""
+    client = _client()
+    client._handle_full_status(_status_reply(filename)["result"])
+    assert client.printer_data.status.print_info.filename == filename
+    return client
+
+
+def _answer_by_method(
+    client: ElegooCC2Client,
+    pending: list[asyncio.Task],
+    replies: dict[int, dict],
+) -> list[dict]:
+    """
+    Answer each command the client sends with `replies[method]`, as delivered.
+
+    Returns the list the fake transport records outgoing requests in, so a test
+    can assert what the printer was ASKED for — "no 1047 ever left the client" is
+    a stronger claim about a refused run than a mocked `delete_file` not being
+    called.
+
+    Replies arrive the way a real one does: on the listener's task, through
+    `_handle_message`, with the id taken from the request that prompted it. So
+    the listener's cache write happens for every reply, exactly as it does on a
+    printer — which is the half of the bug a test that only patched
+    `_send_command` could never see.
+    """
+    published: list[dict] = []
+    topic = f"elegoo/{client.serial_number}/{client._client_id}/api_response"
+
+    async def _publish(_request_topic: str, payload: str) -> None:
+        request = json.loads(payload)
+        published.append(request)
+        result = replies.get(request["method"])
+        if result is None:
+            return
+        pending.append(
+            asyncio.create_task(
+                client._handle_message(
+                    topic,
+                    json.dumps(
+                        {
+                            "id": request["id"],
+                            "method": request["method"],
+                            "result": result,
+                        }
+                    ),
+                )
+            )
+        )
+
+    client.mqtt_client = MagicMock()  # type: ignore[assignment]
+    client.mqtt_client.publish = AsyncMock(side_effect=_publish)
+    return published
+
+
+def _connected(client: ElegooCC2Client) -> ElegooCC2Client:
+    """Mark a client as connected+registered, which is all `_send_command` checks."""
+    client._is_connected = True
+    client._is_registered = True
+    return client
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        # The shape the finding named: a plain firmware refusal inside `result`.
+        {"error_code": CC2_ERROR_INVALID_PARAMETER},
+        # Busy — a printer that will not answer a status request while printing.
+        {"error_code": CC2_ERROR_PRINTER_BUSY},
+        # A code that is not a number at all. `_error_code` reads it as None, and
+        # None must be a refusal: a `.get("error_code", 0)` default would call it
+        # "the printer did not refuse".
+        {"error_code": "unavailable"},
+        {"error_code": True},
+        {"error_code": 0.5},
+        # A refusal that also carries an empty status-shaped dict, so nothing
+        # about the reply looks empty.
+        {"error_code": CC2_ERROR_INVALID_PARAMETER, "machine_status": {}},
+    ],
+)
+def test_a_refused_status_reply_raises_instead_of_reading_as_idle(  # noqa: D103
+    refusal: dict,
+) -> None:
+    # Both halves, and they are different halves: the caller must be told, AND the
+    # status the client could read before must survive. The second is what every
+    # OTHER consumer of the cache needs — the sensors, the camera, the
+    # coordinator — and it is the half the listener's own write used to destroy
+    # before any caller got a chance to object.
+    client = _connected(_printing_client(PRINTING_FILE))
+    pending: list[asyncio.Task] = []
+    _answer_by_method(client, pending, {CC2_CMD_GET_STATUS: refusal})
+
+    with pytest.raises(CC2UnusableStatusError):
+        asyncio.run(client.refresh_status())
+
+    # Readable, and still saying what it said: printing, naming the live job.
+    status = client.printer_data.status
+    assert status.print_info.filename == PRINTING_FILE, refusal
+    assert status.print_info.filename is not None
+    assert client._cached_status.get("machine_status", {}).get("status") == (
+        CC2_STATUS_PRINTING
+    ), refusal
+    for task in pending:
+        task.cancel()
+
+
+def test_a_status_reply_naming_no_activity_raises_rather_than_claiming_idle() -> None:  # noqa: D103
+    # `{"error_code": 0}` is the printer saying "I did not refuse" and NOTHING
+    # else. Accepted, it maps to IDLE with no filename — an assertion that the
+    # printer is idle, made by a reply that never mentioned the printer's state.
+    # Refusing it costs a caller one retried read; accepting it costs files.
+    client = _connected(_printing_client(PRINTING_FILE))
+    pending: list[asyncio.Task] = []
+    _answer_by_method(client, pending, {CC2_CMD_GET_STATUS: {"error_code": 0}})
+
+    with pytest.raises(CC2UnusableStatusError):
+        asyncio.run(client.refresh_status())
+
+    assert client.printer_data.status.print_info.filename == PRINTING_FILE
+    for task in pending:
+        task.cancel()
+
+
+def test_a_frame_naming_a_job_but_no_machine_status_is_still_readable() -> None:  # noqa: D103
+    # The other direction, so the fix is not "demand a perfect frame": a reply
+    # that names the live job answers the question the guard actually asks ("which
+    # file is under the nozzle?") and must not be thrown away. Refusing partial
+    # frames would make the sensors blind for a printer whose firmware sends them.
+    client = _connected(_idle_client())
+    pending: list[asyncio.Task] = []
+    _answer_by_method(
+        client,
+        pending,
+        {
+            CC2_CMD_GET_STATUS: {
+                "error_code": 0,
+                "print_status": {"filename": "x.gcode"},
+            }
+        },
+    )
+
+    asyncio.run(client.refresh_status())
+
+    assert client.printer_data.status.print_info.filename == "x.gcode"
+    for task in pending:
+        task.cancel()
+
+
+def _cleanup_hass(client: ElegooCC2Client) -> MagicMock:
+    """Build a `hass` double resolving one loaded CC2 entry to `client`."""
+    entry = MagicMock()
+    entry.entry_id = "cc2-1"
+    entry.domain = DOMAIN
+    entry.state = ConfigEntryState.LOADED
+    entry.runtime_data.api.client = client
+    hass = MagicMock()
+    hass.config_entries.async_get_entry.return_value = entry
+    return hass
+
+
+def test_a_refused_status_reply_stops_a_real_cleanup_from_deleting() -> None:  # noqa: D103
+    # THE user-visible outcome, end to end on the real wire with no method mocked
+    # away: a printer that refuses the status request must cost a REFUSED run, not
+    # an emptied disk.
+    #
+    # The cache starts out holding the truth — the printer is printing
+    # `old.gcode`, and `old.gcode` is 90 days old, so it is exactly what the age
+    # filter selects. The 1002 answer is then a refusal. Before the fix that
+    # refusal replaced the cache, and the handler read "idle, no file loaded":
+    # both guards passed simultaneously and the file under the nozzle was deleted.
+    client = _connected(_printing_client("old.gcode"))
+    pending: list[asyncio.Task] = []
+    published = _answer_by_method(
+        client,
+        pending,
+        {
+            CC2_CMD_GET_FILE_LIST: {
+                "error_code": 0,
+                "file_list": [
+                    {
+                        "filename": "old.gcode",
+                        "size": 2048,
+                        "type": "file",
+                        "create_time": int(time.time()) - 90 * 86_400,
+                    }
+                ],
+            },
+            CC2_CMD_GET_STATUS: {"error_code": CC2_ERROR_INVALID_PARAMETER},
+            # If a 1047 were ever sent, the printer would answer "yes" — so a
+            # regression here shows up as a deleted file, not as an error.
+            CC2_CMD_DELETE_FILE: {"error_code": 0},
+        },
+    )
+    call = MagicMock()
+    call.data = {"entry_id": "cc2-1", "dry_run": False, "older_than_days": 60}
+
+    result = asyncio.run(_async_cleanup_files(_cleanup_hass(client), call))
+
+    assert result["success"] is False, result
+    assert result["deleted"] == [], result
+    assert result["skipped"] == {}, result
+    # The printer was never asked to delete anything — asserted on what left the
+    # client, not on a mock's bookkeeping.
+    assert [r["method"] for r in published] == [
+        CC2_CMD_GET_FILE_LIST,
+        CC2_CMD_GET_STATUS,
+    ], published
+    message = str(result.get("error")) + str(result.get("message"))
+    assert "could not confirm the printer is idle" in message, message
+    assert "CC2UnusableStatusError" in message, message
+    # And the status the client could read before the refusal is still readable.
+    assert client.printer_data.status.print_info.filename == "old.gcode"
+    for task in pending:
+        task.cancel()

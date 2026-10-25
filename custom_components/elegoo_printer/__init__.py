@@ -49,6 +49,7 @@ from .cc2.cleanup import (
 from .cc2.client import (
     CC2_ERROR_REPLY_UNPARSEABLE,
     CC2UnusableFileListError,
+    CC2UnusableStatusError,
     ElegooCC2Client,
 )
 from .cc2.const import CC2_ERROR_FILE_DELETE_FAILED, CC2_ERROR_PRINTER_BUSY
@@ -841,7 +842,22 @@ async def _async_read_activity(
         return _ActivityCheck(activity=_read_activity(client.printer_data.status))
     try:
         await client.refresh_status()
-    except (*PRINT_TRANSPORT_ERRORS, AttributeError, TypeError) as err:
+    except (
+        *PRINT_TRANSPORT_ERRORS,
+        # A printer that ANSWERED the status request by refusing it is exactly as
+        # useless here as one that never answered, and it used to be far worse:
+        # the refusal envelope carries no `machine_status`, and the status mapper
+        # reads a missing one as IDLE with a missing `print_status` reading as
+        # `filename=None`. So the reply did not fail the guard, it PASSED it —
+        # "idle, nothing loaded" — and the run deleted every age-eligible file on
+        # the strength of a reply that said nothing about the printer. The client
+        # now raises for that reply instead of leaving it in the cache, and this
+        # clause is what turns the raise into the refusal below rather than an
+        # exception out of the handler.
+        CC2UnusableStatusError,
+        AttributeError,
+        TypeError,
+    ) as err:
         LOGGER.warning("cleanup_files could not confirm the printer is idle: %r", err)
         return _ActivityCheck(
             activity=None, reason=f"could not confirm the printer is idle ({err!r})"
@@ -1040,6 +1056,125 @@ async def _async_confirm_deletions(
     return [name for name in deleted if name not in remaining], still
 
 
+class _CleanupPlan(NamedTuple):
+    """
+    What a cleanup decided, and the data it decided it from.
+
+    Bundled because the decision and its evidence must travel together: the
+    in-lock guard in ``_async_delete_and_report`` re-reads ``activity``, and the
+    report re-states ``to_delete`` / ``reasons`` / ``note``. A plan built from a
+    listing and a status read at one instant is only as good as that instant,
+    which is exactly why the destructive branch builds its plan while holding the
+    upload lock (see ``_async_cleanup_files``) rather than before it.
+    """
+
+    activity: _PrinterActivity
+    to_delete: list[str]
+    reasons: dict[str, str]
+    note: str | None
+
+
+class _CleanupRefusedError(Exception):
+    """
+    The read side of a cleanup could not produce a plan, with the report to say so.
+
+    Private control flow, not a failure to report to the user: the service must
+    never raise, so the planner raises this to itself and the handler turns it
+    straight back into ``report``, the response body in the service's own shape.
+    It exists because the planner is reached from two places — outside the upload
+    lock for a dry run, inside it for a real one — and a refusal has to be
+    reported identically from both. Returning an optional second value instead
+    would leave that to be remembered twice.
+    """
+
+    def __init__(self, report: dict) -> None:
+        """Carry the finished response body, so no caller has to build it."""
+        super().__init__(str(report.get("error") or report.get("message") or ""))
+        self.report = report
+
+
+async def _async_plan_cleanup(
+    client: ElegooCC2Client, request: _CleanupRequest, *, dry_run: bool
+) -> _CleanupPlan:
+    """
+    Ask the printer what it has and what it is doing, then decide what may go.
+
+    This is the whole of the READ side of a cleanup: the strict file listing
+    (1044), the activity read (1002 fresh on the destructive branch, the cache on
+    a dry run), and the selection. It performs no delete and takes no lock, so the
+    caller decides how fresh the answer has to be — which on the destructive
+    branch means "gathered while the upload lock is held", and that is the only
+    reason this is a function rather than straight-line code in the handler: the
+    same three calls have to run either outside the lock (a dry run, which
+    destroys nothing and must not queue behind someone else's file transfer) or
+    inside it (a real run, whose decision must not predate the deletes it
+    justifies).
+
+    Raises:
+        _CleanupRefusedError: for every way the read side can fail — no listing at
+            all, or no answer to "what are you doing" — carrying the refusal in
+            the response shape, so the handler returns it untouched.
+
+    """
+    try:
+        files = await client.get_verified_file_list()
+    except (
+        *PRINT_TRANSPORT_ERRORS,
+        CC2UnusableFileListError,
+        AttributeError,
+        TypeError,
+    ) as err:
+        # One clause on purpose: `_cleanup_unreachable` words the error from the
+        # exception type, so "did not answer" and "answered something
+        # unreadable" stay distinguishable in the response without splitting the
+        # handler in two. Either way there is no inventory, so nothing is a
+        # candidate and nothing is deleted.
+        raise _CleanupRefusedError(
+            _cleanup_unreachable("file list", err, dry_run=dry_run)
+        ) from err
+
+    activity = await _async_read_activity(client, dry_run=dry_run)
+    if activity.activity is None:
+        # Only the destructive branch can produce this: the printer could not
+        # be asked what it is doing, and a delete that cannot rule out a running
+        # job is a delete that might pull the file out from under the nozzle.
+        raise _CleanupRefusedError(
+            _cleanup_refused_busy(
+                f"Could not delete anything: {activity.reason}; deleted nothing"
+            )
+        )
+
+    # Every listing key whose basename matches the printer's active name is
+    # protected, not just the first (see `_listed_names_for` for why a
+    # last-writer-wins guess is not a guard). `select_deletions` still does the
+    # comparing and still compares EXACTLY — it takes one name, so the first
+    # match goes in and the remaining spellings are applied here, in the planner,
+    # which is the layer that owns the spelling question. The extra pass mirrors
+    # the selection's own precedence rather than inventing a second rule: a file
+    # the printer is reading is skipped before any pattern or age filter is
+    # consulted, so a colliding sibling gets the same `currently_printing`
+    # reason and never reaches 1047 whatever its age or the patterns.
+    active_names = _listed_names_for(files, activity.activity.filename)
+    to_delete, skipped = select_deletions(
+        files,
+        include=tuple(request.include),
+        exclude=tuple(request.exclude),
+        older_than_days=request.older_than_days,
+        active_filename=active_names[0] if active_names else None,
+    )
+    reasons = dict(skipped)
+    if len(active_names) > 1:
+        protected = set(active_names)
+        to_delete = [name for name in to_delete if name not in protected]
+        reasons.update(dict.fromkeys(protected, SKIP_ACTIVE))
+    return _CleanupPlan(
+        activity=activity.activity,
+        to_delete=to_delete,
+        reasons=reasons,
+        note=_pattern_note(request.include, len(files), to_delete, reasons),
+    )
+
+
 async def _async_cleanup_files(hass: HomeAssistant, call: ServiceCall) -> dict:
     """
     Delete old files from a Centauri Carbon 2's local storage (issue #432).
@@ -1053,7 +1188,11 @@ async def _async_cleanup_files(hass: HomeAssistant, call: ServiceCall) -> dict:
     ``get_verified_file_list``); the dry run deletes nothing; before deleting
     anything the printer is asked for its status and, if it is busy without
     naming the file it is reading, the run is refused; and a delete is confirmed
-    by re-listing (1044) instead of by trusting 1047's reply. Every field is
+    by re-listing (1044) instead of by trusting 1047's reply. On a run that
+    deletes, the listing, the status answer and the selection are all gathered
+    AFTER the printer's upload lock is held, so an upload cannot slip in between
+    looking and deleting and leave the run choosing from a stale snapshot; a dry
+    run takes no lock at all, because it changes nothing. Every field is
     read through the schema's own validators — core has already run that schema
     on the call data, whoever the caller was — so the handler cannot drift from
     the schema and read a pattern set broader than the one that was validated. A
@@ -1096,60 +1235,20 @@ async def _async_cleanup_files(hass: HomeAssistant, call: ServiceCall) -> dict:
         )
         return _cleanup_invalid(str(err), dry_run=dry_run)
 
-    try:
-        files = await client.get_verified_file_list()
-    except (
-        *PRINT_TRANSPORT_ERRORS,
-        CC2UnusableFileListError,
-        AttributeError,
-        TypeError,
-    ) as err:
-        # One clause on purpose: `_cleanup_unreachable` words the error from the
-        # exception type, so "did not answer" and "answered something
-        # unreadable" stay distinguishable in the response without splitting the
-        # handler in two. Either way there is no inventory, so nothing is a
-        # candidate and nothing is deleted.
-        return _cleanup_unreachable("file list", err, dry_run=dry_run)
-
-    activity = await _async_read_activity(client, dry_run=dry_run)
-    if activity.activity is None:
-        # Only the destructive branch can produce this: the printer could not
-        # be asked what it is doing, and a delete that cannot rule out a running
-        # job is a delete that might pull the file out from under the nozzle.
-        return _cleanup_refused_busy(
-            f"Could not delete anything: {activity.reason}; deleted nothing"
-        )
-
-    # Every listing key whose basename matches the printer's active name is
-    # protected, not just the first (see `_listed_names_for` for why a
-    # last-writer-wins guess is not a guard). `select_deletions` still does the
-    # comparing and still compares EXACTLY — it takes one name, so the first
-    # match goes in and the remaining spellings are applied here, in the handler,
-    # which is the layer that owns the spelling question. The extra pass mirrors
-    # the selection's own precedence rather than inventing a second rule: a file
-    # the printer is reading is skipped before any pattern or age filter is
-    # consulted, so a colliding sibling gets the same `currently_printing`
-    # reason and never reaches 1047 whatever its age or the patterns.
-    active_names = _listed_names_for(files, activity.activity.filename)
-    to_delete, skipped = select_deletions(
-        files,
-        include=tuple(request.include),
-        exclude=tuple(request.exclude),
-        older_than_days=request.older_than_days,
-        active_filename=active_names[0] if active_names else None,
-    )
-    reasons = dict(skipped)
-    if len(active_names) > 1:
-        protected = set(active_names)
-        to_delete = [name for name in to_delete if name not in protected]
-        reasons.update(dict.fromkeys(protected, SKIP_ACTIVE))
-    note = _pattern_note(request.include, len(files), to_delete, reasons)
-
     if dry_run:
+        # A dry run reads, reports and destroys nothing, so it plans wherever it
+        # likes and takes no lock. Blocking a report behind someone else's file
+        # transfer would make a nightly "what would this delete?" answer arrive
+        # minutes late for a question whose answer changes nothing.
+        try:
+            plan = await _async_plan_cleanup(client, request, dry_run=True)
+        except _CleanupRefusedError as refused:
+            return refused.report
         message = (
-            note
-            or f"{len(to_delete)} file(s) older than {request.older_than_days} "
-            "day(s) would be deleted; nothing was deleted (dry run)"
+            plan.note
+            or f"{len(plan.to_delete)} file(s) older than "
+            f"{request.older_than_days} day(s) would be deleted; "
+            "nothing was deleted (dry run)"
         )
         LOGGER.info("cleanup_files dry run for entry %s: %s", entry_id, message)
         return CleanupReport(
@@ -1157,31 +1256,49 @@ async def _async_cleanup_files(hass: HomeAssistant, call: ServiceCall) -> dict:
             dry_run=True,
             deleted=[],
             failed={},
-            skipped=reasons,
-            would_delete=to_delete,
+            skipped=plan.reasons,
+            would_delete=plan.to_delete,
             message=message,
         ).as_dict()
 
     # Under the printer's upload lock, which ``upload_gcode``'s caller holds
     # across the whole upload-and-maybe-start sequence. The two do not share a
     # transport — 1047 is an MQTT command, an upload is a run of ranged PUTs
-    # over HTTP — so the "one MQTT command channel" reasoning in
-    # ``_async_delete_each`` does not cover this overlap: the printer is the
-    # thing assembling a half-written file from those ranges, and nothing here
-    # can verify what a delete does to storage in the middle of that. Sharing
-    # the lock costs a nightly cleanup at most the minutes an upload takes, and
-    # buys the guarantee the destructive branch actually wants: no delete ever
-    # runs while a file is mid-assembly. The dry run above takes no lock, since
-    # it changes nothing on the printer.
+    # over HTTP — so the "one MQTT channel" reasoning in ``_async_delete_each``
+    # does not cover this overlap: the printer is the thing assembling a
+    # half-written file from those ranges, and nothing here can verify what a
+    # delete does to storage in the middle of that.
+    #
+    # What the lock has to cover is more than the deletes, and that is the part
+    # this used to get wrong. ``_upload_then_start`` holds it across the upload
+    # AND the ``print_start`` that follows, so an upload can replace a file and
+    # set it printing entirely while a cleanup waits to acquire the lock. A
+    # cleanup that had already listed, already read the status and already chosen
+    # its victims on the way in therefore woke up holding a snapshot of a printer
+    # that no longer exists: "idle, and old.gcode is 90 days old" was true a
+    # minute ago, and what it now points at is the file under the nozzle. The
+    # guard inside the lock could not save it either, because it re-reads the
+    # activity object gathered before the wait — it re-asks nothing.
+    #
+    # So the whole read side runs inside the lock. The guarantee this buys, and
+    # the only one claimed here: for a run that deletes, the listing, the status
+    # answer and the selection are all gathered while the lock is held, and
+    # nothing between looking and deleting can let an upload-and-start slip in.
+    # Sharing the lock costs a nightly cleanup at most the minutes an upload
+    # takes, which is what it is for.
     async with client.upload_lock:
+        try:
+            plan = await _async_plan_cleanup(client, request, dry_run=False)
+        except _CleanupRefusedError as refused:
+            return refused.report
         return await _async_delete_and_report(
             client,
             entry_id=entry_id,
-            activity=activity.activity,
+            activity=plan.activity,
             request=request,
-            to_delete=to_delete,
-            reasons=reasons,
-            note=note,
+            to_delete=plan.to_delete,
+            reasons=plan.reasons,
+            note=plan.note,
         )
 
 
@@ -1201,6 +1318,12 @@ async def _async_delete_and_report(  # noqa: PLR0913
     Split out from ``_async_cleanup_files`` because the two halves fail
     differently: everything before this point refuses to act, and everything
     from here on acts and has to account for what happened.
+
+    Called with ``client.upload_lock`` HELD, and with ``activity`` /
+    ``to_delete`` / ``reasons`` gathered under it. Both halves of that matter:
+    nothing can upload-and-start a file between the selection above and the 1047s
+    below, so the guard below is a statement about the printer's state now rather
+    than about a snapshot taken before the run queued behind an upload.
     """
     # The second half of the active-file guard, and the reason the status was
     # re-read: a printer that says it is busy but names NO file it is reading
@@ -1214,6 +1337,13 @@ async def _async_delete_and_report(  # noqa: PLR0913
     # no refusal — every listing key that names it is skipped by the selection
     # above, and the rest are fair game, which is what makes a cleanup during a
     # long print still work.
+    #
+    # Reading `activity` here is only meaningful because the plan was built under
+    # the lock: it is the printer's answer to a request this run made after it
+    # acquired the lock, so an upload that started a print while this run was
+    # queued is already in it. Move the status read back outside the `async with`
+    # and this guard silently becomes a re-read of stale data — it asks nothing,
+    # it only looks at what it was handed.
     if activity.busy and activity.filename is None:
         message = (
             "the printer reported a busy state without naming a file, so this "

@@ -2268,3 +2268,136 @@ class TestCleanupFilesService:
             assert order == ["upload:start"]
 
         asyncio.run(_run())
+
+    def test_an_upload_that_starts_a_print_while_cleanup_waits_is_never_deleted(
+        self,
+    ) -> None:
+        """
+        The decision to delete is made from data gathered under the lock.
+
+        ``test_a_real_run_waits_for_an_upload_to_finish`` proves the lock is
+        honoured. It does NOT prove the decision is fresh — and the gap between
+        those two is where the files went. ``_upload_then_start`` holds this same
+        lock across the upload AND the ``print_start`` after it, so this sequence
+        was reachable:
+
+          1. cleanup lists the printer, reads its status, and picks `old.gcode`
+             ("idle, and that file is 90 days old");
+          2. cleanup blocks on the held lock;
+          3. the upload finishes replacing `old.gcode` and STARTS PRINTING it,
+             then releases;
+          4. cleanup resumes holding a snapshot of a printer that no longer
+             exists and deletes the file under the nozzle.
+
+        The guard inside the lock could not catch it, because it re-reads the
+        activity object the run had already collected — it asks nothing. So this
+        test drives the real interleaving against a real ``asyncio.Lock`` (a
+        ``spec=`` mock supports ``async with`` vacuously and would pass whether or
+        not the code ever took the lock) and asserts the outcome the user needs:
+        `old.gcode` comes back ``currently_printing`` and no 1047 is ever sent for
+        it.
+
+        The re-uploaded entry keeps its OLD create_time on purpose. If it were
+        re-stamped as new, the age filter would skip the file too and the test
+        would pass without the active-file guard working at all; leaving it old
+        means the ONLY thing that can save this file is the fresh status read.
+        """
+
+        async def _run() -> None:
+            order: list[str] = []
+            listing = _cleanup_listing()
+            client = self._real_lock_client(listing, order)
+            # The printer starts idle and naming no file, which is what makes
+            # `old.gcode` a candidate at the moment cleanup first looks.
+            status = client.printer_data.status
+            hass = _cleanup_hass(client)
+
+            # Record WHEN the read side runs, so "the decision was made under the
+            # lock" is a measurement rather than a claim about code layout.
+            original_list = client.get_verified_file_list.side_effect
+            original_refresh = client.refresh_status.side_effect
+
+            async def _listed() -> dict[str, PrinterFile]:
+                order.append("list")
+                return await original_list()
+
+            async def _refreshed() -> None:
+                order.append("refresh")
+                await original_refresh()
+
+            client.get_verified_file_list = AsyncMock(side_effect=_listed)
+            client.refresh_status = AsyncMock(side_effect=_refreshed)
+
+            await self._hold_upload_lock(client, order)
+
+            cleanup = asyncio.create_task(
+                _async_cleanup_files(
+                    hass, _cleanup_call(dry_run=False, older_than_days=60)
+                )
+            )
+            for _ in range(10):
+                await asyncio.sleep(0)
+            assert not cleanup.done(), "the run finished during an upload"
+
+            # The upload lands while cleanup is parked: `old.gcode` is replaced
+            # and is now the job the printer is reading.
+            listing["old.gcode"] = _entry("old.gcode", days_ago=90)
+            status.print_info.filename = "old.gcode"
+            status.current_status = ElegooMachineStatus.PRINTING
+            order.append("upload:started_printing")
+            client.upload_lock.release()
+            order.append("upload:released")
+
+            result = await asyncio.wait_for(cleanup, timeout=1)
+
+            assert result["deleted"] == [], result
+            # `old.gcode` survived because the printer named it as its job, and
+            # `fresh.gcode` because it is one day old — so the survival is the
+            # active-file guard's doing and not the age filter's.
+            assert result["skipped"] == {
+                "old.gcode": "currently_printing",
+                "fresh.gcode": "younger_than_limit",
+            }, result
+            client.delete_file.assert_not_awaited()
+            # Both reads happened AFTER the lock was released, i.e. after the
+            # upload-and-start had already landed. `refresh` is the fresh 1002
+            # that the active-file guard is decided from.
+            assert order.index("upload:released") < order.index("list"), order
+            assert order.index("upload:released") < order.index("refresh"), order
+
+        asyncio.run(_run())
+
+    def test_a_dry_run_still_never_pays_for_the_lock_it_does_not_need(
+        self,
+    ) -> None:
+        """
+        Moving the read side inside the lock must not move the dry run with it.
+
+        The fix for the stale-snapshot race relocates the listing, the status read
+        and the selection. A dry run deletes nothing, so it must keep answering
+        immediately from behind a held lock rather than queueing for an upload it
+        cannot interfere with — and it must still not pay for the fresh 1002.
+        """
+
+        async def _run() -> None:
+            order: list[str] = []
+            client = self._real_lock_client(_cleanup_listing(), order)
+            status = client.printer_data.status
+            hass = _cleanup_hass(client)
+            await self._hold_upload_lock(client, order)
+
+            result = await asyncio.wait_for(
+                _async_cleanup_files(hass, _cleanup_call(older_than_days=60)),
+                timeout=1,
+            )
+
+            assert result["success"] is True
+            assert result["would_delete"] == ["old.gcode"]
+            assert client.upload_lock.locked()
+            assert order == ["upload:start"]
+            # A dry run reads the cache, as before: no 1002 for a name it cannot
+            # act on.
+            assert status.refreshes == []
+            client.refresh_status.assert_not_awaited()
+
+        asyncio.run(_run())

@@ -177,6 +177,42 @@ class CC2UnusableFileListError(Exception):
     """
 
 
+class CC2UnusableStatusError(Exception):
+    """
+    A 1002 reply that cannot be read as a trustworthy answer about the printer.
+
+    Raised by ``refresh_status`` — the full-status method the destructive
+    ``cleanup_files`` service uses to confirm the printer is idle before it
+    deletes anything — in three distinct cases:
+
+    * the reply's ``result`` is not a dict at all: an error envelope of some
+      other shape, a bare list or string, or an envelope carrying no ``result``;
+    * the reply carries a non-zero (or non-numeric) ``error_code``, i.e. the
+      printer answered the status request by refusing it;
+    * the reply carries no activity field this client can read — neither a
+      ``machine_status`` nor a ``print_status`` dict. ``{"error_code": 0}`` on
+      its own is the printer saying "I did not refuse" and nothing else.
+
+    Why this exception exists at all, rather than the caller just reading the
+    cache afterwards: ``CC2StatusMapper.map_status`` reads a MISSING
+    ``machine_status`` through ``.get("status", CC2_STATUS_IDLE)``, so a reply
+    that names no status at all maps to IDLE, and a missing ``print_status``
+    maps to ``filename=None``. A refusal therefore does not look like a failed
+    read — it looks like an idle printer with nothing loaded. On the cleanup
+    path that is the one pair of answers that makes BOTH of its guards pass:
+    "idle, so a delete is safe" and "no file is being printed, so nothing needs
+    protecting", reached from a reply that said nothing about either. The
+    service then deletes every age-eligible file on the strength of a refusal.
+
+    Why a distinct exception rather than ``ElegooPrinterConnectionError``: the
+    printer DID answer, so "not reachable" would be the wrong diagnosis, and
+    ``PRINT_TRANSPORT_ERRORS`` is what a caller catches to mean "the link is
+    down". The cleanup service catches this alongside them and reports the same
+    fail-closed refusal — "could not confirm the printer is idle" — because from
+    the caller's side the two are the same thing: the question went unanswered.
+    """
+
+
 def _error_code(value: object) -> int | None:
     """
     Read an ``error_code`` out of a printer reply, or None if it says nothing.
@@ -492,6 +528,126 @@ def _read_file_list_result(result: object) -> CC2FileListReading:
             f"first: {dropped[0]!r:.200})",
         )
     return CC2FileListReading(files, [], _FILE_LIST_OK, "")
+
+
+# ---------------------------------------------------------------------------
+# Judging a 1002 full-status reply (see ``_read_status_result``)
+# ---------------------------------------------------------------------------
+#
+# The vocabulary is deliberately the file-list one, and it is the same shape on
+# purpose: two implementations of "did the printer answer this reply by refusing
+# it?" drift apart, and the drift is invisible — one path would believe a reply
+# the other refused. See ``_read_file_list_result`` for the reasoning that is
+# shared; only what differs is written out here.
+_STATUS_OK = "ok"
+# ``result`` carries an ``error_code`` that reads as non-zero or that cannot be
+# read as a number at all: the printer answered the status request by refusing
+# it. Or ``result`` is not a dict, which names no status either.
+_STATUS_REFUSED = "refused"
+# The reply is readable and was not refused, but it names nothing the caller can
+# act on: no ``machine_status`` and no ``print_status``.
+_STATUS_NO_ACTIVITY = "no_activity"
+
+
+class CC2StatusReading(NamedTuple):
+    """
+    What ``_read_status_result`` concluded about one 1002 ``result``.
+
+    Attributes:
+        kind: One of the ``_STATUS_*`` constants.
+        detail: A one-line reason naming the offending value, for the exception
+            message and the log line. Empty when ``kind`` is ``_STATUS_OK``.
+
+    """
+
+    kind: str
+    detail: str
+
+
+# The two fields that say what the printer is doing, which is the whole of what
+# the cleanup guard and every status consumer reads off a full status frame.
+_STATUS_ACTIVITY_KEYS = ("machine_status", "print_status")
+
+
+def _read_status_result(result: object) -> CC2StatusReading:
+    """
+    Judge a 1002 ``result`` once, so no two readers can disagree about it.
+
+    This is THE implementation of "did the printer answer the status request with
+    something I can trust?", and every path that has to answer it goes through
+    here: the MQTT listener's cache write (``_handle_full_status``) and the
+    ``refresh_status`` that ``cleanup_files`` relies on to confirm the printer is
+    idle before it deletes files.
+
+    The gates run in the same fixed order as ``_read_file_list_result``'s, for
+    the same reasons:
+
+    * ``result`` must be a dict FIRST — not for trust but because
+      ``result["error_code"]`` below would raise ``TypeError`` on a list or a
+      string, and ``TypeError`` is not a transport error, so it would escape the
+      MQTT listener and stop it.
+    * The REFUSAL next, before anything else is looked at. The shared response
+      envelope documents ``result`` as "Response data including ``error_code``"
+      (docs/CC2_PROTOCOL.md), so a refusal arrives INSIDE ``result``. An
+      unreadable code (``_error_code`` -> None: ``"abc"``, ``True``, ``0.5``, a
+      list) is a refusal, never a 0 invented by a default: on a destructive path
+      0 means "the printer did not refuse", so resolving ambiguity toward 0 is
+      resolving it toward destroying something.
+    * Then the activity fields, last.
+
+    A missing ``error_code`` is not a refusal, deliberately, and it is a
+    deliberate copy of the 1044 rule rather than an oversight: every captured
+    reply carries it, no method documents it as REQUIRED, and refusing absence
+    would make every status frame that omits it invisible to the sensors. The
+    guess is bounded by the gate below it, exactly as it is there — absence is
+    only ever accepted when the reply actually carries an activity field, so it
+    can never turn a reply that says nothing about the printer into "the printer
+    is idle".
+
+    That last gate is the one this method exists for. ``CC2StatusMapper
+    .map_status`` reads a missing ``machine_status`` as
+    ``.get("status", CC2_STATUS_IDLE)`` and a missing ``print_status`` as
+    ``filename=None``, so a reply carrying NEITHER does not read as a failed
+    read — it reads as an idle printer with no job loaded, which is precisely the
+    pair of answers that lets both of the cleanup service's guards pass at once.
+    A reply carrying ONE of them is still usable: the guards need at least one
+    ("is it busy?" and "which file is it reading?"), and the frame that names a
+    job but no machine state, or a machine state but no job, still answers one of
+    those and gets the other from the same defensive defaults every other frame
+    uses.
+
+    Pure: reads ``result``, changes nothing, so it can classify a reply before
+    anything decides whether to act on it or to cache it.
+    """
+    if not isinstance(result, dict):
+        # The container gate, checked first so the ``result["error_code"]``
+        # below cannot raise TypeError out of the MQTT listener.
+        return CC2StatusReading(
+            _STATUS_REFUSED,
+            f"the printer's status reply is not a status frame "
+            f"(result: {type(result).__name__})",
+        )
+    if "error_code" in result:
+        # Refusal, judged before anything else — see the docstring.
+        code = _error_code(result["error_code"])
+        if code is None or code != 0:
+            return CC2StatusReading(
+                _STATUS_REFUSED,
+                "the printer refused or garbled the status request "
+                f"(error_code: {result['error_code']!r}"
+                f"{'' if code is None else f', parsed {code}'}); "
+                "refusing to treat its reply as the printer's state",
+            )
+    if not any(isinstance(result.get(key), dict) for key in _STATUS_ACTIVITY_KEYS):
+        return CC2StatusReading(
+            _STATUS_NO_ACTIVITY,
+            "the printer's status reply names nothing about what it is doing "
+            f"(result keys: {sorted(result)}, none of "
+            f"{'/'.join(_STATUS_ACTIVITY_KEYS)} present as a dict); an absent "
+            "machine status maps to IDLE and an absent print status to no file, "
+            "which is an idle printer, not an unanswered question",
+        )
+    return CC2StatusReading(_STATUS_OK, "")
 
 
 class ElegooCC2Client:
@@ -1332,7 +1488,49 @@ class ElegooCC2Client:
             self._handle_attributes(result)
 
     def _handle_full_status(self, status_data: CC2StatusFrame | dict[str, Any]) -> None:
-        """Handle a full status response (from method 1002)."""
+        """
+        Replace ``_cached_status`` from a 1002 result, if it deserves to.
+
+        This is THE place the status cache is written from a full-status reply,
+        and every 1002 reaches it: the MQTT listener dispatches one here
+        (``_handle_response``) whether or not anyone asked for it. So the trust
+        judgement lives HERE rather than only in ``refresh_status`` — the same
+        reason it lives in ``_handle_file_list`` rather than only in
+        ``get_verified_file_list``: ``_handle_response`` signals the waiting
+        ``_send_command`` BEFORE dispatching to this method, so the strict caller
+        is woken a step ahead of the write, and a rule placed after the write
+        would be true only for the caller that thought to check. Putting it here
+        makes it true for every consumer of the status cache at once — the
+        sensors, the camera, the coordinator, and the delete guard — including
+        for the listener's own replies, which have no caller to raise at.
+
+        A reply this client will not trust never replaces the cache, and the
+        reason is the same as for the file list: a reply we cannot read must not
+        wipe what we could read before. A refusal envelope like
+        ``{"error_code": 1003}`` carries no ``machine_status``, and
+        ``CC2StatusMapper.map_status`` reads a missing one as
+        ``.get("status", CC2_STATUS_IDLE)`` with a missing ``print_status``
+        reading as ``filename=None`` — so writing it does not merely fail to
+        inform, it actively asserts "idle, nothing loaded" over the top of a
+        cache that knew better. For the sensors that is a printer shown idle
+        while it prints; for ``cleanup_files`` it is the pair of answers that
+        makes both of its guards pass and deletes every age-eligible file.
+
+        The judgement is ``_read_status_result``'s, the same one
+        ``refresh_status`` uses, so the writer and the delete guard can never
+        disagree about what "the printer refused" meant.
+        """
+        reading = _read_status_result(status_data)
+        if reading.kind != _STATUS_OK:
+            # Refused, or a reply that names nothing about what the printer is
+            # doing. Neither says the printer is idle, so neither is allowed to
+            # make the cache look like it is.
+            self.logger.warning(
+                "Ignoring a 1002 reply I will not treat as the printer's state "
+                "(%s); keeping the previous status",
+                reading.detail,
+            )
+            return
         self.logger.debug("Received full status update")
         self._cached_status = deepcopy(status_data)
         self._status_sequence = status_data.get("sequence", 0)
@@ -2039,11 +2237,47 @@ class ElegooCC2Client:
         event and fails it against the previous status if the seam ever gains an
         await.
 
+        The reply is also JUDGED, not just awaited, and that is the other half of
+        what makes this method safe for a caller about to delete files. Discarding
+        the reply — which is what an ``await self._send_command(...)`` alone does —
+        means the only failure this call could report was "no answer at all", so a
+        printer that answered by REFUSING left the caller holding whatever the
+        cache happened to hold, with no way to tell that the question was never
+        answered. Worse, that is not a benign outcome: ``CC2StatusMapper
+        .map_status`` reads a missing ``machine_status`` as
+        ``.get("status", CC2_STATUS_IDLE)`` and a missing ``print_status`` as
+        ``filename=None``, so a refusal envelope like ``{"error_code": 1003}``
+        reads as an idle printer with nothing loaded. For ``cleanup_files`` that
+        single reply disarms BOTH of its guards at once — "idle, so deleting is
+        safe" and "no file is being printed, so nothing needs protecting" — and
+        the run deletes every age-eligible file on the strength of a refusal. So
+        the reply is captured and judged by ``_read_status_result``, the same
+        judgement ``_handle_full_status`` applies before writing the cache (the
+        listener runs first, so the cache guard alone cannot protect a caller that
+        has already been woken — and the caller needs the refusal reported, not
+        merely prevented). A refusal is raised, never returned as a status.
+
+        STRICT BY DESIGN, like ``get_verified_file_list``. The reconnect path's
+        ``_request_full_status`` stays lenient: it has no caller waiting on the
+        answer and it catches only transport errors, and the cache it feeds is now
+        protected by the writer's own gate.
+
         Raises:
             ElegooPrinterConnectionError: if the printer did not answer.
+            CC2UnusableStatusError: if it refused, or answered something that is
+                not a status frame, or a frame naming nothing about what the
+                printer is doing.
 
         """
-        await self._send_command(CC2_CMD_GET_STATUS)
+        response = await self._send_command(CC2_CMD_GET_STATUS)
+        if not response:
+            msg = "Printer did not answer the status request"
+            raise ElegooPrinterConnectionError(msg)
+        # No ``or response`` fallback: an envelope with no ``result`` key is not a
+        # status frame either, and the envelope's own keys (id/method) prove it.
+        reading = _read_status_result(response.get("result"))
+        if reading.kind != _STATUS_OK:
+            raise CC2UnusableStatusError(reading.detail)
 
     async def _send_command(
         self,
