@@ -1990,11 +1990,23 @@ This section documents the complete sequence of events when ElegooSlicer sends a
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `delay_video` | bool | Delay start until video streaming active |
+| `delay_video` | bool | **Timelapse recording on/off — not a stream delay.** See the note below. Elegoo's SDK gates it on printer capability, so a printer without timelapse support always receives `false`. This integration never sends the field |
 | `printer_check` | bool | Auto bed leveling. Three states, measured on 02.01.00.00: `true` always levels (~200 s), `false` never does, and leaving the key out lets the printer decide. ElegooSlicer sends `true`, or `false` when its bed-leveling box is unchecked |
 | `print_layout` | string | Layout option (model-specific) |
 | `bedlevel_force` | bool | Force bed leveling before print |
 | `slot_map` | array | Canvas/AMS filament mapping, see [Printing with Canvas](#printing-with-canvas) |
+
+> **`delay_video` is the timelapse toggle, not a stream delay.** The field name reads as a timing
+> control and it is not. Elegoo's own SDK derives it from the slicer's timelapse checkbox:
+> `param["config"]["delay_video"] = capabilities.printCapabilities.supportsTimeLapse ?
+> startPrintData.enableTimeLapse : false`
+> (`elegoo-link/src/lan/adapters/elegoo_fdm_cc2/elegoo_fdm_cc2_message_adapter.cpp:81`) — so a printer
+> that reports no timelapse support always gets `false` regardless of what the caller wanted. Confirmed
+> on hardware by @MrHaku81 on a Centauri Carbon 2 (firmware V02.01.01.07, LAN-only mode): starting a
+> print over method 1020 with `delay_video: true` records a timelapse, and omitting it records none
+> (#437). This table previously described the field as "Delay start until video streaming active",
+> which is wrong; corrected 2026-10-25. This integration does not send the field, so nothing here
+> changes its behaviour — the correction matters to anyone writing a client from this document.
 
 ### Pause Print
 
