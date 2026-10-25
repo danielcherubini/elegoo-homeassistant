@@ -20,6 +20,10 @@ config/*
 # CC2 extraction output
 cc2_extractions/
 
+# 1047 delete-probe captures (scripts/cc2_probe_delete.py); meant to be pasted
+# into #432, not committed.
+scripts/cc2_probe_*.json
+
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python

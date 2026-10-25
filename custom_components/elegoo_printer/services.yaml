@@ -120,18 +120,20 @@ cleanup_files:
     reports which files it would delete and deletes nothing, so run it once and
     read the answer before switching the dry run off. Whether a delete actually
     happened is confirmed by re-reading the printer's file list, not by trusting
-    its reply - the delete command is documented as untested on hardware and its
-    reply shape is not documented at all, so a file the printer accepted and
-    kept comes back as failed. Two kinds of file are never deleted: the file the
-    printer is printing right now, and any file whose creation date it did not
-    report - including a file dated before 2000, which is how a printer whose
-    clock has never been set reports a date, so an unset clock means nothing
-    gets deleted rather than everything getting deleted. It deletes whatever the
-    printer's file list reports and matches the patterns: there is no video
-    filter, this integration has simply never seen a video on that list. A call
-    that never reached the printer answers with just success: false and an
-    error; a call that reached it answers with the full report, and with an
-    error instead of a message when it could not act.
+    its reply. Measured on firmware 02.01.01.07 the printer refuses every
+    delete, so a real run reports each selected file in failed as "printer
+    refused the delete (error_code 1003)" and answers success: false - the dry
+    run is currently the only mode that does anything useful. Two kinds of file
+    are never deleted: the file the printer is printing right now, and any file
+    whose creation date it did not report - including a file dated before 2000,
+    which is how a printer whose clock has never been set reports a date, so an
+    unset clock means nothing gets deleted rather than everything getting
+    deleted. It deletes whatever the printer's file list reports and matches the
+    patterns: there is no video filter, and on firmware 02.01.01.07 the printer
+    does not list its timelapse videos at all, so they are outside what any
+    pattern can reach. A call that never reached the printer answers with just
+    success: false and an error; a call that reached it answers with the full
+    report, and with an error instead of a message when it could not act.
   fields:
     entry_id:
       name: Config Entry

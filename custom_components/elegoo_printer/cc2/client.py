@@ -144,9 +144,9 @@ class CC2UnusableFileListError(Exception):
     ``cleanup_files`` service uses — in three distinct cases:
 
     * the reply's ``result`` is not a dict carrying ``file_list``: an error
-      envelope, a rejected-parameter reply, or any other shape, since 1044's
-      sibling 1047 documents no response body at all and nobody has captured
-      what a CC2 answers when it dislikes a 1044;
+      envelope, a rejected-parameter reply, or any other shape — 1044's sibling
+      1047 answers a rejected delete with a bare ``error_code`` and nothing
+      else, and nobody has captured what a CC2 answers when it dislikes a 1044;
     * the reply carries a non-zero (or non-numeric) ``error_code``, i.e. the
       printer answered the request by refusing it — even when it also sent a
       ``file_list`` alongside the refusal, because then the listing is the
@@ -462,8 +462,9 @@ def _read_file_list_result(result: object) -> CC2FileListReading:
     captured carries it — 1001, 1044, 1045, 1046, 1048, 2005, and the full
     status frame docs/CC2_PROTOCOL.md describes as "returned by method 1002 or
     event 6000" likewise — but the envelope table only says ``result``
-    "includ[es]" it and no method documents it as REQUIRED (1047 documents no
-    response body at all). So absence reads as "said nothing". The guess is
+    "includ[es]" it and no method documents it as REQUIRED (1047's reply is
+    documented nowhere in the protocol and has been measured exactly once). So
+    absence reads as "said nothing". The guess is
     bounded by the ``file_list`` gate below it: absence is only ever accepted
     when ``file_list`` carries an actual LIST, so it can never turn a reply that
     names no files into an empty inventory.
@@ -2583,12 +2584,21 @@ class ElegooCC2Client:
         """
         Delete one file from the printer's storage (method 1047).
 
-        UNTESTED ON HARDWARE. The protocol doc marks 1047 "Untested" and
-        documents the request only: unlike 1044, 1046 and 1048 it shows no
-        response body at all, and nothing in this repo has ever received a 1047
-        reply. Reading the answer as ``result.error_code`` is therefore an
-        inference from the envelope every other file method uses — the listed
-        ``1007 FILE_DELETE_FAILED`` is the only hint — not a measurement.
+        A REPLY HAS BEEN RECEIVED, and it is still not proof. The first real
+        1047 answer was captured on firmware 02.01.01.07 (#432) and is recorded
+        in docs/CC2_PROTOCOL.md under "Delete File [Both]": ``result`` of
+        ``{"error_code": 1003}`` after ~13 ms, and the file was NOT deleted.
+        ``1003`` is ``CC2_ERROR_INVALID_PARAMETER`` — a rejection of the
+        request, not a refusal to delete — and the same reply came back for a
+        file that exists and for one that does not, which is what a server that
+        rejected the request before looking at the file looks like. Two
+        explanations remain untested: that this method wants the name spelled
+        ``file_name`` (1045 is sent ``file_name`` and 1046 ``filename``, so the
+        file methods share no one spelling), and that this firmware parks every
+        method it does not handle in a generic ``1003``. Reading the answer as
+        ``result.error_code`` is now measured, not inferred; the listed
+        ``1007 FILE_DELETE_FAILED`` is still only a hint — it has never been
+        seen in a reply.
 
         So a ``0`` here means "the printer did not refuse", nothing more. It is
         NOT proof of deletion, and the caller decides whether the file is gone

@@ -1,10 +1,12 @@
 """
 Tests for the CC2 delete-file command (method 1047).
 
-1047 is marked "Untested" in the protocol doc and documents no response at
-all, so these run against a reply shape this repo inferred from the shared
-envelope. That is exactly why the assertions here are about what the client
-refuses to promise: a reply it never got is never reported as a delete.
+1047 is marked "❌ No-op" in the protocol doc and its reply shape is still
+undocumented, so these run against the shape this repo inferred from the shared
+envelope — one real reply has been captured (fw 02.01.01.07: error_code 1003,
+nothing deleted) and it fits that shape. That is exactly why the assertions here
+are about what the client refuses to promise: a reply it never got is never
+reported as a delete.
 """
 
 from __future__ import annotations

@@ -98,8 +98,9 @@ CC2_ERROR_FOLDER_OPEN_FAILED = 1002
 CC2_ERROR_INVALID_PARAMETER = 1003
 CC2_ERROR_FILE_WRITE_FAILED = 1004
 CC2_ERROR_TOKEN_UPDATE_FAILED = 1005
-# 1007 FILE_DELETE_FAILED. UNVERIFIED against a real reply: the protocol lists
-# the code but documents no response for 1047 at all.
+# 1007 FILE_DELETE_FAILED. STILL UNVERIFIED against a real reply: the protocol
+# lists the code, and the one 1047 reply ever captured (fw 02.01.01.07, #432)
+# answered 1003 instead.
 CC2_ERROR_FILE_DELETE_FAILED = 1007
 CC2_ERROR_PRINTER_BUSY = 1009
 CC2_ERROR_NOT_PRINTING = 1010

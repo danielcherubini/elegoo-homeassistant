@@ -272,8 +272,9 @@ def test_strict_method_accepts_a_missing_error_code_as_no_refusal() -> None:  # 
     # this repo has actually captured (1002 status, 1044 file list, 1046 file
     # detail, docs/CC2_PROTOCOL.md) includes `error_code: 0`, but the envelope
     # table only says result "includ[es]" it — no method documents it as
-    # REQUIRED, and 1047 documents no response body at all. So a reply that
-    # omits it is treated as "said nothing", NOT as a refusal: a firmware that
+    # REQUIRED, and 1047's reply is documented nowhere (its only measured
+    # answer was a bare 1003). So a reply that omits it is treated as "said
+    # nothing", NOT as a refusal: a firmware that
     # answers 1044 with a bare {"file_list": [...]} is a listing we can read,
     # and refusing one would make the service unable to clean up a printer it
     # can otherwise read, forever. The direction of the guess is bounded by the
@@ -366,8 +367,9 @@ def test_strict_method_refuses_a_file_list_that_is_not_a_list() -> None:  # noqa
     # non-list as zero entries — so `cleanup_files` reported "deleted 3 of 3"
     # for files the printer still held, the Print File select was emptied, and
     # the automation never retried. Nothing documents that 1044 always answers
-    # `file_list` as a JSON array, and 1047 documents no response body at all;
-    # a serializer emitting `null` for an unset repeated field is the most
+    # `file_list` as a JSON array, and 1047's reply is documented nowhere (the
+    # only one ever measured was a bare 1003); a serializer emitting `null` for
+    # an unset repeated field is the most
     # ordinary way a first hardware run differs from the capture. A value that
     # is not a list says nothing about the printer's contents, so it is not
     # consent to believe the printer is empty.
