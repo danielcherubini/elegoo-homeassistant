@@ -11,9 +11,42 @@ The CC2 uses an inverted architecture where:
 
 This simulator accurately replicates the real CC2 protocol based on
 analysis of the elegoo-link library.
+
+Run it with:
+
+    VIRTUAL_ENV=.venv uv run python scripts/test_cc2_printer.py [--idle] [--upload-port N]
+
+Switches that exist for the 1047 delete probe (``scripts/cc2_probe_delete.py``,
+the script the next task adds to this directory)
+-------------------------------------------------------------------------------
+
+``--idle``
+    Boot the printer IDLE with no file loaded. Without it the simulator boots
+    mid-print (``STATUS_PRINTING`` / ``test_benchy.gcode``), which is what other
+    tooling expects, but it also makes the probe's idle gate refuse to run — the
+    probe refuses to delete anything from a printer that is printing. Pass
+    ``--idle`` whenever you are validating the probe.
+
+``DELETE_PARAM_KEY`` (edit the module constant below, then restart)
+    Which parameter key the 1047 branch accepts. It is ``"filename"`` by
+    default, because that is what ``delete_file`` sends today. Flip it to
+    ``"file_name"`` — the spelling 1045 works with — and restart, and the
+    simulator's answers SWAP: what was ``error_code: 0`` becomes
+    ``error_code: 1003`` and vice versa. That flip is how you prove the probe
+    keys off the parameter shape rather than guessing, so run the probe once
+    with each value and compare the two tables.
+
+``--upload-port`` (default 8080)
+    Port for the HTTP ``PUT /upload`` endpoint, which the probe uses to create
+    its own disposable target files. The real printer serves this on port 80,
+    which needs root, so the simulator binds an unprivileged one; point the
+    probe at it with ``--upload-port``. Uploaded files land in ``printer_files``
+    and therefore show up in the next 1044 listing.
 """
 
+import argparse
 import asyncio
+import hashlib
 import json
 import random
 import signal
@@ -24,6 +57,7 @@ from contextlib import suppress
 from copy import deepcopy
 
 import aiomqtt
+from aiohttp import web
 from amqtt.broker import Broker
 
 # =============================================================================
@@ -40,6 +74,7 @@ FIRMWARE_VERSION = "1.0.5.2"
 UDP_DISCOVERY_PORT = 52700
 DISCOVERY_HOST = "0.0.0.0"
 BROKER_HOST = "0.0.0.0"
+BIND_HOST = "0.0.0.0"
 MQTT_PORT = 1883
 MQTT_USERNAME = "elegoo"
 MQTT_PASSWORD = "123456"  # noqa: S105
@@ -76,6 +111,14 @@ CC2_CMD_CANCEL_PRINTER_DOWNLOAD = 1058
 # Canvas/AMS commands
 CC2_CMD_SET_AUTO_REFILL = 2004
 CC2_CMD_GET_CANVAS_STATUS = 2005
+
+# Error codes the file branch answers with (cc2/const.py)
+CC2_ERROR_SUCCESS = 0
+CC2_ERROR_INVALID_PARAMETER = 1003
+CC2_ERROR_FILE_DELETE_FAILED = 1007
+CC2_ERROR_MD5_FAILED = 9004
+CC2_ERROR_TOKEN_FAILED = 1000
+CC2_ERROR_FILE_WRITE_FAILED = 1004
 
 # Event IDs (push notifications from printer)
 CC2_EVENT_STATUS = 6000
@@ -235,6 +278,108 @@ printer_attributes = {
     },
 }
 
+# =============================================================================
+# FILE LIST STATE (methods 1044 / 1047) and the HTTP upload endpoint
+# =============================================================================
+
+# Which parameter key method 1047 accepts. See the module docstring: flip this
+# to "file_name" and restart to prove a probe keys off the parameter shape.
+DELETE_PARAM_KEY = "filename"
+
+# Port for the HTTP PUT /upload endpoint. The real printer serves it on 80,
+# which this simulator cannot bind without root; override with --upload-port.
+UPLOAD_PORT = 8080
+
+# Ceiling on how many bytes one uploaded file may total, so a bogus Content-Range
+# total cannot make the simulator buffer without limit.
+MAX_UPLOAD_BYTES = 64 * 1024 * 1024
+
+
+def seed_file_list():
+    """
+    Build the fresh file list the printer reports from method 1044.
+
+    Seeded on every start so repeated probe runs see the same files. Entries
+    carry the printer's own field names, measured on fw 02.01.00.00 (see
+    ``cc2/types.py`` ``CC2FileEntry``). The fields must stay inside what the
+    client's entry parser accepts: a ``filename`` that is not a non-empty ``str``
+    is DROPPED AS UNREADABLE, and any dropped entry makes the strict
+    ``get_verified_file_list`` raise, which would leave the probe with no way to
+    confirm a delete. So every entry here is a plain ``str`` name.
+    ``type`` is present as ``"file"`` on two entries and absent on the rest,
+    which is what the measured firmware sends; a ``type`` of ``"dir"`` is the
+    one value the client deliberately skips rather than drops, so one entry
+    carries it to keep that path exercised.
+    """
+    return [
+        {
+            "filename": "test_benchy.gcode",
+            "size": 1234567,
+            "create_time": 1706900000,
+            "layer": 251,
+            "print_time": 5137,
+            "total_filament_used": 34.92,
+            "color_map": [{"t": 0, "color": "#7F7E83", "name": "PLA"}],
+            "type": "file",
+        },
+        {
+            "filename": "CC2_temperature_tower.gcode",
+            "size": 892341,
+            "create_time": 1707000000,
+            "layer": 180,
+            "print_time": 3020,
+            "total_filament_used": 21.5,
+            "color_map": [{"t": 0, "color": "#2850DF", "name": "PLA"}],
+        },
+        {
+            # create_time 0 is the never-set-clock case: PrinterFile maps it to
+            # created=None, so an entry is still perfectly readable with it.
+            "filename": "calibration_cube.gcode",
+            "size": 45678,
+            "create_time": 0,
+            "layer": 40,
+            "print_time": 600,
+            "total_filament_used": 3.75,
+            "color_map": [
+                {"t": 0, "color": "#F32FF8", "name": "PLA Silk"},
+                {"t": 3, "color": "#000000", "name": "PLA"},
+            ],
+        },
+        {
+            "filename": "multi_tool_logo.gcode",
+            "size": 2048000,
+            "create_time": 1707100000,
+            "layer": 320,
+            "print_time": 8000,
+            "total_filament_used": 62.0,
+            "color_map": [
+                {"t": 0, "color": "#FFFFFF", "name": "PLA Basic"},
+                {"t": 1, "color": "#00FF00", "name": "PETG"},
+            ],
+            "type": "file",
+        },
+        {
+            # A folder: the client skips recognised non-file types on purpose,
+            # so this entry neither counts as deletable nor makes the listing
+            # unreadable.
+            "filename": "timelapse",
+            "size": 0,
+            "create_time": 1707100000,
+            "layer": 0,
+            "print_time": 0,
+            "total_filament_used": 0.0,
+            "color_map": [],
+            "type": "dir",
+        },
+    ]
+
+
+# Mutable: 1047 removes entries, PUT /upload appends them.
+printer_files = seed_file_list()
+
+# In-flight uploads by file name: {name: {"md5": ..., "data": bytearray}}
+pending_uploads: dict[str, dict] = {}
+
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -244,6 +389,37 @@ printer_attributes = {
 def get_timestamp():
     """Get current timestamp in seconds."""
     return int(time.time())
+
+
+def machine_status_label():
+    """Human-readable form of the current machine status + loaded file."""
+    machine = printer_status["machine_status"]
+    filename = printer_status["print_status"]["filename"]
+    return f"status={machine['status']}, filename={filename!r}"
+
+
+def start_idle():
+    """
+    Put the simulator into the IDLE state with nothing loaded.
+
+    The default boot state is mid-print, which is what the other tooling drives.
+    ``--idle`` moves it out of that, and it is the same transition the
+    1022 STOP_PRINT branch performs: idle machine status, no filename, no
+    targets, no progress. The delete probe refuses to run against a printer that
+    names a file it is printing, so without this every validation run aborts.
+    """
+    printer_status["machine_status"]["status"] = STATUS_IDLE
+    printer_status["machine_status"]["sub_status"] = SUB_STATUS_STOPPED
+    printer_status["machine_status"]["progress"] = 0
+    printer_status["print_status"]["filename"] = ""
+    printer_status["print_status"]["state"] = "idle"
+    printer_status["print_status"]["enable"] = False
+    printer_status["print_status"]["current_layer"] = 0
+    printer_status["print_status"]["progress"] = 0.0
+    printer_status["print_status"]["print_duration"] = 0
+    printer_status["print_status"]["remaining_time_sec"] = 0
+    printer_status["extruder"]["target"] = 0.0
+    printer_status["heater_bed"]["target"] = 0.0
 
 
 def create_discovery_response():
@@ -433,6 +609,59 @@ async def handle_command(mqtt_client, client_id: str, payload: dict):
         axes = params.get("homed_axes", "xyz")
         printer_status["tool_head"]["homed_axes"] = axes
         print(f"🏠 Homing axes: {axes}")
+
+    elif method == CC2_CMD_GET_FILE_LIST:
+        storage = params.get("storage_media", "local")
+        result = {
+            "error_code": CC2_ERROR_SUCCESS,
+            "file_list": deepcopy(printer_files),
+        }
+        print(
+            f"📁 Sending file list ({len(printer_files)} entries on {storage}): "
+            f"{[entry['filename'] for entry in printer_files]}"
+        )
+
+    elif method == CC2_CMD_DELETE_FILE:
+        # The full params go to stdout so a run can be eyeballed for which
+        # variant produced which code.
+        print(f"🗑️  Delete request params: {json.dumps(params, sort_keys=True)}")
+        if DELETE_PARAM_KEY not in params:
+            # Request-shape rejection, evaluated BEFORE the file is looked up —
+            # exactly the signature the real printer shows on fw 02.01.01.07,
+            # where an existing file and a missing one both answer 1003.
+            print(
+                f"🚫 Delete refused: params carry no {DELETE_PARAM_KEY!r} "
+                f"(error_code {CC2_ERROR_INVALID_PARAMETER})"
+            )
+            result = {"error_code": CC2_ERROR_INVALID_PARAMETER}
+        else:
+            target = params[DELETE_PARAM_KEY]
+            # A non-string name can never match an entry; the client's own parser
+            # would drop such an entry, so treat it as "no such file" (1007)
+            # rather than as a shape rejection.
+            removed = [
+                entry
+                for entry in printer_files
+                if isinstance(target, str) and entry["filename"] == target
+            ]
+            if not removed:
+                # Right key, no such file.
+                print(
+                    f"🚫 Delete refused: no file named {target!r} "
+                    f"(error_code {CC2_ERROR_FILE_DELETE_FAILED})"
+                )
+                result = {"error_code": CC2_ERROR_FILE_DELETE_FAILED}
+            else:
+                printer_files[:] = [
+                    entry
+                    for entry in printer_files
+                    if entry["filename"] != target
+                ]
+                print(
+                    f"🗑️  Deleted {target!r} "
+                    f"({len(printer_files)} entries remain, key={DELETE_PARAM_KEY!r})"
+                )
+                result = {"error_code": CC2_ERROR_SUCCESS}
 
     elif method == CC2_CMD_GET_CANVAS_STATUS:
         # Determine active tray based on print status
@@ -682,6 +911,162 @@ async def udp_discovery_server(stop_event):
 
 
 # =============================================================================
+# HTTP UPLOAD SERVER (PUT /upload)
+# =============================================================================
+
+
+def _parse_content_range(value: str | None):
+    """
+    Read a ``Content-Range: bytes {start}-{end}/{total}`` header.
+
+    Returns ``(start, end, total)`` or ``None`` when the header is missing or
+    unreadable. ``upload.py`` always sends this header, so an unreadable one is
+    a request this simulator refuses rather than guesses at.
+    """
+    if not value or not value.startswith("bytes "):
+        return None
+    try:
+        range_part, _, total_part = value[len("bytes ") :].partition("/")
+        start_part, _, end_part = range_part.partition("-")
+        return int(start_part), int(end_part), int(total_part)
+    except ValueError:
+        return None
+
+
+async def handle_upload(request):
+    """
+    Handle one chunk of ``PUT /upload``, the way the printer's HTTP server does.
+
+    ``upload_gcode`` (``cc2/upload.py``) sends the whole file in 1 MiB chunks to
+    ``PUT http://{host}:{UPLOAD_PORT}/upload``, each carrying ``X-File-Name``,
+    ``X-File-MD5`` (the MD5 of the WHOLE file), ``X-Token`` (the access code) and
+    ``Content-Range``. It aborts on any non-200 or any ``error_code != 0``, so
+    every rejection here has to be visible in one of those two places.
+
+    Rejections this endpoint implements, because the probe's safety guarantee
+    rests on them:
+      * a wrong ``X-Token``  -> HTTP 401 + ``error_code`` 1000 TOKEN_FAILED
+      * a corrupt body (MD5 of what arrived does not match ``X-File-MD5`` once
+        the last chunk lands) -> HTTP 200 + ``error_code`` 9004 MD5_FAILED, which
+        is the code the real printer answers with and the one ``upload.py``'s own
+        docstring records
+      * a range that does not continue the bytes already received, or a body that
+        contradicts its own range -> HTTP 200 + ``error_code`` 9000 OFFSET_MISMATCH
+
+    On completion the file is APPENDED to ``printer_files``, so the next 1044
+    lists it. An uploaded file that never appeared in the listing would make the
+    probe's "still listed after delete" check meaningless.
+    """
+    filename = request.headers.get("X-File-Name", "")
+    md5 = request.headers.get("X-File-MD5", "")
+    token = request.headers.get("X-Token", "")
+    range_header = request.headers.get("Content-Range")
+
+    if not filename or not md5:
+        missing = "X-File-Name" if not filename else "X-File-MD5"
+        print(f"⚠️  Upload refused: no {missing} header")
+        return web.json_response(
+            {"error_code": CC2_ERROR_INVALID_PARAMETER}, status=200
+        )
+
+    if token != MQTT_PASSWORD:
+        print(f"🔒 Upload of {filename} refused: bad X-Token")
+        return web.json_response({"error_code": CC2_ERROR_TOKEN_FAILED}, status=401)
+
+    parsed = _parse_content_range(range_header)
+    if parsed is None:
+        print(f"⚠️  Upload of {filename} refused: unreadable Content-Range {range_header!r}")
+        return web.json_response({"error_code": CC2_ERROR_FILE_WRITE_FAILED}, status=200)
+    start, end, total = parsed
+
+    body = await request.read()
+    if len(body) != end - start + 1 or start > end or total <= 0:
+        print(
+            f"⚠️  Upload of {filename} refused: body of {len(body)} bytes does not "
+            f"match range {start}-{end}/{total}"
+        )
+        return web.json_response({"error_code": 9000}, status=200)
+
+    state = pending_uploads.get(filename)
+    if state is None or state["md5"] != md5 or start == 0:
+        # First chunk of this file (or a restart of it under a different MD5).
+        if state is not None and state["data"] and start != 0:
+            print(
+                f"⚠️  Upload of {filename} refused: chunk at offset {start} arrived "
+                f"under a new MD5 mid-transfer"
+            )
+            return web.json_response({"error_code": 9000}, status=200)
+        state = {"md5": md5, "data": bytearray(), "total": total}
+        pending_uploads[filename] = state
+
+    if start != len(state["data"]):
+        print(
+            f"⚠️  Upload of {filename} refused: expected offset {len(state['data'])}, "
+            f"got {start}"
+        )
+        return web.json_response({"error_code": 9000}, status=200)
+
+    if len(state["data"]) + len(body) > MAX_UPLOAD_BYTES:
+        print(f"⚠️  Upload of {filename} refused: larger than {MAX_UPLOAD_BYTES} bytes")
+        return web.json_response(
+            {"error_code": CC2_ERROR_FILE_WRITE_FAILED}, status=200
+        )
+
+    state["data"].extend(body)
+    received = len(state["data"])
+    print(f"📥 Uploading {filename}: {received}/{total} bytes")
+
+    if received < total:
+        return web.json_response({"error_code": CC2_ERROR_SUCCESS}, status=200)
+
+    # Last chunk landed: verify the MD5 of the whole file, as the printer does.
+    del pending_uploads[filename]
+    actual = hashlib.md5(bytes(state["data"])).hexdigest()
+    if md5 and actual != md5:
+        print(
+            f"❌ Upload of {filename} refused: MD5 mismatch "
+            f"(sent {md5}, computed {actual})"
+        )
+        return web.json_response({"error_code": CC2_ERROR_MD5_FAILED}, status=200)
+
+    printer_files.append(
+        {
+            "filename": filename,
+            "size": received,
+            "create_time": get_timestamp(),
+            "layer": 0,
+            "print_time": 0,
+            "total_filament_used": 0.0,
+            "color_map": [],
+            "type": "file",
+        }
+    )
+    print(f"✅ Uploaded {filename} ({received} bytes); {len(printer_files)} files listed")
+    return web.json_response({"error_code": CC2_ERROR_SUCCESS}, status=200)
+
+
+async def run_upload_server(stop_event):
+    """Serve ``PUT /upload`` on the configured port alongside MQTT and discovery."""
+    # aiohttp's default request body ceiling is exactly 1 MiB, which is the size
+    # of one real upload chunk (``upload.CHUNK_SIZE``), so with the default the
+    # simulator answers a full-size chunk HTTP 413 with an HTML body — a failure
+    # shape the real printer never produces. Allow the whole body and cap it
+    # ourselves in the handler, where the refusal is a CC2 ``error_code``.
+    app = web.Application(client_max_size=MAX_UPLOAD_BYTES + 64 * 1024)
+    app.router.add_put("/upload", handle_upload)
+    runner = web.AppRunner(app, access_log=None)
+    await runner.setup()
+    site = web.TCPSite(runner, BIND_HOST, UPLOAD_PORT)
+    await site.start()
+    print(f"🌐 HTTP upload server listening on {BIND_HOST}:{UPLOAD_PORT} (PUT /upload)")
+
+    await stop_event.wait()
+
+    await runner.cleanup()
+    print("✅ HTTP upload server stopped")
+
+
+# =============================================================================
 # MQTT BROKER AND CLIENT
 # =============================================================================
 
@@ -746,6 +1131,7 @@ async def run_mqtt_client(stop_event):
             print(f"   Serial: {SERIAL_NUMBER}")
             print(f"   MQTT Broker: {PRINTER_IP}:{MQTT_PORT}")
             print(f"   Discovery: UDP {UDP_DISCOVERY_PORT}")
+            print(f"   HTTP:      PUT :{UPLOAD_PORT}/upload")
             print(f"{'='*70}\n")
 
             # Wait for stop
@@ -768,12 +1154,37 @@ async def run_mqtt_client(stop_event):
 
 async def main():
     """Main entry point."""
+    global UPLOAD_PORT
+
+    parser = argparse.ArgumentParser(
+        description="CC2 test printer simulator (MQTT broker + discovery + HTTP upload)."
+    )
+    parser.add_argument(
+        "--idle",
+        action="store_true",
+        help="start the printer IDLE with no file loaded, instead of mid-print "
+        "(the 1047 delete probe refuses to run against a printing printer)",
+    )
+    parser.add_argument(
+        "--upload-port",
+        type=int,
+        default=UPLOAD_PORT,
+        help=f"port for the HTTP PUT /upload endpoint (default {UPLOAD_PORT}; "
+        "the real printer uses 80, which needs root)",
+    )
+    args = parser.parse_args()
+
+    UPLOAD_PORT = args.upload_port
+
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
 
     # Set up signal handlers
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop_event.set)
+
+    if args.idle:
+        start_idle()
 
     print("=" * 70)
     print("🖨️  CC2 Test Printer Simulator")
@@ -785,6 +1196,10 @@ async def main():
     print(f"IP Address:    {PRINTER_IP}")
     print(f"MQTT Port:     {MQTT_PORT}")
     print(f"Discovery:     UDP {UDP_DISCOVERY_PORT}")
+    print(f"HTTP Upload:   PUT :{UPLOAD_PORT}/upload (token {MQTT_PASSWORD})")
+    print(f"Machine:       {machine_status_label()}")
+    print(f"1047 accepts:  {DELETE_PARAM_KEY!r} (1003 without it, 1007 if unnamed)")
+    print(f"File list:     {len(printer_files)} entries seeded fresh")
     print("=" * 70)
     print()
 
@@ -792,16 +1207,17 @@ async def main():
     udp_task = asyncio.create_task(udp_discovery_server(stop_event))
     broker_task = asyncio.create_task(run_mqtt_broker(stop_event))
     client_task = asyncio.create_task(run_mqtt_client(stop_event))
+    upload_task = asyncio.create_task(run_upload_server(stop_event))
 
     try:
-        await asyncio.gather(udp_task, broker_task, client_task)
+        await asyncio.gather(udp_task, broker_task, client_task, upload_task)
     except asyncio.CancelledError:
         pass
     finally:
         print("\n🛑 Shutting down CC2 simulator...")
         stop_event.set()
 
-        for task in [udp_task, broker_task, client_task]:
+        for task in [udp_task, broker_task, client_task, upload_task]:
             if not task.done():
                 task.cancel()
                 with suppress(asyncio.CancelledError):
