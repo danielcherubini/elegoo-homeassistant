@@ -232,7 +232,33 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         if not live or not identifier:
             return
 
-        registry = dr.async_get(self.hass)
+        # ``dr.async_get`` needs a net of its own. On 2025.4 it cannot fail — the
+        # ``@singleton`` decorator builds a registry on demand — which is why
+        # nothing above the write below has ever needed one. Home Assistant
+        # 2026.10 made it strict: it raises ``RuntimeError("Device registry not
+        # set up")`` instead of inventing one. That is the same situation the
+        # guard below exists for — the registry is not there for this poll —
+        # reached from a different call, and it lands in the same core catch-all
+        # that prints a traceback every 2 s. Core sets the registry up before any
+        # integration loads, so this is the guard's stated purpose applied
+        # consistently rather than a bug being fixed: a device record that cannot
+        # be found is never worth the noise.
+        #
+        # ``RuntimeError`` is deliberately NOT added to the write below. Its only
+        # routes out of ``async_update_device`` are the frame helper's thread check
+        # (this runs inside the poll, so on the event loop thread) and reports for
+        # ``disabled_by`` arguments this call does not pass.
+        try:
+            registry = dr.async_get(self.hass)
+        except RuntimeError as err:
+            LOGGER.debug(
+                "Could not reach the device registry to write firmware version"
+                " '%s': %r",
+                live,
+                err,
+            )
+            return
+
         device_entry = registry.async_get_device(identifiers={(DOMAIN, identifier)})
         if device_entry is None or device_entry.sw_version == live:
             return
