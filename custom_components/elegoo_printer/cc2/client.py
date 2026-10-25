@@ -18,7 +18,7 @@ import secrets
 import time
 from collections import deque
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import aiomqtt
 
@@ -114,6 +114,27 @@ if TYPE_CHECKING:
 # (1000-9004 in ``cc2/const.py``).
 CC2_ERROR_REPLY_UNPARSEABLE = -1
 
+# The ``type`` values a CC2 listing uses to say "this entry is not a deletable
+# file". ``dir`` is what this repo captured from firmware 02.01.00.00,
+# ``directory`` is the spelling docs/CC2_PROTOCOL.md documents, ``folder`` is
+# the third spelling the suite pins as a deliberate non-file.
+#
+# Membership is tested EXACTLY — no case-folding, no stripping, no substring
+# matching — because widening this set is the one direction of this
+# classification that can hide a real file: fold ``"File"`` into ``"file"`` or
+# ``"Dir"`` into ``"dir"`` and a mis-spelled ``type`` silently reclassifies a
+# deletable G-code as a folder, which makes it invisible to the selection while
+# the listing is still blessed as readable, and a delete confirmed against that
+# listing is reported "deleted" for a file the printer kept. Exact matching
+# sends anything unrecognised to the UNREADABLE branch instead, which the strict
+# listing path refuses: the cost of being wrong there is one refused re-list and
+# a retry, not a file reported gone while it still sits on the printer.
+CC2_NON_FILE_TYPES = frozenset({"dir", "directory", "folder"})
+
+# The ``type`` of a deletable file, and the value assumed when the key is
+# absent — which is what the measured firmware sends for a G-code entry.
+CC2_FILE_TYPE = "file"
+
 
 class CC2UnusableFileListError(Exception):
     """
@@ -132,14 +153,18 @@ class CC2UnusableFileListError(Exception):
       printer's own words for "here is what I did NOT do" and cannot be
       evidence that anything is gone;
     * the reply carries a ``file_list`` whose entries cannot all be read: a
-      bare string, or a dict from which no filename could be taken — anything
-      the parser drops as UNREADABLE rather than skips as a deliberate non-file.
-      Such an entry is a file the printer named that this client cannot name, so
-      it may be the very file a caller is asking about, and a listing that can
-      hide the file in question is not evidence that it is gone. Entries the
-      printer marks as not-a-file (a directory) do not count here — a
-      folders-only printer legitimately has nothing deletable — and neither does
-      an empty list, which is what an empty printer answers.
+      bare string, a dict from which no usable filename could be taken (absent,
+      empty, or NOT A STRING — ``PrinterFile`` coerces any non-empty object with
+      ``str()``, so ``["a.gcode"]`` used to yield the usable-looking name
+      ``"['a.gcode']"``), or a dict whose ``type`` is present but not a spelling
+      this client recognises as a file or as a folder. Anything the parser drops
+      as UNREADABLE rather than skips as a deliberate non-file.  Such an entry
+      is a file the printer named that this client cannot name, so it may be the
+      very file a caller is asking about, and a listing that can hide the file in
+      question is not evidence that it is gone. Entries the printer marks as
+      not-a-file with a RECOGNISED type (``dir`` / ``directory`` / ``folder``) do
+      not count here — a folders-only printer legitimately has nothing deletable
+      — and neither does an empty list, which is what an empty printer answers.
 
     Why a distinct exception rather than ``ElegooPrinterConnectionError``: the
     printer DID answer, so "not reachable" would be the wrong diagnosis, and
@@ -179,30 +204,106 @@ def _error_code(value: object) -> int | None:
         return None
 
 
+def _entry_kind(entry: dict[str, Any]) -> str:
+    """
+    Classify a listing entry by its ``type``: ``"file"``, ``"dir"``, ``"junk"``.
+
+    Three outcomes, not two, and the third one is the point. A ``type`` this
+    client does not recognise is NOT evidence that the entry is not a file — it
+    is evidence that this client cannot read the entry — and the two must not
+    share a branch:
+
+    * missing ``type`` -> ``"file"``. That is what the measured firmware sends
+      for a G-code entry, so assuming it keeps a real printer working.
+    * exactly ``"file"`` -> ``"file"``. Every captured file entry spells it so.
+    * exactly one of :data:`CC2_NON_FILE_TYPES` -> ``"dir"``, a deliberate
+      non-file the caller skips on purpose.
+    * anything else — ``"File"``, ``"file "``, ``["file"]``, ``0``, ``None`` —
+      -> ``"junk"``. A present-but-unreadable ``type`` on an entry that may
+      well be a real file.
+
+    The old rule was ``entry.get("type", "file") != "file"`` -> not a file,
+    which collapsed the last two into one branch. Measured, that made
+    ``{"filename": "real.gcode", "type": "File"}`` vanish: excluded from the
+    files, and not counted as dropped either, so a listing of nothing but
+    mis-spelled entries was blessed as complete and empty and a delete was
+    confirmed against it — the same false success as an unreadable ``filename``,
+    reached through the one field the previous round left unguarded. ``"junk"``
+    is counted as UNREADABLE, which the strict listing path refuses.
+
+    ``0`` deserves a note, since ``0`` is falsy and a ``or "file"``-style
+    default would have read it as a file: it is a *present* value that is not a
+    string, so it is junk, not an absent key. Same for ``None`` — a serializer
+    emitting ``null`` for an unset enum says "no type", not "the default type".
+    """
+    if "type" not in entry:
+        return CC2_FILE_TYPE
+    entry_type = entry["type"]
+    if not isinstance(entry_type, str):
+        return "junk"
+    if entry_type == CC2_FILE_TYPE:
+        return CC2_FILE_TYPE
+    if entry_type in CC2_NON_FILE_TYPES:
+        return "dir"
+    return "junk"
+
+
 def _parse_file_entries(entries: list[Any]) -> tuple[dict[str, PrinterFile], list[Any]]:
     """
     Parse the ``file_list`` of a 1044 reply into ``{name: PrinterFile}``.
 
-    Pure: reads ``entries`` and changes nothing, so both listing paths — the
-    lenient ``_handle_file_list``, which stores whatever it can read, and the
-    strict ``get_verified_file_list``, which has to decide whether the listing
-    is trustworthy at all — classify entries by the SAME code. Two
+    Pure: reads ``entries`` and changes nothing, so every listing path — the
+    writer ``_handle_file_list``, which decides whether to replace the cache at
+    all, and the strict ``get_verified_file_list``, which decides whether the
+    listing is trustworthy — classifies entries by the SAME code. Two
     implementations of "was this entry readable?" drift apart, and the drift is
-    invisible: the strict path would call a listing complete that the writer
-    had quietly trimmed.
+    invisible: one would call a listing complete that the other had quietly
+    trimmed.
 
     Returns the parsed files and the entries that were DROPPED AS UNREADABLE —
     something that should have been a deletable file and yielded no usable name:
-    a non-dict entry, one ``PrinterFile`` could not build, or one whose filename
-    came out empty. Entries the printer deliberately marks as not a file
-    (``type`` other than ``"file"``, i.e. a directory) are in NEITHER list.
-    That distinction is the whole point of returning something: a folders-only
-    listing is complete and simply holds nothing deletable, while a listing
-    whose entries were all dropped is the printer asserting it holds something
-    while naming none of it. Only the second is evidence about nothing.
+    a non-dict entry, one whose ``type`` this client cannot read (see
+    :func:`_entry_kind`), one ``PrinterFile`` could not build, or one carrying no
+    usable ``filename``. Entries the printer deliberately marks as not a file
+    (a recognised directory ``type``) are in NEITHER list. That distinction is
+    the whole point of returning something: a folders-only listing is complete
+    and simply holds nothing deletable, while a listing whose entries were all
+    dropped is the printer asserting it holds something while naming none of it.
+    Only the second is evidence about nothing.
 
-    A missing ``type`` counts as ``"file"``, as it always has — that is what the
-    measured firmware sends for a G-code file.
+    A ``filename`` counts as usable only when it is a non-empty ``str``,
+    checked on the RAW field rather than on ``PrinterFile.name``. ``PrinterFile``
+    builds its name with ``str(data.get("filename") or "")``, which coerces any
+    non-empty object to a string, so on the previous round a file-shaped entry
+    measured as readable for all of these:
+
+    ============================  ==========================  ==========
+    ``filename``                  ``PrinterFile.name``        verdict
+    ============================  ==========================  ==========
+    ``["old-a.gcode"]``           ``"['old-a.gcode']"``       accepted
+    ``{"name": "old-a.gcode"}``   ``"{'name': ...}"``         accepted
+    ``12345`` / ``True`` / ``1.5````'12345'`/``'True'`/``'1.5'``accepted
+    ``None`` / ``[]`` / ``""``    ``""``                      dropped
+    ============================  ==========================  ==========
+
+    The accepted rows are the bug: a printer that spells one entry's
+    ``filename`` as a JSON array (a repeated field serialising as a list is the
+    ordinary way protobuf-ish firmware differs from a hand-written capture) had
+    that file stored under the name ``"['old-a.gcode']"``. The strict path then
+    saw a listing with nothing dropped, declared it trustworthy, and
+    ``cleanup_files`` — comparing the deleted name against those keys — reported
+    ``success: true, "deleted 1 of 1"`` for a file the printer still held, and
+    the automation never retried. That is the exact outcome this method exists
+    to prevent, reached through the exact field the previous round enumerated
+    but only half-closed: it caught the instances that coerced to empty and
+    missed every one that coerced to something.
+
+    So a non-string ``filename`` is now DROPPED AS UNREADABLE, which the strict
+    path refuses, rather than coerced into a name that cannot match anything.
+    ``file_info.PrinterFile`` is deliberately left alone: it is shared with the
+    SDCP path, whose callers only display, and a display name of ``"12345"``
+    harms nobody — the decision about whether to trust a name belongs here, in
+    the parser that feeds the destructive path, not in the model.
     """
     files: dict[str, PrinterFile] = {}
     dropped: list[Any] = []
@@ -212,8 +313,24 @@ def _parse_file_entries(entries: list[Any]) -> tuple[dict[str, PrinterFile], lis
             # the kind of thing a printer marks as a directory.
             dropped.append(entry)
             continue
-        if entry.get("type", "file") != "file":
-            # Deliberately not a file — skipped on purpose, not lost.
+        kind = _entry_kind(entry)
+        if kind == "dir":
+            # Deliberately not a file — skipped on purpose, not lost. Its own
+            # name is irrelevant, so a folder is never judged on it.
+            continue
+        if kind == "junk":
+            # A `type` we cannot read on an entry that might be a real file.
+            # Counting it as a deliberate non-file is what made a mis-spelled
+            # `type` hide a file from a listing that was then trusted; counting
+            # it as unreadable makes the destructive path refuse the reply.
+            dropped.append(entry)
+            continue
+        if not isinstance(entry.get("filename"), str):
+            # See the table in the docstring: PrinterFile would coerce any
+            # non-empty object into a name that matches nothing, and a listing
+            # full of such names is the worst possible evidence for "your file
+            # is gone". A missing or non-string filename is unreadable.
+            dropped.append(entry)
             continue
         try:
             file = PrinterFile(entry)
@@ -222,12 +339,159 @@ def _parse_file_entries(entries: list[Any]) -> tuple[dict[str, PrinterFile], lis
             dropped.append(entry)
             continue
         if not file.name:
-            # A file-shaped entry with no name cannot be selected, deleted, or
-            # recognised as still present; it is unreadable, not absent.
+            # A file-shaped entry with an EMPTY name cannot be selected,
+            # deleted, or recognised as still present; it is unreadable, not
+            # absent. The isinstance check above already admits only str, so
+            # this catches exactly `filename: ""`.
             dropped.append(entry)
             continue
         files[file.name] = file
     return files, dropped
+
+
+# Why a 1044 reply cannot be trusted, as classified by
+# ``_read_file_list_result``. Three distinct reasons, one per gate, because the
+# two callers answer different questions and must be able to tell them apart:
+# the strict listing method words its exception from them, and the cache writer
+# decides per reason whether a reply deserves to replace what it already holds.
+_FILE_LIST_OK = "ok"
+# ``result`` is not a dict, or carries no LIST under ``file_list``: an error
+# envelope, a rejected-parameter reply, ``file_list: null``, firmware that
+# answers with a bare list or a string. It names no files at all.
+_FILE_LIST_BAD_SHAPE = "bad_shape"
+# ``result`` carries an ``error_code`` that reads as non-zero or that cannot be
+# read as a number at all: the printer answered the request by refusing it.
+_FILE_LIST_REFUSED = "refused"
+# The reply is a listing and its entries were parsed, but at least one entry
+# was dropped as unreadable (see ``_parse_file_entries``).
+_FILE_LIST_UNREADABLE = "unreadable"
+
+
+class CC2FileListReading(NamedTuple):
+    """
+    One judgement of a 1044 ``result``, shared by every caller that reads one.
+
+    Fields:
+        files: The entries that parsed, keyed by name. Empty unless
+            ``kind`` is ``_FILE_LIST_OK`` or ``_FILE_LIST_UNREADABLE``.
+        dropped: The entries dropped as unreadable. Non-empty exactly when
+            ``kind`` is ``_FILE_LIST_UNREADABLE`` — every other refusal leaves
+            it empty, so a caller can ask "was this refused, or merely
+            partly unreadable?" without re-deriving it.
+        kind: One of the ``_FILE_LIST_*`` constants.
+        detail: A one-line reason naming the offending value, for the exception
+            message and the log line. Empty when ``kind`` is ``_FILE_LIST_OK``.
+    """
+
+    files: dict[str, PrinterFile]
+    dropped: list[Any]
+    kind: str
+    detail: str
+
+
+def _read_file_list_result(result: object) -> CC2FileListReading:
+    """
+    Judge a 1044 ``result`` once, so no two readers can disagree about it.
+
+    This is THE implementation of "did the printer answer the file-list request
+    with a listing I can trust?", and every path that has to answer it goes
+    through here: the MQTT listener's cache write, the lenient
+    ``get_file_list``, and the strict ``get_verified_file_list`` that confirms a
+    delete. Two implementations of "is this reply trustworthy?" drift apart, and
+    the drift is invisible — one path would believe a reply the other refused.
+
+    The gates run in a fixed order, and the order is load-bearing:
+
+    * ``result`` must be a dict FIRST, for a reason that has nothing to do with
+      trust: reading ``result["error_code"]`` would raise ``TypeError`` on a
+      list or a string, and ``TypeError`` is not a transport error, so it would
+      escape the MQTT listener (see ``_mqtt_listener``'s narrow excepts) and
+      stop it.
+    * The REFUSAL next, before ``file_list`` is even looked at. The shared
+      response envelope documents ``result`` as "Response data including
+      ``error_code``" (docs/CC2_PROTOCOL.md), so a refusal arrives INSIDE
+      ``result``, and nothing documents that a refusal omits ``file_list``:
+      judging the reply by shape alone accepts ``{"error_code": 1002,
+      "file_list": []}`` as an authoritative EMPTY inventory. The listing in a
+      refusal is the printer's own words for what it did NOT do; it cannot be
+      evidence that anything is gone. Nor can this be rescued by "an error
+      envelope has no ``file_list`` anyway" — that assumption is exactly what is
+      not documented.
+    * Then ``file_list`` must be a LIST, since the per-entry pass below needs a
+      list to read.
+    * Then the per-entry readability pass, last.
+
+    A missing ``error_code`` is not a refusal, deliberately, and the assumption
+    is stated because the protocol does not settle it: every reply this repo has
+    captured carries it — 1001, 1044, 1045, 1046, 1048, 2005, and the full
+    status frame docs/CC2_PROTOCOL.md describes as "returned by method 1002 or
+    event 6000" likewise — but the envelope table only says ``result``
+    "includ[es]" it and no method documents it as REQUIRED (1047 documents no
+    response body at all). So absence reads as "said nothing". The guess is
+    bounded by the ``file_list`` gate below it: absence is only ever accepted
+    when ``file_list`` carries an actual LIST, so it can never turn a reply that
+    names no files into an empty inventory.
+
+    An empty ``file_list`` LIST with no refusal is OK, not a refusal: that is
+    what an EMPTY PRINTER answers, and it is the only thing that can confirm a
+    delete. Refusing it would leave a printer with nothing left to delete
+    reporting failure forever. For the same reason a listing of nothing but
+    recognised folders is OK — those entries are skipped on purpose, not lost.
+
+    Pure: reads ``result``, changes nothing, so it can classify a reply before
+    anything decides whether to act on it.
+    """
+    if not isinstance(result, dict):
+        # The container gate, checked first for a reason that has nothing to do
+        # with trust: `result["error_code"]` below would raise TypeError on a
+        # list or a str, and TypeError is not a transport error, so it would
+        # escape the MQTT listener and stop it.
+        return CC2FileListReading(
+            {},
+            [],
+            _FILE_LIST_BAD_SHAPE,
+            f"the printer's file-list reply is not a file listing "
+            f"(result: {type(result).__name__})",
+        )
+    if "error_code" in result:
+        # Refusal, judged BEFORE `file_list` is examined — see the docstring. An
+        # unreadable code (`_error_code` -> None: "abc", True, 0.5, a list) is a
+        # refusal, never a 0 invented by a default: on a destructive path 0
+        # means "the printer did not refuse", so resolving ambiguity toward 0 is
+        # resolving it toward destroying something.
+        code = _error_code(result["error_code"])
+        if code is None or code != 0:
+            return CC2FileListReading(
+                {},
+                [],
+                _FILE_LIST_REFUSED,
+                "the printer refused or garbled the file-list request "
+                f"(error_code: {result['error_code']!r}"
+                f"{'' if code is None else f', parsed {code}'}); "
+                "refusing to treat its reply as a file inventory",
+            )
+    if not isinstance(result.get("file_list"), list):
+        file_list = result.get("file_list")
+        return CC2FileListReading(
+            {},
+            [],
+            _FILE_LIST_BAD_SHAPE,
+            "the printer's file-list reply is not a file listing "
+            f"(result keys: {sorted(result)}, "
+            f"file_list: {type(file_list).__name__})",
+        )
+    files, dropped = _parse_file_entries(result["file_list"])
+    if dropped:
+        return CC2FileListReading(
+            files,
+            dropped,
+            _FILE_LIST_UNREADABLE,
+            "the printer's file-list reply could not be read as a file "
+            f"inventory ({len(dropped)} of "
+            f"{len(result['file_list'])} entries dropped as unreadable, "
+            f"first: {dropped[0]!r:.200})",
+        )
+    return CC2FileListReading(files, [], _FILE_LIST_OK, "")
 
 
 class ElegooCC2Client:
@@ -1532,58 +1796,86 @@ class ElegooCC2Client:
 
     def _handle_file_list(self, result: CC2FileList | dict[str, Any]) -> None:
         """
-        Replace ``printer_data.file_list`` with the entries of a 1044 result.
+        Replace ``printer_data.file_list`` from a 1044 result, if it deserves to.
 
-        Lenient and silent by design: a reply that is not a dict carrying a
-        LIST under ``file_list`` — an error envelope, a rejected-parameter
-        reply, firmware that answers 1044 with a list or a bare string, or one
-        that answers ``file_list: null`` — leaves the cache UNTOUCHED and this
-        returns normally. Two reasons:
+        This is THE place the cache is written, and every 1044 reaches it: the
+        MQTT listener dispatches one here (``_handle_response``) whether or not
+        anyone asked for it, and both listing methods call it too. That is why
+        the trust judgement lives HERE rather than in the callers — see the note
+        on ordering below.
 
-        * ``result.get(...)`` on a list/str/int raises ``AttributeError``, which
-          is not a transport error and would escape the MQTT listener and stop
-          it (see ``_mqtt_listener``'s narrow excepts);
-        * a reply nobody has captured is not evidence that the printer has no
-          files. Overwriting a listing we could read with ``{}`` would empty the
-          Print File select and, worse, hand an "empty inventory" to anything
-          deciding whether a file still exists.
+        The judgement is ``_read_file_list_result``'s, the same one
+        ``get_verified_file_list`` uses, so the writer and the delete
+        confirmation can never disagree about what "the printer refused" or
+        "this entry is unreadable" meant. It writes in two of the four cases:
 
-        The value must be a ``list``, not merely present. ``result.get(...) or
-        []`` reads ``None`` / ``0`` / ``""`` / ``{}`` as zero entries, which is
-        indistinguishable from an empty printer — so a non-list used to replace
-        a readable listing with an empty one from a reply that named no files at
-        all. An empty LIST remains accepted: that is what an empty printer
-        actually answers, and refusing it would leave a printer with nothing
-        left to delete reporting failure forever.
+        * ``_FILE_LIST_OK`` — a dict carrying a LIST under ``file_list``, no
+          refusal, every entry either read or deliberately skipped as a
+          folder. Written, INCLUDING the empty list: that is what an empty
+          printer answers, and a printer with nothing left to delete must be
+          able to show an empty select rather than a stale one forever.
+        * ``_FILE_LIST_UNREADABLE`` with at least one entry readable — the
+          partial listing is written. One mangled entry must not cost the whole
+          select: the callers here are the coordinator's refresh, the Refresh
+          File List button and the listener, all of which feed the Print File
+          select and catch only transport errors, so a partial listing beats an
+          outage (see ``get_file_list``) and beats a stale listing.
+        * ``_FILE_LIST_REFUSED`` — NOT written. A reply whose ``error_code``
+          says the printer rejected the request says nothing about what the
+          printer holds, and the previous listing is the better guess than
+          whatever came attached to a "no".
+        * ``_FILE_LIST_BAD_SHAPE``, and ``_FILE_LIST_UNREADABLE`` whose entries
+          were ALL unreadable — NOT written. Both are replies that name no file
+          this client can read. The all-unreadable case is the one that matters
+          and the one that was wrong until now: a reply of
+          ``["a.gcode", "b.gcode"]`` (firmware sending bare names) parsed to
+          zero files and the writer replaced a readable listing with ``{}`` —
+          emptying the Print File select from a reply that was asserting the
+          printer holds two files. "The printer says it has entries and I
+          understood none of them" is evidence about nothing; it is not
+          evidence that the printer is empty.
 
-        It reports nothing back on purpose. All three call sites run on paths
-        that cannot act on the difference — the MQTT listener (an unsolicited
-        1044 from another client on the broker) and the lenient
-        ``get_file_list``, whose callers only display or enumerate and must not
-        start raising at the coordinator, which catches only transport errors —
-        and a boolean they all ignored read as a contract someone was failing
-        to honour. The caller that CAN act on it does not ask here: it judges
-        the reply itself, before calling this, in ``get_verified_file_list``,
-        using the same ``_parse_file_entries`` this uses so the two can never
-        disagree about what "unreadable" meant.
+        So the guarantee ``get_verified_file_list`` documents holds — a reply
+        that fails verification can never empty the select — because the writer
+        refuses to empty it, not because the strict path checks before writing.
+        It cannot hold that way: ``_handle_response`` hands every 1044 to this
+        method on its way to waking the waiting ``_send_command``, so the strict
+        gates run AFTER the listener has already written for that same reply.
+        Putting the rule here makes it true for all three callers at once,
+        including the listener, which has no caller to raise at.
+
+        Reports nothing back on purpose. All three call sites run on paths that
+        cannot act on the difference — the listener has nobody to tell, and the
+        lenient ``get_file_list`` must not start raising at the coordinator,
+        which catches only transport errors. The caller that CAN act on the
+        difference asks ``_read_file_list_result`` directly instead of asking
+        here, and gets the same answer because it is the same call.
         """
-        if not isinstance(result, dict) or not isinstance(
-            result.get("file_list"), list
-        ):
-            file_list = result.get("file_list") if isinstance(result, dict) else None
-            self.logger.warning(
-                "Ignoring a 1044 reply that is not a file listing "
-                "(result: %s, file_list: %s); keeping the previous listing",
-                type(result).__name__,
-                type(file_list).__name__,
+        reading = _read_file_list_result(result)
+        if reading.kind == _FILE_LIST_OK:
+            self.printer_data.file_list = reading.files
+            self.logger.debug("File list updated: %d files", len(reading.files))
+            return
+        if reading.kind == _FILE_LIST_UNREADABLE and reading.files:
+            for entry in reading.dropped:
+                # one malformed entry must not cost the rest of the listing
+                self.logger.debug("Skipping unparseable file entry: %s", entry)
+            self.printer_data.file_list = reading.files
+            self.logger.debug(
+                "File list updated from a partly readable reply: %d files, "
+                "%d entries dropped",
+                len(reading.files),
+                len(reading.dropped),
             )
             return
-        files, dropped = _parse_file_entries(result["file_list"])
-        for entry in dropped:
-            # one malformed entry must not cost the rest of the listing
-            self.logger.debug("Skipping unparseable file entry: %s", entry)
-        self.printer_data.file_list = files
-        self.logger.debug("File list updated: %d files", len(files))
+        # Refused, unrecognisable as a listing, or a listing whose every entry
+        # was unreadable. None of them says the printer has no files, so none of
+        # them is allowed to make the select look like it has none.
+        self.logger.warning(
+            "Ignoring a 1044 reply I will not treat as a file inventory (%s); "
+            "keeping the previous listing",
+            reading.detail,
+        )
 
     async def get_file_list(self) -> dict[str, PrinterFile]:
         """
@@ -1593,14 +1885,21 @@ class ElegooCC2Client:
         answered with all 54 files at once (fw 02.01.00.00). The result is
         kept in ``printer_data.file_list`` and returned.
 
-        Lenient by design, because its callers only display or enumerate: a
-        reply that cannot be read as a listing keeps the previous listing (see
-        ``_handle_file_list``), so the return value can be a stale listing
-        rather than a fresh one and the caller cannot tell. It also does not
-        look at ``error_code``, so a refusal that arrives with a ``file_list``
-        attached replaces the cache here. Anything deciding whether a file
-        STILL EXISTS — the ``cleanup_files`` delete confirmation — must use
-        ``get_verified_file_list`` instead, which checks both.
+        Lenient by design, because its callers only display or enumerate: it
+        NEVER raises on a reply it cannot read — the coordinator catches only
+        transport errors, so anything raised here would take the Print File
+        select down instead of degrading it. What it does instead is decline to
+        write (see ``_handle_file_list``) and return what it has: so the return
+        value can be a STALE listing rather than a fresh one, and the caller
+        cannot tell. That is acceptable for a select and for the Refresh File
+        List button, and is exactly why this is not the delete confirmation —
+        anything deciding whether a file STILL EXISTS must use
+        ``get_verified_file_list``, which raises where this returns.
+
+        The leniency is about not raising, not about believing anything: a
+        refusal or an all-unreadable listing no longer replaces the cache, and
+        never should have — the difference a caller sees is a stale listing
+        instead of an empty one.
 
         Raises:
             ElegooPrinterConnectionError: if the printer did not answer.
@@ -1612,9 +1911,9 @@ class ElegooCC2Client:
         if not response:
             msg = "Printer did not answer the file list request"
             raise ElegooPrinterConnectionError(msg)
-        # Deliberately unchecked: _handle_file_list keeps the old listing for a
-        # reply it cannot read and this path has no way to report the
-        # difference, which is exactly why it is not the delete confirmation.
+        # Deliberately unchecked: _handle_file_list decides what is worth
+        # writing and this path has no way to report the difference, which is
+        # exactly why it is not the delete confirmation.
         self._handle_file_list(response.get("result", response))
         return self.printer_data.file_list
 
@@ -1623,81 +1922,58 @@ class ElegooCC2Client:
         Fetch the file list (1044) only if the printer both answered and did not refuse.
 
         Same request as ``get_file_list``, but the answer is judged instead of
-        assumed. A reply is usable only when BOTH hold:
+        assumed. The judgement is ``_read_file_list_result``'s — shared with the
+        cache writer and the MQTT listener, so this method and the code that
+        decides what lands in ``printer_data.file_list`` can never disagree
+        about what "the printer refused" meant. A reply is usable only when ALL
+        hold:
 
-        1. it is not a refusal — ``result`` carries no ``error_code``, or one
+        1. ``result`` is a dict; and
+        2. it is not a refusal — ``result`` carries no ``error_code``, or one
            that reads as the number 0; and
-        2. it is a listing — ``result`` is a dict carrying a LIST under
-           ``file_list``, which may be empty; and
-        3. every entry of that list was either read as a file or deliberately
-           skipped as a non-file (a directory) — i.e. no entry was dropped as
-           unreadable.
-
-        The refusal is checked FIRST, and that order is the point. The shared
-        response envelope documents ``result`` as "Response data including
-        ``error_code``" (docs/CC2_PROTOCOL.md), so a refusal is reported INSIDE
-        ``result``, and nothing documents that a refusal omits ``file_list``: a
-        reply of the shape ``{"error_code": 1002, "file_list": []}`` passes the
-        shape test alone and hands back an empty inventory as authoritative.
-        A caller re-listing to confirm a delete then reports "deleted N of N"
-        for files the printer just refused to touch, and nothing retries.
-        Checking the shape first also cannot be rescued by "an error envelope
-        has no file_list anyway" — that assumption is exactly what is not
-        documented.
+        3. ``result`` carries a LIST under ``file_list``, which may be empty;
+           and
+        4. every entry of that list was either read as a file or deliberately
+           skipped as a non-file (a recognised folder type) — i.e. no entry was
+           dropped as unreadable.
 
         Anything else raises, because a caller re-listing to confirm a delete
         has to be able to tell "the printer has no files" from "the printer
-        said something I cannot read" — an error envelope, a rejected-parameter
-        reply or an undocumented shape all parse to an empty listing through
-        the lenient path, and an empty listing read as authoritative reports
-        every accepted delete as a success while the files sit exactly where
-        they were.
+        said something I cannot read". The reasoning behind each gate — why a
+        refusal is checked before the listing is examined, why a missing
+        ``error_code`` is not a refusal, why ``file_list`` must be a LIST rather
+        than merely present, why an empty list and a folders-only listing stay
+        usable, and why ANY unreadable entry refuses the whole reply rather than
+        only an all-unreadable one — is in ``_read_file_list_result``, which is
+        the single place those rules are written down.
 
-        A missing ``error_code`` is accepted, deliberately, and the assumption
-        is stated because the protocol does not settle it: every reply this
-        repo has captured carries it — 1001, 1044, 1045, 1046, 1048 and 2005
-        each in their own sample, and the full status frame that
-        docs/CC2_PROTOCOL.md describes as "returned by method 1002 or event
-        6000" likewise, though it is only ever shown inside a 6000 envelope. So
-        no CAPTURED reply omits it, but the envelope table only says ``result``
-        "includ[es]" it and no method documents it as REQUIRED (1047 documents
-        no response body at all). Hence absence reads as "said nothing", not as
-        a refusal: a firmware that answers 1044 with a bare
-        ``{"file_list": [...]}`` is a listing this client can read, and
-        refusing one would make the service unable to clean up a printer it can
-        otherwise read, forever. The guess is bounded by the shape rule below
-        it — absence is only ever accepted when ``file_list`` carries an actual
-        LIST, so this can never turn a reply that names no files into an empty
-        inventory.
+        Why the strictness cannot be traded for the lenient path's per-entry
+        tolerance: the question this method answers is "is the file I just
+        deleted still on the printer?", and a dropped entry is a file the
+        printer named that this client cannot name — it could BE the deleted
+        file, arriving in a shape the parser does not recognise. Confirming a
+        delete against a listing that might be hiding exactly the file in
+        question is the false success this method exists to prevent, so the cost
+        of the guard is the safe direction: one mangled entry in an otherwise
+        readable listing reports "delete not confirmed, re-list failed" and the
+        automation retries, rather than reporting a file as gone that the
+        printer still holds.
 
-        The shape rule reads the VALUE, not just the key: ``file_list`` must be
-        a ``list``. Presence alone accepted ``{"error_code": 0, "file_list":
-        None}`` — and 0, "", ``{}`` — because the lenient path's ``or []`` read
-        any non-list as zero entries, so a reply naming no files at all became
-        an authoritative "nothing left on the printer" and the delete
-        confirmation reported success for files the printer still held. Nothing
-        documents that 1044 always sends ``file_list`` as a JSON array, and 1047
-        documents no response body at all, so a serializer emitting ``null`` for
-        an unset repeated field is well within what a first hardware run can do.
-        A non-list says nothing about the printer's contents, so it is not
-        consent to believe the printer is empty.
-
-        An empty ``file_list`` LIST with no refusal stays usable, so an empty
-        printer remains cleanable rather than being told forever that its
-        inventory cannot be read. For the same reason a listing of nothing but
-        directories stays usable: those entries are skipped on purpose, not
-        lost, and a printer whose local storage holds only folders genuinely has
-        no deletable files. What raises is an entry that was dropped because it
-        could not be read — a bare string, or a dict from which no filename
-        could be taken — because that is a reply asserting the printer holds
-        something while telling this client nothing about it, and a delete
-        confirmed against such a listing is a delete confirmed against a
-        listing that may be hiding the very file in question. "The printer told
-        me it has entries and I understood none of them" is the state in which
-        "deleted N of N" must never be reported.
-
-        The cache is only replaced by a listing that passed, so a failed
-        verification cannot empty the Print File select either.
+        A failed verification cannot EMPTY the Print File select, and the
+        mechanism is worth stating exactly because it is NOT this method: the
+        listener dispatches every 1044 to ``_handle_file_list`` on its way to
+        waking the waiting ``_send_command``, so by the time these gates run the
+        writer has already seen this same reply. The guarantee holds because
+        ``_handle_file_list`` applies the SAME ``_read_file_list_result``
+        judgement and refuses to write a reply it would not trust — so a REFUSED
+        or WHOLLY UNREADABLE 1044 leaves the previous listing in place on every
+        path, including the listener's, which has no caller to raise at. A
+        PARTLY readable listing is the one refusal that does reach the cache
+        (the writer keeps the readable part, which is right for a select); no
+        delete is ever confirmed against it, because this method raises first
+        and the confirmation reports every accepted delete as unconfirmed. The
+        only cache write a successful call here performs is the one below, for a
+        reply that passed all four gates.
 
         STRICT BY DESIGN. The lenient ``get_file_list`` and the MQTT listener
         keep their per-entry leniency — a partially readable listing beats an
@@ -1721,71 +1997,16 @@ class ElegooCC2Client:
         # No ``or response`` fallback: an envelope with no ``result`` key is not
         # a listing either, and the envelope's own keys (id/method) prove it.
         result = response.get("result")
-        if not isinstance(result, dict):
-            msg = (
-                "The printer's file-list reply is not a file listing "
-                f"(result: {type(result).__name__})"
-            )
-            raise CC2UnusableFileListError(msg)
-        # Refusal first, then shape — see the docstring: a refusal can arrive
-        # with a ``file_list`` attached, and that listing proves nothing.
-        # Absent key -> None -> "the printer said nothing", which is not a
-        # refusal. An unreadable code (``_error_code`` -> None: "abc", True,
-        # 0.5, a list) is a refusal, never a 0 invented by a default.
-        if "error_code" in result:
-            code = _error_code(result["error_code"])
-            if code is None or code != 0:
-                msg = (
-                    "The printer refused or garbled the file-list request "
-                    f"(error_code: {result['error_code']!r}"
-                    f"{'' if code is None else f', parsed {code}'}); "
-                    "refusing to treat its reply as a file inventory"
-                )
-                raise CC2UnusableFileListError(msg)
-        if not isinstance(result.get("file_list"), list):
-            msg = (
-                "The printer's file-list reply is not a file listing "
-                f"(result keys: {sorted(result)}, "
-                f"file_list: {type(result.get('file_list')).__name__})"
-            )
-            raise CC2UnusableFileListError(msg)
-        # Third gate, one layer down: the list exists, but was any of it
-        # understood? `_parse_file_entries` is pure, so this classifies the
-        # reply without touching the cache, using the exact code the lenient
-        # writer uses — the two cannot disagree about what "unreadable" meant.
-        _, dropped = _parse_file_entries(result["file_list"])
-        if dropped:
-            # ANY unreadable entry refuses the whole reply, not only an all
-            # unreadable one. The question this method answers is "is the file I
-            # just deleted still on the printer?", and a dropped entry is a file
-            # the printer named that this client cannot name — it could BE the
-            # deleted file, arriving in a shape the parser does not recognise.
-            # Confirming a delete against a listing that might be hiding exactly
-            # the file in question is the false success this method exists to
-            # prevent, so the cost of the guard is the safe direction: one
-            # mangled entry in an otherwise readable listing reports "delete not
-            # confirmed, re-list failed" and the automation retries, rather than
-            # reporting a file as gone that the printer still holds.
-            #
-            # `dropped` non-empty implies the raw list was non-empty, so this
-            # can never fire on an empty printer, and an entry the printer
-            # marked as a directory is not in it, so a folders-only listing
-            # stays usable.
-            msg = (
-                "The printer's file-list reply could not be read as a file "
-                f"inventory ({len(dropped)} of "
-                f"{len(result['file_list'])} entries dropped as unreadable, "
-                f"first: {dropped[0]!r:.200})"
-            )
-            raise CC2UnusableFileListError(msg)
+        reading = _read_file_list_result(result)
+        if reading.kind != _FILE_LIST_OK:
+            raise CC2UnusableFileListError(reading.detail)
         # Past the gates, this reply is a dict carrying a LIST under
         # ``file_list`` whose every entry either parsed or was deliberately
-        # skipped as a non-file — the listing _handle_file_list accepts, and the
-        # one place the cache is written, so the writer stays a single code path
-        # with a single log line. Nothing to check after the call: the gate
-        # above already proved this reply cannot be trimmed by the per-entry
-        # leniency, and no await sits between the two, so no other 1044 can
-        # slip into the cache in between.
+        # skipped as a non-file, so _handle_file_list will certainly write it —
+        # the one place the cache is written, keeping the write a single code
+        # path with a single log line. Nothing to check after the call, and no
+        # await sits between the two, so no other 1044 can slip into the cache
+        # in between.
         self._handle_file_list(result)
         return self.printer_data.file_list
 

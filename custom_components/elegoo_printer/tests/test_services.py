@@ -813,11 +813,15 @@ def _cleanup_client(  # noqa: PLR0913
     The listing is served by BOTH client methods, because the handler is
     supposed to ask the STRICT one:
 
-    * ``get_file_list`` — the lenient method, which answers an empty dict for a
-      reply it cannot read. The double makes it answer as though every reply
-      were unreadable, so any handler that still asks it for an inventory sees
-      `{}` and fails its own tests. That is what makes "the confirmation trusts
-      the listing" a measurement rather than a claim.
+    * ``get_file_list`` — the lenient method, which NEVER raises: for a reply it
+      will not trust it returns whatever the cache already held, which may be a
+      stale listing. The double makes it answer ``{}`` unconditionally, purely as
+      a trap: any handler that still asked it for an inventory would see an empty
+      printer and report every delete confirmed, failing its own tests. That is
+      what makes "the confirmation trusts the listing" a measurement rather than
+      a claim. (It is a trap, not a description: the real lenient method keeps
+      the previous listing rather than answering ``{}`` — see
+      ``test_file_list.py``.)
     * ``get_verified_file_list`` — the strict method, which raises for a reply
       that is not a listing. This double answers it from ``present``, and
       ``re_list_unusable`` makes the SECOND call raise
@@ -858,8 +862,12 @@ def _cleanup_client(  # noqa: PLR0913
         return {name: listing[name] for name in sorted(present)}
 
     async def _get_file_list() -> dict[str, PrinterFile]:
-        # The lenient path: what a CC2 whose 1044 reply cannot be read looks
-        # like to a caller that believes the absence of an exception.
+        # The lenient path, as a TRAP rather than a simulation: a handler that
+        # asked here instead of at the strict method would see an empty printer
+        # and confirm every delete. (The real lenient method returns the
+        # previous listing for a reply it will not write, not `{}`; what it must
+        # never do is raise, and that is what disqualifies it as a delete
+        # confirmation — an absence of an exception is not an inventory.)
         return {}
 
     async def _delete_file(name: str) -> int:
@@ -1422,11 +1430,11 @@ class TestCleanupFilesService:
         asyncio.run(_run())
 
     def test_confirmation_never_asks_the_lenient_listing_method(self) -> None:
-        # `get_file_list` answers `{}` for any reply it cannot read, so it
-        # cannot settle a delete. The double makes it answer as though every
-        # reply were unreadable: a handler that went back to it would see an
-        # empty printer and report every delete confirmed, failing the tests
-        # above. This pins the routing directly.
+        # `get_file_list` cannot settle a delete: it never raises, so a caller
+        # cannot tell a real listing from a reply it refused to write. The double
+        # makes it answer `{}` as a trap — a handler that went back to it would
+        # see an empty printer and report every delete confirmed, failing the
+        # tests above. This pins the routing directly.
         async def _run() -> None:
             client = _cleanup_client(_cleanup_listing())
             hass = _cleanup_hass(client)

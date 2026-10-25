@@ -987,16 +987,23 @@ async def _async_confirm_deletions(
     longer carries the file counts as a delete; a re-list that fails reports
     every accepted file as unconfirmed rather than as gone.
 
-    "Fails" therefore cannot mean only "raised". It has to include "answered
-    something that is not a listing", because ``get_file_list`` parses
-    ``result.get("file_list") or []`` and so returns ``{}`` — with no exception
-    at all — for an error envelope, a rejected-parameter reply, or any other
-    shape; 1047's reply is entirely undocumented, so nobody has captured what
-    1044 says when it dislikes a request either. Inferring an empty inventory
-    from the ABSENCE of an exception inverts the guarantee above: the realistic
-    first hardware run is 1047 answering 0, 1044 answering something slightly
-    different, and a nightly automation reporting "deleted 40 of 40" for files
-    that are all still there — and never retrying, because success was true.
+    "Fails" therefore cannot mean only "raised". The lenient ``get_file_list``
+    never raises on a reply it cannot read: it judges the reply through the
+    shared ``_read_file_list_result`` and, when that judgement refuses it,
+    declines to write the cache and returns what it already holds — so an error
+    envelope, a rejected-parameter reply, or a listing whose every entry is
+    unreadable produces no exception at all and a value that is the PREVIOUS
+    listing rather than the printer's inventory, with nothing to tell the caller
+    which of the two it got. 1047's reply is entirely undocumented, so nobody
+    has captured what 1044 says when it dislikes a request either. Nor is
+    absence from a stale listing absence from the printer: that snapshot can
+    predate an upload, or come from a partly readable reply that dropped the
+    entry, so it would confirm a delete that never landed. Inferring an
+    inventory from the ABSENCE of an exception inverts the guarantee above: the
+    realistic first hardware run is 1047 answering 0, 1044 answering something
+    slightly different, and a nightly automation reporting "deleted 40 of 40"
+    for files that are all still there — and never retrying, because success was
+    true.
 
     So the confirmation asks for ``get_verified_file_list``, which requires a
     ``result`` dict carrying ``file_list`` and raises otherwise, and every way
