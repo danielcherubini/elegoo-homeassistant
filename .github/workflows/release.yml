@@ -40,8 +40,17 @@ jobs:
           echo "pyproject=$PYPROJECT_VERSION" >> $GITHUB_OUTPUT
           echo "tag=v$MANIFEST_VERSION" >> $GITHUB_OUTPUT
 
-          # Detect if this is a pre-release (contains -alpha, -beta, -rc, etc.)
-          if [[ "$MANIFEST_VERSION" =~ -[a-zA-Z] ]]; then
+          # Detect pre-releases. Two spellings have to match, because this repo
+          # has shipped both: the PEP 440 / semver dashed form (2.4.0-beta.1,
+          # 0.8.0-alpha1) and the shorter form used for most of this project's
+          # history (1.4.6b9, 2.3.0b10, 2.6.4b1). The old check only looked for
+          # a hyphen, so a `b1` version was published as a STABLE release with
+          # no warning - and `b1` was the prevailing style from 1.4.0b1 through
+          # 2.6.4b3, 62 tags in all.
+          #
+          # A `+local` segment (2.5.0+homebeta.1) is deliberately NOT treated as
+          # a pre-release: PEP 440 says a local version is not a prerelease.
+          if [[ "$MANIFEST_VERSION" =~ -[a-zA-Z] || "$MANIFEST_VERSION" =~ [0-9]+(\.dev|dev|alpha|beta|rc|a|b|c)[0-9]* ]]; then
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
             echo "📦 Pre-release version detected: $MANIFEST_VERSION"
           else
