@@ -261,8 +261,8 @@ response_variable: cleanup
 - **A file with no creation date is never deleted, and the file being printed is never deleted.** The second half matters when a nightly job runs while something is printing. The first half has a case you will hit: **a printer whose clock has never been set reports a creation date in 1970**, and this service treats any creation date before 2000 as "no date" and leaves the file alone. That is the same rule #426 had to apply to the time sensors, applied here where getting it wrong would delete a file instead of misreading a sensor - so a printer that stops reporting dates degrades to *deleting nothing*, never to *deleting everything*.
 - **Leaving `include` blank matches nothing, so nothing is deleted** - omit the field to mean "every file". A run in that state still reports `success: true` (a nightly job that finds nothing to do is not an error) but says in its message that no listed file matched the pattern, so an automation that quietly stops deleting is visible in the notification instead of invisible. The blank field is deliberately **not** read as "everything": a template that renders to empty would otherwise delete every old file on the printer on a call that named nothing.
 - **Deletion is confirmed by re-reading the file list, not by trusting the printer's reply.** The delete command has no documented response shape, so a file the printer accepted and still lists comes back in `failed` as `still listed after delete`, and `success` is false unless *every* selected file was confirmed gone. `success: false` therefore means "the printer is not in the state you asked for" - which is what an automation should alert on. A run that selected nothing is a **successful** run.
-- Every response carries `success`, `dry_run`, `deleted`, `failed` (name → why it stayed), `skipped` (name → why it was not a candidate: `younger_than_limit`, `no_creation_date`, `excluded`, `not_included`, `currently_printing`) and `would_delete`.
-- **Videos are not deletable, and the honest reason is that this integration has never seen one.** #432 asked for "both gcode and video files". The printer's file list (method 1044) is the only inventory this integration has, and every field it reports - layers, print time, filament used, colour map - is a slicer-written G-code field; the camera is a **live MJPEG stream**, not a file, and nothing writes it to disk. Whether CC2 stores deletable timelapse videos anywhere is undocumented, so this service does not guess at a delete path nobody has observed. It does **not** filter by extension either: if your firmware's file list *does* contain video files, the patterns will match and delete them like any other file. If yours lists videos, say so on #432 - that answer is what would justify a follow-up.
+- **Two response shapes.** A run that reached the printer carries `success`, `dry_run`, `deleted`, `failed` (name → why it stayed), `skipped` (name → why it was not a candidate: `younger_than_limit`, `no_creation_date`, `excluded`, `not_included`, `currently_printing`), `would_delete` and a `message` — or an `error` instead of a message when it reached the printer but could not act. A call that never got there — unknown or unloaded printer, or one that is not a Centauri Carbon 2 — carries only `success: false` and an `error`, with no lists at all.
+- **Videos: this integration has never seen one on a printer's file list.** #432 asked for "both gcode and video files", but that list is the only inventory the printer offers, and the camera is a live MJPEG stream rather than a file. There is deliberately **no extension filter**, so if your firmware's list *does* contain video files the patterns match and delete them like any other file - if yours does, say so on #432.
 - Deletes are sent one at a time, each waiting up to 10 s for the printer, so a printer full of old files can take a while. Fine behind a 03:30 trigger; not something to put behind a UI button.
 
 A daily cleanup that tells you what it removed:
@@ -283,10 +283,12 @@ actions:
     data:
       title: Printer cleanup
       message: >-
-        Deleted {{ cleanup.response.deleted | length }} file(s),
-        refused {{ cleanup.response.failed | length }}.
-        {{ cleanup.response.message }}
+        Deleted {{ cleanup.deleted | default([]) | length }} file(s),
+        refused {{ cleanup.failed | default([]) | length }}.
+        {{ cleanup.message | default(cleanup.error, true) }}
 ```
+
+The response dict lands in `response_variable` **itself**: `cleanup.deleted`, not `cleanup.response.deleted` — reading a `.response` segment raises a template error, so the notification step fails instead of arriving.
 
 ---
 

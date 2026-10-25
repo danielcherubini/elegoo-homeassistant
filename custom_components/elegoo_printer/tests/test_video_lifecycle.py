@@ -2364,10 +2364,13 @@ class TestSharedFlagIsPerEntry:
 
         assert subject_a._stream_enabled is True
         assert subject_b._stream_enabled is False
-        # Asking an entry's flag creates its default record — the registry hands
-        # back the same mutable dict the old getattr/setattr pair did — so this is
-        # {enabled: False}, not a missing key.
-        assert _stream_state_of(entry_b) == {"enabled": False}
+        # Asking an entry's flag does NOT create a record: reads answer False
+        # from the entity's own copy, so the registry holds a key only for the
+        # entry whose entity actually enabled something. A creating read would
+        # have made this {enabled: False} — and, for an entry the removal hook
+        # had already dropped, would have put the key back where nothing could
+        # ever collect it again (see TestRemovedEntryStateIsNotResurrectable).
+        assert _stream_state_of(entry_b) == {}
         assert _stream_state_of(entry_a) == {"enabled": True}
 
     def test_detached_entities_do_not_share_the_attached_flag(self) -> None:
@@ -2463,3 +2466,117 @@ class TestFlagOwnership:
 
         assert subject._stream_enabled is True
         assert entry.__dict__ == before, "the entry object must gain no attributes"
+
+
+class TestRemovedEntryStateIsNotResurrectable:
+    """
+    A read of a removed entry's flag must not put the entry's record back.
+
+    The removal hook is the registry's only bound on this dict, and the retry
+    reads the flag at the top of every tick. So long as a read CREATED the
+    record, the guarantee the registry's comment makes was false in both
+    directions: the hook popped the key, the next read re-added
+    ``{"enabled": False}``, and nothing was left to collect it — removal is
+    terminal, so no later hook will ever name that entry id again. Reads answer
+    from the entity's own copy instead, which gives the same answer and leaves
+    the registry exactly as it found it.
+    """
+
+    def test_reading_a_removed_entrys_flag_leaves_the_registry_empty(self) -> None:
+        """The exact sequence the finding measured: remove, read, still empty."""
+        entry = _make_entry("entry-removed-read")
+        subject = _lifecycle_subject(_make_client()[0], entry=entry)
+        subject._stream_enabled = True
+        assert _stream_state_of(entry) == {"enabled": True}
+
+        camera_module.forget_pending_video_release(entry.entry_id)
+        assert camera_module._video_stream_state_by_entry == {}
+
+        # The read the retry performs once per tick, plus the plain flag read.
+        assert subject._stream_enabled is False
+        assert subject._read_stream_state() == {"enabled": False}
+
+        # Nothing came back: a read of a gone entry answers from the entity's
+        # own copy, so the removal hook's pop is the last word.
+        assert camera_module._video_stream_state_by_entry == {}
+
+    def test_a_retry_tick_after_removal_leaves_no_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        The real path: a retry outlives the removal and reads once per tick.
+
+        Driving the loop rather than the accessor is the point: the retry reads
+        the flag as the FIRST thing every tick does, before its per-tick removal
+        check, so the tick that runs after a removal reads (and with a creating
+        read re-created) the record on its way out. Here that first read answers
+        False — the hook dropped the flag — and the tick returns through its
+        "stream is off" door; the assertion is about what it left behind.
+        """
+        monkeypatch.setattr(camera_module, "CLEANUP_RETRY_INTERVAL_SECONDS", 0.01)
+
+        async def run() -> None:
+            entry = _make_entry("entry-removed-tick")
+            client, _ = _make_client(connected_streams=1, max_streams=2)
+            _attach_client(entry, client)
+            # A hass double that answers as though core had dropped the entry.
+            hass = _make_hass(None)
+            subject = _lifecycle_subject(client, entry=entry, hass=hass)
+            subject._stream_enabled = True
+
+            camera_module.forget_pending_video_release(entry.entry_id)
+            assert camera_module._video_stream_state_by_entry == {}
+
+            await subject._async_cleanup_retry()
+
+            assert camera_module._video_stream_state_by_entry == {}
+            assert camera_module._pending_video_releases == {}
+
+        _run(run())
+
+    def test_a_read_of_an_entry_that_never_wrote_leaves_no_key(self) -> None:
+        """
+        A first read is not a write, whatever the entry.
+
+        The creating read did not only resurrect removed entries: every camera
+        of every entry that never enabled its video left a record behind on first
+        look, so the registry grew a key per printer that was merely asked about.
+        """
+        entry = _make_entry("entry-never-written")
+        subject = _lifecycle_subject(_make_client()[0], entry=entry)
+
+        assert subject._stream_enabled is False
+
+        assert camera_module._video_stream_state_by_entry.get(entry.entry_id) is None
+
+    def test_writing_still_creates_the_record_a_reload_reads(self) -> None:
+        """
+        Only the read path went non-creating: the setter still persists.
+
+        The whole reason the flag lives at module level is that a reload's entity
+        must be able to read what the previous one left enabled, so a fix that
+        made writes inert would satisfy every leak assertion above and break the
+        handover outright.
+        """
+        entry = _make_entry("entry-write-path")
+        subject = _lifecycle_subject(_make_client()[0], entry=entry)
+
+        subject._stream_enabled = True
+
+        assert _stream_state_of(entry) == {"enabled": True}
+        # A second entity of the same entry — a reload's camera — reads it back.
+        successor = _lifecycle_subject(_make_client()[0], entry=entry)
+        assert successor._stream_enabled is True
+        assert (
+            successor._read_stream_state()
+            is (camera_module._video_stream_state_by_entry[entry.entry_id])
+        )
+
+    def test_a_detached_entity_reads_and_writes_only_its_own_copy(self) -> None:
+        """The non-creating read keeps the detached fallback it already had."""
+        detached = _lifecycle_subject(_make_client()[0], entry=None)
+        keys_before = set(camera_module._video_stream_state_by_entry)
+
+        assert detached._read_stream_state() is detached._local_stream_state
+        assert detached._stream_enabled is False
+        assert set(camera_module._video_stream_state_by_entry) == keys_before

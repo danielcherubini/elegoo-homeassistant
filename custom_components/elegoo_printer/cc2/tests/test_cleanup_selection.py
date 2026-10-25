@@ -1,18 +1,32 @@
 """
-Tests for which printer files a cleanup may delete (#432).
+Which files on a printer's local storage a cleanup may delete (#432).
 
-Pure selection: no Home Assistant, no transport, no mocks. The assertions that
-matter most here are the fail-safe ones - a file with no usable date, a file
-whose date is a 1970 epoch stamp from a printer whose clock was never set, and
-the file being printed must never land on the delete side.
+Two halves, one question — "may this file be deleted, and how do we know?".
+
+The first is pure selection: no Home Assistant, no transport, no mocks. The
+assertions that matter most there are the fail-safe ones - a file with no usable
+date, a file whose date is a 1970 epoch stamp from a printer whose clock was
+never set, and the file being printed must never land on the delete side.
+
+The second is the precondition selection assumes: that the thing it was handed
+IS an inventory. Both destructive verdicts ("this file is old enough to go" and
+"this file is gone now") are only as good as the listing they were read from,
+and the CC2 client used to answer a reply it could not read with an empty
+listing and no exception. So the reply-trust contract of the client methods the
+cleanup path calls lives here too, at the bottom of the file, in the mock-free
+style the rest of it uses: a 1044 reply that is not a listing raises, and a 1047
+reply whose error code cannot be read is a refusal rather than an exception.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from custom_components.elegoo_printer.cc2.cleanup import (
     SKIP_ACTIVE,
@@ -22,7 +36,22 @@ from custom_components.elegoo_printer.cc2.cleanup import (
     SKIP_TOO_NEW,
     select_deletions,
 )
+from custom_components.elegoo_printer.cc2.client import (
+    CC2_ERROR_REPLY_UNPARSEABLE,
+    CC2UnusableFileListError,
+    ElegooCC2Client,
+)
+from custom_components.elegoo_printer.cc2.const import (
+    CC2_CMD_DELETE_FILE,
+    CC2_CMD_GET_FILE_LIST,
+    CC2_ERROR_FILE_DELETE_FAILED,
+)
+from custom_components.elegoo_printer.sdcp.exceptions import (
+    ElegooPrinterConnectionError,
+)
+from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
 from custom_components.elegoo_printer.sdcp.models.file_info import PrinterFile
+from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
 # A fixed clock: the tests must not drift with the machine's date.
 NOW = datetime(2026, 10, 24, 12, 0, tzinfo=UTC)
@@ -282,3 +311,258 @@ def test_keeps_young_excluded_and_undated_files_with_reasons() -> None:  # noqa:
         ("keep.gcode", SKIP_EXCLUDED),
         ("nodate.gcode", SKIP_NO_TIMESTAMP),
     ]
+
+
+# ---------------------------------------------------------------------------
+# The listing the selection is read from has to be a listing.
+#
+# Everything above decides "may this go?" from a dict it was handed. These tests
+# decide whether the dict the cleanup path gets from the CC2 client is safe to
+# base a delete — or a delete *confirmation* — on. They are in this file rather
+# than a transport-test file because the question is a selection question: an
+# empty listing and an unreadable reply looked identical, and both destructive
+# verdicts are read out of whichever one the client returned.
+# ---------------------------------------------------------------------------
+
+
+def _cc2_client() -> ElegooCC2Client:
+    printer = Printer()
+    printer.printer_type = PrinterType.FDM
+    return ElegooCC2Client("192.0.2.1", "TESTSN", printer=printer)
+
+
+def _reply(method: int, result: Any) -> dict[str, Any]:
+    """Wrap `result` in a 1044/1047 envelope, exactly as the printer sent it."""
+    return {"id": 1, "method": method, "result": result}
+
+
+def _cached_listing(client: ElegooCC2Client) -> dict[str, PrinterFile]:
+    """Cache a readable listing, so a later failure has something to keep."""
+    with patch.object(
+        client,
+        "_send_command",
+        new_callable=AsyncMock,
+        return_value=_reply(
+            CC2_CMD_GET_FILE_LIST,
+            {"error_code": 0, "file_list": [{"filename": "old.gcode", "size": 10}]},
+        ),
+    ):
+        return asyncio.run(client.get_verified_file_list())
+
+
+def test_a_1044_reply_with_no_file_list_raises_not_an_empty_listing() -> None:  # noqa: D103
+    # The blocking case, at the layer that creates it. `result.get("file_list")
+    # or []` turns an error envelope — or a rejected-parameter reply, or any
+    # shape nobody has captured, since 1047 documents no response body at all —
+    # into an EMPTY listing with no exception. A caller confirming a delete
+    # reads that as "nothing remains" and reports every accepted delete as a
+    # success for files that are all still on the printer.
+    client = _cc2_client()
+    with (
+        patch.object(
+            client,
+            "_send_command",
+            new_callable=AsyncMock,
+            return_value=_reply(CC2_CMD_GET_FILE_LIST, {"error_code": 1003}),
+        ),
+        pytest.raises(CC2UnusableFileListError),
+    ):
+        asyncio.run(client.get_verified_file_list())
+
+
+def test_a_1044_reply_that_is_not_a_dict_raises_rather_than_breaking() -> None:  # noqa: D103
+    # `result.get(...)` on a list/str/int raises AttributeError, which is not a
+    # transport error: it used to escape the MQTT listener, and on the cleanup
+    # path it escaped the handler AFTER the deletes had been sent, so the caller
+    # got no response and could not tell what had been deleted.
+    client = _cc2_client()
+    for shape in (["old.gcode"], "file_list", 7, None):
+        with (
+            patch.object(
+                client,
+                "_send_command",
+                new_callable=AsyncMock,
+                return_value=_reply(CC2_CMD_GET_FILE_LIST, shape),
+            ),
+            pytest.raises(CC2UnusableFileListError),
+        ):
+            asyncio.run(client.get_verified_file_list())
+
+
+def test_an_envelope_with_no_result_key_is_not_a_listing_either() -> None:  # noqa: D103
+    # The lenient path falls back to the whole envelope, whose own keys
+    # (id/method) are proof it is not a listing. The strict path has no such
+    # fallback.
+    client = _cc2_client()
+    with (
+        patch.object(
+            client,
+            "_send_command",
+            new_callable=AsyncMock,
+            return_value={"id": 1, "method": CC2_CMD_GET_FILE_LIST},
+        ),
+        pytest.raises(CC2UnusableFileListError),
+    ):
+        asyncio.run(client.get_verified_file_list())
+
+
+def test_an_empty_file_list_is_a_listing_and_not_an_error() -> None:  # noqa: D103
+    # The distinction the whole contract exists for: a printer with no files
+    # answers `file_list: []`, and that IS usable — it confirms deletions. Only
+    # a reply with no `file_list` key at all is refused. Without this test the
+    # fix could easily be written as "empty means untrusted", which would make
+    # the service refuse to clean up an empty printer forever.
+    client = _cc2_client()
+    with patch.object(
+        client,
+        "_send_command",
+        new_callable=AsyncMock,
+        return_value=_reply(CC2_CMD_GET_FILE_LIST, {"error_code": 0, "file_list": []}),
+    ):
+        assert asyncio.run(client.get_verified_file_list()) == {}
+
+
+def test_an_unusable_reply_keeps_the_previous_listing_untouched() -> None:  # noqa: D103
+    # The cache the Print File select reads must not be wiped by a reply nobody
+    # can read: an "empty inventory" that came from a confused firmware is the
+    # same failure mode as the one the confirmation refuses.
+    client = _cc2_client()
+    before = _cached_listing(client)
+    assert list(before) == ["old.gcode"]
+
+    with (
+        patch.object(
+            client,
+            "_send_command",
+            new_callable=AsyncMock,
+            return_value=_reply(CC2_CMD_GET_FILE_LIST, {"error_code": 1003}),
+        ),
+        pytest.raises(CC2UnusableFileListError),
+    ):
+        asyncio.run(client.get_verified_file_list())
+
+    assert list(client.printer_data.file_list) == ["old.gcode"]
+
+
+def test_the_lenient_listing_method_still_survives_an_unreadable_reply() -> None:  # noqa: D103
+    # The lenient method's callers only display or enumerate (the coordinator's
+    # ten-minute refresh, the Refresh File List button), and none of them decide
+    # whether a file still exists. For them a stale listing beats a wiped one and
+    # beats an exception, so its contract is deliberately unchanged — it must not
+    # start raising at the coordinator, which catches only transport errors.
+    client = _cc2_client()
+    before = _cached_listing(client)
+
+    with patch.object(
+        client,
+        "_send_command",
+        new_callable=AsyncMock,
+        return_value=_reply(CC2_CMD_GET_FILE_LIST, ["not", "a", "listing"]),
+    ):
+        # No AttributeError out of `result.get(...)`, and the listing survives.
+        assert asyncio.run(client.get_file_list()) is before
+
+    assert list(client.printer_data.file_list) == ["old.gcode"]
+
+
+def test_a_readable_reply_still_parses_through_the_strict_method() -> None:  # noqa: D103
+    # The guard against a fix that refuses everything: the one reply shape this
+    # repo has actually captured (fw 02.01.00.00, all 54 files at once) still
+    # parses, entries and folders included.
+    client = _cc2_client()
+    with patch.object(
+        client,
+        "_send_command",
+        new_callable=AsyncMock,
+        return_value=_reply(
+            CC2_CMD_GET_FILE_LIST,
+            {
+                "error_code": 0,
+                "file_list": [
+                    {"filename": "old.gcode", "size": 10, "create_time": 1_700_000_000},
+                    {"filename": "models", "type": "dir"},
+                ],
+            },
+        ),
+    ):
+        files = asyncio.run(client.get_verified_file_list())
+
+    assert list(files) == ["old.gcode"]
+    assert files["old.gcode"].created is not None
+
+
+def test_an_unreadable_delete_error_code_is_a_refusal_not_an_exception() -> None:  # noqa: D103
+    # `int(result["error_code"])` raised ValueError/TypeError for a code that is
+    # not a number — escaping a cleanup loop AFTER earlier deletes had landed and
+    # discarding their results. The contract is "a non-zero code is returned
+    # rather than raised", so an unreadable code is the most non-zero answer
+    # there is, and it must be a code rather than an exception.
+    for unreadable in ("abc", None, [], {}, "  ", 0.5, 1.5, True, float("nan")):
+        client = _cc2_client()
+        with patch.object(
+            client,
+            "_send_command",
+            new_callable=AsyncMock,
+            return_value=_reply(CC2_CMD_DELETE_FILE, {"error_code": unreadable}),
+        ):
+            code = asyncio.run(client.delete_file("locked.gcode"))
+        # Non-zero, so a caller asking only "did the printer refuse?" is right,
+        # and negative, so it cannot collide with a real CC2 code (1000-9004).
+        assert code == CC2_ERROR_REPLY_UNPARSEABLE, unreadable
+        assert code != 0
+
+    # `int(0.5)` truncates to 0, and 0 means "the printer did not refuse": a
+    # fractional code rounded down would be reported as a confirmed delete. It is
+    # in the list above for that reason, not as decoration.
+    client = _cc2_client()
+    with patch.object(
+        client,
+        "_send_command",
+        new_callable=AsyncMock,
+        return_value=_reply(CC2_CMD_DELETE_FILE, {"error_code": 0.5}),
+    ):
+        assert asyncio.run(client.delete_file("locked.gcode")) != 0
+
+    # A numeric string still parses, because that is what a JSON envelope full
+    # of strings would carry and it is not a refusal.
+    client = _cc2_client()
+    with patch.object(
+        client,
+        "_send_command",
+        new_callable=AsyncMock,
+        return_value=_reply(CC2_CMD_DELETE_FILE, {"error_code": "0"}),
+    ):
+        assert asyncio.run(client.delete_file("fine.gcode")) == 0
+
+    # And a real code is untouched by the coercion.
+    client = _cc2_client()
+    with patch.object(
+        client,
+        "_send_command",
+        new_callable=AsyncMock,
+        return_value=_reply(
+            CC2_CMD_DELETE_FILE, {"error_code": CC2_ERROR_FILE_DELETE_FAILED}
+        ),
+    ):
+        assert asyncio.run(client.delete_file("locked.gcode")) == (
+            CC2_ERROR_FILE_DELETE_FAILED
+        )
+
+
+def test_a_delete_with_no_reply_at_all_still_raises() -> None:  # noqa: D103
+    # The coercion must not swallow the case that IS a failure to answer: no
+    # reply, or a reply with no error code, says nothing about the file and is
+    # never reported as "refused" — it is reported as never answered.
+    for reply in (
+        None,
+        _reply(CC2_CMD_DELETE_FILE, None),
+        _reply(CC2_CMD_DELETE_FILE, {"filename": "maybe.gcode"}),
+    ):
+        client = _cc2_client()
+        with (
+            patch.object(
+                client, "_send_command", new_callable=AsyncMock, return_value=reply
+            ),
+            pytest.raises(ElegooPrinterConnectionError),
+        ):
+            asyncio.run(client.delete_file("ghost.gcode"))

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import httpx
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistantError, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -236,13 +236,38 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         if device_entry is None or device_entry.sw_version == live:
             return
 
+        # The registry is shared with everything else in Home Assistant, and a
+        # device can be removed between the lookup above and this write (a user
+        # deleting the device, an entry unload, another integration pruning it).
+        # ``async_update_device`` then raises -- ``KeyError`` out of its own
+        # ``self.devices[device_id]`` lookup, ``HomeAssistantError`` from its
+        # collision checks -- and this runs inside ``_async_update_data``, where
+        # core's catch-all would report "Unexpected error fetching <printer>
+        # data" with a full traceback on EVERY poll (2 s while online). A stale
+        # version on a device record is not worth that noise, which is the same
+        # reason ``_log_failed_poll`` and the ``reconnect()`` net exist; the next
+        # poll simply looks the device up again.
+        try:
+            registry.async_update_device(device_entry.id, sw_version=live)
+        except (HomeAssistantError, KeyError) as err:
+            LOGGER.debug(
+                "Could not write firmware version '%s' to device %s: %r",
+                live,
+                device_entry.id,
+                err,
+            )
+            return
+
+        # Logged once the write landed: the line reads as "the device record now
+        # says X", which is only true if the registry took it, and announcing a
+        # version the record never gained is the kind of statement this file
+        # avoids making before it is owed.
         LOGGER.info(
             "Updating firmware version for printer %s: '%s' -> '%s'",
             entry.title,
             device_entry.sw_version,
             live,
         )
-        registry.async_update_device(device_entry.id, sw_version=live)
 
     def _log_failed_poll(self, error: Exception, *, was_online: bool) -> None:
         """

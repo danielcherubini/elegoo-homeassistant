@@ -106,6 +106,63 @@ if TYPE_CHECKING:
     from .upload import UploadFile
 
 
+# Returned by ``delete_file`` when the printer answered a 1047 with an
+# ``error_code`` that is not a number. It is NOT a printer code: it is this
+# client's own marker, deliberately non-zero so a caller that only asks "did the
+# printer refuse?" treats an unreadable acknowledgement as a refusal, and
+# deliberately negative so it can never collide with a real CC2 error code
+# (1000-9004 in ``cc2/const.py``).
+CC2_ERROR_REPLY_UNPARSEABLE = -1
+
+
+class CC2UnusableFileListError(Exception):
+    """
+    A 1044 reply that cannot be read as a file listing at all.
+
+    Raised by ``get_verified_file_list`` — the listing method the destructive
+    ``cleanup_files`` service uses — for a reply whose ``result`` is not a dict
+    carrying ``file_list``: an error envelope, a rejected-parameter reply, or any
+    other shape, since 1044's sibling 1047 documents no response body at all and
+    nobody has captured what a CC2 answers when it dislikes a 1044.
+
+    Why a distinct exception rather than ``ElegooPrinterConnectionError``: the
+    printer DID answer, so "not reachable" would be the wrong diagnosis, and
+    ``PRINT_TRANSPORT_ERRORS`` is what a caller catches to mean "the link is
+    down". Why a distinct exception rather than an empty dict: an empty dict is
+    also what an EMPTY PRINTER answers, and a caller deciding "is this file
+    still there?" cannot tell the two apart. Treating an unreadable reply as an
+    empty inventory is what turns a failed re-list into a reported success, so
+    the ambiguity is refused here rather than resolved in favour of deleting.
+    """
+
+
+def _error_code(value: object) -> int | None:
+    """
+    Read an ``error_code`` out of a printer reply, or None if it says nothing.
+
+    None means "unreadable", which the callers turn into
+    ``CC2_ERROR_REPLY_UNPARSEABLE``. A float is accepted only when it is
+    integral: ``int(0.5)`` truncates to ``0``, and on this method ``0`` means
+    "the printer did not refuse" — so rounding a fractional code down would
+    report a delete the printer never confirmed. Same direction of error as the
+    truncated ``older_than_days`` the cleanup service refuses: never resolve
+    ambiguity toward "it is safe to destroy this".
+    """
+    if isinstance(value, bool):
+        # True is 1 — non-zero, so harmless here — but it is not a code, and
+        # reporting a boolean as error_code 1 would send a reader looking for a
+        # firmware code that was never sent.
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else None
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
 class ElegooCC2Client:
     """
     MQTT client for CC2 printers.
@@ -1406,8 +1463,34 @@ class ElegooCC2Client:
         except (KeyError, ValueError, TypeError):
             self.logger.exception("Failed to parse Canvas status")
 
-    def _handle_file_list(self, result: CC2FileList | dict[str, Any]) -> None:
-        """Replace ``printer_data.file_list`` with the entries of a 1044 result."""
+    def _handle_file_list(self, result: CC2FileList | dict[str, Any]) -> bool:
+        """
+        Replace ``printer_data.file_list`` with the entries of a 1044 result.
+
+        Returns whether ``result`` was readable as a listing at all. A reply
+        that is not a dict carrying ``file_list`` — an error envelope, a
+        rejected-parameter reply, firmware that answers 1044 with a list or a
+        bare string — leaves the cache UNTOUCHED and returns False. Two reasons:
+
+        * ``result.get(...)`` on a list/str/int raises ``AttributeError``, which
+          is not a transport error and would escape the MQTT listener and stop
+          it (see ``_mqtt_listener``'s narrow excepts);
+        * a reply nobody has captured is not evidence that the printer has no
+          files. Overwriting a listing we could read with ``{}`` would empty the
+          Print File select and, worse, hand an "empty inventory" to anything
+          deciding whether a file still exists.
+
+        The destructive caller does not rely on the cached listing either; it
+        uses ``get_verified_file_list``, which refuses an unreadable reply
+        instead of keeping the old one.
+        """
+        if not isinstance(result, dict) or "file_list" not in result:
+            self.logger.warning(
+                "Ignoring a 1044 reply that is not a file listing (%s); "
+                "keeping the previous listing",
+                type(result).__name__,
+            )
+            return False
         files = {}
         for entry in result.get("file_list") or []:
             if not isinstance(entry, dict) or entry.get("type", "file") != "file":
@@ -1422,6 +1505,7 @@ class ElegooCC2Client:
                 files[file.name] = file
         self.printer_data.file_list = files
         self.logger.debug("File list updated: %d files", len(files))
+        return True
 
     async def get_file_list(self) -> dict[str, PrinterFile]:
         """
@@ -1430,6 +1514,13 @@ class ElegooCC2Client:
         Sends the parameters ElegooSlicer sends; no paging, the printer
         answered with all 54 files at once (fw 02.01.00.00). The result is
         kept in ``printer_data.file_list`` and returned.
+
+        Lenient by design, because its callers only display or enumerate: a
+        reply that cannot be read as a listing keeps the previous listing (see
+        ``_handle_file_list``), so the return value can be a stale listing
+        rather than a fresh one and the caller cannot tell. Anything deciding
+        whether a file STILL EXISTS — the ``cleanup_files`` delete confirmation
+        — must use ``get_verified_file_list`` instead, which fails loudly.
 
         Raises:
             ElegooPrinterConnectionError: if the printer did not answer.
@@ -1443,6 +1534,74 @@ class ElegooCC2Client:
             raise ElegooPrinterConnectionError(msg)
         self._handle_file_list(response.get("result", response))
         return self.printer_data.file_list
+
+    async def get_verified_file_list(self) -> dict[str, PrinterFile]:
+        """
+        Fetch the file list (1044) and return it only if the reply is readable.
+
+        Same request as ``get_file_list``, but the answer is judged instead of
+        assumed: the reply's ``result`` has to be a dict containing
+        ``file_list``. Anything else raises, because a caller re-listing to
+        confirm a delete has to be able to tell "the printer has no files" from
+        "the printer said something I cannot read" — an error envelope, a
+        rejected-parameter reply or an undocumented shape all parse to an empty
+        listing through the lenient path, and an empty listing read as
+        authoritative reports every accepted delete as a success while the files
+        sit exactly where they were.
+
+        The cache is only replaced by a listing that passed, so a failed
+        verification cannot empty the Print File select either.
+
+        Raises:
+            ElegooPrinterConnectionError: if the printer did not answer.
+            CC2UnusableFileListError: if it answered something that is not a
+                file listing.
+
+        """
+        response = await self._send_command(
+            CC2_CMD_GET_FILE_LIST, {"storage_media": "local", "path": "/"}
+        )
+        if not response:
+            msg = "Printer did not answer the file list request"
+            raise ElegooPrinterConnectionError(msg)
+        # No ``or response`` fallback: an envelope with no ``result`` key is not
+        # a listing either, and the envelope's own keys (id/method) prove it.
+        result = response.get("result")
+        if not isinstance(result, dict) or "file_list" not in result:
+            msg = (
+                "The printer's file-list reply is not a file listing "
+                f"(result: {type(result).__name__}, keys: "
+                f"{sorted(result) if isinstance(result, dict) else 'n/a'})"
+            )
+            raise CC2UnusableFileListError(msg)
+        self._handle_file_list(result)
+        return self.printer_data.file_list
+
+    async def refresh_status(self) -> None:
+        """
+        Ask the printer for its full status now (method 1002) and await it.
+
+        ``printer_data.status`` otherwise reflects the last push, which can
+        predate the current call by up to the coordinator interval — enough for
+        a job to have started in between. A caller that must know what the
+        printer is doing BEFORE it destroys something uses this to make the
+        answer current; ``_request_full_status`` (fire-and-forget, for the
+        reconnect path) is not enough, and neither is the delta stream, which
+        only ever reaches this client through the listener.
+
+        The status is readable when this returns, and that is not obvious: the
+        response waiter is signalled in ``_handle_response`` before
+        ``_handle_full_status`` runs, but nothing between the two awaits, so the
+        listener finishes rebuilding ``printer_data.status`` before the loop can
+        resume this coroutine. Keep it that way — do not insert an await between
+        signalling the waiter and mapping the status, or every caller of this
+        method reads the previous status and believes it is the new one.
+
+        Raises:
+            ElegooPrinterConnectionError: if the printer did not answer.
+
+        """
+        await self._send_command(CC2_CMD_GET_STATUS)
 
     async def _send_command(
         self,
@@ -1762,6 +1921,12 @@ class ElegooCC2Client:
 
         A non-zero code is returned rather than raised: one locked or busy file
         must not abort a cleanup of forty, and the reason is reported per file.
+        An ``error_code`` that is not a number is reported as
+        ``CC2_ERROR_REPLY_UNPARSEABLE`` for the same reason — it is an answer
+        that cannot be read as consent, so it must not be a code the caller has
+        to parse, and it must not raise: ``int("abc")`` escaping here would
+        unwind a cleanup AFTER earlier deletes had already landed, throwing away
+        the report of what happened to them.
 
         Args:
             filename: the name exactly as the 1044 listing reports it.
@@ -1770,7 +1935,8 @@ class ElegooCC2Client:
                 is only ever documented with ``path: "/"`` on ``local``.
 
         Returns:
-            The ``error_code`` from the printer's reply, if it sent one.
+            The ``error_code`` from the printer's reply, if it sent one, or
+            ``CC2_ERROR_REPLY_UNPARSEABLE`` if it sent one that is not a number.
 
         Raises:
             ElegooPrinterConnectionError: if the printer sent no reply, or a
@@ -1787,7 +1953,20 @@ class ElegooCC2Client:
         if not isinstance(result, dict) or "error_code" not in result:
             msg = f"No acknowledgement from the printer for delete file {filename}"
             raise ElegooPrinterConnectionError(msg)
-        return int(result["error_code"])
+        code = _error_code(result["error_code"])
+        if code is None:
+            # "abc"/None/[]/0.5: an answer that cannot be read as consent. It is
+            # reported as a refusal rather than raised, because raising here
+            # unwinds a cleanup loop that has already deleted files and throws
+            # away the report of what happened to them.
+            self.logger.warning(
+                "Delete reply for %s carried an unreadable error_code %r; "
+                "reporting it as refused",
+                filename,
+                result["error_code"],
+            )
+            return CC2_ERROR_REPLY_UNPARSEABLE
+        return code
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """Set the speed of a fan."""

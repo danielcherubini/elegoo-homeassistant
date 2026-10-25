@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import pathlib
 import time
 from contextlib import nullcontext
 from pathlib import Path
@@ -24,6 +25,7 @@ from homeassistant.core import SupportsResponse
 from homeassistant.exceptions import ConfigEntryError
 
 from custom_components.elegoo_printer import (
+    _MAX_OLDER_THAN_DAYS,
     SERVICE_CLEANUP_FILES,
     SERVICE_CLEANUP_FILES_SCHEMA,
     SERVICE_START_PRINT,
@@ -40,8 +42,15 @@ from custom_components.elegoo_printer import (
     _stage_upload,
     async_setup,
 )
-from custom_components.elegoo_printer.cc2.client import ElegooCC2Client
-from custom_components.elegoo_printer.cc2.const import CC2_ERROR_FILE_DELETE_FAILED
+from custom_components.elegoo_printer.cc2.client import (
+    CC2_ERROR_REPLY_UNPARSEABLE,
+    CC2UnusableFileListError,
+    ElegooCC2Client,
+)
+from custom_components.elegoo_printer.cc2.const import (
+    CC2_ERROR_FILE_DELETE_FAILED,
+    CC2_ERROR_PRINTER_BUSY,
+)
 from custom_components.elegoo_printer.cc2.upload import UploadFile
 from custom_components.elegoo_printer.const import DOMAIN
 from custom_components.elegoo_printer.sdcp.exceptions import (
@@ -49,6 +58,7 @@ from custom_components.elegoo_printer.sdcp.exceptions import (
     ElegooPrinterNotConnectedError,
     ElegooPrinterTimeoutError,
 )
+from custom_components.elegoo_printer.sdcp.models.enums import ElegooMachineStatus
 from custom_components.elegoo_printer.sdcp.models.file_info import PrinterFile
 from custom_components.elegoo_printer.sdcp.models.printer import Printer
 
@@ -412,8 +422,10 @@ class TestStartPrintService:
             result = await _async_start_print(hass, _start_call())
 
             assert result["success"] is True
-            # bed_leveling defaults to True in the schema; the handler falls
-            # back to the same when a programmatic call omits it.
+            # bed_leveling defaults to True in the schema — which core applies
+            # for every caller — and the handler's own `.get(..., True)` mirrors
+            # that default rather than trusting it, so the two cannot disagree
+            # about what an omitted field means.
             client.print_start.assert_awaited_once_with(
                 "benchy.gcode", tray_id=None, bed_leveling=True
             )
@@ -743,14 +755,51 @@ def _cleanup_listing() -> dict[str, PrinterFile]:
     }
 
 
+class _FakePrintInfo:
+    """Just enough PrintInfo for the active-file guard to read."""
+
+    def __init__(self, filename: str | None) -> None:
+        self.filename = filename
+
+
+class _FakeStatus:
+    """
+    A printer status the tests can set and the handler can re-read.
+
+    Deliberately a real object rather than a MagicMock: the guard has to be able
+    to tell a machine status it recognises from one it does not, and a MagicMock
+    answers `isinstance(..., ElegooMachineStatus)` with a mock that is neither,
+    which would make every test silently take the "unknown means busy" path.
+    ``refreshes`` counts the full-status requests, so "the handler asked the
+    printer before deleting" is assertable.
+    """
+
+    def __init__(
+        self,
+        *,
+        print_info_filename: str | None = None,
+        machine_status: ElegooMachineStatus | None = ElegooMachineStatus.IDLE,
+    ) -> None:
+        self.print_info = _FakePrintInfo(print_info_filename)
+        self.current_status = machine_status
+        self.refreshes: list[None] = []
+
+
 def _cleanup_client(  # noqa: PLR0913
     listing: dict[str, PrinterFile],
     *,
     vanishing: list[str] | None = None,
     refused: list[str] | None = None,
+    busy: list[str] | None = None,
     silence: list[str] | None = None,
     active: str | None = None,
     re_list_fails: bool = False,
+    re_list_unusable: bool = False,
+    broken_re_list: bool = False,
+    break_delete: list[str] | None = None,
+    unreadable_delete_code: bool = False,
+    machine_status: ElegooMachineStatus = ElegooMachineStatus.IDLE,
+    status_after_refresh: tuple[str | None, ElegooMachineStatus] | None = None,
 ) -> MagicMock:
     """
     Build a stateful CC2 client double for cleanup tests.
@@ -759,39 +808,95 @@ def _cleanup_client(  # noqa: PLR0913
     deleted; the default is all of them. ``vanishing=[]`` is the 1047 failure
     mode this whole design exists for — the printer answers ``error_code 0`` and
     keeps the file — and it has to be expressible in one argument.
+
+    The listing is served by BOTH client methods, because the handler is
+    supposed to ask the STRICT one:
+
+    * ``get_file_list`` — the lenient method, which answers an empty dict for a
+      reply it cannot read. The double makes it answer as though every reply
+      were unreadable, so any handler that still asks it for an inventory sees
+      `{}` and fails its own tests. That is what makes "the confirmation trusts
+      the listing" a measurement rather than a claim.
+    * ``get_verified_file_list`` — the strict method, which raises for a reply
+      that is not a listing. This double answers it from ``present``, and
+      ``re_list_unusable`` makes the SECOND call raise
+      ``CC2UnusableFileListError``, which is the 1044-answers-an-error-envelope
+      case: the printer answers 1047 with 0, then answers the confirming 1044
+      with something that carries no ``file_list``.
+
+    ``status_after_refresh`` is what the printer's full-status request (1002)
+    brings back — a ``(filename, machine_status)`` pair — and is how a test
+    simulates a job that started AFTER the last status push: the cached status
+    the handler reads first says nothing is printing, and only the fresh read
+    the destructive branch performs reveals the job.
     """
     client = MagicMock(spec=ElegooCC2Client)
     present = set(listing)
     doomed = set(listing) if vanishing is None else set(vanishing)
     refused_names = set(refused or ())
+    busy_names = set(busy or ())
+    broken_delete_names = set(break_delete or ())
     silent_names = set(silence or ())
     list_calls: list[None] = []
+    status = _FakeStatus(print_info_filename=active, machine_status=machine_status)
 
-    async def _get_file_list() -> dict[str, PrinterFile]:
+    async def _get_verified_file_list() -> dict[str, PrinterFile]:
         list_calls.append(None)
         if re_list_fails and len(list_calls) > 1:
             msg = "printer went away before the re-list"
             raise ElegooPrinterTimeoutError(msg)
+        if re_list_unusable and len(list_calls) > 1:
+            msg = "the printer's file-list reply is not a file listing"
+            raise CC2UnusableFileListError(msg)
+        if broken_re_list and len(list_calls) > 1:
+            # Not a transport error: a reply so far off the documented envelope
+            # that reading it broke, which is what `result.get(...)` on a list
+            # or a string does.
+            broken = "'list' object has no attribute 'get'"
+            raise AttributeError(broken)
         return {name: listing[name] for name in sorted(present)}
+
+    async def _get_file_list() -> dict[str, PrinterFile]:
+        # The lenient path: what a CC2 whose 1044 reply cannot be read looks
+        # like to a caller that believes the absence of an exception.
+        return {}
 
     async def _delete_file(name: str) -> int:
         if name in silent_names:
             msg = f"the printer never answered the delete for {name}"
             raise ElegooPrinterTimeoutError(msg)
+        if name in broken_delete_names:
+            broken = "'list' object has no attribute 'get'"
+            raise AttributeError(broken)
         if name in refused_names:
             return CC2_ERROR_FILE_DELETE_FAILED
+        if name in busy_names:
+            return CC2_ERROR_PRINTER_BUSY
+        if unreadable_delete_code:
+            # The client coerces an unreadable code to its own non-zero marker;
+            # the double reports what the real client would return.
+            return CC2_ERROR_REPLY_UNPARSEABLE
         if name in doomed:
             present.discard(name)
         return 0
 
+    async def _refresh_status() -> None:
+        if status_after_refresh is not None:
+            name, machine = status_after_refresh
+            status.print_info.filename = name
+            status.current_status = machine
+        status.refreshes.append(None)
+
     client.get_file_list = AsyncMock(side_effect=_get_file_list)
+    client.get_verified_file_list = AsyncMock(side_effect=_get_verified_file_list)
     client.delete_file = AsyncMock(side_effect=_delete_file)
+    client.refresh_status = AsyncMock(side_effect=_refresh_status)
     # MagicMock(spec=ElegooCC2Client) has NO printer_data — it is assigned in
     # __init__, not on the class, so reading it off a spec'd mock raises
     # AttributeError. That is why this does not reuse _cc2_client(): the active
-    # file guard reads printer_data.status.print_info.filename.
+    # file guard reads printer_data.status.
     client.printer_data = MagicMock()
-    client.printer_data.status.print_info.filename = active
+    client.printer_data.status = status
     return client
 
 
@@ -945,11 +1050,12 @@ class TestCleanupFilesService:
 
     def test_dry_run_deletes_nothing_and_never_re_lists(self) -> None:
         # The default call: report only. It must not spend the confirmation
-        # re-list either — one listing, no 1047 at all. The three ways a caller
+        # re-list either — one listing, no 1047 at all. The three ways a call
         # can fail to say "delete for real" (omit the key, send None, send
-        # something that is not a bool) are asserted here too: the schema's
-        # default is not a guard for a programmatic caller, and only the
-        # literal boolean False may reach the destructive branch.
+        # something that is not a bool) are asserted here too: the schema
+        # already refuses the last two for every caller that comes through core,
+        # so this pins the handler's own second gate — only the literal boolean
+        # False may reach the destructive branch.
         async def _run() -> None:
             for sneaky in ({}, {"dry_run": None}, {"dry_run": "false"}, {"dry_run": 0}):
                 client = _cleanup_client(_cleanup_listing())
@@ -964,7 +1070,10 @@ class TestCleanupFilesService:
                 assert result["deleted"] == [], sneaky
                 assert result["would_delete"] == ["old.gcode"], sneaky
                 client.delete_file.assert_not_called()
-                assert client.get_file_list.await_count == 1, sneaky
+                # One listing, and it is the strict one: a dry run must not
+                # spend the confirming re-list either.
+                assert client.get_verified_file_list.await_count == 1, sneaky
+                client.get_file_list.assert_not_awaited()
 
         asyncio.run(_run())
 
@@ -1006,8 +1115,11 @@ class TestCleanupFilesService:
                 "message": "deleted 1 of 1 selected file(s)",
             }
             client.delete_file.assert_awaited_once_with("old.gcode")
-            # Two listings: the one it acted on and the one it believed.
-            assert client.get_file_list.await_count == 2
+            # Two listings: the one it acted on and the one it believed, both
+            # through the strict method — the lenient one answers `{}` for a
+            # reply it could not read, so it can never settle a delete.
+            assert client.get_verified_file_list.await_count == 2
+            client.get_file_list.assert_not_awaited()
 
         asyncio.run(_run())
 
@@ -1027,7 +1139,7 @@ class TestCleanupFilesService:
             assert result["deleted"] == []
             assert result["failed"] == {"old.gcode": "still listed after delete"}
             client.delete_file.assert_awaited_once_with("old.gcode")
-            assert client.get_file_list.await_count == 2
+            assert client.get_verified_file_list.await_count == 2
 
         asyncio.run(_run())
 
@@ -1124,7 +1236,7 @@ class TestCleanupFilesService:
             # so it still has to be confirmed by re-listing. The files that
             # were never attempted are NOT in `deleted`, so they cannot be
             # mistaken for confirmed deletions.
-            assert client.get_file_list.await_count == 2
+            assert client.get_verified_file_list.await_count == 2
             assert result["would_delete"] == ["a.gcode", "b.gcode", "c.gcode"]
 
         asyncio.run(_run())
@@ -1132,7 +1244,7 @@ class TestCleanupFilesService:
     def test_unreachable_printer_reports_failure_in_the_response_shape(self) -> None:
         async def _run() -> None:
             client = _cleanup_client(_cleanup_listing())
-            client.get_file_list = AsyncMock(
+            client.get_verified_file_list = AsyncMock(
                 side_effect=ElegooPrinterNotConnectedError("offline")
             )
             hass = _cleanup_hass(client)
@@ -1196,7 +1308,7 @@ class TestCleanupFilesService:
             assert result["skipped"] == {"clock_never_set.gcode": "no_creation_date"}
             client.delete_file.assert_not_called()
             # One listing only: nothing was selected, so nothing was confirmed.
-            assert client.get_file_list.await_count == 1
+            assert client.get_verified_file_list.await_count == 1
 
         asyncio.run(_run())
 
@@ -1260,6 +1372,629 @@ class TestCleanupFilesService:
             message = str(result["message"])
             assert "matched the include" not in message
             assert "365 day(s)" in message
+
+        asyncio.run(_run())
+
+    # --- what counts as a listing (B2) ------------------------------------
+
+    def test_re_list_answering_an_error_envelope_reports_everything_unconfirmed(
+        self,
+    ) -> None:
+        # THE blocking case. 1047 answers error_code 0 and the confirming 1044
+        # answers something that carries no `file_list` — an error envelope, a
+        # rejected-parameter reply, any shape nobody has captured, since 1047
+        # documents no response body at all. Read leniently that parses to an
+        # EMPTY listing, and an empty listing read as authoritative means
+        # "nothing remains", i.e. every delete confirmed: a nightly automation
+        # reporting "deleted 40 of 40" for files that are all still there, and
+        # never retrying because success was true.
+        #
+        # Usability is therefore required, not inferred from the absence of an
+        # exception: the strict listing method raises, and a raised failure
+        # reports every accepted file as unconfirmed with its own reason.
+        async def _run() -> None:
+            listing = {
+                "a.gcode": _entry("a.gcode", days_ago=90),
+                "b.gcode": _entry("b.gcode", days_ago=90),
+            }
+            client = _cleanup_client(listing, re_list_unusable=True)
+            hass = _cleanup_hass(client)
+
+            result = await _async_cleanup_files(
+                hass, _cleanup_call(dry_run=False, older_than_days=60)
+            )
+
+            assert result["success"] is False
+            # Nothing is reported as deleted, because nothing was proven gone.
+            assert result["deleted"] == []
+            # Every accepted file is reported, with a reason naming the reply
+            # problem rather than the generic "still listed" one — the two mean
+            # different things to whoever reads the notification.
+            assert set(result["failed"]) == {"a.gcode", "b.gcode"}
+            for name in ("a.gcode", "b.gcode"):
+                assert "re-list failed" in result["failed"][name]
+                assert "CC2UnusableFileListError" in result["failed"][name]
+                assert result["failed"][name] != "still listed after delete"
+            # Both 1047s really went out: the run is unconfirmed, not aborted.
+            assert client.delete_file.await_count == 2
+
+        asyncio.run(_run())
+
+    def test_confirmation_never_asks_the_lenient_listing_method(self) -> None:
+        # `get_file_list` answers `{}` for any reply it cannot read, so it
+        # cannot settle a delete. The double makes it answer as though every
+        # reply were unreadable: a handler that went back to it would see an
+        # empty printer and report every delete confirmed, failing the tests
+        # above. This pins the routing directly.
+        async def _run() -> None:
+            client = _cleanup_client(_cleanup_listing())
+            hass = _cleanup_hass(client)
+
+            result = await _async_cleanup_files(
+                hass, _cleanup_call(dry_run=False, older_than_days=60)
+            )
+
+            assert result["deleted"] == ["old.gcode"]
+            client.get_verified_file_list.assert_awaited()
+            client.get_file_list.assert_not_awaited()
+
+        asyncio.run(_run())
+
+    def test_a_re_list_that_breaks_on_a_malformed_reply_is_still_reported(
+        self,
+    ) -> None:
+        # A 1044 `result` that is a list/str/int makes the client's
+        # `result.get(...)` raise AttributeError, which is NOT a transport error:
+        # it used to escape the handler AFTER the deletes were sent, leaving the
+        # caller with no response at all and no way to tell what was deleted.
+        async def _run() -> None:
+            client = _cleanup_client(_cleanup_listing(), broken_re_list=True)
+            hass = _cleanup_hass(client)
+
+            result = await _async_cleanup_files(
+                hass, _cleanup_call(dry_run=False, older_than_days=60)
+            )
+
+            assert result["success"] is False
+            assert result["deleted"] == []
+            assert "re-list broke" in result["failed"]["old.gcode"]
+            assert "AttributeError" in result["failed"]["old.gcode"]
+
+        asyncio.run(_run())
+
+    def test_a_delete_reply_that_breaks_keeps_the_results_that_landed(
+        self,
+    ) -> None:
+        # Same shape one method earlier: an AttributeError out of `delete_file`
+        # used to unwind the loop and discard the verdicts of the files that had
+        # already been deleted. The run stops, but what landed is reported and
+        # still goes to be confirmed by re-listing.
+        async def _run() -> None:
+            listing = {
+                "a.gcode": _entry("a.gcode", days_ago=90),
+                "b.gcode": _entry("b.gcode", days_ago=90),
+                "c.gcode": _entry("c.gcode", days_ago=90),
+            }
+            client = _cleanup_client(listing, break_delete=["b.gcode"])
+            hass = _cleanup_hass(client)
+
+            result = await _async_cleanup_files(
+                hass, _cleanup_call(dry_run=False, older_than_days=60)
+            )
+
+            assert result["success"] is False
+            # "a" was accepted and the re-list confirms it.
+            assert result["deleted"] == ["a.gcode"]
+            assert "AttributeError" in result["failed"]["b.gcode"]
+            # The files behind it say they were never attempted, rather than
+            # looking like survivors or like refusals.
+            assert result["failed"]["c.gcode"] == (
+                "not attempted after an unreadable reply"
+            )
+            assert client.delete_file.await_count == 2
+
+        asyncio.run(_run())
+
+    def test_an_unreadable_delete_error_code_is_reported_as_a_refusal(self) -> None:
+        # The client coerces a non-numeric `error_code` to its own non-zero
+        # marker rather than raising, so the service must report it as a refusal
+        # and name it as unreadable instead of printing "(error_code -1)" as if
+        # -1 were a firmware answer.
+        async def _run() -> None:
+            client = _cleanup_client(_cleanup_listing(), unreadable_delete_code=True)
+            hass = _cleanup_hass(client)
+
+            result = await _async_cleanup_files(
+                hass, _cleanup_call(dry_run=False, older_than_days=60)
+            )
+
+            assert result["success"] is False
+            assert result["deleted"] == []
+            assert result["failed"] == {
+                "old.gcode": "printer refused the delete (unreadable error_code)"
+            }
+
+        asyncio.run(_run())
+
+    # --- the handler's own read of the parameters (C1, C2, C3) ------------
+
+    def test_a_bare_string_pattern_is_not_splatted_into_characters(self) -> None:
+        # `include: "ECC*"` is the spelling the README documents, and the schema
+        # turns it into ["ECC*"]. The handler used to read the field raw and hit
+        # `list(value or ())`, and `list("ECC*")` is ['E','C','C','*'] — a lone
+        # `*`, which matches EVERY file. A narrower request became the widest
+        # possible one, on a destructive field. Note that this was reachable
+        # THROUGH the registered schema, not around it: core validates every
+        # caller's data, so the bug was the handler disagreeing with the schema,
+        # and these calls drive the handler directly the way core's validated
+        # output would.
+        async def _run() -> None:
+            listing = {
+                "ECC2_skull.gcode": _entry("ECC2_skull.gcode", days_ago=90),
+                "unrelated.gcode": _entry("unrelated.gcode", days_ago=90),
+            }
+
+            client = _cleanup_client(dict(listing))
+            result = await _async_cleanup_files(
+                _cleanup_hass(client),
+                _cleanup_call(dry_run=True, older_than_days=60, include="ECC*"),
+            )
+            assert result["would_delete"] == ["ECC2_skull.gcode"]
+            assert result["skipped"] == {"unrelated.gcode": "not_included"}
+
+            # And in a REAL run: the splat's damage is only ever measurable on
+            # the destructive branch.
+            client = _cleanup_client(dict(listing))
+            result = await _async_cleanup_files(
+                _cleanup_hass(client),
+                _cleanup_call(dry_run=False, older_than_days=60, include="ECC*"),
+            )
+            assert result["deleted"] == ["ECC2_skull.gcode"]
+            client.delete_file.assert_awaited_once_with("ECC2_skull.gcode")
+
+            # `exclude` splats the OTHER way, into patterns matching nothing:
+            # the files the user named to keep become candidates.
+            client = _cleanup_client(dict(listing))
+            result = await _async_cleanup_files(
+                _cleanup_hass(client),
+                _cleanup_call(dry_run=True, older_than_days=60, exclude="ECC*"),
+            )
+            assert result["would_delete"] == ["unrelated.gcode"]
+            assert result["skipped"] == {"ECC2_skull.gcode": "excluded"}
+
+            # The handler and the schema now agree on the same input, which is
+            # the point: one validator, not two that can drift.
+            assert SERVICE_CLEANUP_FILES_SCHEMA({"entry_id": "x", "include": "ECC*"})[
+                "include"
+            ] == ["ECC*"]
+
+        asyncio.run(_run())
+
+    def test_a_string_day_count_is_coerced_to_the_number_it_describes(self) -> None:
+        # Automations template this field, so "60" is a normal value — and the
+        # schema accepts it. Read raw it reached `timedelta(days="60")` and
+        # raised TypeError out of the handler, with no response for the caller.
+        async def _run() -> None:
+            client = _cleanup_client(_cleanup_listing())
+            hass = _cleanup_hass(client)
+
+            result = await _async_cleanup_files(
+                hass, _cleanup_call(dry_run=False, older_than_days="60")
+            )
+
+            assert result["success"] is True
+            assert result["deleted"] == ["old.gcode"]
+
+            # And it is the same 60, not a different cutoff: the dry-run message
+            # quotes the day count it selected with, so a coercion that invented
+            # or truncated a value would show up here.
+            client = _cleanup_client(_cleanup_listing())
+            result = await _async_cleanup_files(
+                _cleanup_hass(client),
+                _cleanup_call(dry_run=True, older_than_days="60"),
+            )
+            assert "60 day(s)" in str(result["message"])
+            assert result["would_delete"] == ["old.gcode"]
+
+        asyncio.run(_run())
+
+    def test_the_handlers_own_validators_reject_bad_parameters(self) -> None:
+        # The schema's validators run in the handler too, so a call that reaches
+        # this function without core having run the schema first — the tests, or
+        # a direct call into the module — gets the same refusal, in the response
+        # shape rather than as an exception, and nothing is listed or deleted.
+        # For a real service call core has already refused these; this gate is
+        # the second one on a destructive field.
+        async def _run() -> None:
+            for bad in (
+                {"older_than_days": 0},
+                {"older_than_days": -5},
+                {"older_than_days": 60.9},
+                {"older_than_days": True},
+                # C3: `10**20` clears `vol.Range(min=1)` and the whole-number
+                # check (a float cannot tell them apart) and then overflows
+                # `timedelta` — an OverflowError, not a validation error, so HA
+                # does not catch it. It is now refused by the ceiling.
+                {"older_than_days": 10**20},
+                {"older_than_days": float("inf")},
+                {"older_than_days": float("nan")},
+                {"include": ["ECC*", 42]},
+                {"include": {"0": "ECC*"}},
+                {"exclude": 42},
+            ):
+                client = _cleanup_client(_cleanup_listing())
+                hass = _cleanup_hass(client)
+
+                result = await _async_cleanup_files(
+                    hass, _cleanup_call(dry_run=False, **bad)
+                )
+
+                assert result["success"] is False, bad
+                assert result["deleted"] == [], bad
+                assert "Invalid parameters" in _error_message(result), bad
+                client.delete_file.assert_not_called()
+
+        asyncio.run(_run())
+
+    def test_the_day_count_ceiling_matches_the_one_the_ui_advertises(self) -> None:
+        # services.yaml publishes `number: min: 1, max: 3650` for this field;
+        # the schema has to accept the same window the UI offers and refuse
+        # outside it, or the ceiling is a surprise rather than a bound.
+        assert (
+            SERVICE_CLEANUP_FILES_SCHEMA({"entry_id": "x", "older_than_days": 1})[
+                "older_than_days"
+            ]
+            == 1
+        )
+        assert (
+            SERVICE_CLEANUP_FILES_SCHEMA(
+                {"entry_id": "x", "older_than_days": _MAX_OLDER_THAN_DAYS}
+            )["older_than_days"]
+            == _MAX_OLDER_THAN_DAYS
+        )
+        with pytest.raises(vol.Invalid):
+            SERVICE_CLEANUP_FILES_SCHEMA(
+                {"entry_id": "x", "older_than_days": _MAX_OLDER_THAN_DAYS + 1}
+            )
+        # And the ceiling is the number services.yaml advertises, checked
+        # against the file rather than against a second copy of the constant.
+        services = pathlib.Path(
+            pathlib.Path(__file__).parents[1] / "services.yaml"
+        ).read_text(encoding="utf-8")
+        assert f"max: {_MAX_OLDER_THAN_DAYS}" in services
+
+    # --- the active-print guard (C4) --------------------------------------
+
+    def test_a_real_run_asks_the_printer_for_its_status_before_deleting(
+        self,
+    ) -> None:
+        # The guard used to read `printer_data.status`, a cache holding the last
+        # push — up to the coordinator interval stale. The destructive branch
+        # now asks for a full status (1002) and waits, so the name it compares
+        # against answers this call. A dry run does not pay for it: it deletes
+        # nothing, so a stale name costs nothing.
+        async def _run() -> None:
+            client = _cleanup_client(_cleanup_listing())
+            await _async_cleanup_files(
+                _cleanup_hass(client), _cleanup_call(dry_run=False, older_than_days=60)
+            )
+            client.refresh_status.assert_awaited_once()
+
+            client = _cleanup_client(_cleanup_listing())
+            await _async_cleanup_files(
+                _cleanup_hass(client), _cleanup_call(dry_run=True, older_than_days=60)
+            )
+            client.refresh_status.assert_not_awaited()
+
+        asyncio.run(_run())
+
+    def test_a_job_started_after_the_last_status_push_is_still_protected(
+        self,
+    ) -> None:
+        # The realistic shape of the bug: the cached status says nothing is
+        # printing (it predates the job), so `active` is None and
+        # `active_filename and name == active_filename` skips the guard
+        # entirely. Only the fresh read taken before deleting sees the job.
+        async def _run() -> None:
+            listing = {
+                "printing.gcode": _entry("printing.gcode", days_ago=90),
+                "old.gcode": _entry("old.gcode", days_ago=90),
+            }
+            client = _cleanup_client(
+                listing,
+                active=None,
+                status_after_refresh=("printing.gcode", ElegooMachineStatus.PRINTING),
+            )
+            hass = _cleanup_hass(client)
+
+            result = await _async_cleanup_files(
+                hass, _cleanup_call(dry_run=False, older_than_days=60, include="*")
+            )
+
+            assert result["deleted"] == ["old.gcode"]
+            assert result["skipped"] == {"printing.gcode": "currently_printing"}
+            client.delete_file.assert_awaited_once_with("old.gcode")
+
+        asyncio.run(_run())
+
+    def test_a_busy_printer_that_names_no_file_deletes_nothing(self) -> None:
+        # The other half of the same hole: with no name to compare, the guard
+        # cannot protect anything, because there is nothing to match against —
+        # every listed file is a candidate and one of them may be the file the
+        # printer is reading. The run is refused, and refused as a failure, so
+        # the automation sees "not in the state I asked for" and retries later.
+        async def _run() -> None:
+            listing = {
+                "a.gcode": _entry("a.gcode", days_ago=90),
+                "b.gcode": _entry("b.gcode", days_ago=90),
+            }
+            client = _cleanup_client(
+                listing, active=None, machine_status=ElegooMachineStatus.PRINTING
+            )
+            hass = _cleanup_hass(client)
+
+            result = await _async_cleanup_files(
+                hass, _cleanup_call(dry_run=False, older_than_days=60, include="*")
+            )
+
+            assert result["success"] is False
+            assert result["deleted"] == []
+            client.delete_file.assert_not_called()
+            message = _error_message(result)
+            assert "busy state without naming a file" in message
+            assert "deleted nothing" in message
+            # The selection it had worked out is still reported, so the refusal
+            # is diagnosable rather than opaque.
+            assert result["would_delete"] == ["a.gcode", "b.gcode"]
+
+        asyncio.run(_run())
+
+    def test_an_unknown_machine_status_counts_as_busy(self) -> None:
+        # No status ever received (None), or a code new firmware reports that
+        # this integration's mapper does not know: not "idle", because the cost
+        # of refusing a cleanup is one more night of files and the cost of
+        # guessing wrong is a file deleted out from under the nozzle.
+        async def _run() -> None:
+            for machine in (None, "something-new"):
+                client = _cleanup_client(
+                    _cleanup_listing(), active=None, machine_status=machine
+                )
+                hass = _cleanup_hass(client)
+
+                result = await _async_cleanup_files(
+                    hass, _cleanup_call(dry_run=False, older_than_days=60)
+                )
+
+                assert result["success"] is False, machine
+                assert result["deleted"] == [], machine
+                client.delete_file.assert_not_called()
+
+        asyncio.run(_run())
+
+    def test_a_busy_printer_that_names_its_file_still_deletes_the_rest(self) -> None:
+        # The refusal above must not turn into "never clean up while printing":
+        # a printer that says PRINTING *and* names the file it is reading has
+        # that one file skipped by `select_deletions`, and everything else on
+        # the printer is still fair game.
+        async def _run() -> None:
+            listing = {
+                "printing.gcode": _entry("printing.gcode", days_ago=90),
+                "old.gcode": _entry("old.gcode", days_ago=90),
+            }
+            client = _cleanup_client(
+                listing,
+                active="printing.gcode",
+                machine_status=ElegooMachineStatus.PRINTING,
+            )
+            hass = _cleanup_hass(client)
+
+            result = await _async_cleanup_files(
+                hass, _cleanup_call(dry_run=False, older_than_days=60, include="*")
+            )
+
+            assert result["success"] is True
+            assert result["deleted"] == ["old.gcode"]
+            assert result["skipped"] == {"printing.gcode": "currently_printing"}
+
+        asyncio.run(_run())
+
+    def test_the_active_guard_survives_a_path_prefix_or_a_different_case(
+        self,
+    ) -> None:
+        # `select_deletions` compares the printer's name EXACTLY, which fails
+        # open: a printer reporting its job as "/local/dir/x.gcode", or spelling
+        # it "PRINTING.GCODE", for a file the 1044 listing keys "printing.gcode"
+        # means the SAME file, and exact equality leaves the file being printed
+        # on the delete side. The handler resolves the printer's name to the
+        # listing key on basename+casefold first, so the guard still fires — and
+        # can only ever add a skip, never a delete.
+        async def _run() -> None:
+            for reported in ("/local/dir/printing.gcode", "PRINTING.GCODE"):
+                listing = {
+                    "printing.gcode": _entry("printing.gcode", days_ago=90),
+                    "old.gcode": _entry("old.gcode", days_ago=90),
+                }
+                client = _cleanup_client(listing, active=reported)
+                hass = _cleanup_hass(client)
+
+                result = await _async_cleanup_files(
+                    hass, _cleanup_call(dry_run=False, older_than_days=60, include="*")
+                )
+
+                assert result["deleted"] == ["old.gcode"], reported
+                assert result["skipped"] == {"printing.gcode": "currently_printing"}, (
+                    reported
+                )
+                client.delete_file.assert_awaited_once_with("old.gcode")
+
+            # A name that denotes a DIFFERENT file is not folded into the
+            # active one: the guard is a skip, not a licence to skip everything.
+            listing = {
+                "printing.gcode": _entry("printing.gcode", days_ago=90),
+                "old.gcode": _entry("old.gcode", days_ago=90),
+            }
+            client = _cleanup_client(listing, active="something_else.gcode")
+            result = await _async_cleanup_files(
+                _cleanup_hass(client),
+                _cleanup_call(dry_run=False, older_than_days=60, include="*"),
+            )
+            assert result["deleted"] == ["old.gcode", "printing.gcode"]
+
+        asyncio.run(_run())
+
+    def test_every_refused_reason_the_printer_can_give_is_reported(self) -> None:
+        # Three refusal texts, and until now only the first was asserted: a
+        # cleanup that told the user "printer refused the delete" for a printer
+        # that said BUSY, or that dropped the code a support thread is asking
+        # for, left the suite green. The codes come from the double, the texts
+        # from `_cleanup_failure_text`, so each branch is pinned to its code.
+        async def _run() -> None:
+            cases = {
+                CC2_ERROR_FILE_DELETE_FAILED: "printer refused the delete",
+                CC2_ERROR_PRINTER_BUSY: "printer is busy",
+                # An unmapped code keeps the number: it is the one thing a
+                # report on GitHub is read for.
+                1003: "printer refused the delete (error_code 1003)",
+            }
+            for code, expected in cases.items():
+                listing = {"old.gcode": _entry("old.gcode", days_ago=90)}
+                client = _cleanup_client(listing)
+                client.delete_file = AsyncMock(return_value=code)
+                hass = _cleanup_hass(client)
+
+                result = await _async_cleanup_files(
+                    hass, _cleanup_call(dry_run=False, older_than_days=60)
+                )
+
+                assert result["success"] is False, code
+                assert result["failed"] == {"old.gcode": expected}, code
+                # Nothing vanished, so nothing is claimed as deleted.
+                assert result["deleted"] == [], code
+
+            # 1009 through the double's own knob, which is how the rest of the
+            # tests reach it and what keeps the knob from being dead code.
+            client = _cleanup_client(_cleanup_listing(), busy=["old.gcode"])
+            result = await _async_cleanup_files(
+                _cleanup_hass(client), _cleanup_call(dry_run=False, older_than_days=60)
+            )
+            assert result["failed"] == {"old.gcode": "printer is busy"}
+
+        asyncio.run(_run())
+
+    def test_a_real_run_says_what_it_deleted_and_what_it_did_not(self) -> None:
+        # The message is the whole user-visible output of a nightly automation:
+        # a notify template reading `response.message` is all most users ever
+        # see. The dry-run texts are asserted elsewhere; the destructive
+        # branch's three texts were not, so a message that said "deleted 1 of
+        # 1" for a run that deleted nothing, or that hid the refused half of a
+        # partial run, passed.
+        async def _run() -> None:
+            # The clean run.
+            client = _cleanup_client(_cleanup_listing())
+            result = await _async_cleanup_files(
+                _cleanup_hass(client), _cleanup_call(dry_run=False, older_than_days=60)
+            )
+            assert result["message"] == "deleted 1 of 1 selected file(s)"
+
+            # The partial run: the refused half has to be in the text, or the
+            # notification reads as a complete success.
+            listing = {
+                "gone.gcode": _entry("gone.gcode", days_ago=90),
+                "stuck.gcode": _entry("stuck.gcode", days_ago=90),
+            }
+            client = _cleanup_client(listing, vanishing=["gone.gcode"])
+            result = await _async_cleanup_files(
+                _cleanup_hass(client), _cleanup_call(dry_run=False, older_than_days=60)
+            )
+            assert result["message"] == (
+                "deleted 1 of 2 selected file(s); 1 refused or unconfirmed"
+            )
+
+            # The nothing-to-do run: it names the cutoff it used, and it is a
+            # real run, so this is the text a nightly job actually reports.
+            client = _cleanup_client(_cleanup_listing())
+            result = await _async_cleanup_files(
+                _cleanup_hass(client),
+                _cleanup_call(dry_run=False, older_than_days=365),
+            )
+            assert result["success"] is True
+            assert "no file was older than 365 day(s)" in str(result["message"])
+            client.delete_file.assert_not_called()
+
+        asyncio.run(_run())
+
+    def test_an_empty_listing_says_the_printer_listed_nothing(self) -> None:
+        # The other branch of the pattern note, and the one never asserted: a
+        # printer with no files at all must be told apart from a printer whose
+        # files were all too new and from an include pattern that matched
+        # nothing. All three report success with an empty list; only the message
+        # says which happened, and the empty-listing case used to fall through
+        # to the pattern text — blaming a pattern on a printer with no files.
+        async def _run() -> None:
+            client = _cleanup_client({})
+            result = await _async_cleanup_files(
+                _cleanup_hass(client), _cleanup_call(dry_run=True)
+            )
+
+            assert result["success"] is True
+            assert result["would_delete"] == []
+            assert result["message"] == (
+                "the printer listed no files, so there was nothing to clean up"
+            )
+
+        asyncio.run(_run())
+
+    def test_the_pattern_note_survives_into_a_real_run(self) -> None:
+        # The note is asserted on the dry-run branch only, where it is one of
+        # two texts; on the destructive branch it competes with the
+        # "deleted N of M" and "no file was older than" texts, and losing there
+        # would put a nightly job back to looking like an ordinary clean run.
+        async def _run() -> None:
+            client = _cleanup_client(_cleanup_listing())
+            result = await _async_cleanup_files(
+                _cleanup_hass(client), _cleanup_call(dry_run=False, include="")
+            )
+
+            assert result["success"] is True
+            assert result["deleted"] == []
+            message = str(result["message"])
+            assert "matched the include pattern(s) (empty)" in message
+            assert "nothing was deleted" in message
+            client.delete_file.assert_not_called()
+
+        asyncio.run(_run())
+
+    def test_an_unreadable_reply_is_not_reported_as_an_unreachable_printer(
+        self,
+    ) -> None:
+        # A printer that ANSWERED with something unreadable is a firmware
+        # problem; a printer that did not answer is a network problem. Telling
+        # the user "printer not reachable" for the first sends them at the
+        # router, so the two diagnoses are worded apart — while both stay a
+        # failure with nothing deleted.
+        async def _run() -> None:
+            client = _cleanup_client(_cleanup_listing(), re_list_unusable=True)
+            # Break the FIRST listing too, so the run fails before selecting.
+            client.get_verified_file_list = AsyncMock(
+                side_effect=CC2UnusableFileListError("not a file listing")
+            )
+            result = await _async_cleanup_files(
+                _cleanup_hass(client), _cleanup_call(dry_run=True)
+            )
+            assert result["success"] is False
+            message = _error_message(result)
+            assert "did not answer" not in message
+            assert "unreadable" in message
+            assert "CC2UnusableFileListError" in message
+
+            client = _cleanup_client(_cleanup_listing())
+            client.get_verified_file_list = AsyncMock(
+                side_effect=ElegooPrinterConnectionError("no route to host")
+            )
+            result = await _async_cleanup_files(
+                _cleanup_hass(client), _cleanup_call(dry_run=True)
+            )
+            assert "did not answer the file list" in _error_message(result)
 
         asyncio.run(_run())
 
@@ -1331,5 +2066,98 @@ class TestCleanupFilesService:
                 # None as the string "None" in the user's notification.
                 assert result.get("message") is not None or result.get("error")
                 assert result.get("error") is not None or result.get("message")
+
+        asyncio.run(_run())
+
+    # --- the upload lock (one printer, two ways to touch its storage) ------
+
+    @staticmethod
+    def _real_lock_client(
+        listing: dict[str, PrinterFile], order: list[str]
+    ) -> MagicMock:
+        """Build a cleanup client whose upload lock is a real lock, not a mock."""
+        client = _cleanup_client(listing)
+        # MagicMock(spec=...) auto-creates an attribute here that supports
+        # `async with` vacuously — so a test against it could not tell a held
+        # lock from no lock at all. This is the real thing the service holds.
+        client.upload_lock = asyncio.Lock()
+        original_delete = client.delete_file
+
+        async def _delete(name: str) -> int:
+            order.append(f"delete:{name}")
+            return await original_delete(name)
+
+        client.delete_file = AsyncMock(side_effect=_delete)
+        return client
+
+    async def _hold_upload_lock(self, client: MagicMock, order: list[str]) -> None:
+        """Take the client's upload lock, as an upload in flight would."""
+        await client.upload_lock.acquire()
+        order.append("upload:start")
+
+    def test_a_real_run_waits_for_an_upload_to_finish(self) -> None:
+        """
+        No delete runs while a ranged upload is being assembled.
+
+        1047 travels over MQTT and an upload is a run of ranged PUTs, so the two
+        do not share a transport and the client's own serialisation does not
+        order them. What they share is the printer's storage, and the printer is
+        the one assembling a half-written file from those ranges — so the delete
+        sequence takes the same lock ``upload_gcode``'s caller holds.
+        """
+
+        async def _run() -> None:
+            order: list[str] = []
+            client = self._real_lock_client(_cleanup_listing(), order)
+            hass = _cleanup_hass(client)
+            await self._hold_upload_lock(client, order)
+
+            task = asyncio.create_task(
+                _async_cleanup_files(
+                    hass, _cleanup_call(dry_run=False, older_than_days=60)
+                )
+            )
+            # Let the handler list, select and block on the lock.
+            for _ in range(10):
+                await asyncio.sleep(0)
+
+            assert not task.done(), "the run went ahead during an upload"
+            client.delete_file.assert_not_awaited()
+            assert order == ["upload:start"]
+
+            client.upload_lock.release()
+            result = await asyncio.wait_for(task, timeout=1)
+
+            assert result["success"] is True
+            assert result["deleted"] == ["old.gcode"]
+            assert order == ["upload:start", "delete:old.gcode"]
+
+        asyncio.run(_run())
+
+    def test_a_dry_run_never_waits_behind_an_upload(self) -> None:
+        """
+        Reporting changes nothing on the printer, so it takes no lock.
+
+        A nightly dry run blocked behind a large upload would answer "no files
+        are old enough" for a question it was never asked, and a caller awaiting
+        a report has no reason to wait for someone else's file transfer.
+        """
+
+        async def _run() -> None:
+            order: list[str] = []
+            client = self._real_lock_client(_cleanup_listing(), order)
+            hass = _cleanup_hass(client)
+            await self._hold_upload_lock(client, order)
+
+            result = await asyncio.wait_for(
+                _async_cleanup_files(hass, _cleanup_call(older_than_days=60)),
+                timeout=1,
+            )
+
+            assert result["success"] is True
+            assert result["would_delete"] == ["old.gcode"]
+            # Still held, and the report finished anyway.
+            assert client.upload_lock.locked()
+            assert order == ["upload:start"]
 
         asyncio.run(_run())

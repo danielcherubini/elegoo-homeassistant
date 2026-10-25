@@ -115,7 +115,7 @@ upload_gcode:
 cleanup_files:
   name: Clean up printer files
   description: >-
-    Delete old G-code files from a printer's local storage, by age and by name
+    Delete old files from a printer's local storage, by age and by name
     pattern. Centauri Carbon 2 only, and DRY RUN BY DEFAULT: the first call
     reports which files it would delete and deletes nothing, so run it once and
     read the answer before switching the dry run off. Whether a delete actually
@@ -126,10 +126,12 @@ cleanup_files:
     printer is printing right now, and any file whose creation date it did not
     report - including a file dated before 2000, which is how a printer whose
     clock has never been set reports a date, so an unset clock means nothing
-    gets deleted rather than everything getting deleted. Videos cannot be
-    deleted (see the README: the printer's file list is the only inventory this
-    integration has ever seen, and the camera is a live stream rather than a
-    file).
+    gets deleted rather than everything getting deleted. It deletes whatever the
+    printer's file list reports and matches the patterns: there is no video
+    filter, this integration has simply never seen a video on that list. A call
+    that never reached the printer answers with just success: false and an
+    error; a call that reached it answers with the full report, and with an
+    error instead of a message when it could not act.
   fields:
     entry_id:
       name: Config Entry
@@ -170,9 +172,11 @@ cleanup_files:
       name: Exclude patterns
       description: >-
         File names to keep, as glob patterns - "Keep*" keeps every file whose
-        name starts with Keep. Exclusion wins over inclusion, so a file matching
-        both is kept. Leave this field EMPTY to keep nothing special, which is
-        the default.
+        name starts with Keep. Omit this field to keep nothing special, which is
+        the default. Exclusion wins over inclusion, so a file matching both is
+        kept no matter what the include field asks for. A field that is present
+        but BLANK excludes nothing, so every matching file stays a candidate.
+        Case matters, the same way on every machine.
       example: "Keep*"
       required: false
       selector:

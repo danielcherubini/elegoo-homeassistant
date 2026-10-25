@@ -44,9 +44,19 @@ class ElegooPrinterEntity(CoordinatorEntity[ElegooDataUpdateCoordinator]):
         device_manufacturer = config_data[CONF_BRAND]
         # entry.data holds the version seen at setup; the printer's own value
         # is the live one and wins when it has reported it (#436).
+        #
+        # Read with getattr all the way down, not by dereferencing
+        # ``config_entry.runtime_data``: core runs
+        # ``object.__delattr__(self, "runtime_data")`` on a successful unload,
+        # so the attribute is gone afterwards while this property — a plain
+        # property, not a cached one — outlives the entry for any caller that
+        # asks it later. A bare ``.runtime_data`` then raises AttributeError and
+        # the ``or`` fallback below never gets its turn; the chain falls through
+        # to the setup-time version instead.
+        runtime_data = getattr(self.coordinator.config_entry, "runtime_data", None)
+        live_printer = getattr(getattr(runtime_data, "api", None), "printer", None)
         device_firmware = (
-            self.coordinator.config_entry.runtime_data.api.printer.firmware
-            or config_data[CONF_FIRMWARE]
+            getattr(live_printer, "firmware", None) or config_data[CONF_FIRMWARE]
         )
         device_ip = config_data.get(CONF_IP)
         proxy_enabled = config_data.get(CONF_PROXY_ENABLED, False)
