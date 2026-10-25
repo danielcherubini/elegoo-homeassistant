@@ -31,16 +31,18 @@ Bring your Elegoo 3D printers into Home Assistant! This integration allows you t
 - **Live Camera:** Monitor your print from anywhere.
 - **Print Thumbnails:** See an image of what you are currently printing directly in Home Assistant.
 - **Direct Printer Control:** Stop and pause prints, control temperatures, and adjust speeds.
-- **Local Proxy Server:** An optional built-in proxy to bypass printer connection limits.
+- **Local Proxy Server:** An optional built-in proxy that serves several printers from one address.
 - **Automation Blueprints:** Includes a ready-to-use blueprint for print progress notifications.
 
 ---
 
 ## 🛰️ Local Proxy Server
 
-Modern Elegoo printers often have a built-in limit of 4 simultaneous connections. Since the video stream consumes one of these by itself, users can easily hit this limit. 
+Modern Elegoo printers often have a built-in limit of 4 simultaneous connections. Since the video stream consumes one of these by itself, users can easily hit this limit.
 
-The optional proxy server acts as a single gateway, routing all commands and the video stream through one stable connection, effectively bypassing these limits.
+The optional proxy server lets several printers be served from one address: it runs as a single server with all configured printers registered against it, so a client makes one connection to the proxy and reaches any of them by id, instead of needing a separate address and port per printer. It also rewrites the video URL the printer advertises, so streams can be pulled through the proxy rather than fetched from each printer directly.
+
+**It does not reduce how many connections a printer sees.** Each client connection is passed through to the printer as its own upstream connection, so the printer counts the same clients as before — they simply arrive from the proxy's address. If the connection limit is what forces you to power-cycle the printer, the proxy is not the fix; a camera-connection multiplexer would be, and that is tracked in [#414](https://github.com/danielcherubini/elegoo-homeassistant/issues/414).
 
 ➡️ **[Read more and join the discussion here](https://github.com/danielcherubini/elegoo-homeassistant/discussions/95)**
 
