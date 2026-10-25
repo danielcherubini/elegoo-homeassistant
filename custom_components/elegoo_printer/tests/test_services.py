@@ -1391,9 +1391,10 @@ class TestCleanupFilesService:
     ) -> None:
         # THE blocking case. 1047 answers error_code 0 and the confirming 1044
         # answers something that carries no `file_list` — an error envelope, a
-        # rejected-parameter reply, any shape nobody has captured, since 1047
-        # documents no response body at all. Read leniently that parses to an
-        # EMPTY listing, and an empty listing read as authoritative means
+        # rejected-parameter reply, any shape nobody has captured (1047's reply
+        # is documented nowhere, and its only measured answer was a bare 1003).
+        # Read leniently that parses to an EMPTY listing, and an empty listing
+        # read as authoritative means
         # "nothing remains", i.e. every delete confirmed: a nightly automation
         # reporting "deleted 40 of 40" for files that are all still there, and
         # never retrying because success was true.

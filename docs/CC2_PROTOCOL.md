@@ -2104,7 +2104,7 @@ Monitor these fields during printing:
 | 1004 | FILE_WRITE_FAILED | Cannot write file | Check disk space |
 | 1005 | TOKEN_UPDATE_FAILED | Token refresh failed | Re-authenticate |
 | 1006 | MOS_UPDATE_FAILED | MOS update failed | Retry |
-| 1007 | FILE_DELETE_FAILED | Cannot delete file | Check file exists |
+| 1007 | FILE_DELETE_FAILED | Cannot delete file (inferred from this reference table and never observed in a reply — the first observed delete reply was `1003` on fw 02.01.01.07, #432) | Check file exists |
 | 1008 | RESPONSE_EMPTY | No data returned | Retry |
 | 1009 | PRINTER_BUSY | Printer occupied | Wait, retry |
 | 1010 | NOT_PRINTING | No active print | Check state first |

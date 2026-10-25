@@ -353,8 +353,9 @@ def _cached_listing(client: ElegooCC2Client) -> dict[str, PrinterFile]:
 def test_a_1044_reply_with_no_file_list_raises_not_an_empty_listing() -> None:  # noqa: D103
     # The blocking case, at the layer that creates it. `result.get("file_list")
     # or []` turns an error envelope — or a rejected-parameter reply, or any
-    # shape nobody has captured, since 1047 documents no response body at all —
-    # into an EMPTY listing with no exception. A caller confirming a delete
+    # other shape nobody has captured, since 1047's reply is documented nowhere
+    # and the only one ever measured was a bare 1003 refusal — into an EMPTY
+    # listing with no exception. A caller confirming a delete
     # reads that as "nothing remains" and reports every accepted delete as a
     # success for files that are all still on the printer.
     client = _cc2_client()

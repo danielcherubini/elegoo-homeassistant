@@ -472,7 +472,8 @@ _MAX_OLDER_THAN_DAYS = 3650
 
 # How the printer's own reply maps onto the per-file reasons the service
 # reports. 1007 is the only delete-specific code the protocol lists, and even
-# that is unverified (1047 documents no response at all).
+# that is unverified: the one 1047 reply ever captured (fw 02.01.01.07, #432)
+# answered 1003 and deleted nothing.
 _DELETE_REFUSED = "printer refused the delete"
 _DELETE_REFUSED_BUSY = "printer is busy"
 _DELETE_UNCONFIRMED = "still listed after delete"
@@ -631,8 +632,9 @@ SERVICE_CLEANUP_FILES_SCHEMA = vol.Schema(
         vol.Optional("older_than_days", default=DEFAULT_OLDER_THAN_DAYS): _whole_days,
         vol.Optional("include", default=list(DEFAULT_INCLUDE)): _glob_patterns,
         vol.Optional("exclude", default=list(DEFAULT_EXCLUDE)): _glob_patterns,
-        # 1047 is documented "Untested" and its reply shape is undocumented, so
-        # the safe answer is the default: report, delete nothing. The other
+        # 1047's only measured reply (fw 02.01.01.07, #432) refuses every delete
+        # and no working request shape is known, so the safe answer is the
+        # default: report, delete nothing. The other
         # three services default to doing the thing; this one defaults to not
         # destroying files, because its reply cannot be trusted.
         vol.Optional("dry_run", default=True): bool,
@@ -997,11 +999,11 @@ async def _async_confirm_deletions(
     """
     Re-read the file list (1044) and split ``deleted`` into confirmed and not.
 
-    This is the whole point of the design: 1047 documents no response, so a
-    printer that answers ``error_code 0`` and keeps the file is a scenario this
-    repo has to survive, not one it gets to disbelieve. Only a listing that no
-    longer carries the file counts as a delete; a re-list that fails reports
-    every accepted file as unconfirmed rather than as gone.
+    This is the whole point of the design: 1047's reply is not proof of
+    deletion, so a printer that answers ``error_code 0`` and keeps the file is a
+    scenario this repo has to survive, not one it gets to disbelieve. Only a
+    listing that no longer carries the file counts as a delete; a re-list that
+    fails reports every accepted file as unconfirmed rather than as gone.
 
     "Fails" therefore cannot mean only "raised". The lenient ``get_file_list``
     never raises on a reply it cannot read: it judges the reply through the
@@ -1010,8 +1012,8 @@ async def _async_confirm_deletions(
     envelope, a rejected-parameter reply, or a listing whose every entry is
     unreadable produces no exception at all and a value that is the PREVIOUS
     listing rather than the printer's inventory, with nothing to tell the caller
-    which of the two it got. 1047's reply is entirely undocumented, so nobody
-    has captured what 1044 says when it dislikes a request either. Nor is
+    which of the two it got. 1044's reply shape is documented, but nobody has
+    captured what it says when it dislikes a request. Nor is
     absence from a stale listing absence from the printer: that snapshot can
     predate an upload, or come from a partly readable reply that dropped the
     entry, so it would confirm a delete that never landed. Inferring an
@@ -1182,8 +1184,9 @@ async def _async_cleanup_files(hass: HomeAssistant, call: ServiceCall) -> dict:
     Takes ``entry_id``, ``older_than_days`` (default 60, whole days only),
     ``include`` (default every file), ``exclude`` (default nothing) and
     ``dry_run`` (**default on**). Selection is the reporter's own vocabulary;
-    the safety rules are because method 1047 is documented "Untested": the file
-    listing is fetched fresh rather than read from the ten-minute cache, and only
+    the safety rules are because method 1047 has never been made to work on a
+    real printer: the file listing is fetched fresh rather than read from the
+    ten-minute cache, and only
     a reply that can be READ counts as a listing (see
     ``get_verified_file_list``); the dry run deletes nothing; before deleting
     anything the printer is asked for its status and, if it is busy without
@@ -1355,7 +1358,7 @@ async def _async_delete_and_report(  # noqa: PLR0913
 
     deleted, failed = await _async_delete_each(client, to_delete)
 
-    # The done-when clause: 1047 documents no response, so the printer's
+    # The done-when clause: 1047's reply is not consent, so the printer's
     # "error_code 0" is not proof of anything. Re-list and believe the listing —
     # only a listing that can be READ counts as a listing, see
     # _async_confirm_deletions.
