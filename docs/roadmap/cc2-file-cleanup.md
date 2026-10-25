@@ -1,8 +1,18 @@
 ---
 status: committed
 issue: https://github.com/danielcherubini/elegoo-homeassistant/issues/432
+shipped: PR #444 (bda7d5f) delivered Tasks 1-3; Task 4 stays BLOCKED on the hardware capture
 done-when: A volunteer runs one script against a real Centauri Carbon 2 and returns raw 1047 replies that say definitively which parameter shape the printer accepts; the delete path is then either proven working or declared dead, and no user-facing text anywhere claims the opposite of what the capture showed.
 ---
+
+> **Status — Tasks 1–3 shipped (PR #444), Task 4 blocked.** The docs corrections, the
+> simulator's 1047 shape sensitivity + upload endpoint + `--idle`, and
+> `scripts/cc2_probe_delete.py` are on `main`. This plan is deliberately **not** marked
+> `implemented` and deliberately **kept**: Task 4 is a decision table whose branch is
+> chosen by a real-hardware capture that does not exist yet, so it is live work, not
+> history. **To resume:** hand `scripts/cc2_probe_delete.py` to a Centauri Carbon 2 owner
+> (@MrHaku81 offered their printer, still paired and idle, on #432), paste the capture
+> into #432, then pick the Task 4 row the capture matches.
 
 # CC2 file cleanup — make `cleanup_files` true on real firmware
 
