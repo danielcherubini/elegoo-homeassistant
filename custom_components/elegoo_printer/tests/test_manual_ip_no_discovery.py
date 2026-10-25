@@ -19,8 +19,8 @@ Two walls are pinned here:
 The probe reads the printer's identity from the live connection and refuses
 anything it cannot use: ``printer.id`` is the config entry's unique id, the
 device identifier and the entity unique-id prefix all at once, and nothing in
-the integration repairs it afterwards. See
-``docs/roadmap/triage-2026-10-task06-manual-ip-no-discovery.md``.
+the integration repairs it afterwards, so a frame that yields no usable id ends
+in ``no_printer_found`` rather than an entry carrying a made-up one.
 """
 
 from __future__ import annotations

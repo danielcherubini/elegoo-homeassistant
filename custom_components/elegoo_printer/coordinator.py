@@ -111,8 +111,9 @@ class ElegooDataUpdateCoordinator(DataUpdateCoordinator):
         link too. A plain MQTT printer is the exception: ``is_connected`` tracks
         our link to the *broker*, so a printer that goes silent while its broker
         outlives it — including the broker this integration hosts itself — keeps
-        answering from cache. That case behaves as it always has and is recorded
-        as a follow-up in ``docs/roadmap/offline-tolerant-setup.md``.
+        answering from cache. That case behaves as it always has and is still
+        open: closing it needs a printer-side heartbeat, which the integration
+        has no way to ask the printer for.
 
         Raises:
             ElegooPrinterNotConnectedError: if the client is not connected.
