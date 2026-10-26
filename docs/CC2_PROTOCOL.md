@@ -207,7 +207,7 @@ threading.Thread(target=heartbeat, daemon=True).start()
 | Port | Protocol | Stock Firmware | OpenCentauri Firmware |
 |------|----------|---------------|----------------------|
 | **52700** | UDP | Discovery (broadcast) | Discovery (broadcast) |
-| **80** | TCP/HTTP | `PUT /upload`, and `GET /download` for timelapse MP4s (measured `200 OK`, fw 02.01.01.07 — see [Timelapse Videos over LAN](#timelapse-videos-over-lan)). G-code downloads and all other paths probe as 404 (libhv/1.3.4). | Unknown |
+| **80** | TCP/HTTP | `PUT /upload`, and `GET /download` for both G-code and timelapse MP4s (measured `200 OK` for a `.gcode` and a `video/…mp4` on fw 02.01.01.07 — see [Downloading a file](#downloading-a-file--the-ordinary-download-endpoint)). All other paths probe as 404 (libhv/1.3.4). | Unknown |
 | **1883** | TCP/MQTT | MQTT broker (TCP). Used by the elegoo-link C++ library (ElegooSlicer, HA integrations). | MQTT broker |
 | **9001** | TCP/WS | MQTT broker (WebSocket). Used by the Device page's bundled JavaScript (`lan_service_web`) for real-time status, file lists, and printer control. | MQTT broker (WebSocket) |
 | **8080** | TCP/HTTP | Camera MJPEG stream **only**. Returns `multipart/x-mixed-replace` for every request regardless of path, query, or auth headers. | Full HTTP API server (files, system info, download, camera) |
@@ -1236,7 +1236,7 @@ class StatusManager:
 |---------------|---------------|--------------|------------------|
 | `GET /system/info` | ❌ 404 (see note) | ✅ Port 8080 | Method 1001 (GET_ATTRIBUTES) |
 | `GET /files` | ❌ 404 | ✅ Port 8080 | Method 1044 (GET_FILE_LIST) |
-| `GET /download` | ⚠️ Partial — 404 for G-code, but **works for timelapse MP4s** on port 80 (see [Downloading the MP4](#downloading-the-mp4--the-ordinary-download-endpoint)) | ✅ Port 8080 | N/A (1057 is a different operation — see below) |
+| `GET /download` | ⚠️ Works for G-code (bare file name as 1044 lists it) and timelapse MP4s (`video/…` form) on port 80, fw 02.01.01.07 — see [Downloading a file](#downloading-a-file--the-ordinary-download-endpoint). Older probes of other path forms got 404; which forms work is only partly mapped | ✅ Port 8080 | N/A (1057 is a different operation — see below) |
 | `PUT /upload` | ✅ Port 80 | ✅ Port 8080 | N/A (always HTTP) |
 
 > **Note on `/system/info`:** The elegoo-link SDK (v1.3.6) attempts `GET /system/info?X-Token=...` to retrieve the printer's serial number when it isn't already known. On current stock firmware this returns 404, and the SDK falls back to using the serial number obtained from UDP discovery. This suggests the endpoint may be added to stock firmware in a future update, or it may only exist on OpenCentauri. The SDK handles the 404 gracefully.
@@ -1255,15 +1255,15 @@ Based on port scanning, HTTP endpoint probing, and MQTT protocol testing on stoc
 - Control temperatures, fans, lights, speed (MQTT)
 - View camera stream (MJPEG on port 8080)
 - Download recorded timelapse MP4s (HTTP `GET /download` on port 80, with the `time_lapse_video_url` from MQTT method 1036 as `file_name` — see [Timelapse Videos over LAN](#timelapse-videos-over-lan))
+- Download G-code file content (HTTP `GET /download` on port 80, `file_name` as the bare name method 1044 lists — measured on fw 02.01.01.07, [Downloading a file](#downloading-a-file--the-ordinary-download-endpoint))
 
 **What IS NOT possible:**
-- Download G-code file content via HTTP (the endpoint answers for timelapse MP4s, not for G-code — see the note under [Download File](#download-file))
 - Download G-code file content via MQTT (method 1057 is not a download method — see below)
 - HTTP Range requests (not supported on any port)
 - SSH or shell access (port 22 closed)
 - Klipper webhooks access (port 34952 closed)
 
-**Implication for per-extruder filament tracking:** The per-slot filament usage breakdown (needed for multi-material Spoolman integration) only exists inside the G-code file itself. Since file content cannot be retrieved from the printer, it must be captured at upload time — for example, via a [local network proxy](#g-code-file-structure) between the slicer and printer.
+**Implication for per-extruder filament tracking:** The per-slot filament usage breakdown (needed for multi-material Spoolman integration) only exists inside the G-code file itself. It was long assumed that this content could not be retrieved from the printer, which is why the [local network proxy](#g-code-file-structure) captures files at upload time — but that premise has since been falsified: on fw 02.01.01.07 `GET /download` serves G-code back (see above). The proxy remains how this integration actually obtains per-slot data today, because nothing in it fetches files from the printer yet; a retroactive download path is plausible future work, unscoped as of this writing.
 
 ### File Upload — Stock Firmware [Stock]
 
@@ -1433,9 +1433,7 @@ GET /download/udisk?file_name=<path>&X-Token=<token>
 
 Returns raw file contents.
 
-> ⚠️ **Stock firmware:** These download endpoints do not serve G-code. A `GET /download` for a `.gcode` file probes as 404 on port 80, and port 8080 always returns the camera MJPEG stream, so G-code file content **cannot be downloaded** from a CC2 on stock firmware — only metadata and thumbnails are available via MQTT.
->
-> The endpoint is **not** universally dead, though: on firmware 02.01.01.07 `GET /download` on port 80 answers `200 OK` for the recorded timelapse MP4s, using method 1036's `time_lapse_video_url` as `file_name`. See [Timelapse Videos over LAN](#timelapse-videos-over-lan) for the measured behaviour, including the fact that a *missing* file produces silence rather than a 404.
+> ⚠️ **Stock firmware:** The endpoint works, but its naming rules were misread for a long time. On fw 02.01.01.07 `GET /download` on port 80 answers `200 OK` for **G-code** — measured returning a printed file byte-exact (size matching method 1044, config block intact at EOF) when `file_name` is the **bare name** as method 1044 lists it — and for recorded **timelapse MP4s** using method 1036's `time_lapse_video_url` (a `video/…` form) as `file_name`. Older probes that requested other path forms saw 404, so the working vocabulary is only partly mapped: bare names and the `video/…` form are confirmed, a `local/` prefix is untested. Port 8080 never serves this endpoint on stock firmware — it returns the camera MJPEG stream for every request. A *missing or wrong-named* file does **not** answer 404 either: the printer accepts the connection and then stays silent until the client times out. See [Downloading a file](#downloading-a-file--the-ordinary-download-endpoint) and [Timelapse Videos over LAN](#timelapse-videos-over-lan) for the measured behaviour.
 >
 > For G-code file structure and parsing (e.g. for upload capture), see [G-Code File Structure](#g-code-file-structure).
 
@@ -1602,7 +1600,7 @@ To download a file from the printer to the client, use the **HTTP API** — not 
 
 All require `X-Token` authentication (query parameter or header). See [Download File](#download-file) in the OpenCentauri HTTP API section.
 
-> ⚠️ **Stock firmware:** These HTTP download endpoints do not serve G-code. There is no MQTT alternative for downloading file content either. On stock firmware, G-code file content is **not accessible by any method** — only metadata (method 1046) and thumbnails (method 1045) are available. The one measured exception on fw 02.01.01.07 is the recorded timelapse MP4, which `GET /download` on port 80 does serve — see [Timelapse Videos over LAN](#timelapse-videos-over-lan).
+> ⚠️ **Stock firmware:** There is no MQTT way to download file content (1057 is the opposite operation). The HTTP `GET /download` on port 80 **does** serve G-code on fw 02.01.01.07 — see [Downloading a file](#downloading-a-file--the-ordinary-download-endpoint); earlier probes of other path forms saw 404, which is why this section long claimed file content was unreachable. The MQTT side offers only metadata (method 1046) and thumbnails (method 1045).
 
 ### Delete File [Both]
 
@@ -1804,15 +1802,18 @@ Each entry carries the timelapse columns:
 
 **The database drifts from the filesystem.** Deleting a timelapse at the printer's display does **not** update 1036: after all older entries were deleted on the display, 1036 kept returning them with `time_lapse_video_status = 2` and their original URLs. The only way to know a listed MP4 still exists is to try the download.
 
-### Downloading the MP4 — the ordinary `/download` endpoint
+### Downloading a file — the ordinary `/download` endpoint
 
 ```
-GET /download?X-Token=<access>&file_name=video%2F<name><ts>.mp4
+GET /download?X-Token=<access>&file_name=<name.gcode>          # bare name, as 1044 lists it
+GET /download?X-Token=<access>&file_name=video%2F<name><ts>.mp4  # timelapse, from 1036
 ```
 
-Existing file: `200 OK` with **both** `Content-Length` and `Transfer-Encoding: chunked` set (prefer chunked when the body is chunk-framed), and `Content-Disposition: attachment; filename="video/<name>.mp4"`.
+Both forms were measured on fw 02.01.01.07 by @MrHaku81 (#432, 2026-10-26). The G-code form returns the file **byte-exact** — HTTP 200, size matching method 1044's listing for that file, config block readable at the end of the body. The MP4 form returns `200 OK` with **both** `Content-Length` and `Transfer-Encoding: chunked` set (prefer chunked when the body is chunk-framed), and `Content-Disposition: attachment; filename="video/<name>.mp4"`.
 
-**A missing file produces silence, not 404.** The TCP handshake succeeds, the request is sent, and the printer then never answers — only the client's read timeout ends the session. This is the same "wrong token or name" signature as the G-code download. Do not decide availability from `time_lapse_video_status == 2`: head-probe the URL and treat anything but a `200` within ~1–2 s as unavailable. Measured: present MP4 answers its response head in ~70 ms; one deleted at the display sat until an 8 s read timeout. A hanging download does not block other downloads — a parallel probe answered in ~20 ms while another request held its connection 35 s — but capping concurrent transfers at two is the observed self-bound of existing tooling and a safe default.
+Two open questions, recorded rather than guessed: which other path forms work (a `local/` prefix is untested; older probes of forms other than these two got 404, which is why this endpoint was documented as G-code-dead from March until this measurement), and whether files on `sdcard`/`udisk` media download the same way.
+
+**A missing or wrongly-named file produces silence, not 404.** The TCP handshake succeeds, the request is sent, and the printer then never answers — only the client's read timeout ends the session. Do not decide availability from metadata alone (`time_lapse_video_status == 2`, or presence in 1044): head-probe the URL and treat anything but a `200` within ~1–2 s as unavailable. Measured: a present MP4 answers its response head in ~70 ms; one deleted at the display sat until an 8 s read timeout. A hanging download does not block other downloads — a parallel probe answered in ~20 ms while another request held its connection 35 s — but capping concurrent transfers at two is the observed self-bound of existing tooling and a safe default.
 
 ### Rendering an MP4 from raw frames — method 1051
 
@@ -2578,7 +2579,7 @@ Use this checklist when implementing CC2 support:
 - [ ] File upload (stock: `PUT /upload` on port 80; OpenCentauri: port 8080 with auth)
 - [ ] File detail/metadata (MQTT method 1046)
 - [ ] File thumbnail (MQTT method 1045)
-- [ ] File download (OpenCentauri: HTTP `GET /download` on port 8080; stock firmware: G-code is not downloadable by any method, but timelapse MP4s are, via `GET /download` on port 80 — see [Timelapse Videos over LAN](#timelapse-videos-over-lan))
+- [ ] File download (OpenCentauri: HTTP `GET /download` on port 8080; stock firmware: `GET /download` on port 80 serves both G-code by bare name and timelapse MP4s — measured on fw 02.01.01.07, see [Downloading a file](#downloading-a-file--the-ordinary-download-endpoint); the integration exposes neither yet)
 - [ ] Delete file (MQTT method 1047) — **implemented in this integration (`cleanup_files`); a real reply has now been captured, and the delete does not happen.** On firmware 02.01.01.07 the printer answers every 1047 with `error_code: 1003` and removes nothing, for an existing file and a missing one alike, while the same file deletes fine from the printer's own UI (#432). The service confirms a delete by re-listing with 1044 rather than by reading the reply, which is what reports this as a failure instead of a false success; see [Delete File](#delete-file-both). Left unticked because the capability does not work — a working parameter shape has still to be found.
 
 ### Peripheral Control
@@ -2818,7 +2819,7 @@ The CONFIG_BLOCK at the end contains slicer profile settings with semicolon-sepa
 
 > **Note:** This per-slot data is only accessible from the G-code file itself, not from the printer's MQTT status or file detail responses. The MQTT file detail (method 1046) provides `total_filament_used` as a single number and `color_map` with filament types, but not the per-slot weight breakdown.
 >
-> On stock firmware, G-code file content cannot be downloaded from the printer (see [Method 1057](#method-1057---set_printer_download_file)). To access per-slot filament data, the file may be captured at upload time using a local network proxy between the slicer and the printer.
+> Per-slot filament data lives only inside the G-code file (see [Method 1046](#file-detail-via-mqtt-both) — its `total_filament_used` is a single total). Historically this section claimed the file could not be retrieved from the printer at all; that is falsified — on fw 02.01.01.07 `GET /download` on port 80 serves G-code back byte-exact (see [Downloading a file](#downloading-a-file--the-ordinary-download-endpoint)). Retrieving a file only helps for what is on the printer, though, and only if something fetches it: this integration does not download files yet, so the upload-time capture below remains how per-slot data actually reaches Home Assistant today.
 >
 > **Proxy approach:** A local network proxy intercepts the slicer's `PUT /upload` request on port 80, parses the G-code file, and forwards the request to the printer. The slicer is pointed at the proxy's IP instead of the printer's IP and can query it for per-slot filament data. The proxy also provides TCP pass-through on ports 1883 (MQTT over TCP), 9001 (MQTT over WebSocket), and 8080 (camera) so the slicer's Device page continues to work normally. The Device page's JavaScript creates its own MQTT-over-WebSocket client on port 9001 for file lists, live status, and controls. The HA integration connects directly to the printer and does not need to go through the proxy.
 >

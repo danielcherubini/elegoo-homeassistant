@@ -100,9 +100,11 @@ CC2 printers **MUST** be configured for LAN-Only mode:
 
 The printers report only a total filament usage value over their normal
 telemetry (MQTT for CC2, SDCP for CC1) — the per-slot breakdown (how
-much each Canvas spool contributed) exists only inside the G-code file,
-and there is no way to retrieve a file from the printer after it has
-been sent.
+much each Canvas spool contributed) exists only inside the G-code file.
+The printer can serve that file back over the network (the Centauri
+Carbon 2's `GET /download` answers on recent firmware), but nothing in
+this integration fetches it yet, so the reliable way to get per-slot
+data for a print remains capturing the file as it is uploaded.
 
 The [elegoo-printer-proxy](https://github.com/lantern-eight/elegoo-printer-proxy)
 sits between ElegooSlicer and the printer, transparently capturing
