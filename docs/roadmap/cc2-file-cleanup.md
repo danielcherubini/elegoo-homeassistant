@@ -1,18 +1,23 @@
 ---
-status: committed
+status: implemented
 issue: https://github.com/danielcherubini/elegoo-homeassistant/issues/432
-shipped: PR #444 (bda7d5f) delivered Tasks 1-3; Task 4 stays BLOCKED on the hardware capture
+shipped: PR #444 (bda7d5f) delivered Tasks 1-3; Task 4's capture landed 2026-10-26 and row 2 fired (no parameter shape deletes on stock firmware) — docs half done, code decision deferred by maintainer
 done-when: A volunteer runs one script against a real Centauri Carbon 2 and returns raw 1047 replies that say definitively which parameter shape the printer accepts; the delete path is then either proven working or declared dead, and no user-facing text anywhere claims the opposite of what the capture showed.
 ---
 
-> **Status — Tasks 1–3 shipped (PR #444), Task 4 blocked.** The docs corrections, the
-> simulator's 1047 shape sensitivity + upload endpoint + `--idle`, and
-> `scripts/cc2_probe_delete.py` are on `main`. This plan is deliberately **not** marked
-> `implemented` and deliberately **kept**: Task 4 is a decision table whose branch is
-> chosen by a real-hardware capture that does not exist yet, so it is live work, not
-> history. **To resume:** hand `scripts/cc2_probe_delete.py` to a Centauri Carbon 2 owner
-> (@MrHaku81 offered their printer, still paired and idle, on #432), paste the capture
-> into #432, then pick the Task 4 row the capture matches.
+> **Status — done-when met (2026-10-26).** @MrHaku81 ran `scripts/cc2_probe_delete.py
+> --run` on real hardware: all 11 parameter shapes plus the empty control answered
+> `1003`, no file ever removed — the `file_name` hypothesis is dead, and the capture
+> leaves it at "either 1047 is not served on stock firmware or `1003` is its generic
+> not-handled answer" ([capture](https://github.com/danielcherubini/elegoo-homeassistant/issues/432#issuecomment-6412925224)).
+> The delete path is declared dead for practical purposes — nothing in the tested matrix
+> deletes, and no user-facing text oversells it — which is what this plan existed to
+> achieve. Two follow-ons live outside this plan now: (a) the
+> service's fate — capability-gate vs removal — deferred by the maintainer ("leave it,
+> decide later", decision table kept below); (b) the videos half, where @MrHaku81
+> measured a working LAN path (1036 + `/download`, documented in `docs/CC2_PROTOCOL.md`)
+> and has open offers to PR the docs and the feature himself. Kept, not deleted, until
+> both settle.
 
 # CC2 file cleanup — make `cleanup_files` true on real firmware
 
@@ -254,9 +259,11 @@ A CLI script, `uv run python scripts/cc2_probe_delete.py --ip <addr> [--serial <
 
 ---
 
-### Task 4: BLOCKED — act on the capture
+### Task 4: Row 2 fired — no 1047 parameter shape deletes on stock firmware; code decision deferred by maintainer
 
-**Parallel:** none — cannot start until Task 3's output exists. **Do not begin this task without a real-hardware capture.**
+**Status (2026-10-26):** The capture exists — @MrHaku81 ran `scripts/cc2_probe_delete.py --run` on real hardware ([#432 comment 6412925224](https://github.com/danielcherubini/elegoo-homeassistant/issues/432#issuecomment-6412925224)). All 11 parameter shapes, including the empty-params control, answered the identical `error_code 1003`, and all 11 confirming 1044 re-listings saw the variant's own file still present. **Row 2 of the decision table below applies: the `file_name` hypothesis is dead** (a request with no parameters cannot be rejected for its key name), and no shape in the matrix deletes anything. The capture does not decide between "1047 is not served" and "`1003` is its generic not-handled answer" — both predict the identical replies it recorded — so the docs state the measured refusal, not a verdict on the method's presence. The decision-table code change — firmware-capability gate vs removing the service — was **explicitly deferred by the maintainer on 2026-10-26** ("leave it, decide later"): the service currently fails loudly and honestly on every call, which is tolerable for a beta. The docs half of row 2 is done: README, the protocol doc and the beta.2 release notes now state the capture's conclusion.
+
+**Was:** BLOCKED — act on the capture. **Do not begin the code half without a real-hardware capture.** (Keep the table below for when the decision is un-deferred, or if a future capture on different firmware lands in another row.)
 
 **Context:**
 beta.2 is deliberately held for the hardware answer (maintainer decision, 2026-10-25). The code change depends entirely on which branch the capture lands in, so this task is a decision table, not a specification. Whichever branch applies gets its own plan pass — this task exists so the branch is chosen from evidence rather than guessed now.
@@ -272,7 +279,7 @@ beta.2 is deliberately held for the hardware answer (maintainer decision, 2026-1
 | Some variants return `0` but their files stay listed | The printer accepts and ignores. Treat as dead (row 2) and record the accept-but-no-op behaviour in the protocol doc — it is the trap that would make a trust-the-reply implementation silently wrong, and it vindicates the re-list design. |
 | Only a `sdcard`/`udisk`/`sd-card`/`u-disk` row behaves differently from `local` | The `storage_media` vocabulary differs from what we send. Check whether the list we get from 1044 is even on the media 1047 addresses, and whether the file-select entities assume `local`. Compare against the doc's Storage Media Types table and update it to the observed truth. |
 
-**Also in scope for this task, whichever branch:** the videos half of #432 stays open (maintainer decision) — @MrHaku81 reports 1044 never lists timelapse videos on 02.01.01.07 for any `storage_media`, and upstream `elegoo-link` has `EXPORT_TIMELAPSE_VIDEO = 1045` commented out as "interface not designed yet" while 1045 is `GET_FILE_THUMBNAIL` here (`custom_components/elegoo_printer/cc2/const.py:78`, section at `docs/CC2_PROTOCOL.md:2766`). Investigate 1046/1048 and any stock-firmware path; if none exists, say so on #432 and close that half explicitly rather than leaving it implied.
+**Also in scope for this task, whichever branch:** the videos half of #432 moved on 2026-10-26. @MrHaku81 first reported 1044 never lists timelapse videos on 02.01.01.07 for any `storage_media` — confirmed — and then measured that the MP4s are **reachable over the LAN anyway** via method 1036's `time_lapse_video_url` plus the ordinary `GET /download` endpoint, with the full semantics (silence-not-404 on missing files, head-probe to confirm existence, 1051 render rules, 1038 being history-only) documented in `docs/CC2_PROTOCOL.md` under "Timelapse Videos over LAN" ([#432 comment 6414982376](https://github.com/danielcherubini/elegoo-homeassistant/issues/432#issuecomment-6414982376)). So a video *inventory and download* path exists on stock firmware; a video *delete* path still does not (only the display deletes). @MrHaku81 offered to open both a documentation PR and a feature PR (history sensor + download helper + optional render service) — the maintainer accepted both; if those land, this paragraph is satisfied by them and the "investigate 1046/1048" instruction is obsolete.
 
 **Acceptance criteria:**
 - [ ] A real capture exists on #432 before any code in this task is written.
