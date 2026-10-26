@@ -1,15 +1,18 @@
 ---
 status: implemented
 issue: https://github.com/danielcherubini/elegoo-homeassistant/issues/432
-shipped: PR #444 (bda7d5f) delivered Tasks 1-3; Task 4's capture landed 2026-10-26 and row 2 fired (1047 dead on stock firmware) — docs half done, code decision deferred by maintainer
+shipped: PR #444 (bda7d5f) delivered Tasks 1-3; Task 4's capture landed 2026-10-26 and row 2 fired (no parameter shape deletes on stock firmware) — docs half done, code decision deferred by maintainer
 done-when: A volunteer runs one script against a real Centauri Carbon 2 and returns raw 1047 replies that say definitively which parameter shape the printer accepts; the delete path is then either proven working or declared dead, and no user-facing text anywhere claims the opposite of what the capture showed.
 ---
 
 > **Status — done-when met (2026-10-26).** @MrHaku81 ran `scripts/cc2_probe_delete.py
 > --run` on real hardware: all 11 parameter shapes plus the empty control answered
-> `1003`, no file ever removed — **1047 is not served on stock firmware** ([capture](https://github.com/danielcherubini/elegoo-homeassistant/issues/432#issuecomment-6412925224)).
-> The delete path is declared dead and no user-facing text oversells it, which is what
-> this plan existed to achieve. Two follow-ons live outside this plan now: (a) the
+> `1003`, no file ever removed — the `file_name` hypothesis is dead, and the capture
+> leaves it at "either 1047 is not served on stock firmware or `1003` is its generic
+> not-handled answer" ([capture](https://github.com/danielcherubini/elegoo-homeassistant/issues/432#issuecomment-6412925224)).
+> The delete path is declared dead for practical purposes — nothing in the tested matrix
+> deletes, and no user-facing text oversells it — which is what this plan existed to
+> achieve. Two follow-ons live outside this plan now: (a) the
 > service's fate — capability-gate vs removal — deferred by the maintainer ("leave it,
 > decide later", decision table kept below); (b) the videos half, where @MrHaku81
 > measured a working LAN path (1036 + `/download`, documented in `docs/CC2_PROTOCOL.md`)
@@ -256,9 +259,9 @@ A CLI script, `uv run python scripts/cc2_probe_delete.py --ip <addr> [--serial <
 
 ---
 
-### Task 4: Row 2 fired — 1047 is dead on stock firmware; code decision deferred by maintainer
+### Task 4: Row 2 fired — no 1047 parameter shape deletes on stock firmware; code decision deferred by maintainer
 
-**Status (2026-10-26):** The capture exists — @MrHaku81 ran `scripts/cc2_probe_delete.py --run` on real hardware ([#432 comment 6412925224](https://github.com/danielcherubini/elegoo-homeassistant/issues/432#issuecomment-6412925224)). All 11 parameter shapes, including the empty-params control, answered the identical `error_code 1003`, and all 11 confirming 1044 re-listings saw the variant's own file still present. **Row 2 of the decision table below applies: 1047 is not served on stock firmware; the `file_name` hypothesis is dead** (a request with no parameters cannot be rejected for its key name). The decision-table code change — firmware-capability gate vs removing the service — was **explicitly deferred by the maintainer on 2026-10-26** ("leave it, decide later"): the service currently fails loudly and honestly on every call, which is tolerable for a beta. The docs half of row 2 is done: README, the protocol doc and the beta.2 release notes now state the capture's conclusion.
+**Status (2026-10-26):** The capture exists — @MrHaku81 ran `scripts/cc2_probe_delete.py --run` on real hardware ([#432 comment 6412925224](https://github.com/danielcherubini/elegoo-homeassistant/issues/432#issuecomment-6412925224)). All 11 parameter shapes, including the empty-params control, answered the identical `error_code 1003`, and all 11 confirming 1044 re-listings saw the variant's own file still present. **Row 2 of the decision table below applies: the `file_name` hypothesis is dead** (a request with no parameters cannot be rejected for its key name), and no shape in the matrix deletes anything. The capture does not decide between "1047 is not served" and "`1003` is its generic not-handled answer" — both predict the identical replies it recorded — so the docs state the measured refusal, not a verdict on the method's presence. The decision-table code change — firmware-capability gate vs removing the service — was **explicitly deferred by the maintainer on 2026-10-26** ("leave it, decide later"): the service currently fails loudly and honestly on every call, which is tolerable for a beta. The docs half of row 2 is done: README, the protocol doc and the beta.2 release notes now state the capture's conclusion.
 
 **Was:** BLOCKED — act on the capture. **Do not begin the code half without a real-hardware capture.** (Keep the table below for when the decision is un-deferred, or if a future capture on different firmware lands in another row.)
 

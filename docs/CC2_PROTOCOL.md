@@ -207,7 +207,7 @@ threading.Thread(target=heartbeat, daemon=True).start()
 | Port | Protocol | Stock Firmware | OpenCentauri Firmware |
 |------|----------|---------------|----------------------|
 | **52700** | UDP | Discovery (broadcast) | Discovery (broadcast) |
-| **80** | TCP/HTTP | `PUT /upload` only (libhv/1.3.4). Returns 404 for all other paths. | Unknown |
+| **80** | TCP/HTTP | `PUT /upload`, and `GET /download` for timelapse MP4s (measured `200 OK`, fw 02.01.01.07 — see [Timelapse Videos over LAN](#timelapse-videos-over-lan)). G-code downloads and all other paths probe as 404 (libhv/1.3.4). | Unknown |
 | **1883** | TCP/MQTT | MQTT broker (TCP). Used by the elegoo-link C++ library (ElegooSlicer, HA integrations). | MQTT broker |
 | **9001** | TCP/WS | MQTT broker (WebSocket). Used by the Device page's bundled JavaScript (`lan_service_web`) for real-time status, file lists, and printer control. | MQTT broker (WebSocket) |
 | **8080** | TCP/HTTP | Camera MJPEG stream **only**. Returns `multipart/x-mixed-replace` for every request regardless of path, query, or auth headers. | Full HTTP API server (files, system info, download, camera) |
@@ -1230,13 +1230,13 @@ class StatusManager:
 
 ## HTTP API
 
-> ⚠️ **Firmware Compatibility:** Most HTTP endpoints in this section are only available on **OpenCentauri firmware**. Stock Elegoo firmware exposes only `PUT /upload` on port 80 and the camera MJPEG stream on port 8080. Use the equivalent MQTT methods for stock firmware operations (file listing, file details, etc.).
+> ⚠️ **Firmware Compatibility:** Most HTTP endpoints in this section are only available on **OpenCentauri firmware**. Stock Elegoo firmware exposes `PUT /upload` on port 80, the camera MJPEG stream on port 8080, and — measured on fw 02.01.01.07 — `GET /download` for the recorded timelapse MP4s ([Timelapse Videos over LAN](#timelapse-videos-over-lan)). Everything else probes as 404 on stock firmware. Use the equivalent MQTT methods for stock firmware operations (file listing, file details, etc.).
 
 | HTTP Endpoint | Stock Firmware | OpenCentauri | MQTT Alternative |
 |---------------|---------------|--------------|------------------|
 | `GET /system/info` | ❌ 404 (see note) | ✅ Port 8080 | Method 1001 (GET_ATTRIBUTES) |
 | `GET /files` | ❌ 404 | ✅ Port 8080 | Method 1044 (GET_FILE_LIST) |
-| `GET /download` | ❌ 404 | ✅ Port 8080 | N/A (1057 is a different operation — see below) |
+| `GET /download` | ⚠️ Partial — 404 for G-code, but **works for timelapse MP4s** on port 80 (see [Downloading the MP4](#downloading-the-mp4--the-ordinary-download-endpoint)) | ✅ Port 8080 | N/A (1057 is a different operation — see below) |
 | `PUT /upload` | ✅ Port 80 | ✅ Port 8080 | N/A (always HTTP) |
 
 > **Note on `/system/info`:** The elegoo-link SDK (v1.3.6) attempts `GET /system/info?X-Token=...` to retrieve the printer's serial number when it isn't already known. On current stock firmware this returns 404, and the SDK falls back to using the serial number obtained from UDP discovery. This suggests the endpoint may be added to stock firmware in a future update, or it may only exist on OpenCentauri. The SDK handles the 404 gracefully.
@@ -1254,9 +1254,10 @@ Based on port scanning, HTTP endpoint probing, and MQTT protocol testing on stoc
 - Start, pause, resume, stop prints (MQTT)
 - Control temperatures, fans, lights, speed (MQTT)
 - View camera stream (MJPEG on port 8080)
+- Download recorded timelapse MP4s (HTTP `GET /download` on port 80, with the `time_lapse_video_url` from MQTT method 1036 as `file_name` — see [Timelapse Videos over LAN](#timelapse-videos-over-lan))
 
 **What IS NOT possible:**
-- Download G-code file content via HTTP (no endpoint exists on any port)
+- Download G-code file content via HTTP (the endpoint answers for timelapse MP4s, not for G-code — see the note under [Download File](#download-file))
 - Download G-code file content via MQTT (method 1057 is not a download method — see below)
 - HTTP Range requests (not supported on any port)
 - SSH or shell access (port 22 closed)
@@ -1432,7 +1433,9 @@ GET /download/udisk?file_name=<path>&X-Token=<token>
 
 Returns raw file contents.
 
-> ⚠️ **Stock firmware:** These download endpoints do not exist. Port 80 returns 404 for all paths except `/upload`. Port 8080 always returns the camera MJPEG stream. G-code file content **cannot be downloaded** from a CC2 on stock firmware. Only metadata and thumbnails are available via MQTT.
+> ⚠️ **Stock firmware:** These download endpoints do not serve G-code. A `GET /download` for a `.gcode` file probes as 404 on port 80, and port 8080 always returns the camera MJPEG stream, so G-code file content **cannot be downloaded** from a CC2 on stock firmware — only metadata and thumbnails are available via MQTT.
+>
+> The endpoint is **not** universally dead, though: on firmware 02.01.01.07 `GET /download` on port 80 answers `200 OK` for the recorded timelapse MP4s, using method 1036's `time_lapse_video_url` as `file_name`. See [Timelapse Videos over LAN](#timelapse-videos-over-lan) for the measured behaviour, including the fact that a *missing* file produces silence rather than a 404.
 >
 > For G-code file structure and parsing (e.g. for upload capture), see [G-Code File Structure](#g-code-file-structure).
 
@@ -1599,7 +1602,7 @@ To download a file from the printer to the client, use the **HTTP API** — not 
 
 All require `X-Token` authentication (query parameter or header). See [Download File](#download-file) in the OpenCentauri HTTP API section.
 
-> ⚠️ **Stock firmware:** These HTTP download endpoints do not exist. There is no MQTT alternative for downloading file content either. On stock firmware, G-code file content is **not accessible by any method** — only metadata (method 1046) and thumbnails (method 1045) are available.
+> ⚠️ **Stock firmware:** These HTTP download endpoints do not serve G-code. There is no MQTT alternative for downloading file content either. On stock firmware, G-code file content is **not accessible by any method** — only metadata (method 1046) and thumbnails (method 1045) are available. The one measured exception on fw 02.01.01.07 is the recorded timelapse MP4, which `GET /download` on port 80 does serve — see [Timelapse Videos over LAN](#timelapse-videos-over-lan).
 
 ### Delete File [Both]
 
@@ -1677,11 +1680,11 @@ File list 24/24 identical before and after.
 | `sdcard` / `udisk` + `filename` and `file_name` | `1003` | yes |
 | `sd-card` / `u-disk` (SDK-table spellings) + `filename` | `1003` | yes |
 
-**Conclusion, measured:** every shape — *including the empty control* — answered the identical `{"result": {"error_code": 1003}}` in 9.5–20 ms, and all 11 confirming 1044 re-listings saw the variant's own file still present. A request that carries no parameters at all cannot have its `1003` explained by a key name, so this firmware does not reject 1047 for its shape: **method 1047 is simply not served on stock firmware**, and `1003` is its generic "not available / not handled" answer. No parameter shape rescues it. The touchscreen remains the only path that deletes a file.
+**Conclusion, measured:** every shape — *including the empty control* — answered the identical `{"result": {"error_code": 1003}}` in 9.5–20 ms, and all 11 confirming 1044 re-listings saw the variant's own file still present. A request that carries no parameters at all cannot have its `1003` explained by a key name, so on this firmware `1003` is not about the parameter key: the capture's own reading is that **either 1047 is not served at all, or `1003` is its generic "not available / not handled" answer** — the probe cannot separate the two, because both predict exactly what was observed. What it does settle is the narrower question the probe was built for: **the `file_name` key-name hypothesis is not supported**, and none of the 11 shapes tested deletes anything. Whether some shape outside the matrix works is unmeasured — but nothing in the capture suggests one exists, and no such shape should be assumed. The touchscreen is the only delete path confirmed to work.
 
-One caveat the reporter recorded, kept here deliberately: the probe's files are hand-written G-code without a slicer header or thumbnail block, so "this file is not deletable" is not fully separated from "this method is not served". The empty control is what tips it — a not-served method answers `1003` whatever the body, which is exactly the observed behaviour.
+One caveat the reporter recorded, kept here deliberately: the probe's files are hand-written G-code without a slicer header or thumbnail block, so "this file is not deletable" is not fully separated from "this method is not served". The empty control is what rules out the *key-name* explanation — a request naming no key cannot be rejected for its key — but it does not distinguish "method absent" from "method present and answering a catch-all `1003`", which is why the conclusion above keeps both readings open.
 
-**Consequence for the integration:** `delete_file` sends a request this firmware cannot serve. The service keeps its re-list confirmation design (it is what reports the refusal honestly instead of claiming deletions that never happened), but no parameter change to `client.py` is justified by any capture to date.
+**Consequence for the integration:** `delete_file` sends a request this firmware answers with a refusal on every shape tested. The service keeps its re-list confirmation design (it is what reports the refusal honestly instead of claiming deletions that never happened), but no parameter change to `client.py` is justified by any capture to date.
 
 > The integration's `cleanup_files` service confirms every delete by re-listing with **1044**
 > rather than reading this reply, and reports a file the printer accepted and still lists as
@@ -2575,7 +2578,7 @@ Use this checklist when implementing CC2 support:
 - [ ] File upload (stock: `PUT /upload` on port 80; OpenCentauri: port 8080 with auth)
 - [ ] File detail/metadata (MQTT method 1046)
 - [ ] File thumbnail (MQTT method 1045)
-- [ ] File download (OpenCentauri only: HTTP `GET /download`; stock firmware: not available via any method)
+- [ ] File download (OpenCentauri: HTTP `GET /download` on port 8080; stock firmware: G-code is not downloadable by any method, but timelapse MP4s are, via `GET /download` on port 80 — see [Timelapse Videos over LAN](#timelapse-videos-over-lan))
 - [ ] Delete file (MQTT method 1047) — **implemented in this integration (`cleanup_files`); a real reply has now been captured, and the delete does not happen.** On firmware 02.01.01.07 the printer answers every 1047 with `error_code: 1003` and removes nothing, for an existing file and a missing one alike, while the same file deletes fine from the printer's own UI (#432). The service confirms a delete by re-listing with 1044 rather than by reading the reply, which is what reports this as a failure instead of a false success; see [Delete File](#delete-file-both). Left unticked because the capability does not work — a working parameter shape has still to be found.
 
 ### Peripheral Control
