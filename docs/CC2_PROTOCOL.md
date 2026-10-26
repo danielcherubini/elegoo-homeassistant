@@ -659,7 +659,7 @@ Commands are JSON messages sent to control the printer.
 |------|------|-------------|------------|
 | 1001 | GET_ATTRIBUTES | Get printer info | None |
 | 1002 | GET_STATUS | Get full status | None |
-| 1036 | PRINT_TASK_LIST | Get print history | `{"page": 1, "page_size": 10}` |
+| 1036 | PRINT_TASK_LIST | Get print history | `{}` — measured reply returns the **full** `history_task_list` in one call, no pagination (the SDK table's `page`/`page_size` are ignored) |
 | 1037 | PRINT_TASK_DETAIL | Get task details | `{"uuid": "..."}` |
 | 1044 | GET_FILE_LIST | List files | `{"storage_media": "local", "path": "/"}` |
 | 1045 | GET_FILE_THUMBNAIL | Get file thumbnail | `{"storage_media": "local", "file_name": "..."}` |
@@ -710,7 +710,8 @@ Commands are JSON messages sent to control the printer.
 
 | Code | Name | Description | Parameters |
 |------|------|-------------|------------|
-| 1038 | DELETE_PRINT_TASK | Delete history | `{"uuid": "..."}` |
+| 1038 | DELETE_PRINT_TASK | Remove entries from print **history** only — the file and the display's timelapse list are untouched (#432) | `{"list": ["<task_id>", …]}` |
+| 1051 | TIMELAPSE_RENDERING | Render a timelapse MP4 from raw frames; ack-only reply, see [Timelapse Videos over LAN](#timelapse-videos-over-lan) | `{"url": "picture/<name><ts>"}` |
 | 1043 | UPDATE_PRINTER_NAME | Rename printer | `{"name": "New Name"}` |
 | 2004 | SET_AUTO_REFILL | Toggle auto-refill | `{"enable": true}` |
 
@@ -1661,7 +1662,26 @@ File list 24/24 identical before and after.
 
 **Control:** the same file deleted without problems from the printer's touchscreen, so it was not locked or protected — the LAN delete is what does nothing.
 
-**Reading the capture.** `1003` is `CC2_ERROR_INVALID_PARAMETER` — a *request-shape* rejection, not a refusal to delete. That is exactly what the identical reply for an existing and a non-existent file looks like: a server that checked the file would answer differently for the two, whereas a server that rejected the request before looking at it answers the same either way. The `file_name` hypothesis is **untested**: 1045 works while being sent `file_name` (see [File Thumbnail](#file-thumbnail-method-1045)) and 1046 works while being sent `filename`, so the file methods demonstrably do not share one parameter spelling, and `file_name` may be what 1047 wants — but nobody has offered it to a real printer yet, and 1047 may want something else entirely. The reporter's alternative reading — that `1003` is this firmware's generic "not available / not handled" bucket, noting that 1045 also answered `1003` for one file in the same session — is equally untested.
+**Reading the capture.** `1003` is `CC2_ERROR_INVALID_PARAMETER` — nominally a *request-shape* rejection. That reading predicted the `file_name` hypothesis: 1045 works while being sent `file_name` (see [File Thumbnail](#file-thumbnail-method-1045)) and 1046 works while being sent `filename`, so the file methods demonstrably do not share one parameter spelling. **That hypothesis has since been tested and is dead** — see the parameter-shape matrix below.
+
+**Parameter-shape matrix — @MrHaku81, #432 (2026-10-26, same printer and firmware).** `scripts/cc2_probe_delete.py` was run with `--run`: it uploaded its own throwaway file per variant, sent 1047 against that file in **11 different shapes**, and re-listed with 1044 after every request.
+
+| Shape (params) | Reply | Own file still listed |
+|---|---|---|
+| `storage_media: "local"` + `filename` (what we ship) | `1003` | yes |
+| `storage_media: "local"` + `file_name` (the hypothesis) | `1003` | yes |
+| `local` + `filename` + `path: "/"` | `1003` | yes |
+| `local` + `file_name` + `path: "/"` | `1003` | yes |
+| `filename` only (no `storage_media`) | `1003` | yes |
+| **control: `params: {}`** (names no file at all) | `1003` | — |
+| `sdcard` / `udisk` + `filename` and `file_name` | `1003` | yes |
+| `sd-card` / `u-disk` (SDK-table spellings) + `filename` | `1003` | yes |
+
+**Conclusion, measured:** every shape — *including the empty control* — answered the identical `{"result": {"error_code": 1003}}` in 9.5–20 ms, and all 11 confirming 1044 re-listings saw the variant's own file still present. A request that carries no parameters at all cannot have its `1003` explained by a key name, so this firmware does not reject 1047 for its shape: **method 1047 is simply not served on stock firmware**, and `1003` is its generic "not available / not handled" answer. No parameter shape rescues it. The touchscreen remains the only path that deletes a file.
+
+One caveat the reporter recorded, kept here deliberately: the probe's files are hand-written G-code without a slicer header or thumbnail block, so "this file is not deletable" is not fully separated from "this method is not served". The empty control is what tips it — a not-served method answers `1003` whatever the body, which is exactly the observed behaviour.
+
+**Consequence for the integration:** `delete_file` sends a request this firmware cannot serve. The service keeps its re-list confirmation design (it is what reports the refusal honestly instead of claiming deletions that never happened), but no parameter change to `client.py` is justified by any capture to date.
 
 > The integration's `cleanup_files` service confirms every delete by re-listing with **1044**
 > rather than reading this reply, and reports a file the printer accepted and still lists as
@@ -1746,6 +1766,83 @@ while True:
 
 cap.release()
 ```
+
+---
+
+## Timelapse Videos over LAN
+
+Stock firmware never lists timelapse MP4s in the 1044 file list (#432), but the recorded videos **are** reachable over the LAN through a different surface: the print-history database plus the ordinary file-download endpoint. Everything in this section was measured by @MrHaku81 on one Centauri Carbon 2, firmware `02.01.01.07`, and reproduced across several sessions (#432, 2026-10-26). Read-only probing throughout, plus one confirmed render.
+
+### Print history — method 1036 (a database, not a filesystem)
+
+`result.history_task_list[]` arrives in one call, with `result.total` as a redundant count — **no pagination**. (The query-methods table above shows SDK-derived `{"page": 1, "page_size": 10}` params; the measured reply ignores paging and returns the full list.)
+
+Each entry carries the timelapse columns:
+
+| Field | Example | Notes |
+|-------|---------|-------|
+| `task_id` | UUID | stable per print start |
+| `task_name` | `foo.gcode` | the G-code file name |
+| `begin_time` / `end_time` | Unix seconds | printer-local clock — see the clock caveat below |
+| `task_status` | `1`, `2` observed | terminal values 1..3 |
+| `time_lapse_video_status` | `0..3` | enum below |
+| `time_lapse_video_url` | `""` / `picture/<name><ts>` / `video/<name>.mp4` | path on the printer, usable directly as the `/download` `file_name` |
+| `time_lapse_video_size` | bytes | > 0 only when status is 2 |
+| `time_lapse_video_duration` | seconds | > 0 only when status is 2 |
+
+`time_lapse_video_status` enum (empirical, 45 entries plus follow-up tests):
+
+| Value | URL form | Meaning |
+|-------|----------|---------|
+| 0 | `""` | no frames captured |
+| 1 | `picture/<name><ts>` | raw frames present, MP4 not rendered yet |
+| 2 | `video/<name>.mp4` | MP4 rendered, downloadable |
+| 3 | `""` | render attempted; raw frames absent |
+
+**The database drifts from the filesystem.** Deleting a timelapse at the printer's display does **not** update 1036: after all older entries were deleted on the display, 1036 kept returning them with `time_lapse_video_status = 2` and their original URLs. The only way to know a listed MP4 still exists is to try the download.
+
+### Downloading the MP4 — the ordinary `/download` endpoint
+
+```
+GET /download?X-Token=<access>&file_name=video%2F<name><ts>.mp4
+```
+
+Existing file: `200 OK` with **both** `Content-Length` and `Transfer-Encoding: chunked` set (prefer chunked when the body is chunk-framed), and `Content-Disposition: attachment; filename="video/<name>.mp4"`.
+
+**A missing file produces silence, not 404.** The TCP handshake succeeds, the request is sent, and the printer then never answers — only the client's read timeout ends the session. This is the same "wrong token or name" signature as the G-code download. Do not decide availability from `time_lapse_video_status == 2`: head-probe the URL and treat anything but a `200` within ~1–2 s as unavailable. Measured: present MP4 answers its response head in ~70 ms; one deleted at the display sat until an 8 s read timeout. A hanging download does not block other downloads — a parallel probe answered in ~20 ms while another request held its connection 35 s — but capping concurrent transfers at two is the observed self-bound of existing tooling and a safe default.
+
+### Rendering an MP4 from raw frames — method 1051
+
+```json
+{"id": <rid>, "method": 1051, "params": {"url": "picture/<name><ts>"}}
+```
+
+The reply is immediate (~230 ms, `result.error_code = 0`) and carries `result.url` for the eventual MP4, but **the MP4 does not exist yet** — `error_code = 0` is an acknowledgement, not success. The confirmed sequence: send 1051 with the `picture/…` URL → watch `machine_status.status` transition `1 → 12 → 1` → re-fetch 1036, where the entry now has `time_lapse_video_status = 2` and the URL rewritten to `video/<name>.mp4` → head-probe and download. On a 100-frame clip the equivalent USB-triggered render took ~26 s; the LAN variant is the same order of magnitude. During a LAN render the display shows **nothing** (the USB path shows "Generating video"/"Copying video" via `sub_status 3020 → 3021`) — the `api_status` stream is the only progress signal.
+
+Rules the measurements impose:
+
+- **Only ever pass the `picture/<name><ts>` form.** The firmware treats `params.url` as a basename and appends `.mp4`, so a `video/<name>.mp4` URL becomes `video/<name>.mp4.mp4` and fails by construction.
+- **`sub_status 3022` means "no raw frames at that path"** — a non-fatal nothing-to-do, not an error. Three runs reached it inside a second: on a display-deleted entry, and on any entry already at status 2, because the render **removes the raw-frame directory on success** — each task gets exactly one render window.
+- Never infer render success from `error_code = 0` or the status transition; probe the resulting URL as above.
+
+### History deletion — method 1038 is UI hygiene, not cleanup
+
+```json
+{"id": <rid>, "method": 1038, "params": {"list": ["<task_id>", "…"]}}
+```
+
+(The query table's SDK-derived `{"uuid": "..."}` is wrong; the measured request takes a `list` of task ids.) The reply is `{"result": {"error_code": 0}}` with no `machine_status` transition, and the entry is gone from the next 1036 with `result.total` down by one. But the MP4 on the printer and the display's own timelapse list are **unchanged** — verified by re-downloading the removed entry's bytes (same md5) and checking the display still listed it. The asymmetry:
+
+| Delete path | 1036 history | MP4 on printer | Display list |
+|-------------|:---:|:---:|:---:|
+| 1038 over MQTT | removed | **kept** | kept |
+| Display delete | **kept (stale)** | removed | removed |
+
+Neither path is storage management; only the display delete frees space.
+
+### The printer clock is not the real clock
+
+The printer's clock is unsynchronised and drifts across sessions — one measured print ran ~8 h ahead of UTC (China Standard Time factory default): a file stamped `…20261026143807` had MQTT-side `begin_time` `06:38:07Z`. Filenames embed the printer's local time. Treat `begin_time`, `end_time` and filename stamps as **opaque ordering keys**; never compare them against the HA host's clock.
 
 ---
 
