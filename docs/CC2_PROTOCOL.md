@@ -2580,8 +2580,8 @@ Use this checklist when implementing CC2 support:
 - [ ] File upload (stock: `PUT /upload` on port 80; OpenCentauri: port 8080 with auth)
 - [ ] File detail/metadata (MQTT method 1046)
 - [ ] File thumbnail (MQTT method 1045)
+- [ ] File download (OpenCentauri: HTTP `GET /download` on port 8080; stock firmware: `GET /download` on port 80 serves both G-code by bare name and timelapse MP4s — measured on fw 02.01.01.07, see [Downloading a file](#downloading-a-file--the-ordinary-download-endpoint); the integration exposes neither yet)
 - [ ] Delete file (MQTT method 1047) — **not served on stock firmware.** On firmware 02.01.01.07 the printer answers every 1047 with `error_code: 1003` and removes nothing, for an existing file and a missing one alike, for all eleven request shapes tried including an empty one, while the same file deletes fine from the printer's own UI (#432). This integration shipped a `cleanup_files` service for it and **removed it** once the matrix proved it could never succeed; the screen is the only delete path. See [Delete File](#delete-file-both). Unticked until a firmware answers 0 and the file disappears from the next 1044.
-- [ ] Delete file (MQTT method 1047) — **implemented in this integration (`cleanup_files`); a real reply has now been captured, and the delete does not happen.** On firmware 02.01.01.07 the printer answers every 1047 with `error_code: 1003` and removes nothing, for an existing file and a missing one alike, while the same file deletes fine from the printer's own UI (#432). The service confirms a delete by re-listing with 1044 rather than by reading the reply, which is what reports this as a failure instead of a false success; see [Delete File](#delete-file-both). Left unticked because the capability does not work — a working parameter shape has still to be found.
 
 ### Peripheral Control
 - [ ] Temperature control

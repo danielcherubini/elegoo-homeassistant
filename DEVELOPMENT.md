@@ -171,7 +171,9 @@ integration (or its embedded broker) makes the probe fail to register.
 **Run it under `uv run`**, not a bare interpreter — it imports the shipped
 `ElegooCC2Client`, whose package imports `homeassistant`. That is deliberate: a
 probe that re-implemented MQTT would only prove its own code works, whereas a
-success here is immediately actionable as a one-line change to `delete_file`.
+success here is the warrant to restore a delete path (`client.delete_file` and
+the `cleanup_files` service were removed for #432; their history is in git at
+PR #442) sending exactly the winning shape.
 
 ```bash
 # DRY RUN (the default): connect, resolve the serial, check the printer is idle,

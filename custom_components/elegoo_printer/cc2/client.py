@@ -2227,7 +2227,7 @@ class ElegooCC2Client:
         being printed is compared against a status from before the job started.
 
         Pinned by ``test_a_woken_waiter_sees_the_status_mapped_by_the_same_reply``
-        in ``cc2/tests/test_delete_file.py``, which parks a waiter on the real
+        in ``cc2/tests/test_status_gate.py``, which parks a waiter on the real
         event and fails it against the previous status if the seam ever gains an
         await.
 

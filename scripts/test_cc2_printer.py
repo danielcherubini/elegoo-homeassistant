@@ -29,7 +29,8 @@ the script the next task adds to this directory)
 
 ``DELETE_PARAM_KEY`` (edit the module constant below, then restart)
     Which parameter key the 1047 branch accepts. It is ``"filename"`` by
-    default, because that is what ``delete_file`` sends today. Flip it to
+    default, because that is the shape the client's ``delete_file`` sent before
+    it was removed for #432. Flip it to
     ``"file_name"`` — the spelling 1045 works with — and restart, and the
     simulator's answers SWAP: what was ``error_code: 0`` becomes
     ``error_code: 1003`` and vice versa. That flip is how you prove the probe
