@@ -34,9 +34,11 @@ Usage
 Run it under `uv run` (or the repo venv), never a bare interpreter
 ---------------------------------------------------------------
 This script imports the SHIPPED `ElegooCC2Client` rather than re-implementing
-MQTT, so that a positive answer is immediately actionable as a one-line change
-to `delete_file` — a probe with its own protocol code would only ever prove its
-own code works. Importing `custom_components.elegoo_printer.cc2.client` executes
+MQTT, so that a positive answer is immediately actionable: it is the exact
+call shape a restored delete path would send — a probe with its own protocol
+code would only ever prove its own code works. (The `cleanup_files` service and
+the client's `delete_file` were removed for #432 once this probe's matrix came
+back all-refusals; a winning shape here is the warrant to bring them back.) Importing `custom_components.elegoo_printer.cc2.client` executes
 the parent package's `__init__.py`, which imports `homeassistant` (line 23), so
 `homeassistant` must be importable: it is an installed project dependency, which
 is why `uv run` works and a bare `python3` on a volunteer's laptop does not.
@@ -251,7 +253,8 @@ ABORT_CLEANUP_TIMEOUT = 30.0
 DISCONNECT_TIMEOUT = 5.0
 
 # The only delete shape a dry run may use when it cleans up its one preflight
-# file: what `delete_file` ships today. `cleanup` re-points the filename key at
+# file: the shape `delete_file` sent before it was removed for #432. `cleanup`
+# re-points the filename key at
 # each of our own leftovers, so the placeholder never reaches the printer.
 DRY_RUN_CLEANUP_SHAPE: dict[str, Any] = {
     "storage_media": "local",
@@ -309,7 +312,7 @@ class Variant(NamedTuple):
 VARIANTS: list[Variant] = [
     Variant(
         "local_filename",
-        "what we ship today (1044's storage_media + 1046's key)",
+        "the shape the removed service sent (1044's storage_media + 1046's key)",
         lambda n: {"storage_media": "local", "filename": n},
     ),
     Variant(
@@ -1173,7 +1176,7 @@ async def cleanup(
     `winning` is the variant record that provably worked, when there is one.
     `dry_run_shape` is used instead on a dry run: the dry run still has to clean
     up the one file it uploaded, and the only shape it may guess at is the one
-    this integration ships today. A dry run never sends the probe matrix.
+    the removed service used to send. A dry run never sends the probe matrix.
     """
     shape = winning["params"] if winning else dry_run_shape
     try:
@@ -1360,7 +1363,7 @@ async def cleanup_after_abort(
         try:
             # Same shapes, same rules as the normal path: `cleanup` only ever
             # re-points a filename key at names in OWNED, and on a dry run the
-            # only shape it may use is still the one delete_file ships.
+            # only shape it may use is the one delete_file sent before removal.
             return await cleanup(client, winning, dry_run_shape=dry_run_shape)
         except Exception as err:  # noqa: BLE001 - the report outranks the cause
             # Whatever it is (a model shape change, a broker half-dead), it must
@@ -1479,7 +1482,7 @@ def build_report(
         "winning_shape_note": (
             "the params exactly as the first working variant sent them, so the "
             "file named in them is that variant's own upload; a fix to "
-            "delete_file changes the KEY and the extra fields, not the value"
+            "a restored delete_file changes the KEY and the extra fields, not the value"
             if winning
             else None
         ),
@@ -1769,7 +1772,7 @@ def conclusion_lines(report: dict[str, Any]) -> list[str]:
             "A WORKING SHAPE EXISTS: "
             + ", ".join(json_block(r["params"]) for r in winners)
             + " — the printer answered 0 AND its own file was gone from the next "
-            "1044. That is actionable as a one-line change to delete_file."
+            "1044. That is the warrant to restore a delete path with this shape."
         )
     elif report["every_variant_answered_identically"]:
         lines.append(
@@ -1952,7 +1955,7 @@ def render_report(report: dict[str, Any]) -> str:
         out.append(f"  winning shape   : {json_block(report['winning_shape'])}")
         out.append(
             "                    (the file in it is that variant's own upload; a "
-            "fix to delete_file changes the KEY/fields, not the value)"
+            "restored delete_file changes the KEY/fields, not the value)"
         )
     leftovers = report.get("cleanup", {}).get("leftovers") or []
     if leftovers:
@@ -2173,7 +2176,7 @@ async def probe(args: argparse.Namespace) -> int:
 
             # Clean up our own uploads. On a --run this uses the shape that
             # provably worked; on a dry run the only shape it may use is the one
-            # this integration ships today — that single 1047 can only ever name
+            # the removed service used to send — that single 1047 can only ever name
             # the probe's own file, and if it happens to work the cleanup
             # section of the report shows that.
             cleanup_info = await cleanup(

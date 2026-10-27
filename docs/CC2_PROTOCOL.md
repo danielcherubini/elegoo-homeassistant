@@ -1682,13 +1682,14 @@ File list 24/24 identical before and after.
 
 One caveat the reporter recorded, kept here deliberately: the probe's files are hand-written G-code without a slicer header or thumbnail block, so "this file is not deletable" is not fully separated from "this method is not served". The empty control is what rules out the *key-name* explanation — a request naming no key cannot be rejected for its key — but it does not distinguish "method absent" from "method present and answering a catch-all `1003`", which is why the conclusion above keeps both readings open.
 
-**Consequence for the integration:** `delete_file` sends a request this firmware answers with a refusal on every shape tested. The service keeps its re-list confirmation design (it is what reports the refusal honestly instead of claiming deletions that never happened), but no parameter change to `client.py` is justified by any capture to date.
+**Consequence for the integration:** no parameter shape tested on any capture deletes anything, so no request shape is justified for a client-side delete, and this integration shipped no LAN delete at all: the `cleanup_files` service was **removed** once the matrix above proved it could never succeed on known firmware (#432). The printer's own screen is the only delete path. If a future firmware answers `0` and the file disappears from the next 1044, the design returns with that capture as its warrant.
 
-> The integration's `cleanup_files` service confirms every delete by re-listing with **1044**
-> rather than reading this reply, and reports a file the printer accepted and still lists as
-> `still listed after delete`. That design is what made this failure visible rather than
-> silent: the service reports the refusal in `failed` and answers `success: false`, instead
-> of telling you files were deleted that are still on the printer.
+> The probe script (`scripts/cc2_probe_delete.py`) confirmed every delete by re-listing
+> with **1044** rather than reading this reply alone. On this firmware the reply and the
+> listing tell the same story — `1003` refuses, the file stays — but the two are not the
+> same evidence: the listing is what proves the file is still there, and it is the only
+> defence against the trap this capture has not yet shown, a firmware that answers `0`
+> and keeps the file.
 
 
 ### Disk Info [Both]
@@ -2579,7 +2580,7 @@ Use this checklist when implementing CC2 support:
 - [ ] File upload (stock: `PUT /upload` on port 80; OpenCentauri: port 8080 with auth)
 - [ ] File detail/metadata (MQTT method 1046)
 - [ ] File thumbnail (MQTT method 1045)
-- [ ] File download (OpenCentauri: HTTP `GET /download` on port 8080; stock firmware: `GET /download` on port 80 serves both G-code by bare name and timelapse MP4s — measured on fw 02.01.01.07, see [Downloading a file](#downloading-a-file--the-ordinary-download-endpoint); the integration exposes neither yet)
+- [ ] Delete file (MQTT method 1047) — **not served on stock firmware.** On firmware 02.01.01.07 the printer answers every 1047 with `error_code: 1003` and removes nothing, for an existing file and a missing one alike, for all eleven request shapes tried including an empty one, while the same file deletes fine from the printer's own UI (#432). This integration shipped a `cleanup_files` service for it and **removed it** once the matrix proved it could never succeed; the screen is the only delete path. See [Delete File](#delete-file-both). Unticked until a firmware answers 0 and the file disappears from the next 1044.
 - [ ] Delete file (MQTT method 1047) — **implemented in this integration (`cleanup_files`); a real reply has now been captured, and the delete does not happen.** On firmware 02.01.01.07 the printer answers every 1047 with `error_code: 1003` and removes nothing, for an existing file and a missing one alike, while the same file deletes fine from the printer's own UI (#432). The service confirms a delete by re-listing with 1044 rather than by reading the reply, which is what reports this as a failure instead of a false success; see [Delete File](#delete-file-both). Left unticked because the capability does not work — a working parameter shape has still to be found.
 
 ### Peripheral Control

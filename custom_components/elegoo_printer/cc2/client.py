@@ -42,7 +42,6 @@ from custom_components.elegoo_printer.sdcp.models.video import ElegooVideo
 
 from . import upload as _upload
 from .const import (
-    CC2_CMD_DELETE_FILE,
     CC2_CMD_GET_ATTRIBUTES,
     CC2_CMD_GET_CANVAS_STATUS,
     CC2_CMD_GET_FILE_DETAIL,
@@ -106,14 +105,6 @@ if TYPE_CHECKING:
     from .upload import UploadFile
 
 
-# Returned by ``delete_file`` when the printer answered a 1047 with an
-# ``error_code`` that is not a number. It is NOT a printer code: it is this
-# client's own marker, deliberately non-zero so a caller that only asks "did the
-# printer refuse?" treats an unreadable acknowledgement as a refusal, and
-# deliberately negative so it can never collide with a real CC2 error code
-# (1000-9004 in ``cc2/const.py``).
-CC2_ERROR_REPLY_UNPARSEABLE = -1
-
 # The ``type`` values a CC2 listing uses to say "this entry is not a deletable
 # file". ``dir`` is what this repo captured from firmware 02.01.00.00,
 # ``directory`` is the spelling docs/CC2_PROTOCOL.md documents, ``folder`` is
@@ -140,8 +131,9 @@ class CC2UnusableFileListError(Exception):
     """
     A 1044 reply that cannot be read as a trustworthy file listing.
 
-    Raised by ``get_verified_file_list`` — the listing method the destructive
-    ``cleanup_files`` service uses — in three distinct cases:
+    Raised by ``get_verified_file_list`` — the listing method every destructive
+    or confirming caller uses (``scripts/cc2_probe_delete.py`` re-lists through
+    it to prove a delete landed) — in three distinct cases:
 
     * the reply's ``result`` is not a dict carrying ``file_list``: an error
       envelope, a rejected-parameter reply, or any other shape — 1044's sibling
@@ -181,9 +173,11 @@ class CC2UnusableStatusError(Exception):
     """
     A 1002 reply that cannot be read as a trustworthy answer about the printer.
 
-    Raised by ``refresh_status`` — the full-status method the destructive
-    ``cleanup_files`` service uses to confirm the printer is idle before it
-    deletes anything — in three distinct cases:
+    Raised by ``refresh_status`` — the full-status method a caller uses when
+    it must confirm the printer is idle before acting (the file-cleanup
+    service this guarded was removed for #432; the gate stays, because a
+    refusal read as "idle" would mislead any caller that trusts it) — in
+    three distinct cases:
 
     * the reply's ``result`` is not a dict at all: an error envelope of some
       other shape, a bare list or string, or an envelope carrying no ``result``;
@@ -207,9 +201,9 @@ class CC2UnusableStatusError(Exception):
     Why a distinct exception rather than ``ElegooPrinterConnectionError``: the
     printer DID answer, so "not reachable" would be the wrong diagnosis, and
     ``PRINT_TRANSPORT_ERRORS`` is what a caller catches to mean "the link is
-    down". The cleanup service catches this alongside them and reports the same
-    fail-closed refusal — "could not confirm the printer is idle" — because from
-    the caller's side the two are the same thing: the question went unanswered.
+    down". A caller asked to fail closed on an unconfirmed printer treats this
+    alongside them the same way: from the caller's side the question simply
+    went unanswered.
     """
 
 
@@ -217,13 +211,12 @@ def _error_code(value: object) -> int | None:
     """
     Read an ``error_code`` out of a printer reply, or None if it says nothing.
 
-    None means "unreadable", which the callers turn into
-    ``CC2_ERROR_REPLY_UNPARSEABLE``. A float is accepted only when it is
-    integral: ``int(0.5)`` truncates to ``0``, and on this method ``0`` means
-    "the printer did not refuse" — so rounding a fractional code down would
-    report a delete the printer never confirmed. Same direction of error as the
-    truncated ``older_than_days`` the cleanup service refuses: never resolve
-    ambiguity toward "it is safe to destroy this".
+    None means "unreadable", and every caller treats it the same way as a
+    non-zero code: refused. A float is accepted only when it is integral:
+    ``int(0.5)`` truncates to ``0``, and across this client ``0`` means "the
+    printer did not refuse" — so rounding a fractional code down would report
+    consent the printer never gave. Never resolve ambiguity toward "it is safe
+    to act".
     """
     if isinstance(value, bool):
         # True is 1 — non-zero, so harmless here — but it is not a code, and
@@ -326,8 +319,8 @@ def _parse_file_entries(entries: list[Any]) -> tuple[dict[str, PrinterFile], lis
     ``filename`` as a JSON array (a repeated field serialising as a list is the
     ordinary way protobuf-ish firmware differs from a hand-written capture) had
     that file stored under the name ``"['old-a.gcode']"``. The strict path then
-    saw a listing with nothing dropped, declared it trustworthy, and
-    ``cleanup_files`` — comparing the deleted name against those keys — reported
+    saw a listing with nothing dropped, declared it trustworthy, and the
+    delete-confirmation comparison against those keys reported
     ``success: true, "deleted 1 of 1"`` for a file the printer still held, and
     the automation never retried. That is the exact outcome this method exists
     to prevent, reached through the exact field the previous round enumerated
@@ -577,8 +570,8 @@ def _read_status_result(result: object) -> CC2StatusReading:
     This is THE implementation of "did the printer answer the status request with
     something I can trust?", and every path that has to answer it goes through
     here: the MQTT listener's cache write (``_handle_full_status``) and the
-    ``refresh_status`` that ``cleanup_files`` relies on to confirm the printer is
-    idle before it deletes files.
+    ``refresh_status`` a destructive caller relies on to confirm the printer is
+    idle before it acts.
 
     The gates run in the same fixed order as ``_read_file_list_result``'s, for
     the same reasons:
@@ -610,7 +603,7 @@ def _read_status_result(result: object) -> CC2StatusReading:
     ``.get("status", CC2_STATUS_IDLE)`` and a missing ``print_status`` as
     ``filename=None``, so a reply carrying NEITHER does not read as a failed
     read — it reads as an idle printer with no job loaded, which is precisely the
-    pair of answers that lets both of the cleanup service's guards pass at once.
+    pair of answers that lets both of the idle-guards pass at once.
     A reply carrying ONE of them is still usable: the guards need at least one
     ("is it busy?" and "which file is it reading?"), and the frame that names a
     job but no machine state, or a machine state but no job, still answers one of
@@ -1514,8 +1507,8 @@ class ElegooCC2Client:
         reading as ``filename=None`` — so writing it does not merely fail to
         inform, it actively asserts "idle, nothing loaded" over the top of a
         cache that knew better. For the sensors that is a printer shown idle
-        while it prints; for ``cleanup_files`` it is the pair of answers that
-        makes both of its guards pass and deletes every age-eligible file.
+        while it prints; for a destructive caller it is the pair of answers
+        that makes both idle-guards pass and deletes every age-eligible file.
 
         The judgement is ``_read_status_result``'s, the same one
         ``refresh_status`` uses, so the writer and the delete guard can never
@@ -2248,10 +2241,10 @@ class ElegooCC2Client:
         .map_status`` reads a missing ``machine_status`` as
         ``.get("status", CC2_STATUS_IDLE)`` and a missing ``print_status`` as
         ``filename=None``, so a refusal envelope like ``{"error_code": 1003}``
-        reads as an idle printer with nothing loaded. For ``cleanup_files`` that
-        single reply disarms BOTH of its guards at once — "idle, so deleting is
+        reads as an idle printer with nothing loaded. For a destructive caller
+        that single reply disarms BOTH guards at once — "idle, so deleting is
         safe" and "no file is being printed, so nothing needs protecting" — and
-        the run deletes every age-eligible file on the strength of a refusal. So
+        the run would delete every age-eligible file on the strength of a refusal. So
         the reply is captured and judged by ``_read_status_result``, the same
         judgement ``_handle_full_status`` applies before writing the cache (the
         listener runs first, so the cache guard alone cannot protect a caller that
@@ -2574,85 +2567,6 @@ class ElegooCC2Client:
             msg = "No acknowledgement from the printer for start print"
             raise ElegooPrinterConnectionError(msg)
         return int(result["error_code"])
-
-    async def delete_file(
-        self,
-        filename: str,
-        *,
-        storage_media: str = "local",
-    ) -> int:
-        """
-        Delete one file from the printer's storage (method 1047).
-
-        A REPLY HAS BEEN RECEIVED, and it is still not proof. The first real
-        1047 answer was captured on firmware 02.01.01.07 (#432) and is recorded
-        in docs/CC2_PROTOCOL.md under "Delete File [Both]": ``result`` of
-        ``{"error_code": 1003}`` after ~13 ms, and the file was NOT deleted.
-        ``1003`` is ``CC2_ERROR_INVALID_PARAMETER`` — a rejection of the
-        request, not a refusal to delete — and the same reply came back for a
-        file that exists and for one that does not, which is what a server that
-        rejected the request before looking at the file looks like. Two
-        explanations remain untested: that this method wants the name spelled
-        ``file_name`` (1045 is sent ``file_name`` and 1046 ``filename``, so the
-        file methods share no one spelling), and that this firmware parks every
-        method it does not handle in a generic ``1003``. Reading the answer as
-        ``result.error_code`` is now measured, not inferred; the listed
-        ``1007 FILE_DELETE_FAILED`` is still only a hint — it has never been
-        seen in a reply.
-
-        So a ``0`` here means "the printer did not refuse", nothing more. It is
-        NOT proof of deletion, and the caller decides whether the file is gone
-        by re-listing (method 1044); that is what the ``cleanup_files`` service
-        does rather than trusting this return value.
-
-        A non-zero code is returned rather than raised: one locked or busy file
-        must not abort a cleanup of forty, and the reason is reported per file.
-        An ``error_code`` that is not a number is reported as
-        ``CC2_ERROR_REPLY_UNPARSEABLE`` for the same reason — it is an answer
-        that cannot be read as consent, so it must not be a code the caller has
-        to parse, and it must not raise: ``int("abc")`` escaping here would
-        unwind a cleanup AFTER earlier deletes had already landed, throwing away
-        the report of what happened to them.
-
-        Args:
-            filename: the name exactly as the 1044 listing reports it.
-            storage_media: defaults to the printer's internal storage; no
-                caller in this integration offers another value, because 1044
-                is only ever documented with ``path: "/"`` on ``local``.
-
-        Returns:
-            The ``error_code`` from the printer's reply, if it sent one, or
-            ``CC2_ERROR_REPLY_UNPARSEABLE`` if it sent one that is not a number.
-
-        Raises:
-            ElegooPrinterConnectionError: if the printer sent no reply, or a
-                reply with no error code — including firmware that does not
-                implement 1047 and stays silent, which surfaces from
-                ``_send_command`` as a timeout after 10 s.
-
-        """
-        response = await self._send_command(
-            CC2_CMD_DELETE_FILE,
-            {"storage_media": storage_media, "filename": filename},
-        )
-        result = (response or {}).get("result")
-        if not isinstance(result, dict) or "error_code" not in result:
-            msg = f"No acknowledgement from the printer for delete file {filename}"
-            raise ElegooPrinterConnectionError(msg)
-        code = _error_code(result["error_code"])
-        if code is None:
-            # "abc"/None/[]/0.5: an answer that cannot be read as consent. It is
-            # reported as a refusal rather than raised, because raising here
-            # unwinds a cleanup loop that has already deleted files and throws
-            # away the report of what happened to them.
-            self.logger.warning(
-                "Delete reply for %s carried an unreadable error_code %r; "
-                "reporting it as refused",
-                filename,
-                result["error_code"],
-            )
-            return CC2_ERROR_REPLY_UNPARSEABLE
-        return code
 
     async def set_fan_speed(self, percentage: int, fan: ElegooFan) -> None:
         """Set the speed of a fan."""

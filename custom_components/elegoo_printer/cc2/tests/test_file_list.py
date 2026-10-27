@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.elegoo_printer import _async_confirm_deletions
 from custom_components.elegoo_printer.cc2.client import (
     CC2UnusableFileListError,
     ElegooCC2Client,
@@ -142,11 +141,13 @@ def test_one_unparseable_entry_does_not_drop_the_listing() -> None:  # noqa: D10
 # --- get_verified_file_list: what makes a 1044 reply usable ----------------
 #
 # The lenient tests above are about DISPLAY: a reply it cannot read keeps the
-# old listing and nobody is harmed. These are about DESTRUCTION. `cleanup_files`
-# deletes files from the printer and then re-lists to prove they are gone; if it
-# accepts a reply that is not a trustworthy inventory, it reports "deleted N of
-# N" for files that are all still on the printer, and a nightly automation that
-# trusts that report never retries. So the strict method has to fail closed, and
+# old listing and nobody is harmed. These are about DESTRUCTION. Anything that
+# deletes files has to re-list to prove they are gone (the cleanup service that
+# drove these gates was removed for #432; the probe script still re-lists
+# through this method); if it accepts a reply that is not a trustworthy
+# inventory, it reports "deleted N of N" for files that are all still on the
+# printer, and a nightly automation that trusts that report never retries. So
+# the strict method has to fail closed, and
 # "fail closed" here means raising, because an empty dict is ALSO what an empty
 # printer answers and the two must not be conflated.
 
@@ -364,7 +365,7 @@ def test_strict_method_refuses_a_file_list_that_is_not_a_list() -> None:  # noqa
     # strict method itself had just filled: `{"error_code": 0, "file_list":
     # None}` (and 0 / "" / {} / "abc") passed the `"file_list" in result` gate,
     # and `_handle_file_list`'s `result.get("file_list") or []` then read the
-    # non-list as zero entries — so `cleanup_files` reported "deleted 3 of 3"
+    # non-list as zero entries — so delete-confirmation reported "deleted 3 of 3"
     # for files the printer still held, the Print File select was emptied, and
     # the automation never retried. Nothing documents that 1044 always answers
     # `file_list` as a JSON array, and 1047's reply is documented nowhere (the
@@ -441,7 +442,7 @@ def test_strict_method_refuses_entries_it_could_not_read() -> None:  # noqa: D10
     # `type` is not "file", and anything `PrinterFile` cannot build or cannot
     # take a name from — so a 1044 reply that plainly says "here are my entries"
     # in a shape this parser does not recognise parsed to zero files, replaced
-    # the cache with them, and `cleanup_files` reported "deleted N of N" for
+    # the cache with them, and delete-confirmation reported "deleted N of N" for
     # files the printer had kept. That is the same false success as the refusal
     # envelope and the `file_list: null` reply, one layer further down: the
     # reply is a list, so every gate above it passes.
@@ -502,7 +503,7 @@ def test_strict_method_refuses_a_listing_hiding_one_file_among_junk() -> None:  
     # listing beats a stale select), and the listener writes it before the
     # strict gates run at all. So the cache legitimately ends up holding the
     # readable part and losing `keep.gcode`. That is safe: safety here comes
-    # from the RAISE above — cleanup_files sees the exception and reports every
+    # from the RAISE above — a confirming caller sees the exception and reports every
     # delete unconfirmed — not from the cache keeping its old contents. The
     # guarantee the strict method documents is narrower and still true: a reply
     # that is REFUSED or wholly unreadable cannot empty the select; a partly
@@ -731,62 +732,6 @@ def test_an_unsolicited_refusal_on_the_real_wire_cannot_empty_the_select() -> No
             task.cancel()
 
 
-def test_a_refused_cleanup_relist_reports_the_delete_unconfirmed() -> None:  # noqa: D103
-    # The end-to-end consequence, stated as the one claim that matters: a
-    # printer that keeps the file but answers the confirming 1044 with a refusal
-    # must never be reported as having deleted it. Driven through the real
-    # `_handle_response` dispatch (no `_send_command` patch) and handed to the
-    # real `_async_confirm_deletions`, the helper `cleanup_files` uses to split a
-    # re-list into confirmed / not-confirmed.
-    #
-    # This is Finding A's exact scenario: the printer keeps the file and spells
-    # its `filename` as a list, so the coerced key "['keep.gcode']" does not
-    # match the deleted name and the service reported
-    # `success: true, "deleted 1 of 1"` for a file still sitting on the printer.
-    # The bogus name is now refused rather than stored, so the helper has to say
-    # it cannot confirm, and the automation retries.
-    client, pending = _wire_client()
-    _answer_with(client, pending, _raw({"error_code": 0, "file_list": [KEEP]}))
-    assert list(asyncio.run(client.get_verified_file_list())) == ["keep.gcode"]
-
-    _answer_with(
-        client,
-        pending,
-        _raw(
-            {
-                "error_code": 0,
-                "file_list": [{"filename": ["keep.gcode"], "type": "file"}],
-            }
-        ),
-    )
-    confirmed, failed = asyncio.run(_async_confirm_deletions(client, ["keep.gcode"]))
-    assert confirmed == []
-    assert set(failed) == {"keep.gcode"}
-    assert "re-list failed" in failed["keep.gcode"]
-    assert "CC2UnusableFileListError" in failed["keep.gcode"]
-    for task in pending:
-        task.cancel()
-
-
-def test_a_refusal_at_the_relist_is_never_reported_as_a_delete() -> None:  # noqa: D103
-    # The same helper on the real dispatch, for the plain refusal envelope that
-    # Finding B measured. Before the fix the listener had already written `{}`
-    # into the cache for this reply; what the service acts on is the strict
-    # method's raise, and it has to fire on the real path, not only under a
-    # mock. The select surviving this reply is the other half of the pin.
-    client, pending = _wire_client()
-    _answer_with(client, pending, _raw({"error_code": 0, "file_list": [KEEP]}))
-    asyncio.run(client.get_verified_file_list())
-
-    _answer_with(client, pending, _raw({"error_code": 1002, "file_list": []}))
-    confirmed, failed = asyncio.run(_async_confirm_deletions(client, ["keep.gcode"]))
-    assert confirmed == []
-    assert "re-list failed" in failed["keep.gcode"]
-    assert list(client.printer_data.file_list) == ["keep.gcode"]
-    for task in pending:
-        task.cancel()
-
-
 # --- Findings A and C: the two fields a bogus entry can hide behind --------
 
 
@@ -802,7 +747,7 @@ def test_strict_method_refuses_a_filename_that_is_not_a_string() -> None:  # noq
     #
     # The dangerous consequence is not the ugly key, it is what a delete
     # confirmation does with it: the printer keeps the file, the bogus key does
-    # not match the deleted name, `cleanup_files` reports
+    # not match the deleted name, the confirmation reported
     # `success: true, "deleted 1 of 1"`, and the automation never retries. So a
     # non-string `filename` is now DROPPED AS UNREADABLE, which the strict path
     # refuses. `file_info.PrinterFile` is untouched — it is shared with the SDCP
