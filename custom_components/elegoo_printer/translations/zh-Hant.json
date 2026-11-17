@@ -1,0 +1,281 @@
+{
+  "options": {
+    "error": {
+      "connection": "無法連線到印表機。",
+      "unknown": "發生未知錯誤。",
+      "init_no_printer_found": "初始化失敗：找不到印表機。",
+      "gcode_proxy_unreachable": "無法連線到 GCode 代理伺服器。請確認位址或 URL，以及代理伺服器是否正在執行。",
+      "gcode_proxy_invalid": "GCode 代理伺服器位址無效。請使用主機或 主機:連接埠，或不含重複通訊協定的 http(s) URL。",
+      "mqtt_external_port_invalid": "連接埠無效。請輸入 1 至 65535 之間的整數。",
+      "manual_ip_no_valid_ip": "請輸入有效的 IP 位址。"
+    },
+    "step": {
+      "init": {
+        "description": "如需設定說明，請參閱本專案的 GitHub 頁面。",
+        "data": {
+          "ip_address": "印表機 IP 位址",
+          "centauri_carbon": "這是否為 FDM 印表機",
+          "proxy_enabled": "啟用代理伺服器",
+          "external_ip": "外部位址（選填，適用於進階網路環境）"
+        },
+        "data_description": {
+          "external_ip": "以 IP 位址或主機名稱覆寫自動偵測到的位址。留空則自動偵測。適用於 Kubernetes/Docker 環境，或位於反向代理後方的情況。連接埠 3030 與 3031 會自動附加。"
+        }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 選項",
+        "description": "設定您的 Centauri Carbon 2 印表機。",
+        "data": {
+          "ip_address": "印表機 IP 位址",
+          "cc2_access_code": "存取碼（選填）",
+          "gcode_proxy_url": "GCode 代理伺服器 URL（選填）",
+          "proxy_host": "代理伺服器主機（選填）",
+          "allow_printer_offline": "印表機經常關機"
+        },
+        "data_description": {
+          "gcode_proxy_url": "elegoo-printer-proxy 的基礎 URL（主機、主機:連接埠，或 http(s) URL；省略通訊協定時使用 HTTP）。留空則停用。",
+          "proxy_host": "用來連線的轉送代理伺服器主機（IP 或主機名稱）。留空則直接連線到印表機。設定後，MQTT 控制、G-code 上傳與攝影機都會經由該代理伺服器傳送。",
+          "allow_printer_offline": "即使無法連線到印表機也完成設定。在印表機開機前，所有實體都會維持「無法使用」，而不是由整合回報設定失敗。注意：IP 位址錯誤或印表機無法連線時，看起來會與印表機關機相同。"
+        }
+      },
+      "mqtt_options": {
+        "title": "MQTT 印表機選項",
+        "description": "設定您的 MQTT 印表機。",
+        "data": {
+          "ip_address": "印表機 IP 位址",
+          "external_ip": "外部位址（選填，適用於進階網路環境）",
+          "mqtt_external_host": "外部 MQTT 代理主機（選填）",
+          "mqtt_external_port": "外部 MQTT 代理連接埠（選填）",
+          "allow_printer_offline": "印表機經常關機"
+        },
+        "data_description": {
+          "external_ip": "以 IP 位址或主機名稱覆寫自動偵測到的位址。留空則自動偵測。適用於 Kubernetes/Docker 環境，或位於反向代理後方的情況。連接埠 3030 與 3031 會自動附加。",
+          "mqtt_external_host": "指向既有的 MQTT 代理（例如 Mosquitto），而不啟動內建代理。留空則使用內建代理。",
+          "mqtt_external_port": "上方指定之外部 MQTT 代理的連接埠。留空則預設為 1883。",
+          "allow_printer_offline": "即使無法連線到印表機也完成設定。在印表機開機前，所有實體都會維持「無法使用」，而不是由整合回報設定失敗。注意：IP 位址錯誤或印表機無法連線時，看起來會與印表機關機相同。"
+        }
+      },
+      "websocket_options": {
+        "title": "{printer_model} 選項",
+        "description": "設定您的 {printer_model} 印表機。",
+        "data": {
+          "ip_address": "印表機 IP 位址",
+          "proxy_enabled": "啟用代理伺服器",
+          "has_canvas": "已安裝 Canvas/AMS",
+          "gcode_proxy_url": "GCode 代理伺服器 URL（選填）",
+          "external_ip": "外部位址（選填，適用於進階網路環境）",
+          "allow_printer_offline": "印表機經常關機"
+        },
+        "data_description": {
+          "proxy_enabled": "將印表機指令與攝影機串流經由 Home Assistant 內的單一連線傳送，以避開印表機對同時連線數的限制。",
+          "has_canvas": "為已連接的 Canvas（AMS）多色供料裝置啟用各槽位的耗材實體。",
+          "gcode_proxy_url": "elegoo-printer-proxy 的基礎 URL（主機、主機:連接埠，或 http(s) URL；省略通訊協定時使用 HTTP）。留空則停用。",
+          "external_ip": "僅供內建代理伺服器使用：其他裝置用來連線到它的位址。留空則自動偵測此 Home Assistant 的位址。適用於 Kubernetes/Docker 或反向代理環境。連接埠 3030 與 3031 會自動附加。",
+          "allow_printer_offline": "即使無法連線到印表機也完成設定。在印表機開機前，所有實體都會維持「無法使用」，而不是由整合回報設定失敗。注意：IP 位址錯誤或印表機無法連線時，看起來會與印表機關機相同。"
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "discover_printers": {
+        "title": "選擇印表機",
+        "description": "從清單中選擇已探索到的印表機，或選擇手動輸入 IP 位址。",
+        "data": {
+          "selection": "可用的印表機"
+        }
+      },
+      "manual_ip": {
+        "title": "手動設定",
+        "description": "請輸入您的 Elegoo 印表機的 IP 位址。整合會自動偵測印表機類型，並引導您完成對應的設定步驟。",
+        "data": {
+          "ip_address": "印表機 IP 位址",
+          "external_ip": "外部位址（選填，適用於進階網路環境）",
+          "proxy_host": "代理伺服器主機（選填）"
+        },
+        "data_description": {
+          "external_ip": "以 IP 位址或主機名稱覆寫自動偵測到的位址。留空則自動偵測。適用於 Kubernetes/Docker 環境，或位於反向代理後方的情況。連接埠 3030 與 3031 會自動附加。",
+          "proxy_host": "用來連線的轉送代理伺服器主機（IP 或主機名稱，例如 elegoo-printer-proxy）。留空則直接連線到印表機。設定後會略過探索，整合會經由該代理伺服器，使用印表機的一般連接埠傳送 MQTT 控制、G-code 上傳與攝影機。"
+        }
+      },
+      "fdm_options": {
+        "title": "FDM 印表機選項",
+        "description": "為所選印表機設定其他選項。有關代理伺服器的更多資訊，請參閱本專案的 GitHub 頁面。",
+        "data": {
+          "proxy_enabled": "啟用代理伺服器",
+          "has_canvas": "已安裝 Canvas/AMS"
+        }
+      },
+      "resin_options": {
+        "title": "光固化印表機選項",
+        "description": "啟用攝影機可能導致印表機不穩定，請自行承擔風險。詳細資訊與最佳做法請參閱本專案的 GitHub 頁面。",
+        "data": {
+          "camera_enabled": "啟用攝影機"
+        }
+      },
+      "cc2_options": {
+        "title": "Centauri Carbon 2 選項",
+        "description": "設定您的 Centauri Carbon 2 印表機。若印表機已啟用存取碼驗證，請在下方輸入存取碼；若不需要存取碼則留空。",
+        "data": {
+          "cc2_access_code": "存取碼（選填）"
+        }
+      },
+      "cc2_auth_check": {
+        "title": "Centauri Carbon 2 驗證",
+        "description": "**重要：** 繼續之前，請先檢查印表機的設定。\n\n在印表機上前往：**設定 → 網路**\n\n1. 啟用 **僅限區域網路模式**（連線所需）\n2. 接著在 **設定 → 網路 → 存取碼** 檢查存取碼設定\n\n• 若存取碼顯示「關閉」或為空白，請選擇 **否**\n• 若您已設定自訂存取碼，請選擇 **是**\n\n大多數印表機出廠時預設沒有存取碼。",
+        "data": {
+          "requires_access_code": "您的印表機是否需要存取碼？"
+        }
+      },
+      "cc2_access_code_input": {
+        "title": "輸入存取碼",
+        "description": "請在以下位置查看印表機的存取碼：設定 → 網路 → 存取碼\n\n**注意：** 繼續之前，請確認印表機已啟用 **僅限區域網路模式**（設定 → 網路 → 僅限區域網路模式）。",
+        "data": {
+          "cc2_access_code": "存取碼"
+        }
+      },
+      "cc2_serial_input": {
+        "title": "輸入序號",
+        "description": "無法經由代理伺服器讀取序號。\n\n請手動輸入：序號印在印表機底部的標籤上，也可在印表機的 設定 → 網路 中查看。",
+        "data": {
+          "serial": "序號"
+        }
+      }
+    },
+    "error": {
+      "connection": "無法連線到印表機。",
+      "unknown": "發生未知錯誤。",
+      "invalid_printer_selection": "印表機選擇無效。",
+      "no_printer_found": "在指定的 IP 位址找不到印表機。",
+      "validation_no_printer_found": "驗證失敗：找不到印表機。",
+      "no_printer_selected_or_ip_provided": "請選擇已探索到的印表機，或提供 IP 位址。",
+      "manual_options_no_printer_found": "找不到所選的印表機，無法套用選項。",
+      "init_no_printer_found": "初始化失敗：找不到印表機。",
+      "cc2_options_no_printer_found": "找不到 CC2 印表機。",
+      "cc2_access_code_required": "此印表機需要存取碼才能進行驗證。",
+      "cc2_authentication_failed": "驗證失敗。請確認印表機已啟用僅限區域網路模式（設定 → 網路 → 僅限區域網路模式），然後在 設定 → 網路 → 存取碼 中確認存取碼。",
+      "gcode_proxy_unreachable": "無法連線到 GCode 代理伺服器。請確認位址或 URL，以及代理伺服器是否正在執行。",
+      "gcode_proxy_invalid": "GCode 代理伺服器位址無效。請使用主機或 主機:連接埠，或不含重複通訊協定的 http(s) URL。",
+      "mqtt_external_port_invalid": "連接埠無效。請輸入 1 至 65535 之間的整數。",
+      "cc2_serial_required": "必須輸入序號",
+      "cc2_proxy_unreachable": "無法經由代理伺服器連線。請確認它正在執行且可連線，並且會轉送印表機的 MQTT（1883）、網頁（80）與攝影機（8080）連接埠",
+      "manual_ip_no_valid_ip": "請輸入有效的 IP 位址。"
+    },
+    "abort": {
+      "already_configured": "此項目已完成設定。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "print_status": {
+        "name": "列印狀態",
+        "state": {
+          "idle": "閒置",
+          "homing": "歸位中",
+          "dropping": "下降中",
+          "printing": "列印中",
+          "lifting": "抬升中",
+          "pausing": "暫停中",
+          "paused": "已暫停",
+          "stopping": "停止中",
+          "stopped": "已停止",
+          "complete": "已完成",
+          "file_checking": "檢查檔案中",
+          "recovery": "復原",
+          "printing_recovery": "列印復原",
+          "loading": "載入中",
+          "preheating": "預熱中",
+          "leveling": "調平中",
+          "printers_checking": "印表機檢查中",
+          "resuming": "恢復中",
+          "error": "錯誤",
+          "resonance_testing": "共振測試中",
+          "print_started": "已開始列印",
+          "auto_leveling_completed": "自動調平完成",
+          "preheating_completed": "預熱完成",
+          "homing_completed": "歸位完成",
+          "resonance_testing_completed": "共振測試完成",
+          "auto_feeding": "自動進料中",
+          "filament_unloading": "耗材退出中",
+          "filament_unload_abnormal": "耗材退出異常",
+          "filament_unload_paused": "耗材退出已暫停",
+          "unrecognized": "無法辨識"
+        }
+      },
+      "current_status": {
+        "name": "目前狀態",
+        "state": {
+          "idle": "閒置",
+          "printing": "列印中",
+          "file_transferring": "檔案傳輸中",
+          "exposure_testing": "曝光測試中",
+          "devices_testing": "裝置測試中",
+          "leveling": "調平中",
+          "input_shaping": "輸入整形中",
+          "stopping": "停止中",
+          "stopped": "已停止",
+          "homing": "歸位中",
+          "loading_unloading": "進料／退料中",
+          "pid_tuning": "PID 調校中",
+          "recovery": "復原"
+        }
+      },
+      "print_error": {
+        "name": "列印錯誤",
+        "state": {
+          "none": "無",
+          "check": "檢查",
+          "fileio": "檔案 I/O",
+          "invalid_resolution": "解析度無效",
+          "unknown_format": "未知格式",
+          "unknown_model": "未知型號"
+        }
+      },
+      "error_status_reason": {
+        "name": "錯誤狀態原因",
+        "state": {
+          "ok": "正常",
+          "temp_error": "溫度過高錯誤（噴嘴／熱床）",
+          "filament_runout": "偵測到耗材用盡",
+          "filament_jam": "偵測到耗材卡住或堵塞",
+          "level_failed": "熱床自動調平失敗",
+          "udisk_remove": "列印期間 USB 隨身碟被移除",
+          "home_failed_x": "X 軸歸位失敗",
+          "home_failed_z": "Z 軸歸位失敗",
+          "home_failed": "一般歸位失敗",
+          "bed_adhesion_failed": "列印物脫離熱床",
+          "error": "一般列印錯誤",
+          "move_abnormal": "馬達移動異常",
+          "home_failed_y": "Y 軸歸位失敗",
+          "file_error": "G-code 檔案錯誤",
+          "camera_error": "攝影機連線錯誤",
+          "network_error": "網路連線錯誤",
+          "server_connect_failed": "伺服器連線失敗",
+          "disconnect_app": "列印期間 App 已中斷連線",
+          "nozzle_temp_sensor_offline": "噴嘴溫度感測器離線",
+          "bed_temp_sensor_offline": "熱床溫度感測器離線",
+          "filament_about_to_runout": "耗材即將用盡"
+        }
+      },
+      "end_time": {
+        "name": "結束時間"
+      }
+    },
+    "select": {
+      "print_file": {
+        "name": "列印檔案"
+      },
+      "print_tray": {
+        "name": "列印托盤"
+      }
+    },
+    "button": {
+      "refresh_file_list": {
+        "name": "重新整理檔案清單"
+      },
+      "print_selected_file": {
+        "name": "列印所選檔案"
+      }
+    }
+  }
+}
