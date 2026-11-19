@@ -236,7 +236,9 @@ class PrinterStatus:
         print_screen (int): The print screen status.
         release_film (int): The release film status.
         time_lapse_status (int): The time lapse status.
-        platform_type (int): The platform type.
+        platform_type (int | None): The platform type as reported by the printer,
+            or None when the printer does not report it. Passed through from the
+            wire unvalidated.
         temp_of_uvled (float): The temperature of the UV LED.
         temp_of_box (float): The temperature of the box.
         temp_target_box (float): The target temperature of the box.
@@ -285,7 +287,7 @@ class PrinterStatus:
         self.print_screen: int = status.get("PrintScreen", 0)
         self.release_film: int = status.get("ReleaseFilm", 0)
         self.time_lapse_status: int = status.get("TimeLapseStatus", 0)
-        self.platform_type: int = status.get("PlatFormType", 1)
+        self.platform_type: int | None = status.get("PlatFormType")
 
         # Temperatures
         self.temp_of_uvled: float = round(status.get("TempOfUVLED", 0), 2)
