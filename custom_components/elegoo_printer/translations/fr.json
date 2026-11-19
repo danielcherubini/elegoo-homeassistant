@@ -259,6 +259,14 @@
       },
       "end_time": {
         "name": "Heure de Fin"
+      },
+      "build_plate": {
+        "name": "Plateau d'impression",
+        "state": {
+          "a": "Plateau A",
+          "b": "Plateau B",
+          "unknown": "Inconnu"
+        }
       }
     },
     "select": {

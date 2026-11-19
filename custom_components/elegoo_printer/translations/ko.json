@@ -259,6 +259,14 @@
       },
       "end_time": {
         "name": "종료 시간"
+      },
+      "build_plate": {
+        "name": "빌드 플레이트",
+        "state": {
+          "a": "플레이트 A",
+          "b": "플레이트 B",
+          "unknown": "알 수 없음"
+        }
       }
     },
     "select": {

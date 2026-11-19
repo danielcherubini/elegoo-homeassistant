@@ -259,6 +259,14 @@
       },
       "end_time": {
         "name": "終了時間"
+      },
+      "build_plate": {
+        "name": "ビルドプレート",
+        "state": {
+          "a": "プレート A",
+          "b": "プレート B",
+          "unknown": "不明"
+        }
       }
     },
     "select": {

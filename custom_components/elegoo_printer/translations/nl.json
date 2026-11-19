@@ -259,6 +259,14 @@
       },
       "end_time": {
         "name": "Einde Tijd"
+      },
+      "build_plate": {
+        "name": "Bouwplaat",
+        "state": {
+          "a": "Plaat A",
+          "b": "Plaat B",
+          "unknown": "Onbekend"
+        }
       }
     },
     "select": {

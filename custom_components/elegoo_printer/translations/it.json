@@ -259,6 +259,14 @@
       },
       "end_time": {
         "name": "Ora Fine"
+      },
+      "build_plate": {
+        "name": "Piatto di stampa",
+        "state": {
+          "a": "Piatto A",
+          "b": "Piatto B",
+          "unknown": "Sconosciuto"
+        }
       }
     },
     "select": {
