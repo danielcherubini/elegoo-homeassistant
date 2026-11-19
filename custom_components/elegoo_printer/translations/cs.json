@@ -259,6 +259,14 @@
       },
       "end_time": {
         "name": "Doba ukončení"
+      },
+      "build_plate": {
+        "name": "Tisková deska",
+        "state": {
+          "a": "Deska A",
+          "b": "Deska B",
+          "unknown": "Neznámý"
+        }
       }
     },
     "select": {

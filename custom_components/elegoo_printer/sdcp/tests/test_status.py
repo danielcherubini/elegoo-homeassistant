@@ -182,3 +182,31 @@ def test_extrusion_hex_fallback_priority() -> None:
 
     # Normal key should take priority
     assert status.print_info.total_extrusion == 9999.99
+
+
+def test_platform_type_missing_is_unset() -> None:
+    """Test that a printer omitting PlatFormType reports it as unset (None)."""
+    status_json = json.dumps({"CurrentStatus": [1], "PrintInfo": {}})
+
+    status = PrinterStatus.from_json(status_json)
+
+    # Absence must stay representable: no invented "Plate B" default
+    assert status.platform_type is None
+
+
+def test_platform_type_zero_is_preserved() -> None:
+    """Test that PlatFormType 0 is preserved rather than treated as missing."""
+    status_json = json.dumps({"CurrentStatus": [1], "PlatFormType": 0, "PrintInfo": {}})
+
+    status = PrinterStatus.from_json(status_json)
+
+    assert status.platform_type == 0
+
+
+def test_platform_type_passed_through_unvalidated() -> None:
+    """Test that an out-of-range PlatFormType is passed through, not clamped."""
+    status_json = json.dumps({"CurrentStatus": [1], "PlatFormType": 2, "PrintInfo": {}})
+
+    status = PrinterStatus.from_json(status_json)
+
+    assert status.platform_type == 2

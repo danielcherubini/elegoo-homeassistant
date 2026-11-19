@@ -259,6 +259,14 @@
       },
       "end_time": {
         "name": "结束时间"
+      },
+      "build_plate": {
+        "name": "打印平台",
+        "state": {
+          "a": "平台 A",
+          "b": "平台 B",
+          "unknown": "未知"
+        }
       }
     },
     "select": {

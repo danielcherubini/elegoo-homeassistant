@@ -33,6 +33,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 TRANSLATIONS = Path(__file__).parent.parent / "translations"
 CONFIG_FLOW = Path(__file__).parent.parent / "config_flow.py"
 
@@ -261,3 +263,119 @@ def test_no_locale_has_keys_missing_from_en():
         if extra:
             problems[locale_file.name] = sorted(extra)
     assert not problems, f"locales with keys absent from en.json: {problems}"
+
+
+# Known false-friend label values, keyed by locale so an entry for one locale
+# cannot fire on another.
+#
+# This is a REGRESSION GUARD for specific, documented mistranslations -- it is
+# NOT a translation-quality check. It cannot tell a good translation from a bad
+# one and does not try to; it only refuses the two values that were actually
+# shipped, reviewed, and fixed, so they cannot silently come back on the next
+# re-translation pass. Every other locale is unguarded because nobody has
+# reviewed it: an unverified entry is a false positive waiting to happen, and
+# this guard's whole value is that it never cries wolf. Add to it when a real
+# mistranslation is found and confirmed, and name the incident so the next
+# reader knows why the entry exists:
+#
+# - es: `Plata` means SILVER (or money) in Spanish, never a printer build
+#   plate. Shipped as `Plata de impresión` / `Plata A` / `Plata B`; the plate is
+#   a `Placa`. Fixed in 7b2ca0c.
+# - el: `Πλάτα` is the PLANE TREE (from *platanus*). Shipped as
+#   `Πλάτα Κατασκευής` / `Πλάτα A` / `Πλάτα B`; the plate is a `Πλάκα`.
+#   Fixed in 7b2ca0c.
+#
+# Both patterns are word-boundary anchored on purpose: `"plata" in value` would
+# flag `pt.json`'s `Plataforma de impressão`, which is correct Portuguese,
+# because `\b` will not match inside `Plataforma` (the `f` is a word character).
+_MISTRANSLATED_LABELS = {
+    "es": (r"\bPlata\b",),
+    # The alpha in the el pattern is deliberate -- it has to be the Greek word
+    # as it was actually shipped, and a Latin look-alike would never match.
+    "el": (r"\bΠλάτα\b",),  # noqa: RUF001
+}
+
+
+def _sensor_label_values(data):
+    """
+    Return every sensor label as ``(key_path, value)`` pairs.
+
+    Covers ``entity.sensor.<key>.name`` and every string under
+    ``entity.sensor.<key>.state`` -- the whole label surface of a sensor, not
+    just the build plate block. A false friend that reaches one label of a
+    locale can reach the others, and it can reach a sensor that did not exist
+    when the blocklist was written.
+    """
+    out = []
+    for sensor, block in sorted(data.get("entity", {}).get("sensor", {}).items()):
+        if not isinstance(block, dict):
+            continue
+        name = block.get("name")
+        if isinstance(name, str):
+            out.append((f"entity.sensor.{sensor}.name", name))
+        states = block.get("state")
+        if isinstance(states, dict):
+            for state_key, value in sorted(states.items()):
+                if isinstance(value, str):
+                    out.append((f"entity.sensor.{sensor}.state.{state_key}", value))
+    return out
+
+
+@pytest.mark.parametrize(
+    "locale_file", sorted(TRANSLATIONS.glob("*.json")), ids=lambda p: p.stem
+)
+def test_no_known_mistranslated_sensor_label(locale_file):
+    """
+    A label that matches a blocklisted false friend fails the build (#457).
+
+    One case per locale so a failure names the locale. The rest of this file
+    checks KEY parity only, and ``test_build_plate_sensor.py`` checks only that
+    ``en.json`` carries a label per option -- neither looks at translated
+    CONTENT, so a machine re-translation could reintroduce `Plata de impresión`
+    and CI would stay green. Locales with no blocklist entry pass here: they are
+    unchecked, not certified.
+    """
+    locale = locale_file.stem
+    patterns = [re.compile(p) for p in _MISTRANSLATED_LABELS.get(locale, ())]
+    if not patterns:
+        return
+
+    data = json.loads(locale_file.read_text())
+    offenders = [
+        f"{path} = {value!r}"
+        for path, value in _sensor_label_values(data)
+        for pattern in patterns
+        if pattern.search(value)
+    ]
+    assert not offenders, (
+        f"{locale_file.name}: sensor label(s) matched a known false-friend "
+        f"translation (wrong word shipped, see _MISTRANSLATED_LABELS): "
+        f"{'; '.join(offenders)}"
+    )
+
+
+def test_blocklist_does_not_flag_portuguese_plataforma():
+    """
+    The `es` pattern must not flag `pt.json`'s correct `Plataforma`.
+
+    `Plata` is a legitimate substring of `Plataforma`, so a naive containment
+    check reports a correct Portuguese label as a bug -- the exact false
+    positive that would get this guard deleted. Pins both halves: the value this
+    guard is protecting really is in the file (so the check is not vacuous if
+    `pt` is ever re-translated), and the word boundary rejects it.
+    """
+    pt = json.loads((TRANSLATIONS / "pt.json").read_text())
+    values = [value for _, value in _sensor_label_values(pt)]
+    assert "Plataforma de impressão" in values, (
+        "pt.json no longer labels the build plate 'Plataforma de impressão'; "
+        "this test was pinning the boundary behaviour of that exact value"
+    )
+
+    es_patterns = [re.compile(p) for p in _MISTRANSLATED_LABELS["es"]]
+    flagged = [
+        f"{path} = {value!r}"
+        for path, value in _sensor_label_values(pt)
+        for pattern in es_patterns
+        if pattern.search(value)
+    ]
+    assert not flagged, f"the es blocklist false-flagged pt.json: {flagged}"

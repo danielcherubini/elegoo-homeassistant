@@ -259,6 +259,14 @@
       },
       "end_time": {
         "name": "Doba ukončenia"
+      },
+      "build_plate": {
+        "name": "Tlačová doska",
+        "state": {
+          "a": "Doska A",
+          "b": "Doska B",
+          "unknown": "Neznámy"
+        }
       }
     },
     "select": {

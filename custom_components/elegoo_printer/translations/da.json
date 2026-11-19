@@ -259,6 +259,14 @@
       },
       "end_time": {
         "name": "Sluttidspunkt"
+      },
+      "build_plate": {
+        "name": "Byggeplade",
+        "state": {
+          "a": "Plade A",
+          "b": "Plade B",
+          "unknown": "Ukendt"
+        }
       }
     },
     "select": {
