@@ -2,13 +2,14 @@
 Tests for the CC2 full-status gate (method 1002): the read a destructive caller trusts.
 
 These were written against the `cleanup_files` service, which was removed for
-#432 (1047 is not served on stock firmware). The service is gone; the gate is
-not. `refresh_status`, `CC2UnusableStatusError` and `_read_status_result` all
-survived the removal, and `scripts/cc2_probe_delete.py` still drives
-`refresh_status` through the same idle gate before it will send anything. A
-surviving method that fails closed is only safe for as long as something proves
-it fails closed, so these pins moved here rather than being deleted along with
-the service.
+#432 on the belief that 1047 was not served on stock firmware — a reading later
+shown wrong, and the service has since been restored on the request shape that
+actually deletes. The gate outlived both events: `refresh_status`,
+`CC2UnusableStatusError` and `_read_status_result` survived the removal, and
+`scripts/cc2_probe_delete.py` drives `refresh_status` through the same idle gate
+before it will send anything. A method that fails closed is only safe for as long
+as something proves it fails closed, so these pins stayed when the service came
+back.
 
 The framing is now the caller's, not the service's: what is being protected is
 the promise that a caller which asked "is the printer idle?" is never handed a
