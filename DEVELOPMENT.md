@@ -171,9 +171,19 @@ integration (or its embedded broker) makes the probe fail to register.
 **Run it under `uv run`**, not a bare interpreter — it imports the shipped
 `ElegooCC2Client`, whose package imports `homeassistant`. That is deliberate: a
 probe that re-implemented MQTT would only prove its own code works, whereas a
-success here is the warrant to restore a delete path (`client.delete_file` and
-the `cleanup_files` service were removed for #432; their history is in git at
-PR #442) sending exactly the winning shape.
+success here is the warrant for a delete path (`client.delete_file` and the
+`cleanup_files` service ship the shape this probe found — `file_path` as a list
+— and their history, including the version that sent a `filename` scalar and
+the removal that followed, is in git at PRs #442, #444 and #449).
+
+**The winning shape is known, and how it was found is the lesson.** Eleven
+shapes were probed before it: all eleven varied the parameter *key* and none
+varied the *value type*, so the empty control correctly ruled out a key-name
+explanation while the real defect — a list required where a string was sent —
+stayed invisible, and the run concluded the method was not served at all. It is
+served. If this probe is ever run against a new firmware, vary the value type
+alongside the key, and treat a uniform reply across shapes as evidence about
+the shapes, not about the method.
 
 ```bash
 # DRY RUN (the default): connect, resolve the serial, check the printer is idle,

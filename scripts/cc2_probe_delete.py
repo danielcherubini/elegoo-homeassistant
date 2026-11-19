@@ -6,16 +6,17 @@ Background (issue #432)
 -----------------------
 On real firmware (02.01.01.07) `1047` answers every delete with
 `{"result": {"error_code": 1003}}` and deletes nothing — identically for a file
-that exists and one that does not — while the very same file deletes fine from
-the printer's own touchscreen. `1003` is `CC2_ERROR_INVALID_PARAMETER`
-(`cc2/const.py`): a *request-shape* rejection. This integration's sibling file
-methods do not share one parameter spelling — 1045 works being sent `file_name`
-and 1046 works being sent `filename` — so `filename` may simply be the wrong key
-for 1047. That is a HYPOTHESIS, and this script exists to discriminate, not to
-confirm it. The reporter's alternative reading — that `1003` is this firmware's
-generic "not available / not handled" bucket (they also saw 1045 answer 1003 for
-one file in the same session) — is equally untested, and if every variant answers
-alike this script says so plainly. That is a real, publishable result.
+that exists and one that does not. Eleven shapes were probed and all eleven
+answered 1003, which was read as "1047 is not served on stock firmware". **That
+reading was wrong.** The method is served: it wants `{"storage_media":"local",
+"file_path":["<name>"]}` — the key `file_path` **and a list value** — and deletes
+on that same firmware (#432, shape taken from OrcaSlicer's bundled ElegooLink
+UI). All eleven shapes varied the parameter KEY and none varied the VALUE TYPE,
+so the defect sat in the one dimension the matrix never moved.
+
+Two rules follow, and both are encoded below: the matrix now leads with
+`local_file_path_list` as a POSITIVE CONTROL, and a unanimous reply is reported
+as evidence about the shapes tried, never as proof a method is absent.
 
 Usage
 -----
@@ -37,8 +38,8 @@ This script imports the SHIPPED `ElegooCC2Client` rather than re-implementing
 MQTT, so that a positive answer is immediately actionable: it is the exact
 call shape a restored delete path would send — a probe with its own protocol
 code would only ever prove its own code works. (The `cleanup_files` service and
-the client's `delete_file` were removed for #432 once this probe's matrix came
-back all-refusals; a winning shape here is the warrant to bring them back.) Importing `custom_components.elegoo_printer.cc2.client` executes
+the client's `delete_file` ship the shape this probe's successor matrix found;
+the removal in #449 was itself the consequence of the misread described above.) Importing `custom_components.elegoo_printer.cc2.client` executes
 the parent package's `__init__.py`, which imports `homeassistant` (line 23), so
 `homeassistant` must be importable: it is an installed project dependency, which
 is why `uv run` works and a bare `python3` on a volunteer's laptop does not.
@@ -310,6 +311,25 @@ class Variant(NamedTuple):
 
 # The matrix, in the order the plan fixed. `N` is the variant's own uploaded file.
 VARIANTS: list[Variant] = [
+    # The two rows that settle it, and the reason this matrix was rebuilt. The
+    # original eleven variants all varied the parameter KEY and none varied the
+    # VALUE TYPE, so a uniform refusal across all eleven was read as "1047 is
+    # not served" when the method is served and simply wants a list. The
+    # positive control below is what a correct request looks like; if it does
+    # not delete on some firmware, that firmware differs, and a uniform refusal
+    # across the rest means nothing.
+    Variant(
+        "local_file_path_list",
+        "POSITIVE CONTROL: the shape that deletes on fw 02.01.01.07 (#432) — "
+        "file_path as a one-element list, from OrcaSlicer's bundled ElegooLink UI",
+        lambda n: {"storage_media": "local", "file_path": [n]},
+    ),
+    Variant(
+        "local_file_path_scalar",
+        "the axis the first eleven shapes never varied: right key, scalar value "
+        "(answers 1003 on fw 02.01.01.07 — a value-type failure, not a key one)",
+        lambda n: {"storage_media": "local", "file_path": n},
+    ),
     Variant(
         "local_filename",
         "the shape the removed service sent (1044's storage_media + 1046's key)",
@@ -1584,11 +1604,26 @@ def identical_answer_explanation(code: Any, sent: list[dict[str, Any]]) -> str:
     that in fact works.
     """
     if code == CC2_ERROR_INVALID_PARAMETER:
+        # Careful. This branch is where the last capture went wrong: eleven
+        # shapes unanimously answered 1003 and this script concluded the method
+        # was not served. It is served — the matrix never varied the VALUE TYPE,
+        # and the accepted shape wants `file_path` as a list. The matrix now
+        # includes that shape as a positive control, so read this branch only
+        # after checking the control behaved: a unanimous 1003 INCLUDING the
+        # list-valued control says something about this firmware. A unanimous
+        # 1003 where the control was skipped, timed out, or its listing failed
+        # to read says nothing at all.
         return (
-            f"on this firmware {code} is not about the parameter key at all — "
-            f"1047 is simply not served, or {code} is its generic 'not "
-            "available / not handled' answer. The key-name hypothesis is not "
-            "supported by this capture."
+            f"every variant answered {code} (INVALID_PARAMETER). Check the "
+            "local_file_path_list positive control FIRST: if it answered 0 and "
+            "its file disappeared, this matrix did not in fact agree and this "
+            "sentence does not apply. If the control also answered "
+            f"{code}, then on THIS firmware 1047 rejects every shape tried, "
+            "including the one that works on fw 02.01.01.07 — a firmware "
+            "difference, not proof the method is absent. Do not conclude "
+            "'not served' from a uniform reply; on 02.01.01.07 a uniform reply "
+            "across the old eleven shapes meant the probe had not varied the "
+            "value type."
         )
     if code == CC2_ERROR_SUCCESS:
         still_listed = [r for r in sent if r.get("still_listed") is True]

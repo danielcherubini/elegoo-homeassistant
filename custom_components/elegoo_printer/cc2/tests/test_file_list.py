@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from custom_components.elegoo_printer import _async_confirm_deletions
 from custom_components.elegoo_printer.cc2.client import (
     CC2UnusableFileListError,
     ElegooCC2Client,
@@ -891,3 +892,59 @@ def test_a_filename_without_a_type_key_is_still_a_file() -> None:  # noqa: D103
     ):
         files = asyncio.run(client.get_verified_file_list())
     assert list(files) == ["plain.gcode"]
+
+
+def test_a_refused_cleanup_relist_reports_the_delete_unconfirmed() -> None:  # noqa: D103
+    # The end-to-end consequence, stated as the one claim that matters: a
+    # printer that keeps the file but answers the confirming 1044 with a refusal
+    # must never be reported as having deleted it. Driven through the real
+    # `_handle_response` dispatch (no `_send_command` patch) and handed to the
+    # real `_async_confirm_deletions`, the helper `cleanup_files` uses to split a
+    # re-list into confirmed / not-confirmed.
+    #
+    # This is Finding A's exact scenario: the printer keeps the file and spells
+    # its `filename` as a list, so the coerced key "['keep.gcode']" does not
+    # match the deleted name and the service reported
+    # `success: true, "deleted 1 of 1"` for a file still sitting on the printer.
+    # The bogus name is now refused rather than stored, so the helper has to say
+    # it cannot confirm, and the automation retries.
+    client, pending = _wire_client()
+    _answer_with(client, pending, _raw({"error_code": 0, "file_list": [KEEP]}))
+    assert list(asyncio.run(client.get_verified_file_list())) == ["keep.gcode"]
+
+    _answer_with(
+        client,
+        pending,
+        _raw(
+            {
+                "error_code": 0,
+                "file_list": [{"filename": ["keep.gcode"], "type": "file"}],
+            }
+        ),
+    )
+    confirmed, failed = asyncio.run(_async_confirm_deletions(client, ["keep.gcode"]))
+    assert confirmed == []
+    assert set(failed) == {"keep.gcode"}
+    assert "re-list failed" in failed["keep.gcode"]
+    assert "CC2UnusableFileListError" in failed["keep.gcode"]
+    for task in pending:
+        task.cancel()
+
+
+def test_a_refusal_at_the_relist_is_never_reported_as_a_delete() -> None:  # noqa: D103
+    # The same helper on the real dispatch, for the plain refusal envelope that
+    # Finding B measured. Before the fix the listener had already written `{}`
+    # into the cache for this reply; what the service acts on is the strict
+    # method's raise, and it has to fire on the real path, not only under a
+    # mock. The select surviving this reply is the other half of the pin.
+    client, pending = _wire_client()
+    _answer_with(client, pending, _raw({"error_code": 0, "file_list": [KEEP]}))
+    asyncio.run(client.get_verified_file_list())
+
+    _answer_with(client, pending, _raw({"error_code": 1002, "file_list": []}))
+    confirmed, failed = asyncio.run(_async_confirm_deletions(client, ["keep.gcode"]))
+    assert confirmed == []
+    assert "re-list failed" in failed["keep.gcode"]
+    assert list(client.printer_data.file_list) == ["keep.gcode"]
+    for task in pending:
+        task.cancel()

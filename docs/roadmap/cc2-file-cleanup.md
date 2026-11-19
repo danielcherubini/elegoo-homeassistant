@@ -1,7 +1,7 @@
 ---
 status: implemented
 issue: https://github.com/danielcherubini/elegoo-homeassistant/issues/432
-shipped: PR #444 (bda7d5f) delivered Tasks 1-3; Task 4's capture landed 2026-10-26 and row 2 fired (no parameter shape deletes on stock firmware) — docs half done, code decision deferred by maintainer
+shipped: PR #444 (bda7d5f) delivered Tasks 1-3; Task 4's capture landed 2026-10-26 and row 2 fired (no parameter shape deletes on stock firmware); SUPERSEDED 2026-10-31 by a twelfth shape that deletes — see the correction below. Delete path restored.
 done-when: A volunteer runs one script against a real Centauri Carbon 2 and returns raw 1047 replies that say definitively which parameter shape the printer accepts; the delete path is then either proven working or declared dead, and no user-facing text anywhere claims the opposite of what the capture showed.
 ---
 
@@ -20,6 +20,34 @@ done-when: A volunteer runs one script against a real Centauri Carbon 2 and retu
 > measured a working LAN path (1036 + `/download`, documented in `docs/CC2_PROTOCOL.md`)
 > and has open offers to PR the docs and the feature himself. Kept, not deleted, until
 > both settle.
+
+> ## ⚠️ Correction — 2026-10-31: the delete path is NOT dead
+>
+> **The conclusion this plan reached is wrong, and the plan is what produced it.** A
+> twelfth shape deletes on the same stock firmware (fw 02.01.01.07, nothing patched):
+> `{"storage_media":"local","file_path":["<name>"]}` → `error_code 0`, file gone from the
+> next 1044 and from the printer's display. Captured by @MrHaku81, who took the shape from
+> the ElegooLink web UI OrcaSlicer ships (v2.4.2, `lan_service_web/index.html`) rather than
+> guessing it ([capture](https://github.com/danielcherubini/elegoo-homeassistant/issues/432#issuecomment-6708644373)).
+>
+> **Why the eleven-shape matrix missed it:** every variant varied the parameter **key**
+> (`filename`, `file_name`, `path`, bare) and the **storage spelling**. **None varied the
+> value type**, and none used the key `file_path`. The accepted shape needs both: the right
+> key *and* a list. `file_path` as a scalar answers `1003` exactly as a wrong key does, so
+> "not served" and "rejecting a scalar" were indistinguishable across all eleven. The empty
+> control did its stated job — it ruled out a *key-name* explanation — and its validity is
+> precisely what let the wrong conclusion through, because a request naming no key cannot
+> reveal that the accepted key wants a list.
+>
+> **Consequences:** the `cleanup_files` service and `client.delete_file` are restored on the
+> working shape; the removal above was the direct result of this error. `docs/CC2_PROTOCOL.md`
+> is corrected, and the probe matrix now leads with `local_file_path_list` as a positive
+> control so a future run cannot repeat the mistake. The decision table below records row 2
+> firing on evidence that did not support it — read it as a lesson about probe design, not
+> as a finding about the firmware.
+>
+> **Still open:** whether `video/…` paths delete through the same shape (unmeasured as of
+> this capture), so the videos half of #432 is not closed by it.
 
 # CC2 file cleanup — make `cleanup_files` true on real firmware
 

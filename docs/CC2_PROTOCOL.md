@@ -1456,7 +1456,7 @@ Returns raw file contents.
 | GET_FILE_LIST | 1044 | ✅ Works | Returns file names, sizes |
 | GET_FILE_THUMBNAIL | 1045 | ✅ Works | Returns base64 PNG thumbnail |
 | GET_FILE_DETAIL | 1046 | ✅ Works | Returns metadata: size, layers, filament used, print time, color map |
-| DELETE_FILE | 1047 | ❌ No-op | Returns `error_code: 1003` and deletes nothing on fw 02.01.01.07; the same file deletes fine from the printer UI (#432) |
+| DELETE_FILE | 1047 | ✅ Works | Requires `{"storage_media":"local","file_path":["<name>"]}` — key `file_path` **and** a list value. Any other shape, including a scalar under `file_path`, answers `error_code: 1003` and deletes nothing. Measured on fw 02.01.01.07 (#432) |
 | GET_DISK_INFO | 1048 | Untested | — |
 | SET_PRINTER_DOWNLOAD_FILE | 1057 | Untested (cloud feature) | Tells printer to download from URL — NOT for retrieving files (see below) |
 | CANCEL_PRINTER_DOWNLOAD_FILE | 1058 | Untested | Cancels a 1057 download task |
@@ -1610,12 +1610,14 @@ All require `X-Token` authentication (query parameter or header). See [Download 
   "method": 1047,
   "params": {
     "storage_media": "local",
-    "filename": "old_model.gcode"
+    "file_path": ["old_model.gcode"]
   }
 }
 ```
 
-**Response (measured on stock firmware):**
+**The shape above is the one that works.** `file_path`, and its value is a **list**. Both halves are required: the same name as a bare string under `file_path` is refused exactly like the wrong key is. See [The shape that deletes](#the-shape-that-deletes) below for the capture and for why eleven earlier shapes all failed.
+
+**Response (measured on stock firmware, with a request shape the firmware rejects):**
 
 ```json
 {
@@ -1629,9 +1631,9 @@ All require `X-Token` authentication (query parameter or header). See [Download 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `error_code` | int | `1003` in every capture so far, for an existing file and for a non-existent one alike. The hinted `1007 FILE_DELETE_FAILED` has never been observed. `error_code: 0` is assumed to mean accepted, but no firmware seen here ever sent it |
+| `error_code` | int | `0` when the delete is accepted — measured on fw 02.01.01.07 with the `file_path`-as-list shape above, and the file was gone from the next 1044. `1003` for every other request shape tried, for an existing file and a non-existent one alike. The hinted `1007 FILE_DELETE_FAILED` has never been observed |
 
-**First real capture — @MrHaku81, #432 (2026-10-25).** Centauri Carbon 2 Combo, firmware `ota_version = 02.01.01.07` (read from method 1001; `mcu_version` and `soc_version` reported empty), Access-Code pairing (`token_status = 1`, `lan_status = 1`), MQTT on 1883, printer idle throughout. Both requests used the shape above with `storage_media: "local"` — the only value tried; `sdcard` and `udisk` were offered as variants but not yet run.
+**First real capture — @MrHaku81, #432 (2026-10-25).** Centauri Carbon 2 Combo, firmware `ota_version = 02.01.01.07` (read from method 1001; `mcu_version` and `soc_version` reported empty), Access-Code pairing (`token_status = 1`, `lan_status = 1`), MQTT on 1883, printer idle throughout. Both requests used `"filename": "<name>"` with `storage_media: "local"` — **the key this integration shipped, and a scalar value**, neither of which the firmware accepts; see [The shape that deletes](#the-shape-that-deletes) for the request that works. `storage_media: "local"` was the only storage value tried; `sdcard` and `udisk` were offered as variants but not yet run.
 
 Case A — a file that exists (uploaded by the reporter a minute earlier; `storage_media: "local"`, listed exactly once by the 1044 before and after):
 
@@ -1678,18 +1680,32 @@ File list 24/24 identical before and after.
 | `sdcard` / `udisk` + `filename` and `file_name` | `1003` | yes |
 | `sd-card` / `u-disk` (SDK-table spellings) + `filename` | `1003` | yes |
 
-**Conclusion, measured:** every shape — *including the empty control* — answered the identical `{"result": {"error_code": 1003}}` in 9.5–20 ms, and all 11 confirming 1044 re-listings saw the variant's own file still present. A request that carries no parameters at all cannot have its `1003` explained by a key name, so on this firmware `1003` is not about the parameter key: the capture's own reading is that **either 1047 is not served at all, or `1003` is its generic "not available / not handled" answer** — the probe cannot separate the two, because both predict exactly what was observed. What it does settle is the narrower question the probe was built for: **the `file_name` key-name hypothesis is not supported**, and none of the 11 shapes tested deletes anything. Whether some shape outside the matrix works is unmeasured — but nothing in the capture suggests one exists, and no such shape should be assumed. The touchscreen is the only delete path confirmed to work.
+**Conclusion, measured — and superseded on one point.** Every shape in this matrix — *including the empty control* — answered the identical `{"result": {"error_code": 1003}}` in 9.5–20 ms, and all 11 confirming 1044 re-listings saw the variant's own file still present. A request that carries no parameters at all cannot have its `1003` explained by a key name, so on this firmware `1003` is not about the parameter **key**: the capture's own reading was that **either 1047 is not served at all, or `1003` is its generic "not available / not handled" answer**.
 
-One caveat the reporter recorded, kept here deliberately: the probe's files are hand-written G-code without a slicer header or thumbnail block, so "this file is not deletable" is not fully separated from "this method is not served". The empty control is what rules out the *key-name* explanation — a request naming no key cannot be rejected for its key — but it does not distinguish "method absent" from "method present and answering a catch-all `1003`", which is why the conclusion above keeps both readings open.
+**That reading was wrong, and the probe had a blind spot that explains why.** Every one of the eleven shapes varied the *key* (`filename`, `file_name`, `path`, bare) and the *storage spelling*. **Not one varied the value type**, and none used the key `file_path`. The real defect was on both of those axes at once. The empty control is what makes this easy to miss: correctly, it rules out a key-name explanation, and a control request is well suited to that question — but a request naming no key at all cannot reveal that the accepted key wants a **list**, so the control's validity is exactly what let the wrong conclusion through. "1047 is not served" and "1047 is served and rejecting a scalar" produce the identical reply for all eleven shapes. See [The shape that deletes](#the-shape-that-deletes).
 
-**Consequence for the integration:** no parameter shape tested on any capture deletes anything, so no request shape is justified for a client-side delete, and this integration shipped no LAN delete at all: the `cleanup_files` service was **removed** once the matrix above proved it could never succeed on known firmware (#432). The printer's own screen is the only delete path. If a future firmware answers `0` and the file disappears from the next 1044, the design returns with that capture as its warrant.
+One caveat the reporter recorded, kept here deliberately: the probe's files are hand-written G-code without a slicer header or thumbnail block, so "this file is not deletable" was not fully separated from "this method is not served". That ambiguity is now resolved in favour of *served* — the method deletes on this same firmware once asked correctly.
 
-> The probe script (`scripts/cc2_probe_delete.py`) confirmed every delete by re-listing
-> with **1044** rather than reading this reply alone. On this firmware the reply and the
-> listing tell the same story — `1003` refuses, the file stays — but the two are not the
-> same evidence: the listing is what proves the file is still there, and it is the only
-> defence against the trap this capture has not yet shown, a firmware that answers `0`
-> and keeps the file.
+### The shape that deletes
+
+**@MrHaku81, #432 (2026-10-31).** Same printer and firmware as the matrix above — Centauri Carbon 2, `fw 02.01.01.07`, stock, nothing patched. The shape was not guessed: it is what the **ElegooLink web UI OrcaSlicer ships** builds (v2.4.2, `resources/web/elegoolink/lan_service_web/index.html`), which constructs `{storage_media, file_path}` and whose caller wraps the name in an array before sending. Vendor software talking to the printer, on the same firmware, is what distinguishes this from a twelfth guess.
+
+| params | `error_code` | file gone? |
+|---|---|---|
+| `{"storage_media":"local","file_path":"<name>"}` — right key, **scalar** | `1003` | no |
+| `{"storage_media":"local","file_path":["<name>"]}` — right key, **list** | **`0`** | **yes** |
+
+Verified three independent ways: `error_code: 0`; the file absent from the next 1044 listing; and the file gone from the printer's own display. Tested against a throwaway 112-byte file uploaded for the purpose, no real prints touched. Capture and MQTT summary: https://github.com/MrHaku81/handslice/blob/main/docs/networking-cc2.md
+
+**What this settles.** `1047` **is** served on stock firmware, and `1003` on this method is the genuine `CC2_ERROR_INVALID_PARAMETER` its name claims — a request-shape rejection, nothing more. The earlier "not served, or a catch-all `1003`" reading, and the `file_name` key-name hypothesis before it, were both artifacts of never trying a list value. What remains unmeasured is narrower than it looked: `video/…` paths had not been tested as of this capture, so whether timelapse MP4s delete through the same shape is still open.
+
+**Consequence for the integration:** `client.delete_file` sends `{"storage_media": ..., "file_path": [name]}`, and the `cleanup_files` service is restored on that shape (#432). The service keeps its re-list confirmation design — a `0` is still not treated as proof the file is gone, because the trap the matrix below could not show is a firmware that answers `0` and keeps the file, and the 1044 re-list is the only defence against it.
+
+> The integration's `cleanup_files` service confirms every delete by re-listing with **1044**
+> rather than reading this reply alone. The reply and the listing are not the same evidence:
+> the listing is what proves the file is gone, and it is what reports a file the printer
+> accepted and still lists as `still listed after delete` with `success: false`, instead of
+> telling you files were deleted that are still on the printer.
 
 
 ### Disk Info [Both]
@@ -2581,7 +2597,7 @@ Use this checklist when implementing CC2 support:
 - [ ] File detail/metadata (MQTT method 1046)
 - [ ] File thumbnail (MQTT method 1045)
 - [ ] File download (OpenCentauri: HTTP `GET /download` on port 8080; stock firmware: `GET /download` on port 80 serves both G-code by bare name and timelapse MP4s — measured on fw 02.01.01.07, see [Downloading a file](#downloading-a-file--the-ordinary-download-endpoint); the integration exposes neither yet)
-- [ ] Delete file (MQTT method 1047) — **not served on stock firmware.** On firmware 02.01.01.07 the printer answers every 1047 with `error_code: 1003` and removes nothing, for an existing file and a missing one alike, for all eleven request shapes tried including an empty one, while the same file deletes fine from the printer's own UI (#432). This integration shipped a `cleanup_files` service for it and **removed it** once the matrix proved it could never succeed; the screen is the only delete path. See [Delete File](#delete-file-both). Unticked until a firmware answers 0 and the file disappears from the next 1044.
+- [ ] Delete file (MQTT method 1047) — **served on stock firmware, and implemented in this integration (`cleanup_files`).** It works only with `{"storage_media": "local", "file_path": ["<name>"]}` — the key `file_path` **and** a list value; every other shape tried, including the `filename`/`file_name` keys this integration originally shipped and a scalar under `file_path`, answers `error_code: 1003` and leaves the file in place. Measured on fw 02.01.01.07, and the shape comes from the ElegooLink web UI OrcaSlicer ships rather than from guesswork (#432). An earlier reading of eleven failed shapes — "not served on stock firmware" — was wrong: none of the eleven varied the value type. The service confirms a delete by re-listing with 1044 rather than reading the reply, so a `0` that leaves the file listed is reported as a failure. See [Delete File](#delete-file-both). Timelapse `video/…` paths are still unmeasured.
 
 ### Peripheral Control
 - [ ] Temperature control
