@@ -261,10 +261,10 @@
         "name": "Hora Final"
       },
       "build_plate": {
-        "name": "Plata de impresión",
+        "name": "Placa de impresión",
         "state": {
-          "a": "Plata A",
-          "b": "Plata B",
+          "a": "Placa A",
+          "b": "Placa B",
           "unknown": "Desconocido"
         }
       }
