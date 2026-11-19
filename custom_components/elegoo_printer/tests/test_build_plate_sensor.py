@@ -7,7 +7,15 @@ HA raises when an ENUM sensor's state falls outside its declared
 `options`, every value the mapping can produce must be one of those
 options — an unrecognised or non-int wire value reads as "unknown" rather
 than passing through.
+
+The last class pins the description's `translation_key` against `en.json`:
+a key that does not resolve degrades the entity's name silently rather than
+failing, so it is the one part of this sensor no state-value assertion can
+catch.
 """
+
+import json
+from pathlib import Path
 
 from homeassistant.components.sensor.const import SensorDeviceClass
 
@@ -22,6 +30,8 @@ from custom_components.elegoo_printer.definitions import (
 from custom_components.elegoo_printer.sdcp.models.enums import PrinterType
 from custom_components.elegoo_printer.sdcp.models.printer import PrinterData
 from custom_components.elegoo_printer.sdcp.models.status import PrinterStatus
+
+TRANSLATIONS = Path(__file__).parent.parent / "translations"
 
 KEY = "build_plate"
 
@@ -134,3 +144,55 @@ class TestBuildPlatePayload:
 
         assert status.platform_type == 0
         assert _fdm_description().value_fn(PrinterData(status)) == "a"
+
+    def test_payload_without_platform_type_reads_unknown(self) -> None:
+        """
+        A printer that does not report the field at all reads as unknown.
+
+        The integration's own guarantee, spanning both halves: the model
+        must leave `platform_type` unset rather than fabricate a default (a
+        fabricated 1 would read as plate B, inventing a plate for a printer
+        that told us nothing), and the sensor must map that absence onto the
+        unknown option. Neither half can prove this alone.
+        """
+        payload = {"Status": {}}
+        status = PrinterStatus(payload, PrinterType.FDM)
+
+        assert status.platform_type is None
+        assert _fdm_description().value_fn(PrinterData(status)) == BUILD_PLATE_UNKNOWN
+
+
+class TestBuildPlateTranslation:
+    """
+    The `translation_key` must resolve to a real block in `en.json`.
+
+    Home Assistant names a translated entity from
+    `entity.sensor.<translation_key>.name`, and silently falls back to the
+    raw `name` when that block is absent — so a mistyped key looks fine in
+    every language, in every test that only checks the state value. Nothing
+    else in the suite cross-checks an entity's `translation_key` against the
+    translation files, which is what this pins.
+    """
+
+    def test_en_json_block_exists_with_name_and_every_option(self) -> None:
+        """Every declared option has a state label, and the entity has a name."""
+        en = json.loads((TRANSLATIONS / "en.json").read_text())
+        description = _fdm_description()
+
+        block = en["entity"]["sensor"].get(description.translation_key)
+        assert isinstance(block, dict), (
+            f"en.json has no entity.sensor.{description.translation_key} block; "
+            f"HA would fall back to the raw name {description.name!r}"
+        )
+        assert block.get("name"), (
+            f"entity.sensor.{description.translation_key} has no name; the "
+            "entity would render with no friendly name"
+        )
+
+        states = block.get("state", {})
+        untranslated = [value for value in description.options if value not in states]
+        assert not untranslated, (
+            f"entity.sensor.{description.translation_key}.state is missing "
+            f"label(s) for option(s) {untranslated}; those states render as the "
+            "raw option value"
+        )

@@ -305,6 +305,8 @@ The integration provides a comprehensive set of entities including **Live Camera
 
 **Print file (CC2):** a select listing the G-code files in the printer's local storage, read over MQTT (method 1044) every ten minutes and on the **Refresh File List** button. Choosing a file does not start it: press **Print Selected File**, which prints from the tray chosen in **Print Tray** (Automatic or A1-A4, Canvas printers only) with bed leveling on, as in the slicer - or pass the select's state to `start_print` as `filename` to skip leveling.
 
+**Build plate (FDM printers):** a sensor telling you which side of the build plate the current print is on — **Plate A** or **Plate B** — straight from the printer's own status report, so an automation or a dashboard card can tell where a job is running without anyone checking the machine. A printer that does not report the field shows **Unknown**; it is never guessed at, so **Unknown** means the printer stayed quiet rather than that something is wrong.
+
 ## 🤖 Automation Blueprints
 Includes a blueprint for mobile notifications. [Import it here.](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/danielcherubini/elegoo-homeassistant/blob/main/blueprints/automation/elegoo_printer/elegoo_printer_progress.yaml)
 
