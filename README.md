@@ -67,7 +67,7 @@ Older networked models typically use MQTT. These are supported in **Beta**, mean
 
 * **Saturn Range** (e.g., Saturn 2, 3 Ultra)
 * **Mars Range** (e.g., Mars 3, 4 Ultra)
-* **Jupiter Range**
+* **Jupiter and Jupiter SE** (the original 6K models — this does **not** cover the [Jupiter 2](#-not-supported-yet), which is a different machine)
 
 **Known Limitations for MQTT:**
 * `Begin Time`, `End Time`, and `Cover Image` sensors will show "Unknown."
@@ -158,6 +158,35 @@ A few things to expect:
   printer's own ports. A field on a printer that is not a CC2 has no effect.
 
 See [CC2 Protocol Documentation](docs/CC2_PROTOCOL.md) for technical details.
+
+### ❌ Not supported (yet)
+
+**Elegoo Jupiter 2.** This integration cannot connect to the Jupiter 2, and
+earlier versions of this page listed the "Jupiter Range" as supported, which
+wrongly implied it was. That entry now names the original Jupiter and Jupiter SE
+only — those use the documented older protocol, though note the Beta caveat above.
+If you bought a Jupiter 2 expecting support from what this page said, that was our
+error, not yours.
+
+The reason is not that we have not got round to it — it is that **nobody knows how
+the Jupiter 2 talks on the network.** Every Elegoo resin printer anyone has ever
+integrated (Mars, Saturn, the original Jupiter) uses a controller board whose
+protocol is published and unencrypted. The Jupiter 2 does not appear to use that
+board: it carries Elegoo's own silicon rather than the previous model's, it is the
+only Elegoo resin printer that no third-party project has ever communicated with,
+and Elegoo's own network SDK lists no resin printer at all.
+
+It does accept prints over the local network — Elegoo documents that, and its
+slicer does it — but the protocol it uses to do so has never been captured or
+published, by us or by anyone else.
+
+**What would change this:** a network capture from a Jupiter 2 owner. If you have
+one and are willing to record the traffic between your printer and your router
+while a print is sent to it, please comment on
+[#452](https://github.com/danielcherubini/elegoo-homeassistant/issues/452) — that
+single capture is the thing standing between this printer being supported and not.
+Until then, please don't open a new issue for it: the answer will be the same, and
+the one above is where the progress will appear.
 
 ---
 
