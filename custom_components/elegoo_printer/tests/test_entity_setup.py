@@ -128,7 +128,7 @@ FDM_ENTITY_COUNTS = {
     "light": 1,
     "number": 2,
     "select": 1,
-    "sensor": 34,
+    "sensor": 35,
     "update": 1,
 }
 
