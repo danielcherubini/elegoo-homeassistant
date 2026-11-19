@@ -1047,6 +1047,16 @@ def _build_fdm_fan_motion_sensor_descriptions() -> list[
     ]
 
 
+# Build plate side, from the SDCP `PlatFormType` field. Observed on a
+# Centauri Carbon at firmware V1.4.49 by the reporter in #450; not
+# corroborated on other models, hence one named map rather than inline
+# literals. An unrecognised value becomes "unknown", never a passthrough:
+# the sensor declares `options`, and Home Assistant raises on a state value
+# outside them.
+_BUILD_PLATE_BY_PLATFORM_TYPE: dict[int, str] = {0: "a", 1: "b"}
+BUILD_PLATE_UNKNOWN = "unknown"
+
+
 def _build_fdm_speed_position_sensor_descriptions() -> list[
     ElegooPrinterSensorEntityDescription
 ]:
@@ -1102,6 +1112,24 @@ def _build_fdm_speed_position_sensor_descriptions() -> list[
             suggested_unit_of_measurement=UnitOfLength.MILLIMETERS,
             suggested_display_precision=2,
             value_fn=lambda printer_data: _get_current_coord_value(printer_data, 2),
+        ),
+        # --- Build Plate Sensor ---
+        ElegooPrinterSensorEntityDescription(
+            key="build_plate",
+            translation_key="build_plate",
+            name="Build Plate",
+            icon="mdi:layers-outline",
+            device_class=SensorDeviceClass.ENUM,
+            options=["a", "b", BUILD_PLATE_UNKNOWN],
+            value_fn=lambda printer_data: (
+                _BUILD_PLATE_BY_PLATFORM_TYPE.get(
+                    printer_data.status.platform_type, BUILD_PLATE_UNKNOWN
+                )
+                if printer_data
+                and printer_data.status is not None
+                and isinstance(printer_data.status.platform_type, int)
+                else BUILD_PLATE_UNKNOWN
+            ),
         ),
     ]
 
