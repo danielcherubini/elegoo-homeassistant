@@ -259,6 +259,14 @@
       },
       "end_time": {
         "name": "End Time"
+      },
+      "build_plate": {
+        "name": "Build Plate",
+        "state": {
+          "a": "Plate A",
+          "b": "Plate B",
+          "unknown": "Unknown"
+        }
       }
     },
     "select": {

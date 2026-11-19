@@ -259,6 +259,14 @@
       },
       "end_time": {
         "name": "Endzeit"
+      },
+      "build_plate": {
+        "name": "Bauplatte",
+        "state": {
+          "a": "Platte A",
+          "b": "Platte B",
+          "unknown": "Unbekannt"
+        }
       }
     },
     "select": {

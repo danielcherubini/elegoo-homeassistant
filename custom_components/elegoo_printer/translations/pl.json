@@ -259,6 +259,14 @@
       },
       "end_time": {
         "name": "Czas Końcowy"
+      },
+      "build_plate": {
+        "name": "Płyta robocza",
+        "state": {
+          "a": "Płyta A",
+          "b": "Płyta B",
+          "unknown": "Nieznany"
+        }
       }
     },
     "select": {
