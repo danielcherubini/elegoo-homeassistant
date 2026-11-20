@@ -33,6 +33,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- The A1-A4 color sensors on a printer with a Canvas now keep the color of the spool that is loaded during a print, instead of switching to the color saved in the G-code file. The G-code color is only used when the Canvas has none for that slot (#459).
 - Setting a printer up by typing its IP no longer requires discovery to answer. A printer that holds TCP 3030 open but ignores UDP 3000 discovery — which a Centauri Carbon does when it cannot ping its gateway — now sets up, and survives reload and reconnect instead of sitting at **Failed setup, will retry**. A printer that will not identify itself with a usable id is still refused, and an address that answers nothing still reports **No printer could be found**. Thanks to @MatiasFernandez for the diagnosis and @SketchyUnicorns for the report (#429, #431); #429 stays open until confirmed on the printer that hit it.
 - The printer's **Firmware version** on the device page now follows the printer instead of staying frozen at whatever version it was running when the integration was first set up; a firmware update shows up without reloading the integration. Reported by @mmerickel in #436.
 - `update_ip` now actually moves the printer when its address had been saved in the printer's options: the new address is written to both places Home Assistant keeps it, so the reload connects where the printer now is instead of where it used to be. Reported by @caohuongls in #430.

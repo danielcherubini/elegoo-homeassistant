@@ -108,25 +108,45 @@ def _make_canvas_status() -> AMSStatus:
 
 
 class TestGetSlotColor:
-    """Color uses proxy color_map first, Canvas tray fallback."""
+    """Color uses the loaded Canvas tray first, proxy color_map fallback."""
 
-    def test_proxy_color_map_takes_priority(self) -> None:
+    def test_canvas_color_takes_priority_during_a_print(self) -> None:
         pd = _make_printer_data(
             filament_data=PROXY_FILAMENT,
             ams_status=_make_canvas_status(),
         )
-        assert _get_slot_color(pd, 0) == "#FFFFFF"
+        assert _get_slot_color(pd, 0) == "#CCCCCC"
 
-    def test_falls_back_to_canvas_when_no_proxy(self) -> None:
+    def test_canvas_color_when_no_proxy(self) -> None:
         pd = _make_printer_data(ams_status=_make_canvas_status())
         assert _get_slot_color(pd, 0) == "#CCCCCC"
 
-    def test_falls_back_to_canvas_for_slot_not_in_color_map(self) -> None:
+    def test_canvas_color_for_slot_not_in_color_map(self) -> None:
         pd = _make_printer_data(
             filament_data=PROXY_FILAMENT,
             ams_status=_make_canvas_status(),
         )
         assert _get_slot_color(pd, 1) == "#FF0000"
+
+    def test_color_map_without_canvas(self) -> None:
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT)
+        assert _get_slot_color(pd, 0) == "#FFFFFF"
+        assert _get_slot_color(pd, 3) == "#17656B"
+
+    def test_color_map_when_canvas_tray_has_no_color(self) -> None:
+        status = AMSStatus(
+            {
+                "canvas_list": [
+                    {
+                        "canvas_id": 0,
+                        "connected": 1,
+                        "tray_list": [{"tray_id": 0, "filament_color": ""}],
+                    }
+                ],
+            }
+        )
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT, ams_status=status)
+        assert _get_slot_color(pd, 0) == "#FFFFFF"
 
     def test_no_data_returns_none(self) -> None:
         pd = _make_printer_data()
