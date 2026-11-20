@@ -186,16 +186,24 @@ def _get_canvas_tray(printer_data: PrinterData, index: int) -> AMSTray | None:
 
 
 def _get_slot_color(printer_data: PrinterData, index: int) -> str | None:
-    """Get hex color for a slot. Proxy color_map first, Canvas fallback."""
+    """
+    Get hex color for a slot. Canvas tray first, proxy color_map fallback.
+
+    The Canvas reports the spool that is actually loaded. The G-code
+    color_map only says what the slicer project had at slicing time, and its
+    ``t`` is a tool index rather than a Canvas slot.
+    """
     if not printer_data:
         return None
+    tray = _get_canvas_tray(printer_data, index)
+    if tray and tray.filament_color:
+        return tray.filament_color
     if printer_data.gcode_filament_data:
         for entry in printer_data.gcode_filament_data.color_map:
             if entry.get("t") == index:
                 color = entry.get("color")
                 if color:
                     return color
-    tray = _get_canvas_tray(printer_data, index)
     return tray.filament_color if tray else None
 
 
