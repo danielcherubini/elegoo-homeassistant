@@ -10,6 +10,7 @@ from custom_components.elegoo_printer.definitions import (
     PRINTER_STATUS_CANVAS,
     PRINTER_STATUS_CC2_GCODE_FILAMENT,
     PRINTER_STATUS_GCODE_PROXY_FILAMENT,
+    _get_active_filament_color,
     _get_active_tray_id,
     _get_slot_attributes,
     _get_slot_cm3,
@@ -148,6 +149,28 @@ class TestGetSlotColor:
         pd = _make_printer_data(filament_data=PROXY_FILAMENT, ams_status=status)
         assert _get_slot_color(pd, 0) == "#FFFFFF"
 
+    def test_canvas_tray_without_color_and_no_color_map(self) -> None:
+        status = AMSStatus(
+            {
+                "canvas_list": [
+                    {
+                        "canvas_id": 0,
+                        "connected": 1,
+                        "tray_list": [{"tray_id": 0, "filament_color": ""}],
+                    }
+                ],
+            }
+        )
+        pd = _make_printer_data(ams_status=status)
+        assert _get_slot_color(pd, 0) is None
+
+    def test_slot_color_matches_active_filament_color(self) -> None:
+        status = AMSStatus(
+            {**CANVAS_TRAY_DATA, "active_canvas_id": 0, "active_tray_id": 0}
+        )
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT, ams_status=status)
+        assert _get_slot_color(pd, 0) == _get_active_filament_color(pd)
+
     def test_no_data_returns_none(self) -> None:
         pd = _make_printer_data()
         assert _get_slot_color(pd, 0) is None
@@ -157,13 +180,28 @@ class TestGetSlotColor:
 
 
 class TestGetSlotName:
-    """Name resolves: proxy filament_names -> color_map name -> Canvas."""
+    """Name uses the loaded Canvas tray first, then proxy names, then color_map."""
 
-    def test_proxy_filament_names_takes_priority(self) -> None:
+    def test_canvas_name_takes_priority_during_a_print(self) -> None:
         pd = _make_printer_data(
             filament_data=PROXY_FILAMENT,
             ams_status=_make_canvas_status(),
         )
+        assert _get_slot_name(pd, 0) == "Canvas-White"
+
+    def test_proxy_name_when_canvas_tray_has_no_name(self) -> None:
+        status = AMSStatus(
+            {
+                "canvas_list": [
+                    {
+                        "canvas_id": 0,
+                        "connected": 1,
+                        "tray_list": [{"tray_id": 0, "filament_name": ""}],
+                    }
+                ],
+            }
+        )
+        pd = _make_printer_data(filament_data=PROXY_FILAMENT, ams_status=status)
         assert _get_slot_name(pd, 0) == "ElegooPLA-Basic-White"
 
     def test_falls_back_to_color_map_name(self) -> None:
@@ -173,7 +211,7 @@ class TestGetSlotName:
         pd = _make_printer_data(filament_data=data)
         assert _get_slot_name(pd, 2) == "PETG"
 
-    def test_falls_back_to_canvas_name(self) -> None:
+    def test_canvas_name_when_no_proxy(self) -> None:
         pd = _make_printer_data(ams_status=_make_canvas_status())
         assert _get_slot_name(pd, 0) == "Canvas-White"
 
