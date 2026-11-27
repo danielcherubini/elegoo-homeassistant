@@ -2494,9 +2494,16 @@ class ElegooCC2Client:
         *,
         tray_id: int | None = None,
         bed_leveling: bool = True,
+        tool_map: dict[int, int] | None = None,
     ) -> int:
         """
         Start printing a file that is already in the printer's local storage.
+
+        ``tool_map`` maps G-code tool indexes to Canvas trays one by one
+        (``{0: 0, 2: 3}`` prints tool 0 from tray A1 and tool 2 from tray A4),
+        for a multi-colour file where each tool needs its own tray. It is sent
+        as a ``slot_map`` with one entry per key and replaces the single-tray
+        ``tray_id``; passing both is a ``ValueError``.
 
         Sends method 1020 with a ``config`` that carries only what is needed:
         ``slot_map`` maps every G-code tool the file uses to ``tray_id`` when
@@ -2553,8 +2560,16 @@ class ElegooCC2Client:
                 never reported as started without the printer saying so.
 
         """
+        if tool_map and tray_id is not None:
+            msg = "tray_id and tool_map are mutually exclusive"
+            raise ValueError(msg)
         slot_map: list[dict[str, int]] = []
-        if tray_id is not None:
+        if tool_map:
+            slot_map = [
+                {"t": tool, "canvas_id": 0, "tray_id": tray}
+                for tool, tray in sorted(tool_map.items())
+            ]
+        elif tray_id is not None:
             file = self.printer_data.file_list.get(filename)
             tools = file.tools if file is not None else []
             slot_map = [
