@@ -433,6 +433,32 @@ class TestStartPrintService:
                     {"entry_id": "x", "filename": "a.gcode", "tool_map": bad}
                 )
 
+    def test_schema_rejects_fractions_and_booleans_in_tool_map(self) -> None:
+        # vol.Coerce(int) would turn 0.9 into 0 and True into 1, so a malformed
+        # automation would silently start with a different mapping.
+        for bad in (
+            [{"t": 0.9, "tray": 1}],
+            [{"t": 0, "tray": 3.9}],
+            [{"t": True, "tray": 1}],
+            [{"t": 0, "tray": False}],
+            [{"t": "x", "tray": 1}],
+            [{"t": None, "tray": 1}],
+        ):
+            with pytest.raises(vol.Invalid):
+                SERVICE_START_PRINT_SCHEMA(
+                    {"entry_id": "x", "filename": "a.gcode", "tool_map": bad}
+                )
+
+    def test_schema_still_accepts_whole_numbers_in_other_forms(self) -> None:
+        ok = SERVICE_START_PRINT_SCHEMA(
+            {
+                "entry_id": "x",
+                "filename": "a.gcode",
+                "tool_map": [{"t": 2.0, "tray": "3"}],
+            }
+        )
+        assert ok["tool_map"] == [{"t": 2, "tray": 3}]
+
     def test_schema_rejects_tray_and_tool_map_together(self) -> None:
         with pytest.raises(vol.Invalid):
             SERVICE_START_PRINT_SCHEMA(

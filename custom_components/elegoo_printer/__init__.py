@@ -196,6 +196,29 @@ async def _async_update_ip(hass: HomeAssistant, call: ServiceCall) -> dict:
 
 SERVICE_START_PRINT = "start_print"
 
+
+def _whole_number(value: object) -> int:
+    """
+    Accept a whole number and refuse anything `int()` would quietly reshape.
+
+    `vol.Coerce(int)` turns 0.9 into 0 and True into 1, which in a `tool_map`
+    would silently pick a different tool or tray than the one written.
+    """
+    if isinstance(value, bool):
+        msg = "expected a whole number, not a boolean"
+        raise vol.Invalid(msg)
+    if isinstance(value, float):
+        if not value.is_integer():
+            msg = "expected a whole number, not a fraction"
+            raise vol.Invalid(msg)
+        return int(value)
+    try:
+        return int(value)  # ints and numeric strings such as "3", as `tray` takes
+    except (TypeError, ValueError) as err:
+        msg = "expected a whole number"
+        raise vol.Invalid(msg) from err
+
+
 # `tray` is validated here because the printer does not: an out-of-range
 # tray_id is acknowledged with error_code 0 and silently printed from tray 0
 # (measured on a CC2, firmware 02.01.00.00). Four trays is what the Canvas has.
@@ -210,8 +233,8 @@ SERVICE_START_PRINT_SCHEMA = vol.Schema(
         ),
         vol.Exclusive("tool_map", "tray_mapping"): [
             {
-                vol.Required("t"): vol.All(vol.Coerce(int), vol.Range(min=0, max=15)),
-                vol.Required("tray"): vol.All(vol.Coerce(int), vol.Range(min=0, max=3)),
+                vol.Required("t"): vol.All(_whole_number, vol.Range(min=0, max=15)),
+                vol.Required("tray"): vol.All(_whole_number, vol.Range(min=0, max=3)),
             }
         ],
         # default matches ElegooSlicer, which sends printer_check: true on
