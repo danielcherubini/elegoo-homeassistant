@@ -50,6 +50,17 @@ start_print:
           min: 0
           max: 3
           mode: box
+    tool_map:
+      name: Tool map
+      description: >-
+        For a multi-colour file: the tray for each G-code tool, as a list of
+        `t` (tool index, 0-based, as in the file's colour list) and `tray`
+        (0-3, A1-A4). Every tool the file uses must be listed. Not allowed
+        together with "Canvas tray".
+      required: false
+      example: '[{"t": 0, "tray": 0}, {"t": 2, "tray": 3}]'
+      selector:
+        object:
     bed_leveling:
       name: Bed leveling
       description: >-

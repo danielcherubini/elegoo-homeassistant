@@ -253,8 +253,21 @@ data:
   bed_leveling: true         # optional, default true: auto bed leveling first (~3 min), as the slicer does
 ```
 
+For a **multi-colour file** where each tool needs its own tray, give `tool_map` instead of `tray`:
+
+```yaml
+action: elegoo_printer.start_print
+data:
+  entry_id: <config entry UUID>
+  filename: "two-colour.gcode"
+  tool_map:                  # one entry per tool the file uses; not allowed together with `tray`
+    - {t: 0, tray: 0}        # tool T0 prints from tray A1
+    - {t: 2, tray: 3}        # tool T2 prints from tray A4
+```
+
 - The response says whether the printer accepted the job: `error_code` 1009 means it is busy.
 - `tray` is validated by Home Assistant, **not by the printer** - an out-of-range tray is acknowledged with `error_code` 0 and silently printed from tray 0. The tray is mapped to **every** G-code tool the file's listing reports (its `color_map`); a file whose tool list the printer never reported maps its first tool. Whether the printer honours a complete multi-tool map is **not yet confirmed on hardware** - see #435, which stays open until someone can watch which tray a multi-tool print actually consumes.
+- `tool_map` is sent as a complete `slot_map`, one entry per tool, and replaces `tray`. List **every** tool the file uses (the `T` numbers of its colour list - they need not be consecutive: a file using filaments 1 and 3 uses tools 0 and 2). A tool listed twice is rejected, and each tray is validated like `tray`. Home Assistant cannot check the list against the file, and what the printer does with a tool you leave out is not documented.
 - `bed_leveling` maps to the protocol's `printer_check`, which ElegooSlicer sends on every job - so it defaults to on. `false` is sent as `false`, which is how the slicer's own unchecked box does it and the only way to stop the printer levelling: leaving the key out lets it decide, and it has been observed levelling for 196 s even when the previous print used the same bed temperature.
 - Not available for the first-generation Centauri Carbon or resin printers, where the equivalent SDCP command crashed the printer (#297).
 

@@ -414,6 +414,36 @@ class TestStartPrintService:
         with pytest.raises(vol.Invalid):
             SERVICE_START_PRINT_SCHEMA({"entry_id": "x", "filename": ""})
 
+    def test_schema_accepts_tool_map_and_rejects_bad_entries(self) -> None:
+        ok = SERVICE_START_PRINT_SCHEMA(
+            {
+                "entry_id": "x",
+                "filename": "a.gcode",
+                "tool_map": [{"t": 0, "tray": 0}, {"t": 2, "tray": 3}],
+            }
+        )
+        assert ok["tool_map"] == [{"t": 0, "tray": 0}, {"t": 2, "tray": 3}]
+        for bad in (
+            [{"t": 0, "tray": 4}],  # tray outside the Canvas
+            [{"t": -1, "tray": 0}],  # negative tool
+            [{"t": 0}],  # entry without a tray
+        ):
+            with pytest.raises(vol.Invalid):
+                SERVICE_START_PRINT_SCHEMA(
+                    {"entry_id": "x", "filename": "a.gcode", "tool_map": bad}
+                )
+
+    def test_schema_rejects_tray_and_tool_map_together(self) -> None:
+        with pytest.raises(vol.Invalid):
+            SERVICE_START_PRINT_SCHEMA(
+                {
+                    "entry_id": "x",
+                    "filename": "a.gcode",
+                    "tray": 1,
+                    "tool_map": [{"t": 0, "tray": 0}],
+                }
+            )
+
     def test_start_print_without_tray(self) -> None:
         async def _run() -> None:
             client = _cc2_client()
@@ -447,6 +477,41 @@ class TestStartPrintService:
             client.print_start.assert_awaited_once_with(
                 "benchy.gcode", tray_id=2, bed_leveling=False
             )
+
+        asyncio.run(_run())
+
+    def test_start_print_with_tool_map(self) -> None:
+        async def _run() -> None:
+            client = _cc2_client()
+            entry = _make_cc2_entry(client=client, state=ConfigEntryState.LOADED)
+            hass = _make_hass_with_entry(entry=entry)
+
+            result = await _async_start_print(
+                hass,
+                _start_call(tool_map=[{"t": 0, "tray": 0}, {"t": 2, "tray": 3}]),
+            )
+
+            assert result["success"] is True
+            client.print_start.assert_awaited_once_with(
+                "benchy.gcode", tray_id=None, bed_leveling=True, tool_map={0: 0, 2: 3}
+            )
+
+        asyncio.run(_run())
+
+    def test_start_print_rejects_a_tool_listed_twice(self) -> None:
+        async def _run() -> None:
+            client = _cc2_client()
+            entry = _make_cc2_entry(client=client, state=ConfigEntryState.LOADED)
+            hass = _make_hass_with_entry(entry=entry)
+
+            result = await _async_start_print(
+                hass,
+                _start_call(tool_map=[{"t": 0, "tray": 0}, {"t": 0, "tray": 1}]),
+            )
+
+            assert result["success"] is False
+            assert "more than once" in _error_message(result)
+            client.print_start.assert_not_awaited()
 
         asyncio.run(_run())
 

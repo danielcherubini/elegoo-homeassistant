@@ -126,6 +126,69 @@ def test_start_maps_every_tool_the_file_uses() -> None:  # noqa: D103
         )
 
 
+def test_start_with_tool_map_sends_one_entry_per_tool() -> None:  # noqa: D103
+    # A multi-colour file needs each tool on its own tray. tool_map is sent as a
+    # complete slot_map (one entry per tool, ordered by tool index), not the
+    # single tray repeated for every tool that tray_id produces.
+    client = _client()
+    with patch.object(
+        client, "_send_command", new_callable=AsyncMock, return_value=_response(0)
+    ) as mock_cmd:
+        code = asyncio.run(
+            client.print_start("two-colour.gcode", tool_map={2: 3, 0: 0})
+        )
+        mock_cmd.assert_called_once_with(
+            CC2_CMD_START_PRINT,
+            {
+                "storage_media": "local",
+                "filename": "two-colour.gcode",
+                "config": {
+                    "slot_map": [
+                        {"t": 0, "canvas_id": 0, "tray_id": 0},
+                        {"t": 2, "canvas_id": 0, "tray_id": 3},
+                    ],
+                    "printer_check": True,
+                },
+            },
+        )
+    assert code == 0
+
+
+def test_start_with_tool_map_ignores_the_file_listing() -> None:  # noqa: D103
+    # The caller's map is authoritative: it is not widened or narrowed to the
+    # tools the 1044 listing reports.
+    client = _client()
+    client.printer_data.file_list = {
+        "multi.gcode": PrinterFile(
+            {
+                "filename": "multi.gcode",
+                "color_map": [{"t": 0, "color": "#111111", "name": "PETG"}],
+            }
+        )
+    }
+    with patch.object(
+        client, "_send_command", new_callable=AsyncMock, return_value=_response(0)
+    ) as mock_cmd:
+        asyncio.run(client.print_start("multi.gcode", tool_map={0: 1, 1: 2}))
+        slot_map = mock_cmd.call_args.args[1]["config"]["slot_map"]
+        assert slot_map == [
+            {"t": 0, "canvas_id": 0, "tray_id": 1},
+            {"t": 1, "canvas_id": 0, "tray_id": 2},
+        ]
+
+
+def test_start_rejects_tray_and_tool_map_together() -> None:  # noqa: D103
+    client = _client()
+    with (
+        patch.object(
+            client, "_send_command", new_callable=AsyncMock, return_value=_response(0)
+        ) as mock_cmd,
+        pytest.raises(ValueError, match="mutually exclusive"),
+    ):
+        asyncio.run(client.print_start("a.gcode", tray_id=1, tool_map={0: 0}))
+    mock_cmd.assert_not_called()
+
+
 def test_start_without_file_detail_falls_back_to_tool_0() -> None:  # noqa: D103
     # Regression pin, do not weaken: when no file detail is available - nothing
     # in file_list, or a listing entry that carried no usable color_map - the

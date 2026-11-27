@@ -199,11 +199,21 @@ SERVICE_START_PRINT = "start_print"
 # `tray` is validated here because the printer does not: an out-of-range
 # tray_id is acknowledged with error_code 0 and silently printed from tray 0
 # (measured on a CC2, firmware 02.01.00.00). Four trays is what the Canvas has.
+# `tray` maps every tool to ONE tray; `tool_map` maps each tool to its own tray
+# (a multi-colour file), so the two are exclusive.
 SERVICE_START_PRINT_SCHEMA = vol.Schema(
     {
         vol.Required("entry_id"): str,
         vol.Required("filename"): vol.Length(min=1),
-        vol.Optional("tray"): vol.All(vol.Coerce(int), vol.Range(min=0, max=3)),
+        vol.Exclusive("tray", "tray_mapping"): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=3)
+        ),
+        vol.Exclusive("tool_map", "tray_mapping"): [
+            {
+                vol.Required("t"): vol.All(vol.Coerce(int), vol.Range(min=0, max=15)),
+                vol.Required("tray"): vol.All(vol.Coerce(int), vol.Range(min=0, max=3)),
+            }
+        ],
         # default matches ElegooSlicer, which sends printer_check: true on
         # every job; users who want a faster reprint pass false.
         vol.Optional("bed_leveling", default=True): bool,
@@ -218,8 +228,9 @@ async def _async_start_print(hass: HomeAssistant, call: ServiceCall) -> dict:
     CC2 only - the SDCP transports are deliberately not wired up, since
     CMD_START_PRINT crashed the first-gen Centauri Carbon (#297). Accepts
     ``entry_id``, ``filename``, optional ``tray`` (0-based Canvas tray mapped
-    to every G-code tool the file reports) and ``bed_leveling`` (default on,
-    as the slicer does), and returns a
+    to every G-code tool the file reports) or ``tool_map`` (one tray per tool,
+    for a multi-colour file; exclusive with ``tray``) and ``bed_leveling``
+    (default on, as the slicer does), and returns a
     definitive ``{success, message|error}`` result (supports_response=optional).
     """
     entry_id = call.data["entry_id"]
@@ -246,9 +257,20 @@ async def _async_start_print(hass: HomeAssistant, call: ServiceCall) -> dict:
     filename = call.data["filename"]
     tray = call.data.get("tray")
     bed_leveling = call.data.get("bed_leveling", True)
+    tool_map: dict[int, int] | None = None
+    if "tool_map" in call.data:
+        tool_map = {entry["t"]: entry["tray"] for entry in call.data["tool_map"]}
+        if len(tool_map) != len(call.data["tool_map"]):
+            return {
+                "success": False,
+                "error": "tool_map lists the same tool more than once",
+            }
+    # Passed only when given, so a call without it reaches the client exactly as
+    # it did before `tool_map` existed.
+    extra = {"tool_map": tool_map} if tool_map is not None else {}
     try:
         code = await client.print_start(
-            filename, tray_id=tray, bed_leveling=bed_leveling
+            filename, tray_id=tray, bed_leveling=bed_leveling, **extra
         )
     except (ElegooPrinterNotConnectedError, ElegooPrinterConnectionError) as err:
         LOGGER.warning("start_print failed for entry %s: %r", entry_id, err)
